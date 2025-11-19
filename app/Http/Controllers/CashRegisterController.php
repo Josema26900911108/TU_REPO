@@ -29,7 +29,7 @@ class CashRegisterController extends Controller
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
             if($Estatus=='ER'){
-                $cashRegister = Cash_registers::with('tienda')
+                $cashRegister = Cash_registers::with('tienda')//se cambia
                 ->latest()->get();
             }else{
                 $cashRegister = Cash_registers::with('tienda')
