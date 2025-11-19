@@ -1,0 +1,49 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+  public function up(): void
+    {
+        $tablas = [
+            'movimiento_materiales',
+                'lotes',
+        ];
+
+        foreach ($tablas as $tabla) {
+            if (Schema::hasTable($tabla)) {
+                Schema::table($tabla, function (Blueprint $table) use ($tabla) {
+                    if (!Schema::hasColumn($tabla, 'fkTienda')) {
+                        $table->unsignedBigInteger('fkTienda')->nullable();
+                        $table->foreign('fkTienda')
+                            ->references('idTienda')
+                            ->on('tienda')
+                            ->onDelete('set null');
+                    }
+                });
+            }
+        }
+    }
+
+    public function down(): void
+    {
+        $tablas = [
+            'movimiento_materiales',
+            'lotes',
+        ];
+
+        foreach ($tablas as $tabla) {
+            if (Schema::hasTable($tabla)) {
+                Schema::table($tabla, function (Blueprint $table) {
+                    if (Schema::hasColumn($table->getTable(), 'fkTienda')) {
+                        $table->dropForeign(['fkTienda']);
+                        $table->dropColumn('fkTienda');
+                    }
+                });
+            }
+        }
+    }
+};
