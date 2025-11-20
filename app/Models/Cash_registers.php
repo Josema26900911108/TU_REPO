@@ -9,17 +9,26 @@ class Cash_registers extends Model
 {
     use HasFactory;
 
-    public function Cash_registers(){
-        return $this->belongsTo(Cash_registers::class);
-    }
+    protected $table = 'cash_registers';
+    protected $primaryKey = 'id';
+    public $incrementing = true;
+    protected $keyType = 'int';
+
+    protected $fillable = [
+        'id',
+        'Nombre',
+        'fkTienda',
+        'Estatus',
+        'initial_amount',
+        'closing_amount',
+        'opened_at',
+        'closed_at',
+        'created_at',
+        'updated_at'
+    ];
 
     public function tienda()
     {
-        return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda'); // Relación con la tabla tienda
+        return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda');
     }
-    protected $table = 'cash_registers'; // Cambia 'tienda' por el nombre correcto de tu tabla
-    protected $primaryKey = 'id'; // Especifica la clave primaria
-    public $incrementing = true; // Si es autoincremental
-    protected $keyType = 'int'; // Tipo de la clave primaria
-    protected $fillable = ['id','Nombre', 'fkTienda', 'Estatus', 'initial_amount', 'closing_amount', 'opened_at', 'closed_at', 'created_at', 'updated_at']; // Agrega aquí todos los campos que deseas que sean "fillables"
 }

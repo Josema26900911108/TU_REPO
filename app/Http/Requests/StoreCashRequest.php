@@ -22,7 +22,7 @@ class StoreCashRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'Nombre' => 'required|unique:Cash_registers,Nombre|max:150'
+            'Nombre' => 'required|unique:cash_registers,Nombre|max:150'
         ];
     }
 
