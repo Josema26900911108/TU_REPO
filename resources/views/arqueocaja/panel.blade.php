@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\DB;
                         <div class="col-4">
                             <?php
 
-                            $categorias = count(DB::table('Cash_registers as cr')
+                            $categorias = count(DB::table('cash_registers as cr')
                             ->join('caja as c', 'c.idCaja', '=', 'cr.id')
                             ->select('c.id')
                             ->where('c.idCaja', $caja->id)  // Asegúrate que este sea el campo correcto
@@ -63,7 +63,7 @@ use Illuminate\Support\Facades\DB;
                         <div class="col-4">
                             <?php
 
-                            $compras = count(DB::table('Cash_registers as cr')
+                            $compras = count(DB::table('cash_registers as cr')
                             ->join('caja as c', 'c.idCaja', '=', 'cr.id')
                             ->select('c.id')
                             ->where('c.idCaja', $caja->id)  // Asegúrate que este sea el campo correcto
@@ -93,7 +93,7 @@ use Illuminate\Support\Facades\DB;
                         <div class="col-4">
                             <?php
 
-                            $marcas = count(DB::table('Cash_registers as cr')
+                            $marcas = count(DB::table('cash_registers as cr')
                             ->join('caja as c', 'c.idCaja', '=', 'cr.id')
                             ->select('c.id')
                             ->where('c.idCaja', $caja->id)  // Asegúrate que este sea el campo correcto
@@ -122,7 +122,7 @@ use Illuminate\Support\Facades\DB;
                         </div>
                         <div class="col-4">
                             <?php
-                            $banco = count(DB::table('Cash_registers as cr')
+                            $banco = count(DB::table('cash_registers as cr')
                             ->join('caja as c', 'c.idCaja', '=', 'cr.id')
                             ->select('c.id')
                             ->where('c.idCaja', $caja->id)  // Asegúrate que este sea el campo correcto
