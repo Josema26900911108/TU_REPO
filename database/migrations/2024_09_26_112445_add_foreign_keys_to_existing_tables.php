@@ -102,7 +102,7 @@ return new class extends Migration
         });
 
         // Drop foreign key and column from arqueocaja table
-        Schema::table('arqueocaja', function (Blueprint $table) {
+        Schema::table('ArqueoCaja', function (Blueprint $table) {
             $table->dropForeign(['fkTienda']);
             $table->dropColumn('fkTienda');
         });

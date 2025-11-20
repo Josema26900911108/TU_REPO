@@ -16,7 +16,7 @@ class ArqueoCaja extends Model
     {
         return $this->belongsTo(Tienda::class, 'fkCaja', 'id');
     }
-    protected $table = 'arqueocaja'; // Cambia 'tienda' por el nombre correcto de tu tabla
+    protected $table = 'ArqueoCaja'; // Cambia 'tienda' por el nombre correcto de tu tabla
     protected $primaryKey = 'idArqueoCaja'; // Especifica la clave primaria
     public $incrementing = true; // Si es autoincremental
     protected $keyType = 'int'; // Tipo de la clave primaria

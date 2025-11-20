@@ -14,7 +14,7 @@ class MetodoPagoController extends Controller
     $result = DB::table('caja as c')
     ->rightJoin('cajametodopago as cm', 'c.idCaja', '=', 'cm.fkCaja')
     ->rightJoin('metodopago as m', 'm.idMetodoPago', '=', 'cm.fkMetodoPago')
-    ->rightJoin('arqueocaja as ac', 'ac.idArqueoCaja', '=', 'c.idArqueoCaja')
+    ->rightJoin('ArqueoCaja as ac', 'ac.idArqueoCaja', '=', 'c.idArqueoCaja')
     ->selectRaw('IFNULL(SUM(c.Monto), ac.cei) as Monto, IFNULL(m.MetodoPago, "CEI") AS MetodoPago, ac.Estatus, ac.fkCaja, ac.cei')
     ->where('ac.fkCaja', $id)
     ->where('ac.Estatus', '=', DB::raw("'O'")) // <-- Esto evita que agregue comillas extra
