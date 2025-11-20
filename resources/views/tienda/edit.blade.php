@@ -21,6 +21,7 @@
 
     <div class="card">
         <form action="{{ route('tienda.update',['tienda'=>$tienda]) }}" method="post" enctype="multipart/form-data">
+
             @method('PATCH')
             @csrf
             <div class="card-body text-bg-light">
@@ -59,9 +60,9 @@
                     <small class="text-danger">{{'*'.$message}}</small>
                     @enderror
                 </div>
-                                <div class="col-md-6">
-                    <label for="image" class="form-label">Logo:</label>
-                    <input type="file" name="image" id="image" accept="image/*" class="form-control" value="{{old('image',$tienda->logo)}}">
+                    <div class="col-md-6">
+                    <label for="imagen" class="form-label">Logo:</label>
+                    <input type="file" name="image" id="image" accept="image/*" class="form-control" value="{{old('image')}}">
                     @error('image')
                     <small class="text-danger">{{'*'.$message}}</small>
                     @enderror

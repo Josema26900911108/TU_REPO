@@ -64,7 +64,7 @@ Titulo: <input class="form-control" name="Titulo" id="Titulo" value="{{ $plantil
 <div class="label">Descripcion:</div>
 <textarea type="text" class="form-control" name="descripcion" id="descripcion" value="{{ $plantilla->descripcion ?? '' }}">{{ $plantilla->descripcion ?? '' }}</textarea>
 
-    <div class="label">Consutal</div>
+    <div class="label">Armar consulta</div>
 @php
     preg_match_all('/{{\s*(.*?)\s*}}/', $plantilla->consulta ?? '', $coincidencias);
     $variabless = $coincidencias[1]; // Solo las variables sin los corchetes
@@ -90,7 +90,9 @@ Titulo: <input class="form-control" name="Titulo" id="Titulo" value="{{ $plantil
   <div id="editor-pie">{{ $plantilla->pie ?? '' }}</div>
   <input type="hidden" name="pie" id="pie" value="{{ $plantilla->pie ?? '' }}">
 
-  <div class="label">Compartir Plantilla a comunidad: <input type="checkbox" name="chkcompartir" id="chkcompartir"></div>
+  <div class="label">Compartir Plantilla a comunidad:
+    <input type="checkbox" name="chkcompartir" id="chkcompartir">
+  </div>
 
 
   <button type="submit" class="btn btn-primary" id="btnEnviar">Guardar</button>
@@ -450,9 +452,9 @@ function render(template) {
   // 2. Reemplazar variables globales de cabecera/pie
   for (const token in variables) {
     const value = variables[token];
-    const pattern = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    const pattern = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');  
     template = template.replace(pattern, value);
-  }
+                                }
 
   // 3. Reemplazar valores de detalle[0] fuera del bloque
   if (detalle.length > 0) {
