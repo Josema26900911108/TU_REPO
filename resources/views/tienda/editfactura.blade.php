@@ -452,7 +452,7 @@ function render(template) {
   // 2. Reemplazar variables globales de cabecera/pie
   for (const token in variables) {
     const value = variables[token];
-    const pattern = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');  
+    const pattern = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
     template = template.replace(pattern, value);
                                 }
 
