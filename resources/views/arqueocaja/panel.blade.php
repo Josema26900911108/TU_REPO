@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\DB;
                         <div class="col-4">
                             <?php
 
-                            $categorias = count(DB::table('cash_registers as cr')
+                            $categorias = count(DB::table('cash_registers as cr ')
                             ->join('caja as c', 'c.idCaja', '=', 'cr.id')
                             ->select('c.id')
                             ->where('c.idCaja', $caja->id)  // Asegúrate que este sea el campo correcto
