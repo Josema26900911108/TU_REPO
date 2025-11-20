@@ -371,11 +371,120 @@ $compressed = base64_encode(ob_get_clean());
                             ->orderByDesc('v.id')
                             ->get();
 
-     $pdf = Pdf::loadView('PDF.ticket',compact('Tienda','ventas','compressed'))->setPaper('A4', 'portrait'); // A4
+                            $plantilla=DB::table('plantillahtml')
+                            ->select('cabecera','detalle','pie','consulta')
+                            ->where('fkTienda',$fkTienda)
+                            ->where('Titulo','TicketVenta80mm')
+                            ->orderBy('id','DESC')
+                            ->limit(1)
+                            ->first();
+
+                            $cabecera=$plantilla->cabecera;
+                            $detalle=$plantilla->detalle;
+                            $pie=$plantilla->pie;
+                            $consulta=$plantilla->consulta;
+
+                            $tokens = [
+                                'idventa' => $ventas->first()->id,
+                                'idtienda' => $fkTienda
+                            ];
+                            $numFilas = $ventas->count();
+                            $altura = 335 + ($numFilas * 15);
+
+                        $cons=$this->procesarConsulta($consulta,$tokens);
+                        $tokenss=$this->ejecutarconsulta($cons);
+
+                $htmlFinal=$this->procesarPlantilla($cabecera,$detalle,$pie,$tokenss['columnas'],$tokenss['filas']);
+     $pdf = Pdf::loadHTML($htmlFinal)->setPaper([0, 0, 226.77, $altura], 'portrait');
 
     return $pdf->stream('PDF.ticket'); // o ->download('recibo.pdf');
     //phpinfo();
 }
+/**
+ * Renderiza una plantilla reemplazando variables {{var}}
+ * y generando el detalle repetitivo.
+ */
+function procesarPlantilla($cab, $htmlDetalle, $pi, $variablesGlobales, $detalle)
+{
+    foreach ($variablesGlobales as $token => $valor) {
+
+        $pattern = '/\{\{\s*' . preg_quote($valor, '/') . '\s*\}\}/';
+
+        if($valor=="logo"){
+            $compressed = $detalle[0][$valor];
+            $compressed = trim($compressed);
+            $compressed = str_replace(['"', "'"], '', $compressed);
+            $compressed = preg_replace('/\s+/', '', $compressed);
+
+       //     dd($compressed);
+            $cab = preg_replace($pattern, $compressed, $cab);
+        }
+        else{
+        $cab = preg_replace($pattern, $detalle[0][$valor], $cab);
+        }
+        $pi = preg_replace($pattern, $detalle[0][$valor], $pi);
+    }
+   $htmlFilas = "";
+
+foreach ($detalle as $fila) {
+    $row = $htmlDetalle;
+
+    foreach ($variablesGlobales as $key => $value) {
+
+        // Coincidir SOLO tokens como {{idventa}} (sin $)
+        $pattern = '/{{\s*' . preg_quote($value, '/') . '\s*}}/';
+
+        if (isset($fila[$value])) {
+            $row = preg_replace($pattern, $fila[$value], $row);
+        }
+    }
+
+    $htmlFilas .= $row;
+}
+
+    $htmlFinal = $cab . $htmlFilas . $pi;
+
+    return $htmlFinal;
+}
+
+public function ejecutarconsulta($consulta)
+    {
+   $filas = DB::select($consulta);
+
+    if (count($filas) == 0) {
+        return [
+            "columnas" => [],
+            "filas" => []
+        ];
+    }
+
+    // convierte los objetos stdClass en arrays
+    $filasArray = array_map(function ($row) {
+        return (array) $row;
+    }, $filas);
+
+    // columnas = keys del primer registro
+    $columnas = array_keys($filasArray[0]);
+
+    return [
+        "columnas" => $columnas,
+        "filas"    => $filasArray
+    ];
+    }
+
+function procesarConsulta($consulta, $tokens)
+{
+    $consultaprocesada = $consulta;
+
+    foreach ($tokens as $token => $valor) {
+        $pattern = '/@{{\s*' . preg_quote($token, '/') . '\s*}}/';
+        $consultaprocesada = preg_replace($pattern, $valor, $consultaprocesada);
+    }
+
+    return $consultaprocesada;
+}
+
+
 
     public function obtenerDatos()
     {
@@ -411,8 +520,8 @@ if ($Estatus == 'ER') {
         ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
         ->join('users as u', 'u.id', '=', 'v.user_id')
         ->select('v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total', 'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado','cm.tipo_comprobante','pr.tipo_persona')
-
         ->whereIn('v.estado', [1, 2, 3,4])
+        ->distinct()
         ->orderByDesc('v.id')
         ->get();
 }
@@ -429,6 +538,7 @@ if ($Estatus == 'ER') {
                             ->select('v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total', 'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado','cm.tipo_comprobante','pr.tipo_persona')
                             ->whereIn('v.estado',[1,2,3,4])
                             ->where('t.idTienda', $fkTienda)
+                            ->distinct()
                             ->orderByDesc('v.id')
                             ->get();
 
@@ -436,6 +546,7 @@ if ($Estatus == 'ER') {
                         $productos = Producto::with('comprobante','tienda')
                         ->where('fkTienda', $fkTienda)
                         ->whereIn('estado', [1,2,3,4])
+                        ->distinct()
                         ->latest()
                         ->get();
                         }
