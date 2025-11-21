@@ -69,6 +69,7 @@ class PermissionSeeder extends Seeder
             'crear-venta',
             'mostrar-venta',
             'eliminar-venta',
+            'cobrar-ventadirecta',
 
             //Roles
             'ver-role',
