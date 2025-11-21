@@ -97,6 +97,7 @@ Route::get('/arqueocaja/compras/{arqueocaja}', [ArqueoCajaController::class, 'co
 Route::get('/arqueocaja/ventas/{ventas}', [ArqueoCajaController::class, 'ventas'])->name('arqueocaja.ventas');
 Route::get('/arqueocaja/cobrarventas/{ventas}', [ArqueoCajaController::class, 'cobrarventas'])->name('arqueocaja.cobrarventas');
 
+
 Route::get('/login',[loginController::class,'index'])->name('login');
 Route::post('/login',[loginController::class,'login']);
 Route::get('/logout',[logoutController::class,'logout'])->name('logout');
@@ -106,7 +107,9 @@ Route::get('/cajaregistradora', [CajaRegistradoraController::class, 'index'])->n
 Route::post('/cajaregistradora/open', [CajaRegistradoraController::class, 'open'])->name('cajaregistradora.open.submit');
 Route::resource('cash', CashRegisterController::class);
 Route::post('/arqueocaja/store/{arqueocaja}', [ArqueoCajaController::class, 'store'])->name('arqueocaja.store');
+
 Route::post('/venta/storeCC', [ventaController::class, 'storeCC'])->name('ventas.storeCC');
+Route::get('/ventas/cobrarventas/{ventas}', [ventaController::class, 'cobrarventas'])->name('ventas.cobrarventas');
 
 
 Route::get('/php-gd-check', function () {

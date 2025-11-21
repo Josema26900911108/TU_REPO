@@ -224,13 +224,13 @@
                                                         <label for="TipoFolio">Tipo de Folio:</label>
                                                         <div id="TipoFolio">
                                                             <label class="radio-inline">
-                                                                <input type="radio" id="TipoFolio" name="TipoFolio" value="A" checked> Automatico
+                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="A" checked> Automatico
                                                             </label>
                                                             <label class="radio-inline">
-                                                                <input type="radio" id="TipoFolio" name="TipoFolio" value="M"> Manual
+                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="M"> Manual
                                                             </label>
                                                             <label class="radio-inline">
-                                                                <input type="radio" id="TipoFolio" name="TipoFolio" value="F"> Folio Manual
+                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="F"> Folio Manual
                                                             </label>
                                                         </div>
                                                     @error('TipoFolio')

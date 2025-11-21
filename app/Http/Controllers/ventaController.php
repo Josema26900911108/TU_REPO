@@ -6,6 +6,7 @@ use App\Http\Requests\StoreVentaRequest;
 use App\Http\Requests\UpdateVentaRequest;
 use App\Models\Cliente;
 use App\Models\Comprobante;
+use App\Models\CuentaContable;
 use App\Models\DetalleFolio;
 use App\Models\Folio;
 use App\Models\Producto;
@@ -14,7 +15,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-
+use Illuminate\Support\Facades\Auth;
 
 class ventaController extends Controller
 {
@@ -108,6 +109,72 @@ class ventaController extends Controller
         return view('venta.create', compact('productos', 'clientes', 'comprobantes'));
     }
 
+       public function cobrarventas($idventa)
+    {
+        if(Auth::check()){
+        $id=$idventa;
+        $fkTienda = session('user_fkTienda');
+        $Estatus = session('user_estatus');
+
+        $cuentasContables = CuentaContable::where('fkTienda', $fkTienda)->get();
+
+        $subquery = DB::table('compra_producto')
+            ->select('producto_id', DB::raw('MAX(created_at) as max_created_at'))
+            ->where('fkTienda',$fkTienda)
+            ->groupBy('producto_id');
+
+        $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
+            $join->on('cpr.producto_id', '=', 'productos.id')
+                ->whereIn('cpr.created_at', function ($query) use ($subquery) {
+                    $query->select('max_created_at')
+                        ->fromSub($subquery, 'subquery')
+                        ->whereRaw('subquery.producto_id = cpr.producto_id');
+                });
+        })
+            ->select('productos.nombre', 'productos.id', 'productos.stock', 'cpr.precio_venta')
+            ->where('productos.fkTienda',$fkTienda)
+            ->where('productos.estado', 1)
+            ->where('productos.stock', '>', 0)
+            ->get();
+
+        $clientes = Cliente::whereHas('persona', function ($query) {
+            $query->where('estado', 1);
+        })->get();
+
+        $comprobantes = Comprobante::with('tienda')
+        ->where('fkTienda', $fkTienda)
+        ->where('ClaveVista','DV')
+        ->get();
+
+        $ventacabecera = DB::table('ventas as v')
+        ->join('producto_venta as pv', 'pv.venta_id', '=', 'v.id')
+        ->join('clientes as cl', 'pv.venta_id', '=', 'v.id')
+        ->join('personas as pr', 'pr.id', '=', 'cl.persona_id')
+        ->join('tienda as t', 't.idTienda', '=', 'v.fkTienda')
+        ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
+        ->join('users as u', 'u.id', '=', 'v.user_id')
+        ->join('productos as pro', 'pro.id', '=', 'pv.producto_id')
+        ->select('v.id as idventa','pro.nombre as nameProducto','pv.precio_venta','pro.stock','pv.producto_id','pv.cantidad','pv.descuento','cm.formula', 'v.cliente_id', 'v.comprobante_id','t.idTienda', 'v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total', 'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado',
+        'cm.tipo_comprobante', 'pr.tipo_persona')
+        ->where('v.fkTienda',$fkTienda)
+        ->where('v.id',$idventa)
+        ->where('v.estado',1)
+        ->distinct()
+        ->get();
+
+
+
+        $selectedItemId=$ventacabecera->first()->cliente_id ?? null;
+        $selectedItemIdcomp=$ventacabecera->first()->comprobante_id ?? null;
+        $comprobantenumero=$ventacabecera->first()->numero_comprobante ?? null;
+        $idventa=$ventacabecera->first()->idventa ?? null;
+        return view('ventas.cobrarventas', compact('productos', 'clientes', 'comprobantes','ventacabecera','selectedItemId','selectedItemIdcomp','comprobantenumero','cuentasContables', 'idventa'));
+
+    } else{
+        return redirect()->route('login');
+    }
+    }
+
     public function storeCC(UpdateVentaRequest $request)
 {
     try {
@@ -184,7 +251,7 @@ class ventaController extends Controller
         };
 
 
-        
+
 while($cont < $cuentaArray) {
     DetalleFolio::create([
         'Monto' => $arraymonto[$cont],
