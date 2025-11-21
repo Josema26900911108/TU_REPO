@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\cash_registers;
+use App\Models\Cash_registers;
 use App\Http\Requests\UpdateCashRegisterRequest;
 use App\Http\Requests\StoreCashRequest;
 use App\Models\Tienda;
