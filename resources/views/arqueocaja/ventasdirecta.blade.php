@@ -227,10 +227,10 @@
                                                                 <input type="radio" id="TipoFolio" name="TipoFolio" value="A" checked @can('cobrar-ventadirecta') disabled @endcan> Automatico
                                                             </label>
                                                             <label class="radio-inline">
-                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="M" disabled> Manual
+                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="M" @can('cobrar-ventadirecta') disabled @endcan> Manual
                                                             </label>
                                                             <label class="radio-inline">
-                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="F" disabled> Folio Manual
+                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="F" @can('cobrar-ventadirecta') disabled @endcan> Folio Manual
                                                             </label>
                                                         </div>
                                                     @error('TipoFolio')
@@ -289,12 +289,12 @@
 
                         <!----User--->
                         <input type="hidden" name="user_id" value="{{ auth()->user()->id }}">
-
+                        @can('cobrar-ventadirecta')
                         <!--Botones--->
                         <div class="col-12 text-center">
                             <button type="submit" class="btn btn-success" id="guardar">Realizar venta</button>
                         </div>
-                        
+                        @endcan
 
                     </div>
                 </div>
