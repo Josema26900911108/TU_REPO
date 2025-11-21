@@ -289,12 +289,12 @@
 
                         <!----User--->
                         <input type="hidden" name="user_id" value="{{ auth()->user()->id }}">
-                        @can('cobrar-ventadirecta')
+
                         <!--Botones--->
                         <div class="col-12 text-center">
                             <button type="submit" class="btn btn-success" id="guardar">Realizar venta</button>
                         </div>
-                        @endcan
+                        
 
                     </div>
                 </div>
