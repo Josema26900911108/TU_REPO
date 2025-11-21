@@ -365,7 +365,7 @@ $compressed = base64_encode(ob_get_clean());
                             ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
                             ->join('users as u', 'u.id', '=', 'v.user_id')
                             ->join('productos as pd','pd.id','=','producto_id')
-                            ->select('v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total', 'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado','cm.tipo_comprobante','pr.tipo_persona','pv.producto_id','pv.cantidad','pd.nombre as nombreproducto','pv.precio_venta as precioventa')
+                            ->select('TO_BASE64(t.logo) as logo', 'v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total', 'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado','cm.tipo_comprobante','pr.tipo_persona','pv.producto_id','pv.cantidad','pd.nombre as nombreproducto','pv.precio_venta as precioventa')
                             ->where('v.id',$arqueocaja)
                             ->where('t.idTienda', $fkTienda)
                             ->orderByDesc('v.id')
