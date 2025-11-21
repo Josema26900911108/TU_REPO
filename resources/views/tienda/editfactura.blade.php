@@ -378,6 +378,8 @@ function obtnerdatosvalores(){
 
 let datos = {};
 contenidoconsulta=$('#consulta').val();
+contenidoconsulta = contenidoconsulta.replace(/\s+/g, ' ');
+
 let consultapreparada2 = contenidoconsulta;
 
     // Validación: si no existen variables, salirse
