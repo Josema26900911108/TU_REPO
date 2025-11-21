@@ -348,12 +348,6 @@ class ArqueoCajaController extends Controller
     $fkTienda = session('user_fkTienda');
     $Tienda = Tienda::where('idTienda', $fkTienda)->first();
 
-    $data = base64_decode($Tienda->logo);
-$image = imagecreatefromstring($data);
-// Redimensionar o comprimir aquí si necesitas
-ob_start();
-imagejpeg($image, null, 60); // calidad 60%
-$compressed = base64_encode(ob_get_clean());
 
 
 
