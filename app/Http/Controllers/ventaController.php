@@ -168,7 +168,7 @@ class ventaController extends Controller
         $selectedItemIdcomp=$ventacabecera->first()->comprobante_id ?? null;
         $comprobantenumero=$ventacabecera->first()->numero_comprobante ?? null;
         $idventa=$ventacabecera->first()->idventa ?? null;
-        return view('ventas.cobrarventas', compact('productos', 'clientes', 'comprobantes','ventacabecera','selectedItemId','selectedItemIdcomp','comprobantenumero','cuentasContables', 'idventa'));
+        return view('arqueocaja.ventasdirecta', compact('productos', 'clientes', 'comprobantes','ventacabecera','selectedItemId','selectedItemIdcomp','comprobantenumero','cuentasContables', 'idventa'));
 
     } else{
         return redirect()->route('login');
