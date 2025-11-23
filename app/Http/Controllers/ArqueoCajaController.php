@@ -348,48 +348,58 @@ class ArqueoCajaController extends Controller
     $fkTienda = session('user_fkTienda');
     $Tienda = Tienda::where('idTienda', $fkTienda)->first();
 
+   $ventas = DB::table('ventas as v')
+        ->join('producto_venta as pv', 'pv.venta_id', '=', 'v.id')
+        ->join('clientes as cl', 'cl.id', '=', 'v.cliente_id')
+        ->join('personas as pr', 'pr.id', '=', 'cl.persona_id')
+        ->join('tienda as t', 't.idTienda', '=', 'v.fkTienda')
+        ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
+        ->join('plantillahtml as ph', 'ph.id', '=', 'cm.fkPlantillaHtml')
+        ->join('users as u', 'u.id', '=', 'v.user_id')
+        ->join('productos as pd','pd.id','=','producto_id')
+        ->select(
+            'ph.id as idPlantilla',
+            't.logo', 'v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total',
+            'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado',
+            'cm.tipo_comprobante','pr.tipo_persona','pv.producto_id','pv.cantidad',
+            'pd.nombre as nombreproducto','pv.precio_venta as precioventa'
+        )
+        ->where('v.id', $arqueocaja)
+        ->where('t.idTienda', $fkTienda)
+        ->orderByDesc('v.id')
+        ->get();
 
+    $plantilla = DB::table('plantillahtml')
+        ->select('id','cabecera','detalle','pie','consulta','fkDesignDocument')
+        ->where('fkTienda', $fkTienda)
+        ->where('id', $ventas->first()->idPlantilla)
+        ->orderBy('id','DESC')
+        ->first();
 
+    $desingDocument = DB::table('documentdesigns')
+        ->where('id', $plantilla->fkDesignDocument)
+        ->orderBy('id','DESC')
+        ->first();
 
-                            $ventas=DB::table('ventas as v')
-                            ->join('producto_venta as pv', 'pv.venta_id', '=', 'v.id')
-                            ->join('clientes as cl', 'cl.id', '=', 'v.cliente_id')
-                            ->join('personas as pr', 'pr.id', '=', 'cl.persona_id')
-                            ->join('tienda as t', 't.idTienda', '=', 'v.fkTienda')
-                            ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
-                            ->join('users as u', 'u.id', '=', 'v.user_id')
-                            ->join('productos as pd','pd.id','=','producto_id')
-                            ->select('t.logo', 'v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total', 'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado','cm.tipo_comprobante','pr.tipo_persona','pv.producto_id','pv.cantidad','pd.nombre as nombreproducto','pv.precio_venta as precioventa')
-                            ->where('v.id',$arqueocaja)
-                            ->where('t.idTienda', $fkTienda)
-                            ->orderByDesc('v.id')
-                            ->get();
+    $cabecera = $plantilla->cabecera;
+    $detalle = $plantilla->detalle;
+    $pie = $plantilla->pie;
+    $consulta = $plantilla->consulta;
 
-                            $plantilla=DB::table('plantillahtml')
-                            ->select('cabecera','detalle','pie','consulta')
-                            ->where('fkTienda',$fkTienda)
-                            ->where('Titulo','TicketVenta80mm')
-                            ->orderBy('id','DESC')
-                            ->limit(1)
-                            ->first();
+    $tokens = ['idventa' => $ventas->first()->id, 'idtienda' => $fkTienda];
+    $numFilas = $ventas->count();
 
-                            $cabecera=$plantilla->cabecera;
-                            $detalle=$plantilla->detalle;
-                            $pie=$plantilla->pie;
-                            $consulta=$plantilla->consulta;
+    // Si height_mm o width_mm es null, dar valor por defecto
 
-                            $tokens = [
-                                'idventa' => $ventas->first()->id,
-                                'idtienda' => $fkTienda
-                            ];
-                            $numFilas = $ventas->count();
-                            $altura = 335 + ($numFilas * 15);
+    $altura = ($desingDocument->alto_pt ?? 205) + ($numFilas* 15);
+    $ancho = $desingDocument->ancho_pt ?? 226.77;
+    $orientacion = $desingDocument->orientation ?? 'portrait';
 
-                        $cons=$this->procesarConsulta($consulta,$tokens);
-                        $tokenss=$this->ejecutarconsulta($cons);
+    $cons = $this->procesarConsulta($consulta, $tokens);
+    $tokenss = $this->ejecutarconsulta($cons);
 
-                $htmlFinal=$this->procesarPlantilla($cabecera,$detalle,$pie,$tokenss['columnas'],$tokenss['filas']);
-     $pdf = Pdf::loadHTML($htmlFinal)->setPaper([0, 0, 226.77, $altura], 'portrait');
+    $htmlFinal = $this->procesarPlantilla($cabecera, $detalle, $pie, $tokenss['columnas'], $tokenss['filas']);
+    $pdf = Pdf::loadHTML($htmlFinal)->setPaper([0, 0, $ancho, $altura], 'portrait');
 
     return $pdf->stream('PDF.ticket'); // o ->download('recibo.pdf');
     //phpinfo();

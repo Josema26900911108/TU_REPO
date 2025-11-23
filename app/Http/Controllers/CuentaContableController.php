@@ -93,9 +93,33 @@ class CuentaContableController extends Controller
 
         return response()->json($treeData);
     }
-private function delete($id){
-$ver=$id;
+public function delete(Request $request)
+{
+    try {
+        DB::beginTransaction();
+
+        DB::table('cuentas_contables')
+            ->where('id', $request->cid)
+            ->delete();
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Nodo eliminado correctamente'
+        ]);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
 }
+
     private function buildTreeNode($cuenta)
     {
         // Obtener los hijos de la cuenta actual
@@ -240,34 +264,33 @@ public function add(Request $request)
     return response()->json(['success' => 'Cuenta agregada exitosamente.']);
 }
 public function update(Request $request, CuentaContable $cuentaContable)
-    {
-        $request->validate([
-            'nombre' => 'required|unique:cuentas_contables,nombre',
-            'formula'=>'required|unique:cuentas_contables,formula'
-        ], [
-            'nombre.required' => 'El nombre es obligatorio.',
-            'nombre.unique' => 'Este nombre de permiso ya está en uso.',
-
-            'formula.required' => 'La cuenta  es obligatorio.',
-            'formula.unique' => 'Este cuenta ya está en uso.'
-        ]);
+{
 
 
+    try {
+        DB::beginTransaction();
 
-        try {
-            DB::beginTransaction();
+DB::table('cuentas_contables')
+    ->where('id', $request->input('id_edit'))
+    ->update([
+        'formula'    => $request->input('cuenta_id_edit'),
+        'nombre'     => $request->input('nombre_edit'),
+        'updated_at' => now(),
+    ]);
 
 
-            //Actualizar permisos
-            $cuentaContable->syncPermissions($request->permission);
 
-            DB::commit();
-        } catch (Exception $e) {
-            dd($e);
-            DB::rollBack();
-        }
+DB::commit();
 
-        return redirect()->route('permiso.index')->with('success', 'permiso editado');
+        return response()->json(['success' => 'Cuenta modificada exitosamente.']);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+        return back()->with('error', 'Error al actualizar: ' . $e->getMessage());
     }
+}
+
+
 
 }

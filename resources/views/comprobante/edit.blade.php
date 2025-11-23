@@ -62,6 +62,21 @@
                         <small class="text-danger">{{'*'.$message}}</small>
                         @enderror
                     </div>
+                                        <!---Documento---->
+                    <div class="row mb-4">
+                        <label for="disdoc" class="col-md-auto col-form-label">Diseño Documento:</label>
+                        <select data-size="4" title="Seleccione una Diseño Documento" data-live-search="true" name="disdoc" id="disdoc" class="form-control selectpicker show-tick">
+                            @foreach ($designs as $design)
+                                <option value="{{ $design->id }}"
+                                    {{ old('disdoc') == $design->id ? 'selected' : '' }}>
+                                    {{ $design->id }} - {{ $design->Titulo }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('disdoc')
+                        <small class="text-danger">{{'*'.$message}}</small>
+                        @enderror
+                    </div>
             </div>
             <div class="card-footer text-center">
                 <button type="submit" class="btn btn-primary">Actualizar</button>

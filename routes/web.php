@@ -132,10 +132,11 @@ Route::delete('/cash/{cash}', [CashRegisterController::class, 'destroy'])->name(
 
 Route::delete('arqueocaja/{arqueocaja}', [ArqueoCajaController::class, 'destroy'])->name('arqueocaja.destroy');
 
-Route::post('arqueocaja/{arqueocaja}', [ArqueoCajaController::class, 'generarRecibo'])
+Route::post('arqueocaja/venta/{arqueocaja}', [ArqueoCajaController::class, 'generarRecibo'])
 ->name('arqueocaja.vistapreviapdfventa');
 
-
+Route::post('arqueocaja/compra/{arqueocaja}', [compraController::class, 'generarRecibo'])
+->name('arqueocaja.vistapreviapdfcompra');
 
 
 
@@ -169,7 +170,9 @@ Route::post('/detallecomprobante/detalles',[detallecomprobanteController::class,
 Route::post('/cuentas/agregar', [CuentaContableController::class, 'agregar']);
 Route::get('/cuentas/obtener/{id}', [CuentaContableController::class, 'obtener']);
 Route::put('/cuentas/editar/{id}', [CuentaContableController::class, 'editar']);
-Route::delete('/cuetas/eliminar/{id}', [CuentaContableController::class, 'eliminar']);
+//Route::delete('/cuetas/eliminar/{id}', [CuentaContableController::class, 'delete'])->name('cuentas.eliminar');
+Route::post('/cuentas/delete', [CuentaContableController::class, 'delete'])
+    ->name('cuentas.delete');
 Route::post('/cuentas/agregar', [CuentaContableController::class, 'store']);
 Route::get('/cuentas/fetch', [CuentaContableController::class, 'fetch'])->name('cuentas.fetch');
 Route::get('/crear-cuentas-raiz', [CuentaContableController::class, 'createRootCuentasIfNotExist']);
@@ -299,7 +302,7 @@ Route::get('clientes/lista', [clienteController::class, 'listaClientes'])
 
     Route::post('/plantilla/obtenerplantillas',[tiendaController::class,'obtenerplantillas'])->name('plantilla.plantillas');
     Route::post('/obtener/plantilla', [tiendaController::class, 'obtenerplantillaselect'])->name('plantilla.selectplantilla');
-
+    Route::post('/obtener/TiendaPlantilla', [tiendaController::class, 'obtenerplantillaselectTienda'])->name('plantilla.selectplantillaTienda');
 
     /*Route::get('/test-clientes', function() {
         $clientes = Cliente::with('persona')->get();

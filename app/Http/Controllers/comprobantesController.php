@@ -7,6 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Models\DetalleComprobante;
+use App\Models\DocumentDesings;
+use App\Models\plantillahtml;
+
 class comprobantesController extends Controller
 {
     function __construct()
@@ -92,8 +95,11 @@ public function index()
             'CC' => 'Cuentas por Cobrar',
             'DI' => 'Depósitos'
         ];
+
+        $designs = plantillahtml::where('fkTienda',$fkTienda)->get();
+
         // Pasar los datos a la vista
-        return view('comprobante.create', compact('comprobante','clavevista'));
+        return view('comprobante.create', compact('comprobante','clavevista','designs'));
     }
 
 
@@ -169,9 +175,9 @@ public function index()
             'CC' => 'Cuentas por Cobrar',
             'DI' => 'Depósitos'
         ];
-
+            $designs = plantillahtml::where('fkTienda',$fkTienda)->get();
         // Retornamos la vista con el comprobante encontrado
-        return view('comprobante.edit', compact('comprobante','clavevista'));
+        return view('comprobante.edit', compact('designs','comprobante','clavevista'));
     }
 
 
@@ -197,13 +203,13 @@ public function index()
         ]);
 
 
-
         try {
             DB::beginTransaction();
             $comprobante->fill([
                 'tipo_comprobante' => $request->tipo_comprobante,
                 'formula' => $request->formula,
                 'ClaveVista' => $request->clavevista,
+                'fkPlantillaHtml' => $request->disdoc,
             ]);
 
             $comprobante->save();

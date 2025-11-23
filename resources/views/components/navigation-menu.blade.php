@@ -296,7 +296,7 @@
   width: 80px;
   height: 80px;
   object-fit: cover;
-  object-position: center -55px; /* Puedes ajustar el valor vertical */
+  object-position: center; /* Puedes ajustar el valor vertical */
   border-radius: 50%;
   border: 2px solid #ccc;
   display: block;
@@ -309,8 +309,8 @@
             </div>
         </div>
         <div class="sb-sidenav-footer">
-            <div class="small" style="aling=center;">Bienvenido: {{ auth()->user()->name }}</div><br>
-            <div class="contenedor-centro"><img class="img-redonda" src="data:image/jpg;base64,{{ auth()->user()->logo }}"></div>
+            <div class="small" style="aling:right;">Bienvenido: {{ auth()->user()->name }}</div><br>
+            <div class="contenedor-centro"><img class="img-redonda"  src="data:image/jpeg;base64,{{ auth()->user()->logo }}"></div>
         </div>
     </nav>
 </div>

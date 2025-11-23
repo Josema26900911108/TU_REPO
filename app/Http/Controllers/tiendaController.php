@@ -8,9 +8,11 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Tienda;
 use App\Models\plantillahtml;
 use App\Http\Requests\StoreTiendaRequest;
+use App\Models\DocumentDesings;
 use App\Models\plantillahtmlgeneral;
 use GuzzleHttp\Promise\Create;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Dom\Document;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 class tiendaController extends Controller
@@ -104,9 +106,15 @@ Tienda::create(array_merge(
         $plantilla = plantillahtml::where('fkTienda', $idTienda)
                 ->orderByDesc('id')
                 ->first();
+        $plantillas = plantillahtml::where('fkTienda', $idTienda)
+                ->orderByDesc('id')
+                ->get();
 
-$fkTienda=$idTienda;
-        return view('tienda.editfactura', compact('tienda','plantilla','fkTienda'));
+        $desings=DocumentDesings::get();
+
+        $fkTienda=$idTienda;
+
+        return view('tienda.editfactura', compact('plantillas','desings','tienda','plantilla','fkTienda'));
     }
 
     public function obtenerplantillas(){
@@ -121,7 +129,7 @@ $fkTienda=$idTienda;
         }
     }
 
-public function obtenerplantillaselect(Request $request)
+    public function obtenerplantillaselect(Request $request)
 {
     try {
         $plantilla = plantillahtmlgeneral::find($request->idplantilla);
@@ -138,6 +146,31 @@ public function obtenerplantillaselect(Request $request)
             'consulta' => $plantilla->consulta,
             'Titulo' => $plantilla->Titulo,
             'descripcion'=> $plantilla->descripcion,
+            'disdoc'=> $plantilla->fkDesignDocument,
+
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 400);
+    }
+}
+public function obtenerplantillaselectTienda(Request $request)
+{
+    try {
+            $plantilla = plantillahtml::find($request->idplantilla);
+
+
+        if (!$plantilla) {
+            return response()->json(['error' => 'Plantilla no encontrada'], 404);
+        }
+
+        return response()->json([
+            'cabecera' => $plantilla->cabecera,
+            'detalle' => $plantilla->detalle,
+            'pie' => $plantilla->pie,
+            'consulta' => $plantilla->consulta,
+            'Titulo' => $plantilla->Titulo,
+            'descripcion'=> $plantilla->descripcion,
+            'fkDesignDocument'=> $plantilla->fkDesignDocument,
         ]);
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()], 400);
@@ -146,27 +179,54 @@ public function obtenerplantillaselect(Request $request)
 
 public function editfacturaplantilla(Request $request)
 {
-    $tienda = $request->only(['Titulo', 'cabecera', 'detalle', 'pie','descripcion','consulta','idTienda']);
+    $tienda = $request->only(['Titulo', 'cabecera', 'detalle', 'pie','descripcion','consulta','idTienda','fkDocumentDesing']);
     $tienda['fkTienda'] = $tienda['idTienda'];
     $tienda['plantillahtml'] = $tienda['cabecera'].$tienda['detalle'].$tienda['pie'];
+    $tienda['fkDesignDocument'] = $request->input('fkDesignDocument');
+    $tienda['chkeditar'] = $request->input('chkeditar');
+    $tienda['disdoc'] = $request->input('disdoc');
+
     $fkTienda=$tienda['fkTienda'];
     if($request->chkcompartir==true){
+        $tienda['fkDesignDocument'] = $request->input('fkDesignDocument');
       plantillahtmlgeneral::create($tienda);
     }
 
-   $plantilla= plantillahtml::create($tienda);
-   $id=$plantilla->fkTienda;
-   $plantillaeliminar=plantillahtml::where('fkTienda',$id)->orderByDesc('id')->get();
+    if($request->chkeditar==true){
+$plantilla = plantillahtml::where('id', $tienda['disdoc'])
+    ->update([
+        'Titulo'        => $tienda['Titulo'],
+        'cabecera'      => $tienda['cabecera'],
+        'detalle'       => $tienda['detalle'],
+        'pie'           => $tienda['pie'],
+        'descripcion'   => $tienda['descripcion'],
+        'consulta'      => $tienda['consulta'],
+        'fkDesignDocument' => $tienda['fkDesignDocument'],
+    ]);
 
-  for($i=0; $i<$plantillaeliminar->count(); $i++){
-    if($i>2){
-        $plantillaeliminar[$i]->delete();
-    }
+    $id=$tienda['fkTienda'];
+    }else{
+        $plantilla= plantillahtml::create($tienda);
+        $id=$plantilla->fkTienda;
+
+        $plantillaeliminar=plantillahtml::where('fkTienda',$id)->orderByDesc('id')->get();
+
+        for($i=0; $i<$plantillaeliminar->count(); $i++){
+            if($i>2){
+                $plantillaeliminar[$i]->delete();
+            }
+        }
+
   }
 
-   $tienda=Tienda::all()->where('idTienda','=',$plantilla->fkTienda)->first()->orderByDesc('id');
+    $tienda = Tienda::where('idTienda', $tienda['fkTienda'])->first();
+    $desings=DocumentDesings::get();
 
-    return view('tienda.editfactura', compact('tienda','plantilla','fkTienda'))->with('success', 'Se guarda plantilla existosamente.');
+   return redirect()->route('tienda.editfactura', ['tienda' => $tienda->idTienda])
+    ->with('success', 'Se guarda plantilla existosamente');
+
+
+    //return view('tienda.editfactura', compact('desings','tienda','plantilla','fkTienda'))->with('success', 'Se guarda plantilla existosamente.');
 }
 
     public function update(Request $request, Tienda $tienda)
@@ -185,19 +245,7 @@ public function editfacturaplantilla(Request $request)
                 $image = $request->file('image');
                 $imageBase64 = base64_encode(file_get_contents($image->path()));
             }
-                 $file = $request->file('image');
-    $manager = new ImageManager(new GdDriver());
 
-
-// Luego manipulas la imagen
-    $image = $manager->read($file->getPathname())
-        ->resize(300, 300, function ($constraint) {
-            $constraint->aspectRatio();
-            $constraint->upsize();
-        })
-        ->toWebp(50); // calidad 50%
-
-        $imageBase64 = (string) $image;
 
             //Actualizar rol
             tienda::where('idTienda', $tienda->idTienda)
@@ -206,7 +254,7 @@ public function editfacturaplantilla(Request $request)
                     'Direccion' => $request->Direccion,
                     'descripcion' => $request->descripcion,
                     'Telefono' => $request->Telefono,
-                    'logo' => $imageBase64,
+                    'logo' => $imageBase64 ?? null,
                 ]);
 
 

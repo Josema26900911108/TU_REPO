@@ -67,7 +67,7 @@
                                     </div>
                                 </div>
 
-                    <!---Marca---->
+                    <!---Vista---->
                     <div class="row mb-4">
                         <label for="clavevista" class="col-md-auto col-form-label">Vista a Mostrar:</label>
                         <select data-size="4" title="Seleccione una Vista" data-live-search="true" name="clavevista" id="clavevista" class="form-control selectpicker show-tick">
@@ -77,7 +77,24 @@
 
                             @endforeach
                         </select>
-                        @error('marca_id')
+                        @error('clavevista')
+                        <small class="text-danger">{{'*'.$message}}</small>
+                        @enderror
+                    </div>
+
+
+                    <!---Documento---->
+                    <div class="row mb-4">
+                        <label for="disdoc" class="col-md-auto col-form-label">Diseño Documento:</label>
+                        <select data-size="4" title="Seleccione una Diseño Documento" data-live-search="true" name="disdoc" id="disdoc" class="form-control selectpicker show-tick">
+@foreach ($designs as $design)
+    <option value="{{ $design->id }}"
+        {{ old('disdoc') == $design->id ? 'selected' : '' }}>
+        {{ $design->Titulo }}
+    </option>
+@endforeach
+                        </select>
+                        @error('disdoc')
                         <small class="text-danger">{{'*'.$message}}</small>
                         @enderror
                     </div>

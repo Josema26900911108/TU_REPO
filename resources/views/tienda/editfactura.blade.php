@@ -61,6 +61,19 @@
   <div class="label">Cabecera</div>
 Titulo: <input class="form-control" name="Titulo" id="Titulo" value="{{ $plantilla->Titulo ?? '' }}">
 
+<div class="label">Tamaño de hoja</div>
+Tamaño:
+<select name="fkDesignDocument" id="fkDesignDocument" class="form-control">
+    @foreach ($desings as $design)
+        <option value="{{ $design->id }}"
+            {{ (old('fkDesignDocument', $plantilla->fkDesignDocument ?? '') == $design->id) ? 'selected' : '' }}>
+            {{ $design->nombre }}
+        </option>
+    @endforeach
+</select>
+
+</select>
+
 <div class="label">Descripcion:</div>
 <textarea type="text" class="form-control" name="descripcion" id="descripcion" value="{{ $plantilla->descripcion ?? '' }}">{{ $plantilla->descripcion ?? '' }}</textarea>
 
@@ -87,11 +100,35 @@ Titulo: <input class="form-control" name="Titulo" id="Titulo" value="{{ $plantil
   <input type="hidden" name="detalle" id="detalle" value="{{ $plantilla->detalle ?? '' }}">
 
   <div class="label">Pie de Página</div>
+
+
+
   <div id="editor-pie">{{ $plantilla->pie ?? '' }}</div>
+
+                        <!---Documento---->
+                    <div class="row mb-4">
+                        <label for="disdoc" class="col-md-auto col-form-label">Diseño Documento:</label>
+                        <select data-size="4" title="Seleccione una Diseño Documento" data-live-search="true" name="disdoc" id="disdoc" class="form-control selectpicker show-tick">
+@foreach ($plantillas as $design)
+    <option value="{{ $design->id }}"
+        {{ old('disdoc') == $design->id ? 'selected' : '' }}>
+        {{ $design->id }} - {{ $design->Titulo }}
+    </option>
+@endforeach
+                        </select>
+                        @error('disdoc')
+                        <small class="text-danger">{{'*'.$message}}</small>
+                        @enderror
+                    </div>
+
   <input type="hidden" name="pie" id="pie" value="{{ $plantilla->pie ?? '' }}">
 
   <div class="label">Compartir Plantilla a comunidad:
     <input type="checkbox" name="chkcompartir" id="chkcompartir">
+  </div>
+
+<div class="label">Editar Planilla:
+    <input type="checkbox" name="chkeditar" id="chkeditar" checked>
   </div>
 
 
@@ -130,6 +167,10 @@ let urlPDF = @json(route('plantilla.PDF')); // Sin '__REPLACE__'
 obenterplantillas();
 $('#plantillas').on('change',function(){
     selectLlena();
+})
+
+$('#disdoc').on('change',function(){
+selectLlenaPlanilla();
 })
 
 function obenterplantillas(){
@@ -183,6 +224,35 @@ function selectLlena() {
         }
     });
 }
+
+function selectLlenaPlanilla() {
+    const idselect = $('#disdoc').val(); // asegurarse de que ese ID existe
+
+    $.ajax({
+        url: "{{ route('plantilla.selectplantillaTienda') }}", // asegúrate que esta ruta existe
+        method: 'POST',
+    data: {
+        idplantilla: idselect,
+        _token: $('meta[name="csrf-token"]').attr('content')
+    },
+        success: function (response) {
+            $('#editor-cabecera').summernote('code', response.cabecera ?? '');
+            $('#editor-detalle').summernote('code', response.detalle ?? '');
+            $('#editor-pie').summernote('code', response.pie ?? '');
+            $('#consulta').val(response.consulta ?? '');
+            $('#Titulo').val(response.Titulo ?? '');
+            $('#descripcion').val(response.descripcion ?? '');
+            variablesss=extraerVariables(response.consulta ?? '');
+            $('#fkDesignDocument').val(response.fkDesignDocument).trigger('change');
+
+            obtnerdatos();
+        },
+        error: function (xhr) {
+            console.error("Error en AJAX:", xhr.responseText);
+        }
+    });
+}
+
 function volverlista($idtienda){
 
         const baseUrl = "{{ url('/tienda') }}";

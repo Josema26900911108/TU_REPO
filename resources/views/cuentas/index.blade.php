@@ -142,7 +142,7 @@
     </ul>
 
     <!-- Modal -->
-    <div class="modal fade" id="modal" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
+    <div class="modal fade" id="modaledit" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header">
@@ -152,22 +152,25 @@
                 <div class="modal-body">
 
                 <form method="post" id="treeview_form_edita">
+                    @csrf
                         <p id="cidValue">El Cid es: </p>
                             <input type="hidden" id="id_edit" name="id_edit" class="form-control">
                         <div class="form-group">
                             <label for="formula">Cuenta</label>
-                            <input type="text" name="cuenta_id_edit" id="cuenta_id_edit" class="form-control" pattern="\d{2}\.\d{2}\.\d{2}\.\d{2}" title="El formato debe ser ##.##.##.##">
+                            <input type="text" name="cuenta_id_edit" id="cuenta_id_edit" class="form-control" pattern="^\d{2}(\.\d{2,})+$" title="El formato debe ser ##.##.##.##">
                         </div>
                         <div class="form-group">
                             <label for="nombre">Nombre Cuenta</label>
                             <input type="text" name="nombre_edit" id="nombre_edit" class="form-control">
                         </div>
-                    </form>
+
                 </div>
                 <div class="modal-footer">
-                    <button type="button" id="cerrar" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
-                    <button type="submit" class="btn btn-primary" form="modal_form">Enviar</button>
+                    <button type="button" id="cerrar_edit" class="btn btn-secondary" data-dismiss="modaledit">Cerrar</button>
+                    <button type="submit" class="btn btn-primary" form="treeview_form_edita">Enviar</button>
+
                 </div>
+                </form>
             </div>
         </div>
     </div>
@@ -200,7 +203,7 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" id="cerrar_new" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                <button type="button" id="cerrar_new" class="btn btn-secondary" data-dismiss="modalnew">Cerrar</button>
                 <button type="submit" id="Enviar" name="Enviar" class="btn btn-primary" form="modal_form">Enviar</button>
             </div>
         </div>
@@ -258,24 +261,51 @@ $(document).ready(function() {
     }
 
     // Lógica para enviar el formulario de agregar cuenta
-    $('#treeview_form').on('submit', function(event) {
+    $('#treeview_form_edita').on('submit', function(event) {
         event.preventDefault();
         $.ajax({
-            url: "{{ route('cuentas.add') }}",
+            url: "{{ route('update') }}",
             method: "POST",
             _token: "{{ csrf_token() }}",
             data: $(this).serialize(),
             success: function(data) {
                 fill_treeview();
                 fill_parent_category();
-                $('#treeview_form')[0].reset();
-                
+                $('#cerrar_edit').trigger('click');
+                $('#treeview_form_edita')[0].reset();
+
+                //alert(data);
             }
         });
     });
-    document.getElementById('cerrar').addEventListener('click', function() {
-        $('#modal').modal('hide'); // Cierra el modal explícitamente
+
+              // Lógica para enviar el formulario de agregar cuenta
+    $('#treeview_form').on('submit', function(event) {
+        event.preventDefault();
+        $.ajax({
+            url: "{{ route('cuentas.add') }}",
+            method: "POST",data: $(this).serialize() + '&_token={{ csrf_token() }}',
+            success: function(data) {
+                fill_treeview();
+                fill_parent_category();
+                $('#cerrar_new').trigger('click');
+                $('#treeview_form')[0].reset();
+
+            }
+        });
     });
+
+
+    document.getElementById('cerrar_new').addEventListener('click', function() {
+        $('#modalnew').modal('hide'); // Cierra el modal explícitamente
+    });
+
+    document.getElementById('cerrar_edit').addEventListener('click', function() {
+        $('#modaledit').modal('hide'); // Cierra el modal explícitamente
+    });
+
+
+
 
     document.getElementById('Enviar').addEventListener('click', function() {
     // Realizar el submit del formulario
@@ -293,27 +323,33 @@ $(document).ready(function() {
 
         $('#contextMenu').data('selected-node-cuenta', selectedNode.cuenta_id);
     });
-    // Lógica para enviar el formulario de editar cuenta
-    $('#treeview_form_edita').on('submit', function(event) {
-        event.preventDefault();
-        $.ajax({
-            url: "{{ route('update') }}",
-            method: "POST",
-            data: $(this).serialize(),
-            success: function(data) {
-                fill_treeview();
-                fill_parent_category();
-                $('#treeview_form_edita')[0].reset();
-                alert(data);
-            }
-        });
-    });
 
-    document.getElementById('cerrar').addEventListener('click', function() {
-        $('#modal').modal('hide'); // Cierra el modal explícitamente
+function eliminarNodo(cid) {
+    $.ajax({
+        url: "{{ route('cuentas.delete') }}",
+        method: "POST",
+        data: {
+            cid: cid,
+            _token: "{{ csrf_token() }}"
+        },
+        success: function(response) {
+            fill_treeview();
+            fill_parent_category();
+            alert('Nodo eliminado correctamente');
+        },
+        error: function(xhr, status, error) {
+            console.error('Error al eliminar el nodo:', xhr.responseText);
+        }
     });
+}
+
+
+
     document.getElementById('cerrar_new').addEventListener('click', function() {
-        $('#modalnew').modal('hide');
+        $('#modalnew').modal('hide'); // Cierra el modal explícitamente
+    });
+    document.getElementById('cerrar_edit').addEventListener('click', function() {
+        $('#modaledit').modal('hide'); // Cierra el modal explícitamente
     });
     // Menú contextual
     $(document).on('contextmenu', '#treeview .node-treeview', function(e) {
@@ -337,7 +373,7 @@ $(document).ready(function() {
             $('#nombre_edit').val(nombre);
             $('#id_edit').val(cid);
             $('#cuenta_id_edit').val(cuenta);
-            $('#modal').modal('show');
+            $('#modaledit').modal('show');
 
         } else if (action === 'createChildNode') {
             $('#padre_id').val(cid);
@@ -345,7 +381,8 @@ $(document).ready(function() {
 
             $('#modalnew').modal('show');
         }else if (action === 'deleteNode') {
-            $('#padre_id').val(cid);
+            //$('#padre_id').val(cid);
+            eliminarNodo(cid);
         }
 
         $('#contextMenu').hide();

@@ -10,7 +10,9 @@ use App\Models\CuentaContable;
 use App\Models\DetalleFolio;
 use App\Models\Folio;
 use App\Models\Producto;
+use App\Models\Tienda;
 use App\Models\Venta;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -195,7 +197,7 @@ class ventaController extends Controller
         $fecha_hora = $request->fecha_hora;
         $total = $request->total;
         $user_id = $request->user_id;
-        $tipofolio = $request->TipoFolio;
+        $tipofolio = $request->input('TipoFolio');
 
         // Recuperar arrays
         $arrayProducto_id = $request->get('arrayidproducto');
@@ -311,14 +313,184 @@ while($cont < $cuentaArray) {
         }
 
         DB::commit();
-        return redirect()->route('ventas.index')->with('success', 'Venta exitosa');
+
+      $rutaPdf =  $this->generarRecibo($idventa);
+      $rutaPdfPublica = asset('storage/recibos/recibo_'.$idventa.'.pdf');
+
+
+
+
+return redirect()->route('ventas.show', ['venta' => $idventa])
+                 ->with('success', 'Venta exitosa')
+                 ->with('pdf', $rutaPdfPublica);
+
+
+//return response()->file($rutaPdf);
+
 
     } catch (Exception $e) {
         DB::rollBack();
         Log::error('Error en storeCC: ' . $e->getMessage());
-        return redirect()->route('ventas.index')->with('error', 'Error al guardar la venta');
+        return redirect()->route('arqueocaja.cobrarventas', ['ventas' => $idventa])
+                 ->with('error', 'Error al guardar la venta: '. $e->getMessage());
+
+
     }
 }
+
+public function generarRecibo($arqueocaja)
+{
+    $fkTienda = session('user_fkTienda');
+    $Tienda = Tienda::where('idTienda', $fkTienda)->first();
+
+    $ventas = DB::table('ventas as v')
+        ->join('producto_venta as pv', 'pv.venta_id', '=', 'v.id')
+        ->join('clientes as cl', 'cl.id', '=', 'v.cliente_id')
+        ->join('personas as pr', 'pr.id', '=', 'cl.persona_id')
+        ->join('tienda as t', 't.idTienda', '=', 'v.fkTienda')
+        ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
+        ->join('plantillahtml as ph', 'ph.id', '=', 'cm.fkPlantillaHtml')
+        ->join('users as u', 'u.id', '=', 'v.user_id')
+        ->join('productos as pd','pd.id','=','producto_id')
+        ->select(
+            'ph.id as idPlantilla',
+            't.logo', 'v.id', 'v.fecha_hora', 'v.numero_comprobante', 'v.total',
+            'pr.razon_social', 'pr.numero_documento', 't.Nombre', 'u.name', 'v.estado',
+            'cm.tipo_comprobante','pr.tipo_persona','pv.producto_id','pv.cantidad',
+            'pd.nombre as nombreproducto','pv.precio_venta as precioventa'
+        )
+        ->where('v.id', $arqueocaja)
+        ->where('t.idTienda', $fkTienda)
+        ->orderByDesc('v.id')
+        ->get();
+
+    $plantilla = DB::table('plantillahtml')
+        ->select('cabecera','detalle','pie','consulta','fkDesignDocument')
+        ->where('fkTienda', $fkTienda)
+        ->where('id', $ventas->first()->idPlantilla)
+        ->orderBy('id','DESC')
+        ->first();
+
+    $desingDocument = DB::table('documentdesigns')
+        ->where('id', $plantilla->fkDesignDocument)
+        ->orderBy('id','DESC')
+        ->first();
+
+    $cabecera = $plantilla->cabecera;
+    $detalle = $plantilla->detalle;
+    $pie = $plantilla->pie;
+    $consulta = $plantilla->consulta;
+
+    $tokens = ['idventa' => $ventas->first()->id, 'idtienda' => $fkTienda];
+    $numFilas = $ventas->count();
+
+    // Si height_mm o width_mm es null, dar valor por defecto
+
+    $altura = ($desingDocument->alto_pt ?? 205) + ($numFilas * 15);
+    $ancho = $desingDocument->ancho_pt ?? 226.77;
+    $orientacion = $desingDocument->orientation ?? 'portrait';
+
+    $cons = $this->procesarConsulta($consulta, $tokens);
+    $tokenss = $this->ejecutarconsulta($cons);
+
+    $htmlFinal = $this->procesarPlantilla($cabecera, $detalle, $pie, $tokenss['columnas'], $tokenss['filas']);
+
+    $pdf = Pdf::loadHTML($htmlFinal)->setPaper([0, 0, $ancho, $altura], $orientacion);
+
+    // Crear carpeta si no existe
+    $rutaCarpeta = storage_path('app/public/recibos');
+    if (!file_exists($rutaCarpeta)) {
+        mkdir($rutaCarpeta, 0777, true);
+    }
+
+    // Guardar PDF
+    $rutaArchivo = $rutaCarpeta.'/recibo_'.$arqueocaja.'.pdf';
+    $pdf->save($rutaArchivo);
+
+    // Finalmente, abrir en el navegador
+    return $rutaArchivo;
+}
+
+function procesarConsulta($consulta, $tokens)
+{
+    $consultaprocesada = $consulta;
+
+    foreach ($tokens as $token => $valor) {
+        $pattern = '/@{{\s*' . preg_quote($token, '/') . '\s*}}/';
+        $consultaprocesada = preg_replace($pattern, $valor, $consultaprocesada);
+    }
+
+    return $consultaprocesada;
+}
+function procesarPlantilla($cab, $htmlDetalle, $pi, $variablesGlobales, $detalle)
+{
+    foreach ($variablesGlobales as $token => $valor) {
+
+        $pattern = '/\{\{\s*' . preg_quote($valor, '/') . '\s*\}\}/';
+
+        if($valor=="logo"){
+            $compressed = $detalle[0][$valor];
+            $compressed = trim($compressed);
+            $compressed = str_replace(['"', "'"], '', $compressed);
+            $compressed = preg_replace('/\s+/', '', $compressed);
+
+       //     dd($compressed);
+            $cab = preg_replace($pattern, $compressed, $cab);
+        }
+        else{
+        $cab = preg_replace($pattern, $detalle[0][$valor], $cab);
+        }
+        $pi = preg_replace($pattern, $detalle[0][$valor], $pi);
+    }
+   $htmlFilas = "";
+
+foreach ($detalle as $fila) {
+    $row = $htmlDetalle;
+
+    foreach ($variablesGlobales as $key => $value) {
+
+        // Coincidir SOLO tokens como {{idventa}} (sin $)
+        $pattern = '/{{\s*' . preg_quote($value, '/') . '\s*}}/';
+
+        if (isset($fila[$value])) {
+            $row = preg_replace($pattern, $fila[$value], $row);
+        }
+    }
+
+    $htmlFilas .= $row;
+}
+
+    $htmlFinal = $cab . $htmlFilas . $pi;
+
+    return $htmlFinal;
+}
+
+public function ejecutarconsulta($consulta)
+    {
+   $filas = DB::select($consulta);
+
+    if (count($filas) == 0) {
+        return [
+            "columnas" => [],
+            "filas" => []
+        ];
+    }
+
+    // convierte los objetos stdClass en arrays
+    $filasArray = array_map(function ($row) {
+        return (array) $row;
+    }, $filas);
+
+    // columnas = keys del primer registro
+    $columnas = array_keys($filasArray[0]);
+
+    return [
+        "columnas" => $columnas,
+        "filas"    => $filasArray
+    ];
+    }
+
+
 
     /**
      * Store a newly created resource in storage.

@@ -6,7 +6,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <meta name="description" content="Sistema de ventas para gestionar compras, ventas
-    clientes, proveedores, productos, categorías, etc. Ideal para pequeños y medianos negocios que deesen 
+    clientes, proveedores, productos, categorías, etc. Ideal para pequeños y medianos negocios que deesen
     automatizar sus procesos y tener a la mano cualquier información sobre su negocio" />
     <meta name="author" content="SakCode" />
     <title>Sistema de venta</title>

@@ -16,6 +16,12 @@ class plantillahtmlgeneral extends Model
     'pie',
     'descripcion',
     'plantillahtml',
-    'consulta'
+    'consulta',
+    'fkDesignDocument'
 ];
+
+    public function documentdesings() {
+        return $this->hasMany(DocumentDesings::class, 'id', 'fkDocumentDesing');
+    }
+
 }

@@ -139,43 +139,42 @@ class userController extends Controller
      * Update the specified resource in storage.
      */
     public function update(UpdateUserRequest $request, User $user)
-    {
-        try {
-            DB::beginTransaction();
+{
+    try {
+        DB::beginTransaction();
 
-            /*Comprobar el password y aplicar el Hash*/
-            if (empty($request->password)) {
-                $request = Arr::except($request, array('password'));
-            } else {
-                $fieldHash = Hash::make($request->password);
-                $request->merge(['password' => $fieldHash]);
-            }
+        $data = $request->all();
 
-                // Si se subió una nueva imagen, actualiza la foto
-    if ($request->hasFile('foto')) {
-        if ($request->hasFile('image')) {
-                $image = $request->file('image');
-                $imageBase64 = base64_encode(file_get_contents($image->path()));
-            }
-
-            //Encriptar contraseña
-            $fieldHash = Hash::make($request->password);
-            //Modificar el valor de password en nuestro request
-            $request->merge(['password' => $fieldHash]);
-    }else{
-
-            $user->update(array_merge($request->all()));
-    }
-            /**Actualizar rol */
-            $user->syncRoles([$request->role]);
-
-            DB::commit();
-        } catch (Exception $e) {
-            DB::rollBack();
+        // --- Actualizar contraseña si viene ---
+        if (!empty($request->password)) {
+            $data['password'] = Hash::make($request->password);
+        } else {
+            unset($data['password']);
         }
 
-        return redirect()->route('users.index')->with('success','Usuario editado');
+        // --- Actualizar imagen si viene ---
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $data['image'] = base64_encode(file_get_contents($image->path()));
+            $data['logo']=$data['image'];
+        }
+
+        // --- Actualizar usuario ---
+        $user->update($data);
+
+        // --- Actualizar rol ---
+        $user->syncRoles([$request->role]);
+
+        DB::commit();
+
+    } catch (Exception $e) {
+        DB::rollBack();
+        return back()->with('error', 'Error: '.$e->getMessage());
     }
+
+    return redirect()->route('users.index')->with('success','Usuario editado correctamente');
+}
+
 
     /**
      * Remove the specified resource from storage.

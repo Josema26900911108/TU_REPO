@@ -43,7 +43,11 @@ public function tecnico()
     return $this->hasMany(Tecnico::class, 'fkTienda', 'idTienda');
 }
 
-               public function movimientos_materiales()
+public function DesingDocument(){
+    return $this->belongsTo(DocumentDesings::class, 'fkDesignDocument', 'id');
+}
+
+    public function movimientos_materiales()
     {
         return $this->hasMany(MovimientoMaterial::class, 'fkTienda', 'idTienda');
     }
@@ -55,6 +59,6 @@ public function tecnico()
     protected $primaryKey = 'idTienda'; // Especifica la clave primaria
     public $incrementing = true; // Si es autoincremental
     protected $keyType = 'int'; // Tipo de la clave primaria
-    protected $fillable = ['idTienda','Nombre', 'Direccion', 'telefono', 'descripcion', 'EstatusContable','fkCentro','logo', 'departamento','municipio','representante','nit']; // Agrega aquí todos los campos que deseas que sean "fillables"
+    protected $fillable = ['idTienda','Nombre', 'Direccion', 'telefono', 'descripcion', 'EstatusContable','fkCentro','logo', 'departamento','municipio','representante','nit','fkDesignDocument']; // Agrega aquí todos los campos que deseas que sean "fillables"
 
 }

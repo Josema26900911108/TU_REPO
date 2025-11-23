@@ -17,7 +17,8 @@ class plantillahtml extends Model
     'fkTienda',
     'descripcion',
     'plantillahtml',
-    'consulta'
+    'consulta',
+    'fkDesignDocument'
 ];
 
 
@@ -27,5 +28,8 @@ class plantillahtml extends Model
 
         public function tienda() {
         return $this->hasMany(Tienda::class);
+    }
+    public function documentdesings() {
+        return $this->hasMany(DocumentDesings::class, 'id', 'fkDocumentDesing');
     }
 }

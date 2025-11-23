@@ -34,7 +34,7 @@
                         <!-----Producto---->
                         <input type="hidden" id="idcomprobante" value="{{$comprobanteId}}">
                         <div class="col-12 mb-4">
-                            <select name="cuentacontable_id" id="cuentacontable_id" class="form-control selectpicker" data-live-search="true" data-size="1" title="Busque un Cuenta Contable aquí">
+                            <select name="cuentacontable_id" id="cuentacontable_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un Cuenta Contable aquí">
                                 @foreach ($cuentacontable as $item)
                                 <option value="{{$item->id}}">{{$item->formula.'-'.$item->nombre}}</option>
                                 @endforeach
@@ -42,7 +42,7 @@
                         </div>
                         <!-----Producto---->
                         <div class="col-12 mb-4">
-                            <select name="Naturaleza" id="Naturaleza" class="form-control selectpicker" data-live-search="true" data-size="1" title="Elija Naturaleza de la cuenta">
+                            <select name="Naturaleza" id="Naturaleza" class="form-control selectpicker" data-live-search="true" data-size="2" title="Elija Naturaleza de la cuenta">
                             <option value="D">Debe</option>
                             <option value="H">Haber</option>
                             </select>
@@ -51,12 +51,13 @@
                         <!-----Cantidad---->
                         <div class="col-sm-12 mb-4">
                             <label for="nombre" class="form-label">Descripcion Breve (225 letras):</label>
-                            <input type="text" name="nombre" id="nombre" class="form-control" maxlength="225">
+                            <input type="text" name="nombre" id="nombre" class="form-control" maxlength="225" value="N/A">
                         </div>
                                                 <!-----Cantidad---->
                         <div class="col-sm-12 mb-4">
                             <label for="formula" class="form-label">Formula:</label>
-                            <input type="text" name="formula" id="formula" class="form-control">
+                            <input type="text" name="formula" id="formula" class="form-control" placeholder="(A/1.12)*12%" pattern="^[A0-9\.\+\-\*\/\(\)%]*$"
+       title="Solo se permite la letra A mayúscula, números y signos matemáticos (/ * + - % () .)">
                         </div>
 
                         <!-----Precio de compra---->

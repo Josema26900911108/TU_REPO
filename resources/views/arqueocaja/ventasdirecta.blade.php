@@ -7,6 +7,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/math.js') }}"></script>
+
+@if(session('pdf'))
+<script>
+    // Abrir PDF en otra pestaña
+    window.open("{{ session('pdf') }}", "_blank");
+</script>
+@endif
+
 <style>
     .form-control {
         width: 100%;
@@ -218,25 +226,27 @@
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
                         </div>
-                                                <!--Tipo Folio-->
-                                                <div class="col-12">
-                                                    <div class="form-group">
-                                                        <label for="TipoFolio">Tipo de Folio:</label>
-                                                        <div id="TipoFolio">
-                                                            <label class="radio-inline">
-                                                                <input type="radio" id="TipoFolio" name="TipoFolio" value="A" checked @can('cobrar-ventadirecta') disabled @endcan> Automatico
-                                                            </label>
-                                                            <label class="radio-inline">
-                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="M" @can('cobrar-ventadirecta') disabled @endcan> Manual
-                                                            </label>
-                                                            <label class="radio-inline">
-                                                                <input readonly type="radio" id="TipoFolio" name="TipoFolio" value="F" @can('cobrar-ventadirecta') disabled @endcan> Folio Manual
-                                                            </label>
-                                                        </div>
-                                                    @error('TipoFolio')
-                                                    <small class="text-danger">{{ '*'.$message }}</small>
-                                                    @enderror
-                                                </div>
+<!--Tipo Folio-->
+<div class="col-12">
+    <div class="form-group">
+        <label>Tipo de Folio:</label>
+        <div>
+            <label class="radio-inline">
+                <input type="radio" id="TipoFolioA" name="TipoFolio" value="A" checked @can('cobrar-ventadirecta') onclick="return true;" @endcan> Automático
+            </label>
+            <label class="radio-inline">
+                <input type="radio" id="TipoFolioM" name="TipoFolio" value="M"  @can('cobrar-ventadirecta') onclick="return false;" @endcan> Manual
+            </label>
+            <label class="radio-inline">
+                <input type="radio" id="TipoFolioF" name="TipoFolio" value="F"  @can('cobrar-ventadirecta') onclick="return false;" @endcan> Folio Manual
+            </label>
+        </div>
+        @error('TipoFolio')
+        <small class="text-danger">{{ '*'.$message }}</small>
+        @enderror
+    </div>
+</div>
+
 
                         <!--MontoFolio---->
                         <div class="col-sm-6">
@@ -249,7 +259,7 @@
 
                         <!--Numero de comprobante-->
                         <div class="col-12">
-                            <label for="numero_comprobante" class="form-label">Numero de comprobante:</label>
+                            <label for="numero_comprobante" class="form-label">Numero de comprobante Interno:</label>
                             <input type="text" readonly name="numero_comprobante" id="numero_comprobante" class="form-control" value="{{ $comprobantenumero }}">
                             @error('numero_comprobante')
                             <small class="text-danger">{{ '*'.$message }}</small>
@@ -291,6 +301,7 @@
                         <input type="hidden" name="user_id" value="{{ auth()->user()->id }}">
                         @can('cobrar-ventadirecta')
                         <!--Botones--->
+
                         <div class="col-12 text-center">
                             <button type="submit" class="btn btn-success" id="guardar">Realizar venta</button>
                         </div>

@@ -7,7 +7,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <meta name="description" content="Sistema de ventas de abarrotes" />
         <meta name="author" content="SakCode" />
-        <title>Sistema ventas - @yield('title')</title>
+        <title>PV-CodeErp - @yield('title')</title>
 
         @stack('css-datatable')
         <link href="{{ asset('css/styles.css') }}" rel="stylesheet" />
@@ -17,7 +17,7 @@
     </head>
 
 
-<body class="sb-nav-fixed">
+<body class="sb-nav-fixed sb-sidenav-toggled">
 
     <x-navigation-header />
 
