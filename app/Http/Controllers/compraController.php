@@ -198,16 +198,26 @@ $plantilla = DB::table('compras as c')
     ->where('c.id', $arqueocaja)
     ->where('c.fkTienda', $fkTienda)
     ->select(
-        'cp.id', 'cp.cantidad', 'cp.precio_compra', 'cp.precio_venta',
+        'c.id as idcompra',
+        'cp.id as idproducto',
+        'cp.cantidad',
+        'cp.precio_compra',
+        'cp.precio_venta',
         'cp.producto_id',
-        'dd.alto_pt', 'dd.ancho_pt', 'dd.orientacion_vertical',
+        'dd.alto_pt',
+        'dd.ancho_pt',
+        'dd.orientacion_vertical',
         'cm.fkPlantillaHtml as idPlantilla',
         'ph.fkDesignDocument as fkDesignDocument',
-        'ph.cabecera', 'ph.detalle', 'ph.pie', 'ph.consulta',
+        'ph.cabecera',
+        'ph.detalle',
+        'ph.pie',
+        'ph.consulta',
         'c.fkTienda'
     )
     ->orderBy('cp.id', 'DESC')
     ->get();
+
 
 
 
