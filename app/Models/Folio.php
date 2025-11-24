@@ -13,7 +13,7 @@ class Folio extends Model
     protected $keyType = 'int';
 
     protected $guarded = ['idFolio'];
-    protected $table = 'folio'; // 👈 aquí fuerzas a Laravel a usar la tabla singular
+    protected $table = 'Folio'; // 👈 aquí fuerzas a Laravel a usar la tabla singular
 
 
     public function comprobante(){
