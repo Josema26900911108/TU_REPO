@@ -227,7 +227,7 @@ $plantilla = DB::table('compras as c')
     $pie = $plantilla->first()->pie;
     $consulta = $plantilla->first()->consulta;
 
-    $tokens = ['idventa' => $plantilla->first()->id, 'idtienda' => $fkTienda];
+    $tokens = ['idventa' => $plantilla->first()->idcompra, 'idtienda' => $fkTienda];
     $numFilas = $plantilla->count();
 
     // Si height_mm o width_mm es null, dar valor por defecto
