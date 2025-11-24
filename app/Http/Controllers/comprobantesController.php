@@ -26,47 +26,50 @@ public function index()
     $fkTienda = session('user_fkTienda');
     $Estatus = session('user_estatus');
 
-    // Consulta para obtener comprobantes
+    // -------------------------
+    // COMPROBANTES
+    // -------------------------
     $comprobanteQuery = DB::table('comprobantes')
         ->join('tienda', 'comprobantes.fkTienda', '=', 'tienda.idTienda')
-        ->select('comprobantes.*', 'tienda.nombre as tienda_nombre') // Asegúrate de incluir el campo de la tienda
+        ->select('comprobantes.*', 'tienda.nombre as tienda_nombre')
         ->where('comprobantes.estado', 1);
 
     if ($Estatus != 'ER') {
-        // Filtrar comprobantes solo por la tienda del usuario
         $comprobanteQuery->where('comprobantes.fkTienda', $fkTienda);
     }
 
-    $comprobante = $comprobanteQuery->orderBy('comprobantes.created_at', 'desc')->paginate(10);
+    $comprobante = $comprobanteQuery
+        ->orderBy('comprobantes.created_at', 'desc')
+        ->paginate(10);
 
-    // Consulta para obtener detalles de comprobantes con relación a cuentas contables
-    $detallecomprobanteQuery  = DB::table('detalle_comprobantes AS dc')
-    ->select('dc.*',
-             'c.tipo_comprobante AS comprobante_nombre',
-             'cc.nombre AS cuenta_contable_nombre',
-             'cc.formula AS cuenta_contable_numero',
-             DB::raw("(select sum(valorminimo) from detalle_comprobantes as ddc where ddc.fkComprobante=dc.fkComprobante and ddc.Naturaleza='D') AS Debe"),
-             DB::raw("(select sum(valorminimo) from detalle_comprobantes as ddc where ddc.fkComprobante=dc.fkComprobante  and ddc.Naturaleza='H') AS Haber"))
-    ->join('comprobantes AS c', 'dc.fkComprobante', '=', 'c.id')
-    ->join('cuentas_contables AS cc', 'dc.fkCuentaContable', '=', 'cc.id')
-    ->leftJoin('detalle_comprobantes AS d', 'dc.fkComprobante', '=', 'd.fkComprobante')
-    ->where('c.fkTienda', 1)
-    ->where('c.estado', 1)
-    ->groupBy('dc.Naturaleza','dc.updated_at','dc.created_at','dc.fkCuentaContable','dc.fkComprobante','dc.valorminimo','dc.formula','dc.nombre','dc.id', 'c.tipo_comprobante', 'cc.nombre', 'cc.formula')
-    ->orderBy('dc.created_at', 'DESC')
-    ->get();
+
+    // -------------------------
+    // DETALLES DE COMPROBANTES
+    // -------------------------
+    $detallecomprobanteQuery = DB::table('detalle_comprobantes AS dc')
+        ->select(
+            'dc.*',
+            'c.tipo_comprobante AS comprobante_nombre',
+            'cc.nombre AS cuenta_contable_nombre',
+            'cc.formula AS cuenta_contable_numero',
+            DB::raw("(select sum(valorminimo) from detalle_comprobantes as ddc where ddc.fkComprobante=dc.fkComprobante and ddc.Naturaleza='D') AS Debe"),
+            DB::raw("(select sum(valorminimo) from detalle_comprobantes as ddc where ddc.fkComprobante=dc.fkComprobante  and ddc.Naturaleza='H') AS Haber")
+        )
+        ->join('comprobantes AS c', 'dc.fkComprobante', '=', 'c.id')
+        ->join('cuentas_contables AS cc', 'dc.fkCuentaContable', '=', 'cc.id')
+        ->where('c.estado', 1);
 
     if ($Estatus != 'ER') {
-        // Filtrar detalles de comprobantes por tienda y estado
-        $detallecomprobanteQuery->where('comprobantes.fkTienda', $fkTienda)
-            ->where('comprobantes.estado', 1);
+        $detallecomprobanteQuery->where('c.fkTienda', $fkTienda);
     }
 
-    $detallecomprobante = $detallecomprobanteQuery;
+    $detallecomprobante = $detallecomprobanteQuery
+        ->orderBy('dc.created_at', 'DESC')
+        ->get();
 
-    // Pasar tanto comprobantes como detalles a la vista
     return view('comprobante.index', compact('comprobante', 'detallecomprobante'));
 }
+
 
 
     /**
