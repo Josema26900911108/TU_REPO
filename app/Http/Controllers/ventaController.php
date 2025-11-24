@@ -217,7 +217,6 @@ class ventaController extends Controller
                 $folio = Folio::create([
                 'descripcion'=>'Venta n.'.$idventa.', por un total de Q. '.$total.', numero de comprobante: '.$numero_comprobante.'.',
                 'cabecera'=>'Venta cerrada por caja.',
-                'numero_comprobante'=>$numero_comprobante,
                 'EstatusContable'=>'C',
                 'TipoFolio'=>$tipofolio,
                 'FechaContabilizacion'=>now(),

@@ -16,7 +16,7 @@ protected $fillable = [
 ];
 
 
-protected $table = 'detallefolio'; // 👈 aquí fuerzas a Laravel a usar la tabla singular
+protected $table = 'DetalleFolio'; // 👈 aquí fuerzas a Laravel a usar la tabla singular
         public function tienda()
     {
         return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda');

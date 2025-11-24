@@ -27,7 +27,7 @@ class Folio extends Model
 
 public function detallefolio()
 {
-    return $this->belongsToMany(CuentaContable::class, 'detallefolio')
+    return $this->belongsToMany(CuentaContable::class, 'DetalleFolio')
         ->withPivot('Monto', 'Naturaleza', 'fkCuentaContable', 'fkUsuario', 'fkTienda')
         ->withTimestamps();
 }
