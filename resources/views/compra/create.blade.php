@@ -32,13 +32,27 @@
                 </div>
                 <div class="p-3 border border-3 border-primary">
                     <div class="row">
-                        <!-----Producto---->
-                        <div class="col-12 mb-4">
-                            <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="1" title="Busque un producto aquí">
-                                @foreach ($productos as $item)
-                                <option value="{{$item->id}}">{{$item->codigo.' '.$item->nombre}}</option>
-                                @endforeach
-                            </select>
+                <div class="col-12">
+
+<select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
+    <option class="bs-title-option" value=""></option>
+    @foreach($productos as $producto)
+        <option value="{{ $producto->id }}"
+                data-img="{{ $producto->img_path }}"
+                data-detalle="{{ $producto->descripcion }}">
+            {{ $producto->nombre }}
+        </option>
+    @endforeach
+
+</select>
+
+
+
+<button type="button" class="btn btn-primary" id="btnVerProducto">
+    Ver
+</button>
+
+
                         </div>
 
                         <!-----Cantidad---->
@@ -226,6 +240,42 @@
         </div>
     </div>
 
+     <div class="modal fade" id="modalProducto" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle del Producto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body text-center">
+        <img id="imgProducto" src="" class="img-fluid mb-3" style="max-height:350px;">
+        <p id="detalleProducto"></p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalProducto" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle del Producto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body text-center">
+        <img id="imgProducto" src="" class="img-fluid mb-3" style="max-height:350px;">
+        <p id="detalleProducto"></p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 </form>
 @endsection
 
@@ -257,6 +307,30 @@
         const impuesto = 12;
 
         $(document).ready(function() {
+
+                document.getElementById("btnVerProducto").addEventListener("click", function() {
+
+        let select = document.getElementById("producto_id");
+        let selected = select.selectedOptions[0];
+
+        if (!selected) {
+            alert("Seleccione un producto primero");
+            return;
+        }
+
+let imagen = selected.dataset.img; // ya no será undefined
+let detalle = selected.dataset.detalle;
+let ruta = "/storage/productos/" + imagen;
+
+document.getElementById("imgProducto").src = ruta;
+document.getElementById("detalleProducto").textContent = detalle;
+
+        let modal = new bootstrap.Modal(document.getElementById("modalProducto"));
+        modal.show();
+    });
+
+
+
 
 
             $('#btn_agregar').click(function() {

@@ -92,7 +92,7 @@ class ventaController extends Controller
                         ->whereRaw('subquery.producto_id = cpr.producto_id');
                 });
         })
-            ->select('productos.nombre', 'productos.id', 'productos.stock', 'cpr.precio_venta')
+            ->select('productos.nombre', 'productos.img_path', 'descripcion', 'productos.id', 'productos.stock', 'cpr.precio_venta')
             ->where('productos.fkTienda',$fkTienda)
             ->where('productos.estado', 1)
             ->where('productos.stock', '>', 0)
