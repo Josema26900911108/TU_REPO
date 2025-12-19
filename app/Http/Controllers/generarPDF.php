@@ -43,7 +43,7 @@ public function diarioindex(Request $request)
     // Query principal
     $cuentas = DB::table('cuentas_contables as cc')
         ->join('DetalleFolio as df', 'cc.id', '=', 'df.fkCuenetaContable')
-        ->join('folio as f', 'df.fkFolio', '=', 'f.idFolio')
+        ->join('Folio as f', 'df.fkFolio', '=', 'f.idFolio')
         ->join('users as u', 'f.fkUsuario', '=', 'u.id')
         ->select(
             'cc.id',
@@ -55,7 +55,7 @@ public function diarioindex(Request $request)
 
             $query = DB::table('cuentas_contables as cc')
         ->join('DetalleFolio as df', 'cc.id', '=', 'df.fkCuenetaContable')
-        ->join('folio as f', 'df.fkFolio', '=', 'f.idFolio')
+        ->join('Folio as f', 'df.fkFolio', '=', 'f.idFolio')
         ->join('users as u', 'f.fkUsuario', '=', 'u.id')
         ->select(
             'cc.id',
@@ -127,7 +127,7 @@ $productosSeleccionados = (array) $request->input('producto', []);
 
             $query = DB::table('cuentas_contables as cc')
         ->join('DetalleFolio as df', 'cc.id', '=', 'df.fkCuenetaContable')
-        ->join('folio as f', 'df.fkFolio', '=', 'f.idFolio')
+        ->join('Folio as f', 'df.fkFolio', '=', 'f.idFolio')
         ->join('users as u', 'f.fkUsuario', '=', 'u.id')
         ->select(
             'cc.id',
@@ -174,7 +174,7 @@ $productosSeleccionados = (array) $request->input('producto', []);
 
             $query = DB::table('cuentas_contables as cc')
         ->join('DetalleFolio as df', 'cc.id', '=', 'df.fkCuenetaContable')
-        ->join('folio as f', 'df.fkFolio', '=', 'f.idFolio')
+        ->join('Folio as f', 'df.fkFolio', '=', 'f.idFolio')
         ->join('users as u', 'f.fkUsuario', '=', 'u.id')
         ->select(
             'cc.id',
@@ -299,7 +299,7 @@ public function balanceindex(request $request)
 
         $cuentas = DB::table('cuentas_contables as cc')
         ->join('DetalleFolio as df', 'cc.id', '=', 'df.fkCuenetaContable')
-        ->join('folio as f', 'df.fkFolio', '=', 'f.idFolio')
+        ->join('Folio as f', 'df.fkFolio', '=', 'f.idFolio')
         ->join('users as u', 'f.fkUsuario', '=', 'u.id')
         ->select(
             'cc.id',
@@ -343,7 +343,7 @@ $query = DB::table(DB::raw("(
         CASE WHEN df.Naturaleza = 'D' THEN df.Monto ELSE 0 END AS Debe,
         CASE WHEN df.Naturaleza = 'H' THEN df.Monto ELSE 0 END AS Haber
 
-    FROM folio AS f
+    FROM Folio AS f
     INNER JOIN DetalleFolio AS df ON f.idFolio = df.fkFolio
     INNER JOIN cuentas_contables AS cc ON df.fkCuenetaContable = cc.id
     INNER JOIN tienda AS t ON f.fkTienda = t.idTienda
@@ -898,7 +898,7 @@ public function mayorindex(Request $request)
     // Query principal
     $cuentas = DB::table('cuentas_contables as cc')
         ->join('DetalleFolio as df', 'cc.id', '=', 'df.fkCuenetaContable')
-        ->join('folio as f', 'df.fkFolio', '=', 'f.idFolio')
+        ->join('Folio as f', 'df.fkFolio', '=', 'f.idFolio')
         ->join('users as u', 'f.fkUsuario', '=', 'u.id')
         ->select(
             'cc.id',
@@ -910,7 +910,7 @@ public function mayorindex(Request $request)
 
             $query = DB::table('cuentas_contables as cc')
         ->join('DetalleFolio as df', 'cc.id', '=', 'df.fkCuenetaContable')
-        ->join('folio as f', 'df.fkFolio', '=', 'f.idFolio')
+        ->join('Folio as f', 'df.fkFolio', '=', 'f.idFolio')
         ->join('users as u', 'f.fkUsuario', '=', 'u.id')
         ->select(
             'cc.id',

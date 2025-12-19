@@ -255,7 +255,7 @@ public function ReporteDiario(Request $request)
 {
  try {
      $idTienda=session('user_fkTienda');
-     $query = DB::table('folio AS f')
+     $query = DB::table('Folio AS f')
      ->join('DetalleFolio AS df', 'f.idFolio', '=', 'df.fkFolio')
      ->join('cuentas_contables AS cc', 'df.fkCuenetaContable', '=', 'cc.id')
      ->select('date(f.FechaContabilizacion) as Fecha',

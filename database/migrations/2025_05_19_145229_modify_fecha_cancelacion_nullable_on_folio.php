@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('folio', function (Blueprint $table) {
+        Schema::table('Folio', function (Blueprint $table) {
     $table->datetime('FechaCancelacion')->nullable()->change();
     $table->datetime('FechaAnulacion')->nullable()->change();
 });

@@ -9,7 +9,7 @@ return new class extends Migration
 
         public function up(): void
     {
-        Schema::table('folio', function (Blueprint $table) {
+        Schema::table('Folio', function (Blueprint $table) {
             // Eliminar la foreign key
             $table->dropForeign(['fkComprobante']);
 
@@ -20,7 +20,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('folio', function (Blueprint $table) {
+        Schema::table('Folio', function (Blueprint $table) {
             // Revertir a NOT NULL y volver a agregar la clave foránea
             $table->unsignedBigInteger('fkComprobante')->nullable(false)->change();
             $table->foreign('fkComprobante')->references('id')->on('comprobantes');
