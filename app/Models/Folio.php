@@ -25,7 +25,7 @@ class Folio extends Model
         return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda');
     }
 
-public function detallefolio()
+public function DetalleFolio()
 {
     return $this->belongsToMany(CuentaContable::class, 'DetalleFolio')
         ->withPivot('Monto', 'Naturaleza', 'fkCuentaContable', 'fkUsuario', 'fkTienda')
