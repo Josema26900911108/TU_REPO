@@ -26,9 +26,11 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CashRegisterController;
 use App\Http\Controllers\comprobantesController;
 use App\Http\Controllers\CuentaContableController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\detallecomprobanteController;
 use App\Http\Controllers\documentosapController;
 use App\Http\Controllers\etadirectController;
+use App\Http\Controllers\generarPDF;
 use App\Http\Controllers\MetodoPagoController;
 use App\Http\Controllers\movimientomaterialesController;
 use App\Http\Controllers\pagotecnicoController;
@@ -95,6 +97,7 @@ Route::get('/arqueocaja/panel/{arqueocaja}', [ArqueoCajaController::class, 'pane
 Route::get('/obtener-datos', [ArqueoCajaController::class, 'obtenerDatos']);
 Route::get('/arqueocaja/compras/{arqueocaja}', [ArqueoCajaController::class, 'compras'])->name('arqueocaja.compras');
 Route::get('/arqueocaja/ventas/{ventas}', [ArqueoCajaController::class, 'ventas'])->name('arqueocaja.ventas');
+
 Route::get('/arqueocaja/cobrarventas/{ventas}', [ArqueoCajaController::class, 'cobrarventas'])->name('arqueocaja.cobrarventas');
 
 
@@ -112,9 +115,93 @@ Route::post('/venta/storeCC', [ventaController::class, 'storeCC'])->name('ventas
 Route::get('/ventas/cobrarventas/{ventas}', [ventaController::class, 'cobrarventas'])->name('ventas.cobrarventas');
 
 
+
+Route::get('export/ventas', [VentaController::class, 'exportVentas']);
+//Route::get('ventas/reporte', [VentaController::class, 'ventasReporte'])->name('ventas.ventasreporte');
+//Reportes
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+Route::get('/dashboard/export-excel', [DashboardController::class, 'exportExcel'])
+    ->name('dashboard.export.excel');
+
+Route::get('/venta/ventasreporte', [VentaController::class, 'ventasReporte'])
+    ->name('ventas.ventasreporte');
+
+    Route::get('/compra/comprasreporte', [compraController::class, 'comprasReporte'])
+    ->name('compra.comprareporte');
+
+Route::get('/dashboardcompra/exportcompra-excel', [DashboardController::class, 'exportcompraExcel'])
+    ->name('dashboardcompra.export.excel');
+//Reporteria
+        Route::get('/reporte/diario', [generarPDF::class, 'diarioindex'])
+    ->name('reporte.diario');
+            Route::get('/reporte/mayor', [generarPDF::class, 'mayorindex'])
+    ->name('reporte.mayor');
+            Route::get('/reporte/balance', [generarPDF::class, 'balanceindex'])
+    ->name('reporte.balance');
+                Route::get('/reporte/puntoequilibrio', [generarPDF::class, 'puntodeequilibrioindex'])
+    ->name('reporte.puntodeequilibrio');
+                Route::get('/reporte/utilidades', [generarPDF::class, 'utilidadesindex'])
+    ->name('reporte.utilidades');
+                Route::get('/reporte/flujoefectivo', [generarPDF::class, 'flujoefectivoindex'])
+    ->name('reporte.flujoefectivo');
+
+
+
+    //carga masiva
+    Route::get('/cargamasiva/compra', [compraController::class, 'cargamasiva'])
+    ->name('carga.masiva.compra');
+    // Procesar ZIP
+Route::post('productos/importar', [compraController::class, 'storeMasivo'])
+    ->name('productos.importar.procesar');
+
+// Descargar plantilla Excel
+Route::get('productos/importar/plantilla', [compraController::class, 'descargarPlantilla'])
+    ->name('productos.importar.plantilla');
+
+    //Diario
+    Route::get('/reporte/diario-excel', [generarPDF::class, 'exportdiarioExcel'])
+    ->name('diario.export.excel');
+
+    Route::get('/reporte/diariochart', [generarPDF::class, 'diarioindex'])
+    ->name('diario.reporte');
+
+    Route::get('/reporte/diario-pdf', [generarPDF::class, 'generarDiario'])
+    ->name('diario.export.pdf');
+//Mayor
+        Route::get('/reporte/mayor-excel', [generarPDF::class, 'exportmayorExcel'])
+    ->name('mayor.export.excel');
+
+    Route::get('/reporte/mayor-pdf', [generarPDF::class, 'generarMayor'])
+    ->name('mayor.export.pdf');
+    Route::get('/reporte/mayorchart', [generarPDF::class, 'mayorindex'])
+    ->name('mayor.reporte');
+
+    //Balance
+                Route::get('/reporte/balance-excel', [generarPDF::class, 'exportbalanceExcel'])
+    ->name('balance.export.excel');
+
+    Route::get('/reporte/balance-pdf', [generarPDF::class, 'generarBalance'])
+    ->name('balance.export.pdf');
+    Route::get('/reporte/balancechart', [generarPDF::class, 'balanceindex'])
+    ->name('balance.reporte');
+
+    //Kardex Inventario
+            Route::get('/reporte/kardexinventario', [generarPDF::class, 'KardexInvenarioindex'])
+    ->name('reporte.kardeinventario');
+
+    Route::get('export/Kardexinventario', [generarPDF::class, 'exportKardexExcel'])
+    ->name('export.reporte.kardeinventario');
+
+        Route::get('/reporte/kardexinventario-pdf', [generarPDF::class, 'generarKardex'])
+    ->name('kardexinv.export.pdf');
+
+
 Route::get('/php-gd-check', function () {
     return extension_loaded('gd') ? 'GD cargado' : 'GD no está cargado';
 });
+
+
 
 Route::get('/php-version-check', function () {
     return [
@@ -274,7 +361,7 @@ Route::get('/abrinventariotecnico', [TecnicoController::class, 'fetch2'])->name(
 Route::get('/tienda/facturas/{tienda}/edit', [tiendaController::class, 'editfactura'])
     ->name('tienda.editfactura');
 
-    Route::post('/subir-imagen', [tiendaController::class, 'editfacturaplantilla'])
+    Route::post('/subir-imaen', [tiendaController::class, 'editfacturaplantilla'])
     ->name('subir.imagen');
 
 Route::get('/mostrarconsulta/{plantilla}/plantilla', [tiendaController::class, 'ejecutarConsultaConMetadata'])->name('plantilla.consulta');

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreCashRequest extends FormRequest
 {
@@ -21,8 +22,16 @@ class StoreCashRequest extends FormRequest
      */
     public function rules(): array
     {
+        $id = $this->route('cash_register');
         return [
-            'Nombre' => 'required|unique:cash_registers,Nombre|max:150'
+            'Nombre' =>
+            'required',
+            'max:150',
+            Rule::unique('cash_registers','Nombre')
+            ->ignore($id)
+            ->where(fn($query)=>
+            $query->where('fkTienda',session('user_fkTienda'))
+            ),
         ];
     }
 

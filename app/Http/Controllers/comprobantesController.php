@@ -9,7 +9,7 @@ use Illuminate\Validation\Rule;
 use App\Models\DetalleComprobante;
 use App\Models\DocumentDesings;
 use App\Models\plantillahtml;
-
+use Database\Seeders\DatosestaticosSeeder;
 class comprobantesController extends Controller
 {
     function __construct()
@@ -91,13 +91,7 @@ public function index()
         // Obtener los comprobantes más recientes
         $comprobante = $comprobanteQuery->latest()->get();
 
-        $clavevista = [
-            'DC' => 'Compras',
-            'DV' => 'Ventas',
-            'DB' => 'Devoluciones',
-            'CC' => 'Cuentas por Cobrar',
-            'DI' => 'Depósitos'
-        ];
+        $clavevista = DatosestaticosSeeder::getVistas();
 
         $designs = plantillahtml::where('fkTienda',$fkTienda)->get();
 
@@ -111,11 +105,18 @@ public function index()
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'tipo_comprobante' => 'required|unique:comprobantes,tipo_comprobante',
-            'formula' => 'required',
-            'clavevista'=>'required'
-        ]);
+$request->validate([
+    'tipo_comprobante' => [
+        'required',
+        Rule::unique('comprobantes', 'tipo_comprobante')
+            ->where(fn($query) =>
+                $query->where('fkTienda', session('user_fkTienda'))
+            )
+    ],
+    'formula' => 'required',
+    'clavevista' => 'required'
+]);
+
 
         try {
             $fkTienda = session('user_fkTienda');
@@ -126,6 +127,7 @@ public function index()
             'formula'=> $request->formula,
             'estado'=> 1,
             'ClaveVista'=>$request->clavevista,
+            'fkPlantillaHtml' => $request->disdoc,
             'fkTienda' => $fkTienda]);
 
 
@@ -171,13 +173,7 @@ public function index()
                 ->latest()
                 ->first(); // De nuevo, obtener un solo comprobante
         }
-        $clavevista = [
-            'DC' => 'Compras',
-            'DV' => 'Ventas',
-            'DB' => 'Devoluciones',
-            'CC' => 'Cuentas por Cobrar',
-            'DI' => 'Depósitos'
-        ];
+        $clavevista = DatosestaticosSeeder::getVistas();
             $designs = plantillahtml::where('fkTienda',$fkTienda)->get();
         // Retornamos la vista con el comprobante encontrado
         return view('comprobante.edit', compact('designs','comprobante','clavevista'));

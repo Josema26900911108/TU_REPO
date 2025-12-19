@@ -74,17 +74,19 @@ Tamaño:
 
 </select>
 
-   <div class="label">Armar consulta</div>
+<div class="label">Descripcion:</div>
+<textarea type="text" class="form-control" name="descripcion" id="descripcion" value="{{ $plantilla->descripcion ?? '' }}">{{ $plantilla->descripcion ?? '' }}</textarea>
+
+    <div class="label">Armar consulta</div>
 @php
     preg_match_all('/{{\s*(.*?)\s*}}/', $plantilla->consulta ?? '', $coincidencias);
     $variabless = $coincidencias[1]; // Solo las variables sin los corchetes
 @endphp
     <div id="contenedor-inputs"></div>
 
-<div class="label">Consulta (Etiquetas Pivote FechaReporte)</div>
+
 <textarea class="form-control" name="consulta" id="consulta">{{$plantilla->consulta ?? '' }}</textarea>
 <label for="consulta" id="lblconsulta"></label>
-<div class="label">Cabecera</div>
 <div id="editor-cabecera">{{ $plantilla->cabecera ?? '' }}</div>
 
 
@@ -93,17 +95,9 @@ Tamaño:
     <input type="hidden" name="idTienda" value="{{ $fkTienda ?? '' }}">
 
 
-  <div class="label">Detalle Padre (debe existir en consulta "idPivot" si se va a crear subhijos y etiqueta html { { # detalle } }{ {  / detalle} } sin espacio en la etiqueta)</div>
+  <div class="label">Detalle</div>
   <div id="editor-detalle">{{ $plantilla->detalle ?? '' }}</div>
   <input type="hidden" name="detalle" id="detalle" value="{{ $plantilla->detalle ?? '' }}">
-
-    <div class="label">Detalle Hijo (debe existir en consulta "idPivotHijo" si se va a crear subhijos y etiqueta html { { # detallehijo } } ) { { / detallehijo }  sin espacio en la etiqueta}</div>
-  <div id="editor-detallehijo">{{ $plantilla->plantillahtml ?? '' }}</div>
-  <input type="hidden" name="detallehijo" id="detallehijo" value="{{ $plantilla->plantillahtml ?? '' }}">
-
-      <div class="label">Detalle Nieto { { detallenieto } } { { / detallenieto } } </div>
-  <div id="editor-detallenieto">{{ $plantilla->descripcion ?? '' }}</div>
-  <input type="hidden" name="detallenieto" id="detallenieto" value="{{ $plantilla->descripcion ?? '' }}">
 
   <div class="label">Pie de Página</div>
 
@@ -160,15 +154,11 @@ Tamaño:
 <script>
   let contenidoCabecera = @json($plantilla->cabecera ?? '');
   let contenidoDetalle  = @json($plantilla->detalle ?? '');
-  let contenidoDetallehijo  = @json($plantilla->detallehijo ?? '');
-  let contenidoDetallenieto  = @json($plantilla->detallenieto ?? '');
   let contenidoPie      = @json($plantilla->pie ?? '');
   let htmpdf;
   let contenidoconsulta      = @json($plantilla->consulta ?? '');
 let variablesss = @json($variabless);
 let detalle = [];
-let detallehijo = [];
-let detallenieto = [];
 const columnas=[];
 let variables = {};
 let url = @json(route('plantilla.consulta', ['plantilla' => '__REPLACE__']));
@@ -222,11 +212,10 @@ function selectLlena() {
         success: function (response) {
             $('#editor-cabecera').summernote('code', response.cabecera ?? '');
             $('#editor-detalle').summernote('code', response.detalle ?? '');
-            $('#editor-detallehijo').summernote('code', response.plantillahtml ?? '');
-            $('#editor-detallenieto').summernote('code', response.descripcion ?? '');
             $('#editor-pie').summernote('code', response.pie ?? '');
             $('#consulta').val(response.consulta ?? '');
             $('#Titulo').val(response.Titulo ?? '');
+            $('#descripcion').val(response.descripcion ?? '');
             variablesss=extraerVariables(response.consulta ?? '');
             obtnerdatos();
         },
@@ -249,11 +238,10 @@ function selectLlenaPlanilla() {
         success: function (response) {
             $('#editor-cabecera').summernote('code', response.cabecera ?? '');
             $('#editor-detalle').summernote('code', response.detalle ?? '');
-            $('#editor-detallehijo').summernote('code', response.plantillahtml ?? '');
-            $('#editor-detallenieto').summernote('code', response.descripcion ?? '');
             $('#editor-pie').summernote('code', response.pie ?? '');
             $('#consulta').val(response.consulta ?? '');
             $('#Titulo').val(response.Titulo ?? '');
+            $('#descripcion').val(response.descripcion ?? '');
             variablesss=extraerVariables(response.consulta ?? '');
             $('#fkDesignDocument').val(response.fkDesignDocument).trigger('change');
 
@@ -284,107 +272,14 @@ function extraerVariables(plantilla) {
     return variables;
 }
 
-
-
-function uniqueBy(arr, key) {
-  const seen = new Set();
-  const out = [];
-  (arr || []).forEach(x => {
-    const v = x && x[key];
-    if (!seen.has(v)) {
-      seen.add(v);
-      out.push(x);
-    }
-  });
-  return out;
-}
-
-function renderDetallehijo(template) {
-
+function renderDetalle(template) {
     obtnerdatosvalores();
-
-    // Buscar bloque padre
-    const padreRegex = /@{{#detalle}}([\s\S]*?)@{{\/detalle}}/;
-    const padreMatch = template.match(padreRegex);
-    if (!padreMatch) return template;
-
-    const padreTemplate = padreMatch[1];
-
-    // Eliminar duplicados del padre por idPivot
-    const mapaPadres = new Map();
-    detalle.forEach(d => mapaPadres.set(d.idPivot, d));
-    const detalleUnico = Array.from(mapaPadres.values());
-
-    const hijoRegex = /@{{#detallehijo}}([\s\S]*?)@{{\/detallehijo}}/;
-    const nietoRegex = /@{{#detallenieto}}([\s\S]*?)@{{\/detallenieto}}/;
-
-    // Crear el HTML final de todos los padres
-    const renderPadres = detalleUnico.map(padre => {
-
-        let bloquePadre = padreTemplate;
-
-        // --- Renderizar hijos ---
-        const hijoMatch = bloquePadre.match(hijoRegex);
-        if (hijoMatch) {
-
-            const hijoTemplate = hijoMatch[1];
-
-            // Hijos pertenecientes al padre actual
-            const hijos = detalle.filter(h => h.idPivot === padre.idPivot);
-
-            const renderHijos = hijos.map(hijo => {
-
-                // Reemplaza campos del hijo
-                let bloqueHijo = replaceFields(hijoTemplate, hijo);
-
-                // --- Renderizar nietos dentro de cada hijo ---
-                const nietoMatch = bloqueHijo.match(nietoRegex);
-                if (nietoMatch) {
-
-                    const nietoTemplate = nietoMatch[1];
-                    const nietos = detalle.filter(n => n.idPivotHijo === hijo.idPivotHijo);
-
-                    const renderNietos = nietos.map(nieto =>
-                        replaceFields(nietoTemplate, nieto)
-                    ).join("");
-
-                    bloqueHijo = bloqueHijo.replace(nietoMatch[0], renderNietos);
-                }
-
-                return bloqueHijo;
-
-            }).join("");
-
-            bloquePadre = bloquePadre.replace(hijoMatch[0], renderHijos);
-        }
-
-        // Reemplazar campos del padre
-        bloquePadre = replaceFields(bloquePadre, padre);
-
-        return bloquePadre;
-
-    }).join("");
-
-    return template.replace(padreMatch[0], renderPadres);
-}
-
-
-/* Utilidad para reemplazar variables @{{campo}} */
-function replaceFields(text, data) {
-    for (const key in data) {
-        text = text.replaceAll(`@{{${key}}}`, data[key] ?? '');
-    }
-    return text;
-}
-
-function renderDetallehijos(template) {
-    obtnerdatosvalores();
-  template = '@{{#detallehijo}}' + template + '@{{/detallehijo}}';
-  const match = template.match(/@{{#detallehijo}}([\s\S]*?)@{{\/detallehijo}}/);
+  template = '@{{#detalle}}' + template + '@{{/detalle}}';
+  const match = template.match(/@{{#detalle}}([\s\S]*?)@{{\/detalle}}/);
   if (!match) return template;
   const rowTemplate = match[1];
   let rows = '';
-  detallehijo.forEach(item => {
+  detalle.forEach(item => {
     let row = rowTemplate;
     for (const key in item) {
       row = row.replaceAll(`@{{${key}}}`, item[key]);
@@ -393,24 +288,6 @@ function renderDetallehijos(template) {
   });
   return template.replace(match[0], rows);
 };
-
-function renderDetallenieto(template) {
-    obtnerdatosvalores();
-  template = '@{{#detallenieto}}' + template + '@{{/detallenieto}}';
-  const match = template.match(/@{{#detallenieto}}([\s\S]*?)@{{\/detallenieto}}/);
-  if (!match) return template;
-  const rowTemplate = match[1];
-  let rows = '';
-  detallenieto.forEach(item => {
-    let row = rowTemplate;
-    for (const key in item) {
-      row = row.replaceAll(`@{{${key}}}`, item[key]);
-    }
-    rows += row;
-  });
-  return template.replace(match[0], rows);
-};
-
 
 
 function obtnerdatos(){
@@ -494,55 +371,66 @@ let consultapreparada = contenidoconsulta;
 
 
 let urlOriginal = url;
+$('#consulta').on('input', function () {
+    let datos = {};
+    let contenidoconsulta = $(this).val();
+    let consultapreparada2 = contenidoconsulta;
 
-function actualizarvariables() {
+
     if (typeof variablesss === 'undefined') return;
 
-    let contenidoconsulta = $('#consulta').val();
-    let consultapreparada = contenidoconsulta;
-
-    // Reemplazo seguro de variables
+    // Reemplazar variables en la consulta
     variablesss.forEach(function (token) {
-        const value = $('#' + token).val() || '';
-
-        // Escapar caracteres del token para regex
-        const tokenEscaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-        const pattern = new RegExp(`@@{{\\s*${tokenEscaped}\\s*}}`, 'g');
-
-        consultapreparada = consultapreparada.replace(pattern, value);
+        const value = $('#' + token).val();
+        const pattern = new RegExp(`@@{{\\s*${token}\\s*}}`, 'g');
+        consultapreparada2 = consultapreparada2.replace(pattern, value);
+        datos[token] = value;
     });
 
-    // URL final
-    let urlValida = urlOriginal.replace('__REPLACE__', encodeURIComponent(consultapreparada));
+    datos['consulta'] = consultapreparada2;
+
+    let urlValida = urlOriginal.replace('__REPLACE__', encodeURIComponent(consultapreparada2));
 
     $.ajax({
         url: urlValida,
         method: 'POST',
         data: {
-            consulta: consultapreparada,
+            consulta: consultapreparada2, // 👈 Aquí estaba el error, antes usabas una variable no definida
             _token: $('meta[name="csrf-token"]').attr('content')
         },
         success: function (response) {
-
-            $('#btnEnviar, #btnVistaPrevia, #btnGenerarPDF').prop('disabled', false);
+            $('#btnEnviar').prop('disabled', false);
+            $('#btnVistaPrevia').prop('disabled', false);
+            $('#btnGenerarPDF').prop('disabled', false);
             $('#lblconsulta').text('');
 
-            let columnas = response.columnas;
-            $('#variables').empty();
+        var columnass=response.columnas;
 
-            columnas.forEach(col => {
-                const token = `@{{${col.name}}}`;
-                const html = `
-                    <div class="var-token" draggable="true" data-token="${token}">
-                        ${token}
-                    </div>
-                `;
-                $('#variables').append(html);
+        $('#variables').empty();
+
+        columnass.forEach(function(col) {
+            var token = `@{{${col.name}}}`;
+            var html = `
+                <div class="var-token" draggable="true" data-token="${token}">
+                    @${token}
+                </div>
+
+            `;
+            $('#variables').append(html);
+
+            $('#variables .var-token').on('dragstart', function (e) {
+                const token = $(this).data('token');
+                e.originalEvent.dataTransfer.setData('text/plain', token);
             });
+        });
+
+
+
         },
         error: function (xhr) {
-            $(' #btnVistaPrevia, #btnGenerarPDF').prop('disabled', true);
+            $('#btnEnviar').prop('disabled', true);
+            $('#btnVistaPrevia').prop('disabled', true);
+            $('#btnGenerarPDF').prop('disabled', true);
 
             try {
                 const res = JSON.parse(xhr.responseText);
@@ -552,15 +440,7 @@ function actualizarvariables() {
             }
         }
     });
-}
-
-// Delegación de evento: evita duplicación
-$(document).on('dragstart', '.var-token', function (e) {
-    e.originalEvent.dataTransfer.setData('text/plain', $(this).data('token'));
 });
-
-// Ejecutar cuando se escribe consulta
-$('#consulta').on('input', actualizarvariables);
 
 
 
@@ -705,7 +585,7 @@ obtnerdatos();
 }
 
 
-$('#editor-cabecera, #editor-detalle, #editor-detallehijo, #editor-detallenieto,#editor-pie').summernote({
+$('#editor-cabecera, #editor-detalle, #editor-pie').summernote({
   height: 350,
   placeholder: 'Escribe aquí...',
   toolbar: [
@@ -721,8 +601,6 @@ $('#editor-cabecera, #editor-detalle, #editor-detallehijo, #editor-detallenieto,
 
       $('#editor-cabecera').summernote('codeview.activate');
       $('#editor-detalle').summernote('codeview.activate');
-      $('#editor-detallehijo').summernote('codeview.activate');
-      $('#editor-detallenieto').summernote('codeview.activate');
       $('#editor-pie').summernote('codeview.activate');
 
       setTimeout(() => {
@@ -772,21 +650,15 @@ configurarDragAndDropEnEditor('#editor-pie');
   $('#btnVistaPrevia').click(function () {
 
     obtnerdatosvalores();
-    actualizarvariables();
     const cabecera = $('#editor-cabecera').summernote('code');
     const detalleHtml = $('#editor-detalle').summernote('code');
-    const detalleHtmlhijo = $('#editor-detallehijo').summernote('code');
-    const detalleHtmlnieto = $('#editor-detallenieto').summernote('code');
     const pie = $('#editor-pie').summernote('code');
 
     let html = `${detalleHtml}`;
-    let htmlhijo = `${detalleHtmlhijo}`;
-    let htmlnieto = `${detalleHtmlnieto}`;
-
     let cab = `${cabecera}`;
     let pi = `${pie}`;
 
-    html = render(cab) + renderDetallehijo(html)+render(htmlhijo)+render(htmlnieto)+render(pi);
+    html = render(cab) + renderDetalle(html) + render(pi);
     htmpdf=html;
 
     for (const [token, value] of Object.entries(variables)) {
@@ -803,15 +675,11 @@ configurarDragAndDropEnEditor('#editor-pie');
         obtnerdatosvalores();
         $('#cabecera').val($('#editor-cabecera').summernote('code'));
         $('#detalle').val($('#editor-detalle').summernote('code'));
-        $('#detallehijo').val($('#editor-detallehijo').summernote('code'));
-        $('#detallenieto').val($('#editor-detallenieto').summernote('code'));
         $('#pie').val($('#editor-pie').summernote('code'));
     });
 
     $('#editor-cabecera').summernote('code', `{!! $plantilla->cabecera ?? '' !!}`);
     $('#editor-detalle').summernote('code', `{!! $plantilla->detalle ?? '' !!}`);
-    $('#editor-detallehijo').summernote('code', `{!! $plantilla->plantillahtml ?? '' !!}`);
-    $('#editor-detallenieto').summernote('code', `{!! $plantilla->descripcion ?? '' !!}`);
     $('#editor-pie').summernote('code', contenidoPie);
 
 });

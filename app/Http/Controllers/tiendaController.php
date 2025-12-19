@@ -12,9 +12,13 @@ use App\Models\DocumentDesings;
 use App\Models\plantillahtmlgeneral;
 use GuzzleHttp\Promise\Create;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Database\Seeders\DatosestaticosSeeder;
 use Dom\Document;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+
+use function Laravel\Prompts\select;
+
 class tiendaController extends Controller
 {
     function __construct()
@@ -29,7 +33,13 @@ class tiendaController extends Controller
      */
     public function index()
     {
-        $tiendas = Tienda::all();
+        $fkTienda=session('user_fkTienda');
+        $idusuario=auth()->user()->id;
+        $tiendas = Tienda::join('usuario_tienda', 'tienda.idTienda', '=', 'usuario_tienda.fkTienda')
+        ->select('tienda.*')
+        ->where('usuario_tienda.fkUsuario', $idusuario)
+        ->get();
+
         return view('tienda.index', compact('tiendas'));
     }
 
@@ -170,6 +180,7 @@ public function obtenerplantillaselectTienda(Request $request)
             'consulta' => $plantilla->consulta,
             'Titulo' => $plantilla->Titulo,
             'descripcion'=> $plantilla->descripcion,
+            'plantillahtml'=> $plantilla->plantillahtml,
             'fkDesignDocument'=> $plantilla->fkDesignDocument,
         ]);
     } catch (\Exception $e) {
@@ -179,9 +190,10 @@ public function obtenerplantillaselectTienda(Request $request)
 
 public function editfacturaplantilla(Request $request)
 {
-    $tienda = $request->only(['Titulo', 'cabecera', 'detalle', 'pie','descripcion','consulta','idTienda','fkDocumentDesing']);
+    $tienda = $request->only(['Titulo', 'cabecera', 'detalle', 'pie','consulta','idTienda','fkDocumentDesing']);
     $tienda['fkTienda'] = $tienda['idTienda'];
-    $tienda['plantillahtml'] = $tienda['cabecera'].$tienda['detalle'].$tienda['pie'];
+    $tienda['plantillahtml'] = $request->input('detallehijo') ?? '<!-- aca ingresar html -->';
+    $tienda['descripcion'] = $request->input('detallenieto') ?? '<!-- aca ingresar html -->';
     $tienda['fkDesignDocument'] = $request->input('fkDesignDocument');
     $tienda['chkeditar'] = $request->input('chkeditar');
     $tienda['disdoc'] = $request->input('disdoc');
@@ -197,6 +209,7 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
     ->update([
         'Titulo'        => $tienda['Titulo'],
         'cabecera'      => $tienda['cabecera'],
+        'plantillahtml'      => $tienda['plantillahtml'],
         'detalle'       => $tienda['detalle'],
         'pie'           => $tienda['pie'],
         'descripcion'   => $tienda['descripcion'],
@@ -210,11 +223,13 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
         $id=$plantilla->fkTienda;
 
         $plantillaeliminar=plantillahtml::where('fkTienda',$id)->orderByDesc('id')->get();
-
+        $limitess=count(DatosestaticosSeeder::getVistas());
         for($i=0; $i<$plantillaeliminar->count(); $i++){
-            if($i>2){
+
+            if($i>$limitess-1){
                 $plantillaeliminar[$i]->delete();
             }
+
         }
 
   }

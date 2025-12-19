@@ -75,6 +75,11 @@ class CuentaContableController extends Controller
                 'formula' => '02', // O puedes usar null si no tienes una fórmula
                 'fkTienda' => session('user_fkTienda') // Asegúrate de que este ID existe en la tabla 'tienda'
             ]);
+               $activo = DB::table('cuentas_contables')->insert([
+                'nombre' => 'CAPITAL',
+                'formula' => '03', // O puedes usar null si no tienes una fórmula
+                'fkTienda' => session('user_fkTienda') // Asegúrate de que este ID existe en la tabla 'tienda'
+            ]);
 
         }
     }
@@ -246,7 +251,54 @@ public function delete(Request $request)
         return response()->json($options); // Retornar JSON
     }
 
+public function ReporteDiario(Request $request)
+{
+ try {
+     $idTienda=session('user_fkTienda');
+     $query = DB::table('folio AS f')
+     ->join('detallefolio AS df', 'f.idFolio', '=', 'df.fkFolio')
+     ->join('cuentas_contables AS cc', 'df.fkCuenetaContable', '=', 'cc.id')
+     ->select('date(f.FechaContabilizacion) as Fecha',
+     'f.idFolio',
+     'f.cabecera',
+     'f.descripcion',
+     'f.idOrigen',
+     'f.TipoMovimiento',
+     'df.idDetalleFolio',
+     'df.Monto',
+     'df.Naturaleza',
+     'df.fkCuenetaContable',
+     'cc.formula',
+     'cc.nombre',
+     "SUM(CASE WHEN df.Naturaleza = 'H' THEN df.Monto ELSE 0 END)
+        OVER (PARTITION BY f.idFolio) AS HaberTotal",
+"SUM(CASE WHEN df.Naturaleza = 'D' THEN df.Monto ELSE 0 END)
+        OVER (PARTITION BY f.idFolio) AS DebeTotal"
+     )
+     ->where('fkTienda', $idTienda);
+         // Filtro fecha inicio
+    if ($request->inicio) {
+        $query->whereDate('fecha_hora', '>=', $request->inicio);
+    }
 
+    // Filtro fecha fin
+    if ($request->fin) {
+        $query->whereDate('fecha_hora', '<=', $request->fin);
+    }
+     $query->orderBy('f.idFolio', 'desc')
+     ->orderBy('df.idDetalleFolio', 'desc')
+     ->get();
+
+     return view('cuentas.reporteDiario');
+
+}catch (\Exception $e) {
+     Log::error('Error al crear nodos raíz: ' . $e->getMessage());
+     DB::rollBack();
+     return response()->json(['error' => 'Hubo un error al crear los nodos raíz.'], 500);
+ }
+
+
+}
 public function add(Request $request)
 {
 

@@ -13,13 +13,48 @@ class ComprobanteSeeder extends Seeder
      */
     public function run(): void
     {
-        Comprobante::insert([
+
+                $documentoss=[
             [
-                'tipo_comprobante' => 'Boleta'
+                'tipo_comprobante' => 'Boleta',
+                'ClaveVista' => 'DV',
             ],
             [
-                'tipo_comprobante' => 'Factura'
-            ]
-        ]);
+                'tipo_comprobante' => 'Factura',
+                'ClaveVista' => 'DV',
+            ],
+            [
+                'tipo_comprobante' => 'Diario',
+                'ClaveVista' => 'CC',
+            ],
+            [
+                'tipo_comprobante' => 'Mayor',
+                'ClaveVista' => 'CC',
+            ],
+            [
+                'tipo_comprobante' => 'Balance',
+                'ClaveVista' => 'CC',
+            ],
+            [
+                'tipo_comprobante' => 'Banco',
+                'ClaveVista' => 'BB',
+            ],
+            [
+                'tipo_comprobante' => 'Devolución',
+                'ClaveVista' => 'BD',
+            ],
+        ];
+
+        foreach ($documentoss as $doc) {
+
+        Comprobante::updateOrCreate(
+        ['tipo_comprobante' => $doc['tipo_comprobante']], // clave única
+        [
+            'tipo_comprobante' => $doc['tipo_comprobante'],
+            'estado' => $doc['estado'] ?? 1,
+            'ClaveVista' => $doc['ClaveVista'] ?? null
+        ]
+    );
+}
     }
 }

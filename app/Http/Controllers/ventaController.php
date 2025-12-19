@@ -18,12 +18,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
-
+use App\Exports\UniversalExport;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Http\Requests\UpdateCompraRequest;
 class ventaController extends Controller
 {
     function __construct()
     {
-        $this->middleware('permission:cobrar-ventadirecta|ver-venta|crear-venta|mostrar-venta|eliminar-venta', ['only' => ['index']]);
+        $this->middleware('permission:reporte-venta|cobrar-ventadirecta|ver-venta|crear-venta|mostrar-venta|eliminar-venta', ['only' => ['index']]);
         $this->middleware('permission:crear-venta', ['only' => ['create', 'store']]);
         $this->middleware('permission:mostrar-venta', ['only' => ['show']]);
         $this->middleware('permission:eliminar-venta', ['only' => ['destroy']]);
@@ -74,6 +76,80 @@ class ventaController extends Controller
     /**
      * Show the form for creating a new resource.
      */
+public function ventasReporte(Request $request)
+{
+    $fkTienda = session('user_fkTienda');
+
+    // Filtro de productos (array)
+    $productosSeleccionados = (array) $request->input('producto', []);
+
+    // Lista de productos para el select
+$productos = Producto::select('id', 'nombre')
+    ->where('fkTienda', $fkTienda)
+    ->whereIn('estado', [1, 2, 3])
+    ->get();
+
+
+    // Consulta base agrupada por fecha
+    $query = Venta::select(
+            DB::raw("DATE_FORMAT(fecha_hora, '%d/%m/%Y') as fecha"),
+            DB::raw("SUM(total) as total")
+        )
+        ->where('fkTienda', $fkTienda)
+        ->whereIn('estado', [2])
+        ->groupBy(DB::raw("DATE_FORMAT(fecha_hora, '%d/%m/%Y')"))
+        ->orderBy(DB::raw("DATE(fecha_hora)"));
+
+    // Filtro fecha inicio
+    if ($request->inicio) {
+        $query->whereDate('fecha_hora', '>=', $request->inicio);
+    }
+
+    // Filtro fecha fin
+    if ($request->fin) {
+        $query->whereDate('fecha_hora', '<=', $request->fin);
+    }
+
+    // Filtro por producto
+    if (!empty($productosSeleccionados) && !in_array(0, $productosSeleccionados)) {
+        $query->whereHas('productos', function ($q) use ($productosSeleccionados) {
+            $q->whereIn('producto_id', $productosSeleccionados);
+        });
+    }
+
+    // Obtener ventas
+    $ventas = $query->get();
+
+    // Preparar datos para la gráfica
+    $labels = $ventas->pluck('fecha');
+    $values = $ventas->pluck('total');
+
+    // Total general
+    $totalgeneral = $values->sum();
+
+        $scatterValues = collect($values)->map(function($v, $i) {
+    return ['x' => $i + 1, 'y' => $v];
+    });
+
+    $bubbleData = collect($values)->map(function($v, $i) {
+    return [
+        'x' => $i + 1,    // posición X (puede ser índice o fecha)
+        'y' => $v,        // monto
+        'r' => 5 + ($v/100) // tamaño de la burbuja proporcional al valor
+    ];
+});
+
+    return view('dashboard.index', compact('scatterValues','bubbleData','labels', 'values', 'productos', 'totalgeneral'));
+}
+
+
+public function exportVentas()
+{
+    $ventas = Venta::all();
+
+    return Excel::download(new UniversalExport($ventas), 'ventas.xlsx');
+}
+
     public function create()
     {
         $fkTienda = session('user_fkTienda');
@@ -300,14 +376,7 @@ while($cont < $cuentaArray) {
                 ]
             ]);
 
-            // Actualizar stock
-            $producto = Producto::find($arrayProducto_id[$cont]);
-            $cantidad = intval($arrayCantidad[$cont]);
 
-            if ($producto) {
-                $producto->stock -= $cantidad;
-                $producto->save();
-            }
 
         }
 

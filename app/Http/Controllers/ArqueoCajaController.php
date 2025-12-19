@@ -559,6 +559,8 @@ if ($Estatus == 'ER') {
 
             }
 
+
+
              public function destroy(Request $request, $id)
     {
    //dd(request()->method());

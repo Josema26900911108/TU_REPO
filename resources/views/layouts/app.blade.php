@@ -17,7 +17,7 @@
     </head>
 
 
-<body class="sb-nav-fixed sb-sidenav-toggled">
+<body class="sb-nav-fixed">
 
     <x-navigation-header />
 

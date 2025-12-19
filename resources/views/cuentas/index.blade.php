@@ -121,7 +121,9 @@
 
     <div class="row justify-content-center">
     <h2 align="center">Cuentas Contables</h2>
-    <br /><br />
+                                    <button title="Ver Detalles Generales" data-bs-toggle="modal" data-bs-target="#confirmModalDetalles">
+Datos a tomar en cuenta
+                                    </button>
     <div class="row justify-content-center ">
 
 
@@ -133,6 +135,7 @@
             </div>
         </div>
     </div>
+
 
     <!-- Menú Contextual -->
     <ul id="contextMenu" class="dropdown-menu">
@@ -209,6 +212,51 @@
         </div>
     </div>
 </div>
+
+                    <!-- Modal -->
+                    <div class="modal fade" id="confirmModalDetalles" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h1 class="modal-title fs-5" id="exampleModalLabel">Por favor al crear estructura tomar en cuenta naturalza de debe y haber segun raiz cuenta.</h1>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <table class="table table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th>Tipo de Cuenta</th>
+                                                <th>Aumenta con</th>
+                                                <th>Disminuye con</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td><strong>Activo</strong></td>
+                                                <td>Debe</td>
+                                                <td>Haber</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Pasivo</strong></td>
+                                                <td>Haber</td>
+                                                <td>Debe</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Capital</strong></td>
+                                                <td>Haber</td>
+                                                <td>Debe</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
 </div>
 

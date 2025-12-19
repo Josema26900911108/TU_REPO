@@ -22,7 +22,6 @@ class StoreTiendaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'telefono' => 'required|unique:tienda,telefono|max:35',
             'Nombre' => 'required|unique:tienda,Nombre|max:150',
             'descripcion' => 'nullable|max:255',
             'Direccion' => 'nullable|max:255'

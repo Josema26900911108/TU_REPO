@@ -20,31 +20,39 @@ class StoreProductoRequest extends FormRequest
      *
      * @return array<string, \Illuminate\Contracts\Validation\Rule|array|string>
      */
-    public function rules(): array
-    {
-        return [
-            'codigo' => [
-                'required',
-                'max:50',
-                Rule::unique('productos')->where(function ($query) {
-                    return $query->where('fkTienda', session('user_fkTienda')); // Usamos session() en lugar de $request
-                }), // Ignorar el producto actual para la validación de unicidad
-            ],
-            'nombre' => [
-                'required',
-                'max:150',
-                Rule::unique('productos')->where(function ($query) {
-                    return $query->where('fkTienda', session('user_fkTienda')); // Usamos session() en lugar de $request
-                }), // Ignorar el producto actual para la validación de unicidad
-            ],
-            'descripcion' => 'nullable|max:255',
-            'fecha_vencimiento' => 'nullable|date',
-            'img_path' => 'nullable|image|mimes:png,jpg,jpeg|max:2048',
-            'marca_id' => 'required|integer|exists:marcas,id',
-            'presentacione_id' => 'required|integer|exists:presentaciones,id',
-            'categorias' => 'required'
-        ];
-    }
+public function rules(): array
+{
+    $id = $this->route('producto'); // ID del producto cuando estás editando
+
+    return [
+        'codigo' => [
+            'required',
+            'max:50',
+            Rule::unique('productos')
+                ->ignore($id) // evita error al editar
+                ->where(fn($query) =>
+                    $query->where('fkTienda', session('user_fkTienda'))
+                ),
+        ],
+
+        'nombre' => [
+            'required',
+            'max:150',
+            Rule::unique('productos')
+                ->ignore($id) // evita error al editar
+                ->where(fn($query) =>
+                    $query->where('fkTienda', session('user_fkTienda'))
+                ),
+        ],
+
+        'descripcion' => 'nullable|max:255',
+        'fecha_vencimiento' => 'nullable|date',
+        'img_path' => 'nullable|image|mimes:png,jpg,jpeg|max:2048',
+        'marca_id' => 'required|integer|exists:marcas,id',
+        'presentacione_id' => 'required|integer|exists:presentaciones,id',
+        'categorias' => 'required'
+    ];
+}
 
     public function attributes()
     {

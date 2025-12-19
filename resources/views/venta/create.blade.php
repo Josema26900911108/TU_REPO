@@ -42,10 +42,12 @@
                         <div class="col-12">
 
 <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
-    <option class="bs-title-option" value=""></option>
+    
     @foreach($productos as $producto)
         <option value="{{ $producto->id }}"
                 data-img="{{ $producto->img_path }}"
+                data-stock="{{ $producto->stock }}"
+                data-precio="{{ $producto->precio_venta }}"
                 data-detalle="{{ $producto->descripcion }}">
             {{ $producto->nombre }}
         </option>
@@ -510,9 +512,15 @@ $('#producto_id').change(mostrarValores);
             cantidadarticulos=0;
 
     function mostrarValores() {
-        let dataProducto = document.getElementById('producto_id').value.split('-');
-        $('#stock').val(dataProducto[1]);
-        $('#precio_venta').val(dataProducto[2]);
+
+            let option = this.selectedOptions[0];
+
+    let stock = option.getAttribute('data-stock');
+    let precio = option.getAttribute('data-precio');
+
+    document.getElementById('stock').value = stock;
+    document.getElementById('precio_venta').value = precio;
+
     }
 
     function mostrarValoresScanner() {

@@ -70,6 +70,12 @@
                         @can('crear-compra')
                         <a class="nav-link" href="{{ route('compras.create') }}">Crear</a>
                         @endcan
+                        @can('reporte-compra')
+                        <a class="nav-link" href="{{ route('compra.comprareporte') }}"><i class="fa-solid fa-chart-pie"></i>Reporte Compras</a>
+                        @endcan
+                        @can('carga-masiva-compras')
+                        <a class="nav-link" href="{{ route('carga.masiva.compra') }}"><i class="fas fa-file-upload"></i>Subir Masivo</a>
+                        @endcan
                     </nav>
                 </div>
                 @endcan
@@ -89,6 +95,47 @@
                         @can('crear-compra')
                         <a class="nav-link" href="{{ route('ventas.create') }}">Crear</a>
                         @endcan
+                        @can('reporte-venta')
+                        <a class="nav-link" href="{{ route('ventas.ventasreporte') }}"><i class="fa-solid fa-chart-pie"></i>Reporte Ventas</a>
+                        @endcan
+
+                    </nav>
+                </div>
+                @endcan
+
+                                <!----Reporteria---->
+                @can('ver-reporteria')
+                <a class="nav-link collapsed" href="#" data-bs-toggle="collapse" data-bs-target="#collapseReporteria" aria-expanded="false" aria-controls="collapseLayouts">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-chart-simple"></i></div>
+                    Reporteria
+                    <div class="sb-sidenav-collapse-arrow"><i class="fas fa-angle-down"></i></div>
+                </a>
+                <div class="collapse" id="collapseReporteria" aria-labelledby="headingOne" data-bs-parent="#sidenavAccordion">
+                    <nav class="sb-sidenav-menu-nested nav">
+                        @can('ver-diario')
+                        <a class="nav-link" href="{{ route('reporte.diario') }}"><i class="fas fa-book-dead"></i>Diario</a>
+                        @endcan
+                        @can('ver-mayor')
+                        <a class="nav-link" href="{{ route('reporte.mayor') }}"><i class="fas fa-book-open"></i>Mayor</a>
+                        @endcan
+                        @can('ver-balance')
+                        <a class="nav-link" href="{{ route('reporte.balance') }}"><i class="fas fa-book-quran"></i>Balance</a>
+                        @endcan
+                        @can('ver-puntodeequilibrio')
+                        <a class="nav-link" href="{{ route('reporte.puntodeequilibrio') }}"><i class="fas fa-book-journal-whills"></i>Punto Equilibrio</a>
+                        @endcan
+                        @can('ver-kardex')
+                        <a class="nav-link" href="{{ route('reporte.kardeinventario') }}"><i class="fas fa-book-journal-whills"></i>Karde Inventario</a>
+                        @endcan
+                        @can('ver-utilidades')
+                        <a class="nav-link" href="{{ route('reporte.utilidades') }}"><i class="fas fa-book-bookmark"></i>Utilidad</a>
+                        @endcan
+                        @can('ver-flujoefectivo')
+                        <a class="nav-link" href="{{ route('reporte.flujoefectivo') }}"><i class="fas fa-book-atlas"></i>Flujo Efectivo</a>
+                        @endcan
+
+
+
                     </nav>
                 </div>
                 @endcan

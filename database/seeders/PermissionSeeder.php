@@ -34,6 +34,7 @@ class PermissionSeeder extends Seeder
             'crear-compra',
             'mostrar-compra',
             'eliminar-compra',
+            'carga-masiva-compras',
 
             //Marca
             'panel-marca',
@@ -70,6 +71,18 @@ class PermissionSeeder extends Seeder
             'mostrar-venta',
             'eliminar-venta',
             'cobrar-ventadirecta',
+
+            //Reporte
+            'reporte-venta',
+            'reporte-compra',
+            'ver-reporteria',
+            'ver-diario',
+            'ver-mayor',
+            'ver-balance',
+            'ver-puntodeequilibrio',
+            'ver-utilidades',
+            'ver-flujoefectivo',
+            'ver-kardex',
 
             //Roles
             'ver-role',
