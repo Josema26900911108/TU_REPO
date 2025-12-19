@@ -396,12 +396,18 @@ if (!empty($cuentasSeleccionadas) && !in_array(0, $cuentasSeleccionadas)) {
         x.representante,
         x.Telefono
     ")
-    ->groupBy(
-        'x.idCuenta', 'x.Cuenta', 'x.formula',
-        'x.Nombre', 'x.departamento',
-        'x.municipio', 'x.representante',
-        'x.Telefono', 'x.nit', 'x.logo', 'x.SaldoFinal'
-    )
+->groupBy(
+    'x.idCuenta', 'x.Cuenta', 'x.formula',
+    'x.Nombre', 'x.departamento',
+    'x.municipio', 'x.representante',
+    'x.Telefono', 'x.nit', 'x.logo',
+    'x.SaldoFinal',
+    'x.DebeGeneral',
+    'x.HaberGeneral',
+    'x.Fecha',
+    'x.FechaReporte'
+)
+
     ->orderBy('x.idCuenta')
     ->get();
 
