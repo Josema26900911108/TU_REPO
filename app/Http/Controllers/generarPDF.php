@@ -1138,7 +1138,7 @@ public function KardexInvenarioindex(Request $request)
     $venta = $asientos->pluck('venta_total_actual');
 $values = $debe;
 
-    return view('PDF.reporteKardexInventario', compact(
+    return view('PDF.reportekardexinventario', compact(
         'productos',
         'labels',
         'debe',
