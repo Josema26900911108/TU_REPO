@@ -249,24 +249,26 @@
                 </a>
                 @endcan
 
-                @can('ver-arbolmaterial')
-                <a class="nav-link" href="{{ route('arbolmateriales.index') }}">
-                    <div class="sb-nav-link-icon"><i class="fa-solid fa-sort-amount-desc"></i></div>
-                    Estructura Expedientes Pago
-                </a>
-                @endcan
+
 
                 @can('ver-arbrmanoobra')
                 <a class="nav-link" href="{{ route('abrmanoobra.index') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-people-carry"></i></div>
-                    Arbol Materiales y Mano de Obra
+                    Arbol Materiales y Mano de Obra (Paso 1)
                 </a>
                 @endcan
 
                 @can('ver-treematerialescategoria')
                 <a class="nav-link" href="{{ route('treematerialescategoria.index') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-project-diagram"></i></div>
-                    Arbol condicion de materiales
+                    Arbol condicion de materiales (Paso 2)
+                </a>
+                @endcan
+
+                                @can('ver-arbolmaterial')
+                <a class="nav-link" href="{{ route('arbolmateriales.index') }}">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-sort-amount-desc"></i></div>
+                    Estructura Expedientes Pago (Paso 3)
                 </a>
                 @endcan
 
@@ -361,3 +363,78 @@
         </div>
     </nav>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Obtener la URL actual SIN el hash
+    const currentUrl = window.location.href.split('#')[0];
+    const currentPath = window.location.pathname;
+
+    // Seleccionar todos los enlaces del sidebar
+    const navLinks = document.querySelectorAll('#layoutSidenav_nav .nav-link');
+
+    navLinks.forEach(link => {
+        const linkUrl = link.href;
+
+        // Ignorar enlaces que son solo para collapse (#)
+        if (linkUrl.includes('#')) return;
+
+        // Comparar URLs (sin hash)
+        const cleanLinkUrl = linkUrl.split('#')[0];
+
+        if (cleanLinkUrl === currentUrl ||
+            currentPath === new URL(linkUrl).pathname) {
+
+            // Marcar como activo
+            link.classList.add('active');
+
+            // Si está dentro de un acordeón, expandirlo
+            const parentCollapse = link.closest('.collapse');
+            if (parentCollapse) {
+                parentCollapse.classList.add('show');
+
+                // También marcar el enlace padre como activo
+                const parentLink = parentCollapse.previousElementSibling;
+                if (parentLink && parentLink.classList.contains('nav-link')) {
+                    parentLink.classList.add('active');
+                    parentLink.setAttribute('aria-expanded', 'true');
+                }
+            }
+        }
+    });
+
+    // Manejar enlaces de collapse (los que tienen # en href)
+    const collapseLinks = document.querySelectorAll('#layoutSidenav_nav .nav-link[href="#"]');
+    collapseLinks.forEach(link => {
+        if (link.classList.contains('active')) {
+            link.setAttribute('aria-expanded', 'true');
+            const targetId = link.getAttribute('data-bs-target');
+            if (targetId) {
+                const targetCollapse = document.querySelector(targetId);
+                if (targetCollapse) {
+                    targetCollapse.classList.add('show');
+                }
+            }
+        }
+    });
+});
+</script>
+
+<style>
+/* Agrega estilos para el nav-link activo */
+#layoutSidenav_nav .nav-link.active {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff !important;
+    border-left: 4px solid #0d6efd;
+}
+
+/* Para enlaces dentro de acordeones */
+#layoutSidenav_nav .nav .nav-link.active {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #adb5bd !important;
+}
+
+/* Para el enlace padre del acordeón */
+#layoutSidenav_nav .nav-link.active:not(.nav .nav-link) {
+    font-weight: 600;
+}
+</style>

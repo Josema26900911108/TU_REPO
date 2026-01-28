@@ -212,6 +212,30 @@
                     </div>
                 </div>
 
+                                                <!---Roles---->
+                <div class="col-md-6">
+                    <label for="role" class="col-lg-2 col-form-label">Usuario:</label>
+                    <div class="col-lg-4">
+                        <select name="user" id="user" class="form-select" aria-labelledby="rolHelpBlock">
+                            <option value="" selected disabled>Seleccione:</option>
+                            @foreach ($users as $item)
+                            <option value="{{$item->name}}" @selected(old('user')==$item->name)>{{$item->name}}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="form-text" id="rolHelpBlock">
+                            Elija un Usuario.
+                        </div>
+                    </div>
+                    <div class="col-lg-2">
+                        @error('role')
+                        <small class="text-danger">{{'*'.$message}}</small>
+                        @enderror
+                    </div>
+                </div>
+
+
                                     <div class="col-md-6">
                         <label for="Estatus" class="form-label">Estatus:</label>
                         <select name="Estatus" id="Estatus" class="form-control">

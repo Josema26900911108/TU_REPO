@@ -6,8 +6,17 @@
             Tabla ETA
         </div>
 
+        <div class="card-body border-bottom">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Buscar general:</label>
+                    <input type="text" id="globalSearchExp" class="form-control" placeholder="Buscar...">
+                </div>
+            </div>
+        </div>
+
         <div class="card-body" style="overflow-x: auto;">
-            <table id="datatablesSimple" class="table table-striped fs-12" style="min-width: 800px;">
+            <table id="datatablesSimpleExp" class="table table-striped fs-12" style="min-width: 800px;">
                 <thead>
                     <tr>
                         <th>Orden</th>
@@ -55,11 +64,9 @@
                                     <ul class="dropdown-menu text-bg-light" style="font-size: small;">
 
                                         <!----Ver-producto--->
-                                        @can('ver-producto')
+                                        @can('ordenruta-tecnico')
                                         <li>
-
                                             <a class="dropdown-item" role="button" href="{{ route('tecnico.inventario', ['tecbucket' => $item]) }}">Ver inventario</a>
-
                                         </li>
                                         @endcan
                                     </ul>

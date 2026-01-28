@@ -13,6 +13,7 @@ use SebastianBergmann\LinesOfCode\Counter;
 use Carbon\Carbon;
 
 use function Laravel\Prompts\text;
+use function PHPUnit\Framework\isNull;
 
 class TreematerialescategoriaController extends Controller
 {
@@ -235,10 +236,17 @@ class TreematerialescategoriaController extends Controller
             // Obtener todos los hijos de esa cuenta padre
             $hijos = DB::table('treematerialescategoria')
                 ->where('padre_id', $padreId) // Buscamos por padre_id
-                ->count();
+                ->orderByDesc('SKU') // Ordenar descendente por SKU para obtener el último
+                ->first();
 
+                $obtener=explode('.',$hijos->SKU);
+                foreach($obtener as $ocuenta){
+                    $ultimoHijo = $ocuenta;
+                };
+
+                $concatenar= $ultimoHijo+1;
             // Generar el nuevo número de cuenta basado en el número de cuenta del padre y la cantidad de hijos
-            $nuevoNumeroHijo = str_pad($hijos + 1, 2, '0', STR_PAD_LEFT); // Ej: '01', '02', etc.
+            $nuevoNumeroHijo = str_pad($ultimoHijo + 1, 2, '0', STR_PAD_LEFT); // Ej: '01', '02', etc.
 
             // Formatear el número de cuenta (Ej: ##.##.##.##)
             $nuevoNumeroCuenta = $cuentaPadre->SKU . '.' . $nuevoNumeroHijo;
@@ -520,9 +528,16 @@ INNER JOIN (
 
     DB::beginTransaction();
 
+
     try {
+        $afila=0;
         while (($linea = fgetcsv($file)) !== false) {
             $data = array_combine($encabezado, $linea);
+            $afila++;
+
+            if($afila==520){
+                $afila=$afila;
+            }
 
             // Validar campos mínimos
             if (!isset($data['SKUPADRE']) || !isset($data['SKU']) || !isset($data['minimo'])  || !isset($data['maximo'])  || !isset($data['depende_SKU']) || !isset($data['nombre'])) continue;
@@ -540,8 +555,10 @@ $tipo_relacion        = mb_convert_encoding($data['tipo_relacion'] ?? '', 'UTF-8
 $maximo=$data['maximo'] ?? 1;
 $minimo=$data['minimo'] ?? 0;
 $skupadre=$this->obtenerpadre($skupadress, $depende_SKU);
+usleep(500); // 500,000 microsegundos
 $skuval = $skupadre[0]['SKU'] ?? '';
 $idmasivo = $skupadre[0]['id'] ?? '';
+
 
 if($skuval<>$SKU){
 // Insertar o actualizar
@@ -582,6 +599,62 @@ DB::table('material_relaciones')->updateOrInsert(
     }
 }
 
+public function moveNode(Request $request)
+{
+    try {
+        $request->validate([
+            'node_id' => 'required|integer',
+            'new_parent_id' => 'nullable|integer'
+        ]);
+$idnodo=$request->node_id;
+$idnodopadre=$request->new_parent_id;
+        $node = treematerialescategoria::findOrFail($request->node_id);
+
+        // Validar que no se esté moviendo a un hijo (evitar ciclos)
+        if ($request->new_parent_id) {
+            $newParent = treematerialescategoria::findOrFail($request->new_parent_id);
+
+                        // Verificar si el nuevo padre es un descendiente del nodo
+            if (is_null($node->padre_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede mover un nodo nodo raiz'
+                ], 400);
+            }
+
+        }
+
+        // Actualizar el padre
+        $node->padre_id = $idnodopadre;
+        $node->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Nodo movido correctamente'
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+// Función auxiliar para verificar si un nodo es descendiente de otro
+private function isDescendant($possibleParentId, $nodeId)
+{
+    $node = treematerialescategoria::find($nodeId);
+
+    while ($node && $node->padre_id) {
+        if ($node->padre_id == $possibleParentId) {
+            return true;
+        }
+    $node = treematerialescategoria::find($node->padre_id);
+    }
+
+    return false;
+}
     public function descargarFormeta()
 {
     $headers = [
@@ -746,13 +819,14 @@ public function add(Request $request)
         'cuenta_id_new' => 'required',
     ]);
 
-        if ($request->hasFile('foto_new')) {
-        $imagen = $request->file('foto_new');
-        $nombreImagen = time() . '.' . $imagen->getClientOriginalExtension();
-        $ruta = $imagen->storeAs('public/treematerialesmo', $nombreImagen);
-                
-
-    }
+if ($request->hasFile('foto_new')) {
+    $imagen = $request->file('foto_new');
+    $nombreImagen = time() . '.' . $imagen->getClientOriginalExtension();
+    $ruta = $imagen->storeAs('public/treematerialesmo', $nombreImagen);
+    $fotografia = $nombreImagen; // o $ruta según necesites
+} else {
+    $fotografia = ""; // String vacío
+}
 
     $cuenta=DB::table('treematerialescategoria')->insert([
         'nombre' => $request->input('nombre_new'),
@@ -760,7 +834,7 @@ public function add(Request $request)
         'SKU' => $request->input('cuenta_id_new'),
         'minimo' => $request->input('mi_new') ?? NULL,
         'limite' => $request->input('lm_new') ?? NULL,
-        'fotografia' => $ruta ?? '',
+        'fotografia' => $fotografia ?? '',
         'obs' => $request->input('obs_new') ?? NULL,
         'fkTienda' => session('user_fkTienda'), // Puede ser null
         'created_at' => now(),

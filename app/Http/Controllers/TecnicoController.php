@@ -16,7 +16,6 @@ use App\Models\Documento;
 use App\Models\MovimientoMaterial;
 use App\Models\Expedientetecnico;
 use App\Models\Persona;
-use App\Models\Tecnico;
 use App\Models\Pagotecnico;
 use App\Models\Tienda;
 use App\Models\usuariotienda;
@@ -34,6 +33,7 @@ use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Drivers\Gd\Driver; // Import GD driver
 use Intervention\Image\Encoders\WebpEncoder; // Import WebP encoder
 use App\Http\Controllers\movimientomaterialesController;
+use App\Models\Tecnico;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr\AssignOp\Concat;
 use Illuminate\Pagination\Paginator;
@@ -93,6 +93,43 @@ class TecnicoController extends Controller
         $cliente = Cliente::find($id);
         return redirect()->route('clientes.index')->with('success', 'Cliente registrado');
     }
+    public function edit($id){
+                try{
+        $fkTienda = session('user_fkTienda');
+        $Estatus = session('user_estatus');
+        $rol = Role::all();
+        $documentos=Documento::all();
+        $tecnico=Tecnico::where('id',$id)
+        ->first();
+
+$tienda = DB::table('usuario_tienda as us')
+    ->select('ti.Nombre', 'ti.idTienda')
+    ->join('users as u', 'u.id', '=', 'us.fkUsuario')
+    ->join('tecnico as t', 't.fkTienda', '=', 'us.fkTienda')
+    ->join('tienda as ti', 'ti.idTienda', '=', 't.fkTienda')
+    ->where('t.id', $id)
+    ->distinct()
+    ->get();
+
+// Verificar si hay resultados
+if ($tienda->isEmpty()) {
+    // Manejar el caso cuando no hay tiendas
+    $tienda = collect(); // Crear colección vacía
+}
+
+
+    $users=DB::table('users as u')
+    ->join('usuario_tienda as ut', 'ut.fkUsuario','=','u.id','left')
+    ->where('fkTienda',$fkTienda)
+    ->get();
+
+
+        return view('tecnico.edit', compact('tecnico','rol','documentos','users','tienda','id'));
+                }catch(Exception $e){
+                return response()->json(['error' => $e->getMessage()], 400);
+
+        }
+    }
     public function create()
     {
         $fkTienda = session('user_fkTienda');
@@ -100,15 +137,22 @@ class TecnicoController extends Controller
         $rol = Role::all();
         $documentos=Documento::all();
 
+
+    $users=DB::table('users as u')
+    ->join('usuario_tienda as ut', 'ut.fkUsuario','=','u.id','left')
+    ->where('fkTienda',$fkTienda)
+    ->get();
+
+
         if ($Estatus == 'ER') {
                     $tecnico = Tienda::all();
                 } else {
-                    $tecnico = Tienda::where('idTienda',$fkTienda)->first();
+                    $tecnico = Tienda::where('idTienda',$fkTienda)->get();
                 };
 
 
 
-        return view('tecnico.create', compact('tecnico','rol','documentos'));
+        return view('tecnico.create', compact('tecnico','rol','documentos','users'));
     }
 
     public function prepararimagen($request){
@@ -150,6 +194,7 @@ class TecnicoController extends Controller
                 'estado'=>1,
                 'documento_id'=>$request->documento_id,
                 'numero_documento'=>$request->numero_documento,
+                'fkuser'=>$request->user,
                 'created_at'=>now()
             ]));
 
@@ -230,66 +275,45 @@ class TecnicoController extends Controller
         try {
             DB::beginTransaction();
 
-            // Buscar la persona existente
-            $persona = Persona::where('id', $request->persona_id)->firstOrFail();
+         // Procesar imagen y convertir a BLOB
+        $file = $request->file('image');
+        if($file!=null){
+        $manager = new ImageManager(new Driver());
+
+        $image = $manager->read($file->getPathname())
+                         ->resize(800, 800, function ($constraint) {
+                             $constraint->aspectRatio();
+                             $constraint->upsize();
+                         });
+
+        // Convertir a WebP y obtener como cadena binaria
+        $webpEncoder = new WebpEncoder(quality: 80);
+        $imageBlob = $image->encode($webpEncoder);
+        }
+$tecnico = Tecnico::findOrFail($request['idtecnico']);
 
 
-                $request->validate([
-                    'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
-                ]);
-
-     $file = $request->file('image');
-    $manager = new ImageManager('gd');
-
-
-// Luego manipulas la imagen
-    $image = $manager->read($file->getPathname())
-        ->resize(300, 300, function ($constraint) {
-            $constraint->aspectRatio();
-            $constraint->upsize();
-        })
-        ->toWebp(50); // calidad 50%
-
-        $imagenBinaria = (string) $image;
-//creacion de tecnico
-            $persona->tecnico()->create([
-                'fkpersona' => $persona->id,
-                'nombre' => $persona->razon_social,
-                'fkTienda' => $request->tienda,
-                'codigo' => $request->numero_eta,
-                'especialidad' => $request->especialidad,
-                'logo' => ''
+           $tecnico->update(
+['fkuser'=>$request->user,
+            'fkTienda'=>$request->tienda,
+            'codigo'=>$request->numero_eta,
+            'especialidad'=>$request->especialidad,
+            'updated_at' => now(),
             ]);
 
-            //Encriptar contraseña
-            $fieldHash = Hash::make($request->password);
-            //Modificar el valor de password en nuestro request
-            $request->merge(['password' => $fieldHash]);
 
-            //Crear usuario
-            $user = User::create(array_merge([
-                'fkTienda' => $request->tienda,
-                'logo'=>$imagenBinaria,
-                'name' => $persona->razon_social,
-                'email' => $request->email,
-                'password'=> $request->password,
-                'created_at'=>now()
-                ]));
+if($imageBlob!=null){
+               $tecnico->update(
+['logo'=>$imageBlob,
+]);
 
-            //Asignar su rol
-            $user->assignRole($request->role);
-
-            usuariotienda::create(array_merge([
-                'fkUsuario'=>$user->id,
-                'fkTienda'=>$request->tienda,
-                'Estatus'=>$request->Estatus,
-                'FechaIngreso'=>now(),
-                'created_at'=>now()
-            ]));
+}
 
             DB::commit();
 
-            return redirect()->route('tecnico.index')->with('success', 'Tecnico registrado exitosamente.');
+            return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado exitosamente.');
+
+
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Error al registrar cliente existente - Persona ID: ' . $request->persona_id . ' - Error: ' . $e->getMessage());
@@ -326,7 +350,7 @@ class TecnicoController extends Controller
     {
         $orden = Expedientetecnico::where('id', $tecbucket)
             ->where(function($query) {
-                $query->where('Status', 'A')
+                $query->where('Status', 'I')
                     ->orWhere('Status', 'S');
             })
             ->first();
@@ -393,6 +417,8 @@ try {
             $sub_array['cuenta_id'] = $row->SKU; // Usamos nodeId para cada nodo
             $sub_array['text'] = $row->SKU."-".$row->nombre; // Mostrar el nombre de la cuenta
             $sub_array['nombre'] = $row->nombre; // Mostrar el nombre de la cuenta
+            $sub_array['aplicafotografia'] = $row->aplicafotografia; // Mostrar el nombre de la cuenta
+            $sub_array['Tipo_servicio'] = $row->Tipo_servicio; // Mostrar el nombre de la cuenta
             $sub_array['nodes'] = $this->get_node_data($row->id); // Recursión para obtener los hijos
             $sub_array['idpivote'] = $row->idpivote; // Recursión para obtener los hijos
             $output[] = $sub_array; // Agregar al array de salida
@@ -715,7 +741,7 @@ $mat = substr($mat, 1);
     try{
                     $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
-                    $idtecnico= Auth::user()->id;
+                    $idtecnico= $request->input('id');
                     $fechain=$request->input('fechain');
                     $fechafin=$request->input('fechafin');
 
@@ -735,9 +761,52 @@ $mat = substr($mat, 1);
                 };
                     }else{
                 if ($Estatus == 'ER') {
-
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$request->input('id'))->paginate(10);
+                } else {
+            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)->paginate(10);
+                };
+                    }
 
+
+
+
+
+    if ($request->ajax()) {
+        return view('buckettecnico.table.tabla', compact('relacion'))->render();
+    }
+    }catch(Exception $e){
+    return view('tecnico.index', compact('relacion','Error: '.$e->getMessage()));
+    }
+
+
+}
+
+    public function fetchrelacionTecnico(Request $request)
+{
+    try{
+                    $Estatus = session('user_estatus');
+                    $fkTienda = session('user_fkTienda');
+                     $idtecnico = Tecnico::where('fkuser', Auth()->id())->value('id');
+                    $fechain=$request->input('fechain');
+                    $fechafin=$request->input('fechafin');
+
+                    if(isset($fechain) or isset($fechafin)){
+                if ($Estatus == 'ER') {
+
+            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)
+            ->whereBetween('FECHAINSTALACION',[$fechain, $fechafin])
+            ->where('ESTATUS','I')
+            ->paginate(10);
+
+                } else {
+            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)
+            ->whereBetween('FECHAINSTALACION',[$fechain, $fechafin])
+            ->where('ESTATUS','I')
+            ->paginate(10);
+                };
+                    }else{
+                if ($Estatus == 'ER') {
+            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$request->input('id'))->paginate(10);
                 } else {
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)->paginate(10);
                 };
@@ -785,12 +854,12 @@ public function fetchrelacionS(Request $request)
 
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)
             ->where('Status','S')
-            ->where('fkTecnico',$idtecnico)->paginate(10);
+            ->where('fkTecnico',$idtecnico)->paginate(100000);
 
                 } else {
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)
             ->where('Status','S')
-            ->where('fkTecnico',$idtecnico)->paginate(10);
+            ->where('fkTecnico',$idtecnico)->paginate(100000);
                 };
                     }
 
@@ -817,8 +886,47 @@ public function fetchrelacionP(Request $request)
         $fechain   = $request->input('fechainP');
         $fechafin  = $request->input('fechafinP');
 
+$relacion = Pagotecnico::with(['arbolmanoobra' => function($query) {
+        $query->select('SKU', 'nombre as descripcion');
+    }])
+    ->where('fkTecnico', $idtecnico)
+    ->where('Status', 'C')
+    ->whereNotNull('fkTecnico')
+    ->whereHas('arbolmanoobra', function($query) {
+        $query->where('Tipo_servicio', 'MO');
+    });
+
+
+
+        if ($Estatus !== 'ER') {
+            $relacion->where('fkTienda', $fkTienda);
+        }
+
+        if ($fechain && $fechafin) {
+            $relacion->whereBetween('created_at', [$fechain, $fechafin]);
+        }
+
+        $relacion = $relacion->paginate(10);
+
+        return view('buckettecnico.table.tablapago', compact('relacion'))->render();
+
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
+public function fetchrelacionC(Request $request)
+{
+    try {
+        $Estatus   = session('user_estatus');
+        $fkTienda  = session('user_fkTienda');
+        $idtecnico = $request->input('id');
+        $fechain   = $request->input('fechainP');
+        $fechafin  = $request->input('fechafinP');
+
         $query = pagotecnico::where('fkTecnico', $idtecnico)
-            ->where('Status', 'C');
+            ->where('Status', 'C')
+            ->whereNotNull('fkTecnico');
 
         if ($Estatus !== 'ER') {
             $query->where('fkTienda', $fkTienda);
@@ -830,7 +938,7 @@ public function fetchrelacionP(Request $request)
 
         $relacion = $query->paginate(10);
 
-        return view('buckettecnico.table.tablapago', compact('relacion'))->render();
+        return view('buckettecnico.table.tablacobro', compact('relacion'))->render();
 
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()], 500);
@@ -839,18 +947,24 @@ public function fetchrelacionP(Request $request)
 
 
 
+
     public function fetchrelacioninv(Request $request)
 {
     try{
                     $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
-                    $idtecnico= Auth::user()->id;
+                    $idtecnico= $request->input('id');
 
 
-            $relacion=MovimientoMaterial::where('fkTienda',$fkTienda)
-            ->where('ESTATUS','A')
-            ->where('fkTecnico',$request->input('id'))
-            ->paginate(5);
+   $relacion = MovimientoMaterial::with(['treematerialcategoria' => function($query) {
+                // Solo traer columnas necesarias
+                $query->select('SKU', 'nombre as descripcion');
+            }])
+            ->where('fkTienda', $fkTienda)
+            ->where('ESTATUS', 'A')
+            ->where('fkTecnico', $idtecnico)
+            ->orderBy('created_at', 'desc')
+            ->paginate($request->input('count', 15));
 
 
     if ($request->ajax()) {
@@ -879,12 +993,12 @@ public function exportar(Request $request)
 
                   if ($Estatus == 'ER') {
 
-                $datos = Expedientetecnico::whereBetween('created_at', [$inicio, $fin])
+                $datos = Expedientetecnico::whereBetween('FECHAINSTALACION', [$inicio, $fin])
                 ->get();
 
                 } else {
                 $datos = Expedientetecnico::where('fkTienda', $fkTienda)
-                ->whereBetween('created_at', [$inicio, $fin])
+                ->whereBetween('FECHAINSTALACION', [$inicio, $fin])
                 ->get();
                 }
 
@@ -934,26 +1048,31 @@ public function exportar(Request $request)
 
                     $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
-                    $idtecnico= Auth::user()->id;
+
+            $idtecnico = Tecnico::where('fkuser', Auth()->id())
+            ->value('id');
+            $tecnicos = Tecnico::where('fkuser', Auth()->id())
+            ->get();
+
 
                 if ($Estatus == 'ER') {
                     $tecnicos=Tecnico::where('fkTienda',$fkTienda)->get();
                     $expediente=Expedientetecnico::where('fkTienda',$fkTienda)
-                    ->where('ESTATUS','A')
+                    ->where('ESTATUS','I')
                     ->get();
                     $tecnico=null;
                 } else {
-                    $tecnicos=null;
+                    $tecnico=null;
                     $tecnico=Tecnico::where('fkTienda',$fkTienda)
                     ->where('id',$idtecnico)->first();
                     $expediente=Expedientetecnico::where('fkTienda',$fkTienda)
-                    ->where('ESTATUS','A')
+                    ->where('ESTATUS','I')
                     ->where('fkTecnico',$idtecnico)->get();
                 };
 
             DB::commit();
 
-            return view('buckettecnico.index', compact('tecnicos','tecnico','expediente','Estatus'));
+            return view('tecnico.bucketlista', compact('tecnicos','tecnico','expediente','Estatus'));
 
         } catch (Exception $e) {
             DB::rollBack();
@@ -1093,7 +1212,7 @@ public function importarInvTecnico(Request $request)
             $TIPOMOVIMIENTO       = mb_convert_encoding($data['TIPOMOVIMIENTO'] ?? '', 'UTF-8', 'ISO-8859-1');
             $Naturaleza   = mb_convert_encoding($data['Naturaleza'] ?? '', 'UTF-8', 'ISO-8859-1');
             $Status   = mb_convert_encoding($data['Status'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $cantidad   = mb_convert_encoding($data['CANTIDAD'] ?? '', 'UTF-8', 'ISO-8859-1');
+            $cantidad   = mb_convert_encoding($data['cantidad'] ?? '', 'UTF-8', 'ISO-8859-1');
 
 
             // Convertir fecha de forma segura
@@ -1184,7 +1303,7 @@ public function importarInvTecnico(Request $request)
 
         $fkTienda = session('user_fkTienda') ?? 0;
         // Línea de ejemplo opcional:
-        fputcsv($file, [23450285,1005749,'A','DT',"DA",'JUAN PEREZ','Canton camoja, Huehuetanango, Huehuetenango',"ORDEN QUE SOLO SE AGREGAN CAJAS ADICIONALES",'HUE0301','OC3',"15/06/2025",'1T','A','WTTx']);
+        fputcsv($file, [23450285,1005749,'A','DT',"DA",'JUAN PEREZ','Canton camoja, Huehuetanango, Huehuetenango',"ORDEN QUE SOLO SE AGREGAN CAJAS ADICIONALES",'HUE0301','OC3',"15/06/2025",'1T','I','WTTx']);
 
         fclose($file);
     };
@@ -1210,7 +1329,7 @@ public function importarInvTecnico(Request $request)
 
         $fkTienda = session('user_fkTienda') ?? 0;
         // Línea de ejemplo opcional:
-        fputcsv($file, ['fajJSJJDF4013896',4013896,'ALMA','A000',"N/A",'N/A','N/A',"A",350,'G817',"DA",'UNIDAD',231,'D','I',1]);
+        fputcsv($file, ['fajJSJJDF4013896',4013896,'ALMA','A000',"N/A",'N/A','N/A',"A",350,'G817',"MA/MO",'UNIDAD',231,'D','I',1]);
 
         fclose($file);
     };

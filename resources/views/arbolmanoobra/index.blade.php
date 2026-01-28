@@ -19,6 +19,10 @@
 <link rel="stylesheet" href="{{ asset('css/bootstrap-treeview.css') }}">
 <link rel="stylesheet" href="{{ asset('css/bootstrap-treeview.min.css') }}">
 
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.18/dist/css/bootstrap-select.min.css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.18/dist/js/i18n/defaults-es_ES.min.js"></script>
+
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 
 <!-- SweetAlert2 JS -->
@@ -223,10 +227,15 @@
                             <label for="nombre">Nombre Cuenta</label>
                             <input type="text" name="nombre_edit" id="nombre_edit" class="form-control">
                         </div>
-                    <div class="form-group">
-                        <label for="ts_new">Tipo Servicio</label>
-                        <input type="text" name="ts_edit" id="ts_edit" class="form-control">
+
+                  <div class="form-group">
+                        <label for="ts_edit">Tipo Servicio</label>
+                        <select name="ts_edit" id="ts_edit" class="form-control"><
+                            <option value="MA">MATERIAL</option>
+                            <option value="MO">MANO DE OBRA</option>
+                  </select>
                     </div>
+
                     <div class="form-group">
                         <label for="to_edit">Tipo Orden</label>
                         <input type="text" name="to_edit" id="to_edit" class="form-control">
@@ -279,7 +288,10 @@
                     </div>
                     <div class="form-group">
                         <label for="ts_new">Tipo Servicio</label>
-                        <input type="text" name="ts_new" id="ts_new" class="form-control">
+                        <select name="ts_new" id="ts_new" class="form-control">
+                            <option value="MA">MATERIAL</option>
+                            <option value="MO">MANO DE OBRA</option>
+                  </select>
                     </div>
                     <div class="form-group">
                         <label for="to_new">Tipo Orden</label>
@@ -310,8 +322,14 @@
 </div>
 
 <script src="{{ asset('js/bootstrap-treeview.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Bootstrap Select JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.18/dist/js/bootstrap-select.min.js"></script>
 <script>
 $(document).ready(function() {
+
+
     let selectedNode = null;
     // Función para llenar el árbol
     function fill_treeview() {
@@ -330,6 +348,9 @@ $(document).ready(function() {
                     onNodeSelected: function(event, node) {
                         selectedNode = node;
                         console.log('Nodo seleccionado:', selectedNode.Cid);
+
+
+
                     }
                 });
             },error: function(xhr) {
@@ -458,6 +479,8 @@ $('#treeview_form_delete ').on('submit', function(e) {
         $('#contextMenu').data('selected-node-nombre', selectedNode.nombre);
         $('#contextMenu').data('selected-node-padre', selectedNode.padre_id);
         $('#contextMenu').data('selected-node-cuenta', selectedNode.cuenta_id);
+        $('#contextMenu').data('selected-node-ts_edit', selectedNode.ts_edit);
+        $('#contextMenu').data('selected-node-af_edit', selectedNode.af_edit);
     });
 
     $('#contextMenu').on('click', 'a', function() {
@@ -465,12 +488,18 @@ $('#treeview_form_delete ').on('submit', function(e) {
         const cid = $('#contextMenu').data('selected-node-id');
         const nombre = $('#contextMenu').data('selected-node-nombre');
         const cuenta = $('#contextMenu').data('selected-node-cuenta');
+        const ts = $('#contextMenu').data('selected-node-ts_edit');
+        const af = $('#contextMenu').data('selected-node-af_edit');
         if (action === 'editNode') {
             $('#cidValue').text('Editando nodo Cid: ' + cid);
             $('#nombre_edit').val(nombre);
             $('#id_edit').val(cid);
             $('#cuenta_id_edit').val(cuenta);
+
             $('#modal').modal('show');
+
+
+
 
         } else if (action === 'createChildNode') {
             $('#padre_id').val(cid);

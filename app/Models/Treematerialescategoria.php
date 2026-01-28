@@ -3,6 +3,7 @@
 declare(strict_types=1);
 namespace App\Models;
 
+use App\Http\Controllers\movimientomaterialesController;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Fureev\Trees\{NestedSetTrait,Contracts\TreeConfigurable};
@@ -43,6 +44,11 @@ class Treematerialescategoria extends Model implements TreeConfigurable
     public function DetalleComprobante(){
         return $this->hasMany(DetalleComprobante::class);
     }
+
+public function materiales()
+{
+    return $this->hasMany(MovimientoMaterial::class, 'SKU', 'SKU');
+}
     public function children()
     {
         return $this->hasMany(CuentaContable::class, 'padre_id');

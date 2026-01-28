@@ -122,7 +122,7 @@
 
 @section('content')
 <div class="container-fluid px-4">
-    <h1 class="mt-4 text-center">INVENTARIO</h1>
+    <h1 class="mt-4 text-center">INVENTARIO DE ORDEN</h1>
     <ol class="breadcrumb mb-4">
         <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
         <li class="breadcrumb-item"><a href="{{ route('tecnico.buckettecnico') }}">Técnicos</a></li>
@@ -217,11 +217,11 @@
                 <tr>
                     <td>
                         <input type="hidden" name="nodoSeleccionado" id="nodoSeleccionado">
-
                                         <!-- Select Mano de Obra -->
                 <div class="row mb-4">
                     <label for="itemmanoobraamterial" class="col-lg-2 col-form-label">Seleccione Item:</label>
                     <div class="col-lg-6">
+
                         <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control selectpicker"
                                 data-live-search="true" data-size="10">
                         </select>
@@ -317,7 +317,7 @@
                     </div>
                 </div>
             </div>
-                @if ($orden->Status == 'A')
+                @if ($orden->Status == 'I')
                             <div class="card-footer text-center">
                                 <button type="submit" onclick="prepareForm()" class="btn btn-primary">Actualizar</button>
                             </div>
@@ -659,15 +659,9 @@ llenaritems();
                 console.log('Materiales cargados:', materiales);
                 console.log(materiales);
                 console.log(Array.isArray(materiales));
-                let materialesArray = Object.values(materiales); // convierte objeto con índices a array
-
-
-
+                let materialesArray = Object.values(materiales);
                 $('#itemmanoobraamterial').selectpicker('destroy');
-
-
                     let optionss = '<option value="">Seleccione un material</option>';
-
                     materialesArray.forEach(function(material) {
                         optionss += `<option value="${material.id}">DESCRIP: ${material.categoria_nombre} || SERIE: ${material.serie} || CANTIDAD: ${material.cantidad} || SKU: ${material.sku}</option>`;
                     });

@@ -240,10 +240,14 @@
                             <label for="nombre">Nombre Cuenta</label>
                             <input type="text" name="nombre_edit" id="nombre_edit" class="form-control">
                         </div>
-                    <div class="form-group">
-                        <label for="ts_new">Tipo Servicio</label>
-                        <input type="text" name="ts_edit" id="ts_edit" class="form-control">
+                  <div class="form-group">
+                        <label for="ts_edit">Tipo Servicio</label>
+                        <select name="ts_edit" id="ts_edit" class="form-control"><
+                            <option value="MA">MATERIAL</option>
+                            <option value="MO">MANO DE OBRA</option>
+                  </select>
                     </div>
+
                     <div class="form-group">
                         <label for="to_edit">Tipo Orden</label>
                         <input type="text" name="to_edit" id="to_edit" class="form-control">
@@ -309,7 +313,10 @@
                     </div>
                     <div class="form-group">
                         <label for="ts_new">Tipo Servicio</label>
-                        <input type="text" name="ts_new" id="ts_new" class="form-control">
+                        <select name="ts_new" id="ts_new" class="form-control">
+                            <option value="MA">MATERIAL</option>
+                            <option value="MO">MANO DE OBRA</option>
+                            </select>
                     </div>
                     <div class="form-group">
                         <label for="to_new">Tipo Orden</label>
@@ -344,6 +351,8 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+
+        
         const modalHeader = document.querySelector('#modalDelete .modal-header');
         const modalDialog = document.querySelector('#modalDelete .modal-dialog');
 
@@ -433,7 +442,12 @@
 <script>
 $(document).ready(function() {
 
+   // Inicializar selectpicker
+    $('#ts_edit').selectpicker();
 
+    // Tu código para destruir/recargar
+    $('#ts_edit').selectpicker('destroy'); // Ahora funcionará
+    $('#ts_edit').selectpicker(); // Volver a inicializar si es necesario
     let selectedNode = null;
     let selectedIdpivote = null;
     // Función para llenar el árbol
@@ -491,12 +505,17 @@ $(document).ready(function() {
             success: function(data) {
             // Destruye el selectpicker antes de manipular opciones
             $('#itemmamo_edit').selectpicker('destroy');
+            $('#ts_edit').selectpicker('destroy');
+            $('#af_edit').selectpicker('destroy');
             $('#itemmamo_new').selectpicker('destroy');
 
             // Limpia los selects
             $('#itemmamo_edit').empty();
+            $('#ts_edit').empty();
             $('#itemmamo_new').empty();
             let options = '<option value="">Seleccione una cuenta padre</option>';
+            let optionsedit = '<option value="">Elije tipo, si es mano de obra o material</option>';
+            let optionsFotografia = '<option value="">Elije si aplica fotografia</option>';
 
             data.forEach(function(cuenta) {
                 if (cuenta.id == selectedNode.idpivote) {
@@ -506,7 +525,26 @@ $(document).ready(function() {
                 }
             });
 
+                if (selectedNode.ts_edit=="MA") {
+                    optionsedit += '<option selected value="MA">MATERIAL</option>';
+                    optionsedit += '<option value="MO">MANO DE OBRA</option>';
+                } else {
+                  optionsedit += '<option value="MA">MATERIAL</option>';
+                    optionsedit += '<option selected value="MO">MANO DE OBRA</option>';
+                }
 
+               if (selectedNode.fotografia=="SI") {
+                    optionsFotografia += '<option selected value="SI">SI</option>';
+                    optionsFotografia += '<option value="NO">NO</option>';
+                } else {
+                  optionsFotografia += '<option value="SI">SI</option>';
+                    optionsFotografia += '<option selected value="NO">NO</option>';
+                }
+
+
+
+            $('#ts_edit').html(optionsedit).selectpicker('render');
+            $('#af_edit').html(optionsFotografia).selectpicker('render');
             $('#itemmamo_edit').html(options).selectpicker('render');
             $('#itemmamo_new').html(options).selectpicker('render');
             },

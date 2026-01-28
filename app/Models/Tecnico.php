@@ -2,36 +2,40 @@
 
 namespace App\Models;
 
-use Fureev\Trees\NestedSetTrait;
+use App\Models\Persona;
+use App\Models\Tienda;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Tecnico extends Model
 {
-
     use HasFactory;
 
-    protected $table = 'tecnico'; // Cambia 'tienda' por el nombre correcto de tu tabla
-    protected $primaryKey = 'id'; // Especifica la clave primaria
+    protected $table = 'tecnico';
 
-    public $incrementing = true; // Si es autoincremental
+    protected $fillable = [
+        'fkTienda',
+        'fkuser',
+        'nombre',
+        'codigo',
+        'especialidad',
+        'logo',
+        'fkpersona'
+    ];
 
-
-    protected $fillable = ['id','fkTienda','nombre','codigo','especialidad','created_at','updated_at','logo','fkpersona'];
-
-    public $timestamps = true;
-
-    public function persona() {
-            return $this->belongsTo(Persona::class, 'fkPersona', 'id');
+    public function persona()
+    {
+        return $this->belongsTo(Persona::class, 'fkPersona');
     }
 
-public function tienda()
-{
-    return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda');
-}
-public function tecnico()
-{
-    return $this->belongsTo(Tecnico::class, 'fkTecnico','id'); // ajusta 'tecnico_id' si se llama diferente
-}
+    public function tienda()
+    {
+        return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda');
+    }
 
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'fkuser');
+    }
 }

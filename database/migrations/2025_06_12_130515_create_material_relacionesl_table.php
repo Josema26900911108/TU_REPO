@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('nombre');
             $table->string('SKU');
             $table->string('depende_SKU');
-            $table->enum('tipo_relacion',['requiere','incompatible']);
+            $table->enum('tipo_relacion',['requiere','incompatible','']);
             $table->timestamps();
         });
 

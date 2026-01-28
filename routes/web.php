@@ -274,6 +274,7 @@ Route::post('/update', [CuentaContableController::class, 'update'])->name('updat
 
 route::get('/etadirect',[etadirectController::class,'index'])->name('etadirect.lista');
 Route::get('/etadirect-formatoEta',[etadirectController::class,'descargarFormeta'])->name('etadirect.formeta');
+Route::post('/etadirect-JoboCommand',[etadirectController::class,'JoboCommand'])->name('etadirect.JoboCommand');
 Route::post('/etadirect/importar',[etadirectController::class,'importarMAMO'])->name('etadirect.importar');
 Route::post('/exportar-etadirect', [etadirectController::class, 'exportar'])->name('etadirect.exportar');
 
@@ -308,6 +309,7 @@ Route::post('/tree/importar',[TreematerialescategoriaController::class,'importar
 Route::post('/tree/importarhijos',[TreematerialescategoriaController::class,'importarmasivohijos'])->name('treematerialescategoria.importarhijos');
 Route::post('/tree/importarpadreshijos',[TreematerialescategoriaController::class,'importarmasivohijospadres'])->name('treematerialescategoria.importarhijospadres');
 Route::post('/tree/importargeneral',[TreematerialescategoriaController::class,'importarmasivorelaciones'])->name('treematerialescategoria.importargeneralrealciones');
+Route::post('/treematerialescategoria/move', [TreematerialescategoriaController::class, 'moveNode'])->name('treematerialescategoria.move');
 
 Route::get('/tree-formatoEta',[TreematerialescategoriaController::class,'descargarFormeta'])->name('treematerialescategoria.formeta');
 Route::get('/tree-formatoHijo',[TreematerialescategoriaController::class,'descargarFormHijos'])->name('treematerialescategoria.formetahijos');
@@ -327,6 +329,7 @@ Route::get('/movimientomateriales/lista',[movimientomaterialesController::class,
 
 Route::get('/tecnico',[TecnicoController::class,'index'])->name('tecnico.lista');
 Route::post('/tecnico/crear',[TecnicoController::class,'store'])->name('tecnico.store');
+Route::post('/tecnico/editar',[TecnicoController::class,'exist'])->name('tecnico.exist');
 Route::post('/tecnico/exist',[TecnicoController::class,'exist'])->name('tecnico.storexist');
 Route::get('/tecnico/{user}/edit',[TecnicoController::class,'edit'])->name('tecnico.edit');
 Route::get('buckettecnicoconstruccion/{tecbucket}', [TecnicoController::class,'inventariotecnicoorden'])
@@ -344,6 +347,12 @@ Route::get('/tecnico-formatoinventario',[TecnicoController::class,'descargarinve
 Route::post('/tecnicoim/importar',[TecnicoController::class,'importarMAMO'])->name('tecnico.importar');
 Route::post('/tecnicoinv/importar',[TecnicoController::class,'importarInvTecnico'])->name('tecnico.invimportar');
 Route::post('/exportar-tecnicoordenes', [TecnicoController::class, 'exportar'])->name('tecnico.exportar');
+Route::get('/tecnicoTtabla', [TecnicoController::class, 'fetchrelacionTecnico'])->name('fetchtablaT');
+
+
+Route::get('/tecnicoTtabla', [etadirectController::class, 'fetchrelacionEta'])->name('fetchrelacionEta');
+
+
 Route::get('/tecnicotabla', [TecnicoController::class, 'fetchrelacion'])->name('fetchtabla');
 Route::get('/tecnicotablaS', [TecnicoController::class, 'fetchrelacionS'])->name('fetchtablaS');
 Route::get('/tecnicotablaP', [TecnicoController::class, 'fetchrelacionP'])->name('fetchtablaP');

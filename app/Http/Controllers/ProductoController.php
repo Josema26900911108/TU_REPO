@@ -78,7 +78,7 @@ class ProductoController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreProductoRe0quest $request)
+    public function store(StoreProductoRequest $request)
 {
     try {
         // Recuperar la tienda de la sesión

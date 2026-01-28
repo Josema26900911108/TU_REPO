@@ -88,6 +88,7 @@ class materialmanoobraController extends Controller
 
 public function importarMAMO(Request $request)
 {
+    $fkTienda = session('user_fkTienda');
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
     ]);
@@ -102,7 +103,7 @@ public function importarMAMO(Request $request)
             $data = array_combine($encabezado, $linea);
 
             // Validar campos mínimos
-            if (!isset($data['Descripcion']) || !isset($data['SKU']) || !isset($data['unidadmedida']) || !isset($data['CATEGORIA']) || !isset($data['COSTOPAGO']) || !isset($data['CATEGORIACOBRO']) || !isset($data['fkTienda'])) continue;
+            if (!isset($data['Descripcion']) || !isset($data['SKU']) || !isset($data['unidadmedida']) || !isset($data['CATEGORIA']) || !isset($data['COSTOPAGO']) || !isset($data['CATEGORIACOBRO']) ) continue;
 
             $descripcion = mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1');
             // Insertar o actualizar
@@ -116,7 +117,7 @@ public function importarMAMO(Request $request)
                     'CATEGORIA'  => $data['CATEGORIA'] ?? '',
                     'COSTOPAGO'  => $data['COSTOPAGO'] ?? 0,
                     'CATEGORIACOBRO'  => $data['CATEGORIACOBRO'] ?? 0,
-                    'fkTienda'  => $data['fkTienda'] ?? 0
+                    'fkTienda'  => $fkTienda ?? 0
                 ]
             );
         }

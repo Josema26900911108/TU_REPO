@@ -926,7 +926,7 @@ SQL"],
      OVER () AS DebeGeneral,
  SUM(CASE WHEN df.Naturaleza = 'H' THEN df.Monto ELSE 0 END)
      OVER () AS HaberGeneral
- FROM folio AS f
+ FROM Folio AS f
  INNER JOIN DetalleFolio AS df ON f.idFolio = df.fkFolio
  INNER JOIN cuentas_contables AS cc ON df.fkCuenetaContable = cc.id
  INNER JOIN tienda as t on f.fkTienda=t.idTienda
@@ -1101,7 +1101,7 @@ SQL"],
          OVER (PARTITION BY cc.id) -
      SUM(CASE WHEN df.Naturaleza = 'H' THEN df.Monto ELSE 0 END)
          OVER (PARTITION BY cc.id) AS SaldoFinalFolio
- FROM folio AS f
+ FROM Folio AS f
  INNER JOIN DetalleFolio AS df ON f.idFolio = df.fkFolio
  INNER JOIN cuentas_contables AS cc ON df.fkCuenetaContable = cc.id
  INNER JOIN tienda as t on f.fkTienda=t.idTienda
@@ -1492,7 +1492,7 @@ SQL"],
          f.FechaContabilizacion,
          df.fkTienda as idTienda
      FROM DetalleFolio df
-     INNER JOIN folio f ON f.idFolio = df.fkFolio
+     INNER JOIN Folio f ON f.idFolio = df.fkFolio
          where f.fkTienda=@{{idtienda}} and f.FechaContabilizacion between @{{idventa}}
 
  )

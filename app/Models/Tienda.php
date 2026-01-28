@@ -59,6 +59,6 @@ public function DesingDocument(){
     protected $primaryKey = 'idTienda'; // Especifica la clave primaria
     public $incrementing = true; // Si es autoincremental
     protected $keyType = 'int'; // Tipo de la clave primaria
-    protected $fillable = ['idTienda','Nombre', 'Direccion', 'telefono', 'descripcion', 'EstatusContable','fkCentro','logo', 'departamento','municipio','representante','nit','fkDesignDocument']; // Agrega aquí todos los campos que deseas que sean "fillables"
+    protected $fillable = ['idTienda','Nombre', 'Direccion', 'Telefono', 'descripcion', 'EstatusContable','fkCentro','logo', 'departamento','municipio','representante','nit','fkDesignDocument']; // Agrega aquí todos los campos que deseas que sean "fillables"
 
 }

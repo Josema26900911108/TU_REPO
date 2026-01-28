@@ -37,6 +37,49 @@
       cursor: pointer;
     }
   </style>
+  <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+<style>
+    /* Estilos para el arrastre */
+    .ui-draggable-dragging {
+        z-index: 9999 !important;
+        opacity: 0.7;
+        background-color: #f8f9fa;
+        border: 2px dashed #007bff;
+        padding: 5px;
+        border-radius: 4px;
+    }
+
+    .treeview li.drag-over {
+        background-color: #e9ecef;
+        border: 2px dashed #28a745;
+    }
+
+    .treeview li.drop-allowed::after {
+        content: "✓ Puede soltar aquí";
+        color: #28a745;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+
+    .treeview li.drop-not-allowed::after {
+        content: "✗ No puede soltar aquí";
+        color: #dc3545;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+
+    /* Estilo para el nodo que se está arrastrando */
+    .dragging-node {
+        cursor: move !important;
+        user-select: none;
+    }
+
+    /* Indicador visual de destino válido */
+    .drop-target {
+        background-color: #d1ecf1 !important;
+        border-left: 3px solid #17a2b8 !important;
+    }
+</style>
 <style>
     .treeview {
     min-height:20px;
@@ -134,6 +177,8 @@
 
 
 <script src="https://unpkg.com/gijgo@1.9.14/js/gijgo.min.js" type="text/javascript"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
 @endpush
 <div class="container">
 
@@ -438,7 +483,8 @@
                     </div>
                     <div class="form-group">
                         <label for="foto_edit">Fotografia</label>
-                        <input type="file" name="foto_edit" id="foto_edit" accept="image/*" class="form-control" required>
+                        <input type="file" name="foto_edit" id="foto_edit" accept="image/*" class="form-control">
+
                         <img id="preview_foto_edit" src="" alt="Sin imagen" style="max-width: 100%; margin-top: 10px;" class="img-fluid rounded shadow-sm">
                     </div>
                     </form>
@@ -518,10 +564,20 @@
 </div>
 
 </div>
+<!-- PRIMERO jQuery (ya lo tienes) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- LUEGO jQuery UI -->
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
 
 <script src="{{ asset('js/bootstrap-treeview.js') }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
 <script>
+            let selectedNode = null;
+            let inNodeId = null;
+    let selectedIdpivote = null;
+
     document.addEventListener('DOMContentLoaded', function () {
         const modalHeader = document.querySelector('#modalRelacion .modal-header');
         const modalDialog = document.querySelector('#modalRelacion .modal-dialog');
@@ -639,37 +695,180 @@
 </script>
 
 <script>
+
 $(document).ready(function() {
 
 
-    let selectedNode = null;
-    let selectedIdpivote = null;
+
     // Función para llenar el árbol
-    function fill_treeview() {
-        $.ajax({
-            url: "{{ route('fetchtree') }}",
-            dataType: "json",
-            success: function(data) {
-                $('#treeview').treeview({
-                    data: data,
-                    selectable: true,
-  highlightSelected: true,
-  showBorder: false,
-  levels: 199,
-  expandIcon: 'fa fa-plus',
-  collapseIcon: 'fa fa-minus',
-                    onNodeSelected: function(event, node) {
-                        selectedNode = node;
-                        console.log('Nodo seleccionado:', selectedNode.Cid);
-                    }
-                });
-            },
-            error: function(xhr, status, error) {
-                Swal.fire('Error', 'Hubo un problema al actualizar.'+xhr.responseText, 'error');
-                console.error('Error al obtener las cuentas padre:', xhr.responseText);
-            }
-        });
+   function fill_treeview() {
+    $.ajax({
+        url: "{{ route('fetchtree') }}",
+        dataType: "json",
+        success: function(data) {
+            $('#treeview').treeview({
+                data: data,
+                selectable: true,
+                highlightSelected: true,
+                showBorder: false,
+                levels: 199,
+                expandIcon: 'fa fa-plus',
+                collapseIcon: 'fa fa-minus',
+                onNodeSelected: function(event, node) {
+                    selectedNode = node;
+                    console.log('Nodo seleccionado:', selectedNode.Cid);
+                }
+            });
+
+            // Habilitar arrastrar y soltar después de crear el árbol
+            setTimeout(function() {
+                enableDragAndDrop();
+            }, 500);
+        },
+        error: function(xhr, status, error) {
+            Swal.fire('Error', 'Hubo un problema al actualizar.'+xhr.responseText, 'error');
+            console.error('Error al obtener las cuentas padre:', xhr.responseText);
+        }
+    });
+}
+function enableDragAndDrop() {
+    // Hacer todos los nodos arrastrables
+    $('.node-treeview').draggable({
+        helper: 'clone',
+        cursor: 'move',
+        revert: 'invalid',
+        start: function(event, ui) {
+            $(this).addClass('dragging-node');
+            ui.helper.css({
+                'width': $(this).width(),
+                'opacity': 0.8,
+                'background-color': '#e3f2fd',
+                'border': '2px dashed #2196f3',
+                'border-radius': '4px',
+                'padding': '5px'
+            });
+
+            // Obtener datos del nodo arrastrado
+            let nodeId = $(this).data('nodeid');
+            let nodeText = $(this).find('span').text();
+            ui.helper.data('draggedNode', {
+                id: nodeId,
+                text: nodeText
+            });
+        },
+        stop: function() {
+            $(this).removeClass('dragging-node');
+        }
+    });
+
+    // Hacer todos los nodos receptores (droppable)
+    $('.node-treeview').droppable({
+        accept: '.node-treeview',
+        hoverClass: 'drop-target',
+        tolerance: 'pointer',
+        over: function(event, ui) {
+            let draggedNode = ui.helper.data('draggedNode');
+
+            let targetNodeId = $(this).data('nodeid');
+            inNodeId = selectedNode.Cid;
+
+
+        },
+        out: function() {
+            $(this).removeClass('drop-allowed drop-not-allowed drop-target');
+        },
+        drop: function(event, ui) {
+            let draggedNode = ui.helper.data('draggedNode');
+            let targetNodeId = $(this).data('nodeid');
+
+            let targetNodeText = $(this).find('span').text();
+simulateClickOnNode(targetNodeId)
+            // Confirmar movimiento
+            Swal.fire({
+                title: 'Mover nodo',
+                html: `¿Deseas mover <strong>${draggedNode.text}</strong> como hijo de <strong>${targetNodeText}</strong>?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, mover',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+
+                    moveNode(inNodeId, selectedNode.Cid);
+                }
+            });
+
+            $(this).removeClass('drop-allowed drop-not-allowed drop-target');
+        }
+    });
+
+
+}
+
+// Función para validar si se puede soltar un nodo en otro
+function canDropHere(draggedNodeId, targetNodeId) {
+    // Evitar que un nodo se suelte en sí mismo
+    if (draggedNodeId == targetNodeId) return false;
+
+    // Evitar que un nodo se suelte en sus propios hijos
+    // (necesitarías verificar la jerarquía completa)
+    return true;
+}
+
+function simulateClickOnNode(cid) {
+    // Buscar el elemento del nodo por su data-cid
+    const $nodeElement = $(`.node-treeview[data-nodeid="${cid}"]`);
+
+    if ($nodeElement.length) {
+        console.log('Simulando clic en nodo:', cid);
+
+        // Método 1: Disparar evento click de jQuery
+        $nodeElement.trigger('click');
+
+        // Método 2: Disparar evento nativo
+        $nodeElement[0].click();
+
+        // Método 3: Seleccionar el nodo en el treeview
+        const tree = $('#treeview').treeview('getTree');
+
+
+        return true;
+    } else {
+        console.log('No se encontró el elemento del nodo con Cid:', cid);
+        return false;
     }
+}
+// Función para mover el nodo en el servidor
+function moveNode(nodeId, newParentId) {
+    $.ajax({
+        url: "{{ route('treematerialescategoria.move') }}",
+        method: "POST",
+        data: {
+            node_id: nodeId,
+            new_parent_id: newParentId,
+            _token: "{{ csrf_token() }}"
+        },
+        beforeSend: function() {
+            // Mostrar indicador de carga
+            $('#treeview').append('<div class="loading-overlay">Actualizando...</div>');
+        },
+        success: function(response) {
+            if (response.success) {
+                Swal.fire('Éxito', 'Nodo movido correctamente', 'success');
+                // Actualizar el árbol
+                fill_treeview();
+            } else {
+                Swal.fire('Error', response.message || 'Error al mover el nodo', 'error');
+            }
+        },
+        error: function(xhr) {
+            Swal.fire('Error', 'Hubo un problema al mover el nodo: ' + xhr.responseText, 'error');
+        },
+        complete: function() {
+            $('.loading-overlay').remove();
+        }
+    });
+}
 
     // Función para llenar el menú desplegable de cuentas padre
     function fill_parent_category() {
@@ -954,6 +1153,7 @@ $('#treeview_form_delete ').on('submit', function(e) {
         $('#contextMenu').data('selected-node-obs', selectedNode.obs);
         $('#contextMenu').data('selected-node-nombre', selectedNode.text);
     });
+
     $('#context').on('click','a',function(){
         const action = $(this).attr('id');
         if (action === 'createChildMasivaHijosPadres') {
@@ -977,8 +1177,8 @@ $('#treeview_form_delete ').on('submit', function(e) {
         if (action === 'editNode') {
             $('#cidValueedit').text('Editando nodo Cid: ' + cid);
             $('#nombre_edit').val(nombre);
-            $('#mi_edit').val(limite);
-            $('#lm_edit').val(minimo);
+            $('#mi_edit').val(minimo);
+            $('#lm_edit').val(limite);
             $('#id_edit').val(cid);
             $('#obs_edit').val(obs);
             $('#cuenta_id_edit').val(cuenta);
@@ -1026,8 +1226,8 @@ $('#treeview_form_delete ').on('submit', function(e) {
             $('#nombre_delete').val(nombre);
             $('#id_delete').val(cid);
             $('#cuenta_id_delete').val(cuenta);
-            $('#mi_delete').val(limite);
-            $('#lm_delete').val(minimo);
+            $('#mi_delete').val(minimo);
+            $('#lm_delete').val(limite);
             $('#obs_delete').val(obs);
                 // RUTA de la imagen (debes traerla desde tu objeto)
     let urlFoto = fotografia

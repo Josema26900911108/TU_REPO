@@ -189,6 +189,8 @@ class ArbolMaterialesController extends Controller
             $sub_array['cuenta_id'] = $row->SKU; // Usamos nodeId para cada nodo
             $sub_array['text'] = $row->SKU."-".$row->nombre; // Mostrar el nombre de la cuenta
             $sub_array['nombre'] = $row->nombre; // Mostrar el nombre de la cuenta
+            $sub_array['ts_edit'] = $row->Tipo_servicio; // Mostrar el nombre de la cuenta
+            $sub_array['fotografia'] = $row->aplicafotografia; // Mostrar el nombre de la cuenta
             $sub_array['nodes'] = $this->get_node_data($row->id); // Recursión para obtener los hijos
             $sub_array['idpivote'] = $row->idpivote; // Recursión para obtener los hijos
             $output[] = $sub_array; // Agregar al array de salida

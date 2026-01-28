@@ -66,6 +66,7 @@ public function store(StoreTiendaRequest $request)
             $image = $request->file('image');
             $imageBase64 = base64_encode(file_get_contents($image->path()));
         }
+        $tel=$request->telefono;
 
 Tienda::create(array_merge(
     $request->validated(),
@@ -73,7 +74,10 @@ Tienda::create(array_merge(
         'EstatusContable' => 'A',
         'logo' => $imageBase64 ?? null,
         'departamento' => $request->departamento,
+        'Telefono' => $request->telefono,
+        'Direccion' => $request->Direccion,
         'municipio' => $request->municipio,
+        'descripcion' => $request->descripcion,
         'representante' => $request->representante,
         'nit' => $request->nit,
     ]
@@ -89,11 +93,6 @@ Tienda::create(array_merge(
 }
 
 
-
-
-    /**
-     * Display the specified resource.
-     */
     public function show(string $id)
     {
         //
