@@ -18,7 +18,7 @@ class Material_relaciones extends Model
     public $incrementing = true; // Si es autoincremental
     protected $keyType = 'int'; // Para BIGINT(20)
 
-    protected $fillable = ['id','fkTienda','nombre','SKU','depende_SKU','tipo_relacion','created_at','updated_at','idtree'];
+    protected $fillable = ['id','fkTienda','nombre','SKU','depende_SKU','tipo_relacion','minimo','maximo','formula','skufinal','created_at','updated_at','idtree'];
 
     public $timestamps = true;
 }

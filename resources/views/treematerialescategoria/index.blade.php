@@ -477,6 +477,25 @@
                         <label for="mi_edit">Limite Minimo</label>
                         <input type="number" name="mi_edit" id="mi_edit" class="form-control">
                     </div>
+                                        <div class="form-group">
+                        <label for="tipo_edit">Tipo</label>
+                        <select name="tipo_edit" id="tipo_edit" class="form-control">
+                            <option value="MO">Mano de Obra</option>
+                            <option value="MA">Material</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="operacion_edit">Operación</label>
+                        <select name="operacion_edit" id="operacion_edit" class="form-control">
+                            <option value="MULTIPLO">Multiplo</option>
+                            <option value="SUMA">Suma</option>
+                            <option value="RESTA">Resta</option>
+                    </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="valor_edit">Valor</label>
+                        <input type="number" step="0.01" name="valor_edit" id="valor_edit" class="form-control">
+                    </div>
                     <div class="form-group">
                         <label for="obs_edit">Observaciones</label>
                         <textarea name="obs_edit" id="obs_edit" class="form-control"></textarea>
@@ -542,6 +561,25 @@
                     <div class="form-group">
                         <label for="mi_new">Limite Minimo</label>
                         <input type="number" name="mi_new" id="mi_new" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="tipo_new">Tipo</label>
+                        <select name="tipo_new" id="tipo_new" class="form-control">
+                            <option value="MO">Mano de Obra</option>
+                            <option value="MA">Material</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="operacion_new">Operación</label>
+                        <select name="operacion_new" id="operacion_new" class="form-control">
+                            <option value="MULTIPLO">Multiplo</option>
+                            <option value="SUMA">Suma</option>
+                            <option value="RESTA">Resta</option>
+                    </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="valor_new">Valor</label>
+                        <input type="number" step="0.01" name="valor_new" id="valor_new" class="form-control">
                     </div>
                     <div class="form-group">
                         <label for="foto_new">Fotografia</label>
@@ -959,6 +997,7 @@ function moveNode(nodeId, newParentId) {
             success: function(data) {
             // Destruye el selectpicker antes de manipular opciones
             $('#itemmamo_edit').selectpicker('destroy');
+
             $('#itemmamo_new').selectpicker('destroy');
 
             // Limpia los selects
@@ -1150,6 +1189,9 @@ $('#treeview_form_delete ').on('submit', function(e) {
         $('#contextMenu').data('selected-node-fotografia', selectedNode.fotografia);
         $('#contextMenu').data('selected-node-limite', selectedNode.limite);
         $('#contextMenu').data('selected-node-minimo', selectedNode.minimo);
+        $('#contextMenu').data('selected-node-tipo', selectedNode.tipo);
+        $('#contextMenu').data('selected-node-operacion', selectedNode.operacion);
+        $('#contextMenu').data('selected-node-valor', selectedNode.valor);
         $('#contextMenu').data('selected-node-obs', selectedNode.obs);
         $('#contextMenu').data('selected-node-nombre', selectedNode.text);
     });
@@ -1173,12 +1215,19 @@ $('#treeview_form_delete ').on('submit', function(e) {
         const fotografia = $('#contextMenu').data('selected-node-fotografia');
         const minimo = $('#contextMenu').data('selected-node-minimo');
         const limite = $('#contextMenu').data('selected-node-limite');
+        const tipo = $('#contextMenu').data('selected-node-tipo');
+        const operacion = $('#contextMenu').data('selected-node-operacion');
+        const valor = $('#contextMenu').data('selected-node-valor');
         const obs = $('#contextMenu').data('selected-node-obs');
         if (action === 'editNode') {
             $('#cidValueedit').text('Editando nodo Cid: ' + cid);
             $('#nombre_edit').val(nombre);
             $('#mi_edit').val(minimo);
             $('#lm_edit').val(limite);
+            $('#tipo_edit').val(tipo);
+            $('#operacion_edit').val(operacion);
+            $('#valor_edit').val(valor);
+            $('#obs_edit').val(obs);
             $('#id_edit').val(cid);
             $('#obs_edit').val(obs);
             $('#cuenta_id_edit').val(cuenta);

@@ -193,6 +193,9 @@ class TreematerialescategoriaController extends Controller
             $sub_array['limite'] = $row->limite; // Mostrar el nombre de la cuenta
             $sub_array['minimo'] = $row->minimo; // Mostrar el nombre de la cuenta
             $sub_array['fotografia'] = $row->fotografia; // Mostrar el nombre de la cuenta
+            $sub_array['tipo'] = $row->tipo; // Mostrar el nombre de la cuenta
+            $sub_array['operacion'] = $row->operacion; // Mostrar el nombre de la cuenta
+            $sub_array['valor'] = $row->valor; // Mostrar el nombre de la cuenta
             $sub_array['obs'] = $row->obs; // Mostrar el nombre de la cuenta
             $sub_array['nodes'] = $this->get_node_data($row->id); // Recursión para obtener los hijos
             $output[] = $sub_array; // Agregar al array de salida
@@ -222,40 +225,40 @@ class TreematerialescategoriaController extends Controller
         return $tree;
     }
 
-    public function generarNumeroCuenta(Request $request)
-    {
-        // Obtener el padre_id del request
-        $padreId = $request->input('padre_id');
+  public function generarNumeroCuenta(Request $request)
+{
+    $padreId = $request->input('padre_id');
 
-        // Buscar la cuenta padre
-        $cuentaPadre = DB::table('treematerialescategoria')
-            ->where('id', $padreId) // Buscamos por el id del padre, que debe ser idCuenta
-            ->first(); // Obtenemos el primer registro
+    $cuentaPadre = DB::table('treematerialescategoria')
+        ->where('id', $padreId)
+        ->first();
 
-        if ($cuentaPadre) {
-            // Obtener todos los hijos de esa cuenta padre
-            $hijos = DB::table('treematerialescategoria')
-                ->where('padre_id', $padreId) // Buscamos por padre_id
-                ->orderByDesc('SKU') // Ordenar descendente por SKU para obtener el último
-                ->first();
-
-                $obtener=explode('.',$hijos->SKU);
-                foreach($obtener as $ocuenta){
-                    $ultimoHijo = $ocuenta;
-                };
-
-                $concatenar= $ultimoHijo+1;
-            // Generar el nuevo número de cuenta basado en el número de cuenta del padre y la cantidad de hijos
-            $nuevoNumeroHijo = str_pad($ultimoHijo + 1, 2, '0', STR_PAD_LEFT); // Ej: '01', '02', etc.
-
-            // Formatear el número de cuenta (Ej: ##.##.##.##)
-            $nuevoNumeroCuenta = $cuentaPadre->SKU . '.' . $nuevoNumeroHijo;
-
-            return response()->json(['nuevoNumeroCuenta' => $nuevoNumeroCuenta]);
-        }
-
+    if (!$cuentaPadre) {
         return response()->json(['error' => 'No se encontró la cuenta padre.'], 404);
     }
+
+    // Obtener el último hijo
+    $ultimoHijo = DB::table('treematerialescategoria')
+        ->where('padre_id', $padreId)
+        ->orderByDesc('SKU')
+        ->value('SKU'); // solo trae el campo SKU
+
+    if (!$ultimoHijo) {
+        $nuevoNumeroHijo = '01';
+    } else {
+        // Obtener el último segmento después del punto
+        $partes = explode('.', $ultimoHijo);
+        $ultimoNumero = (int) end($partes);
+
+        $nuevoNumeroHijo = str_pad($ultimoNumero + 1, 2, '0', STR_PAD_LEFT);
+    }
+
+    $nuevoNumeroCuenta = $cuentaPadre->SKU . '.' . $nuevoNumeroHijo;
+
+    return response()->json([
+        'nuevoNumeroCuenta' => $nuevoNumeroCuenta
+    ]);
+}
 
 
     public function fillParentCategory()
@@ -740,7 +743,7 @@ private function isDescendant($possibleParentId, $nodeId)
         "Expires"             => "0"
     ];
 
-    $columnas = ['nombre','SKU','depende_SKU','tipo_relacion','maximo','minimo','SKUPADRE'];
+    $columnas = ['nombre','SKU','depende_SKU','tipo_relacion','minimo','formula','sku_final','maximo','SKUPADRE'];
 
     $callback = function () use ($columnas) {
         $file = fopen('php://output', 'w');
@@ -748,8 +751,9 @@ private function isDescendant($possibleParentId, $nodeId)
 
         $fkTienda = session('user_fkTienda') ?? 0;
         // Línea de ejemplo opcional:
-        fputcsv($file, ['CPE ZTE MF266 BL BLANCO','4013453','34015907','requiere',1,0,'01']);
-        fputcsv($file, ['CPE ZTE MF266 BL BLANCO','4013453','34015907','incompatible',1,0,'01']);
+        fputcsv($file, ['BUNDLE ZTE B866V2-H + CONTROL','4018238','1008443','requiere',1,'valor-(usado*5)','34028678',0,'01']);
+        fputcsv($file, ['BUNDLE ZTE B866V2-H + CONTROL','4018238','1008443','incompatible',1,'valor-(usado*5)','34028678',0,'01']);
+        fputcsv($file, ['BUNDLE ZTE B866V2-H + CONTROL','4018238','1008443','calculo',1,'valor-(usado*5)','34028678',0,'01']);
         fclose($file);
     };
 
@@ -834,14 +838,17 @@ if ($request->hasFile('foto_new')) {
         'SKU' => $request->input('cuenta_id_new'),
         'minimo' => $request->input('mi_new') ?? NULL,
         'limite' => $request->input('lm_new') ?? NULL,
-        'fotografia' => $fotografia ?? '',
+        'fotografia' => $ruta ?? '',
         'obs' => $request->input('obs_new') ?? NULL,
         'fkTienda' => session('user_fkTienda'), // Puede ser null
         'created_at' => now(),
         'updated_at' => now(),
     ]);
 
-    $imagen->move(public_path('treematerialesmo'), $nombreImagen);
+    if($fotografia<>""){
+        $imagen->move(public_path('treematerialesmo'), $nombreImagen);
+    }
+
 
 
     // Retornar una respuesta
@@ -865,6 +872,9 @@ public function update(Request $request, Treematerialescategoria $cuentaContable
             'SKU' => $request->cuenta_id_edit,
             'limite' => $request->lm_edit ?? 0,
             'minimo' => $request->mi_edit ?? 0,
+            'tipo' => $request->tipo_edit ?? '',
+            'operacion' => $request->operacion_edit ?? '',
+            'valor' => $request->valor_edit ?? '',
             'obs' => $request->obs_edit ?? ''
         ];
 

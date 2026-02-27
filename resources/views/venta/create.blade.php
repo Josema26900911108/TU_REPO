@@ -42,7 +42,7 @@
                         <div class="col-12">
 
 <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
-    
+
     @foreach($productos as $producto)
         <option value="{{ $producto->id }}"
                 data-img="{{ $producto->img_path }}"
@@ -59,6 +59,9 @@
 
 <button type="button" class="btn btn-primary" id="btnVerProducto">
     Ver
+</button>
+<button type="button" class="btn btn-primary" id="btnBuscarProducto">
+    Buscar
 </button>
 
 
@@ -273,18 +276,22 @@
         </div>
     </div>
 
-    <div class="modal fade" id="modalProducto" tabindex="-1">
+    <div class="modal fade" id="modalBuscarProducto" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
 
       <div class="modal-header">
-        <h5 class="modal-title">Detalle del Producto</h5>
+        <h5 class="modal-title">Busqueda de Producto por categoria</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
       <div class="modal-body text-center">
-        <img id="imgProducto" src="" class="img-fluid mb-3" style="max-height:350px;">
-        <p id="detalleProducto"></p>
+<input type="text" name="searchproducto" id="searchproducto">
+<div name="searchProductoR" id="searchProductoR"></div>
+
+
+
+</select>
       </div>
 
     </div>
@@ -345,6 +352,8 @@
     $(document).ready(function() {
 
 
+    $('#producto_id').selectpicker();
+
 
     document.getElementById("btnVerProducto").addEventListener("click", function() {
 
@@ -356,17 +365,95 @@
             return;
         }
 
-let imagen = selected.dataset.img; // ya no será undefined
-let detalle = selected.dataset.detalle;
-let ruta = "/storage/productos/" + imagen;
+        let imagen = selected.dataset.img; // ya no será undefined
+        let detalle = selected.dataset.detalle;
+        let ruta = "/storage/productos/" + imagen;
 
-document.getElementById("imgProducto").src = ruta;
-document.getElementById("detalleProducto").textContent = detalle;
+        document.getElementById("imgProducto").src = ruta;
+        document.getElementById("detalleProducto").textContent = detalle;
 
         let modal = new bootstrap.Modal(document.getElementById("modalProducto"));
         modal.show();
     });
 
+        document.getElementById("btnBuscarProducto").addEventListener("click", function() {
+
+
+
+        let modal = new bootstrap.Modal(document.getElementById("modalBuscarProducto"));
+        modal.show();
+    });
+
+$('#searchproducto').on('input', function () {
+
+    let search = $(this).val();
+
+    if (search.length < 2) {
+        $('#searchProductoR').html('');
+        return;
+    }
+
+    $.ajax({
+        url: "{{ route('producto.buscarPorCategoria') }}",
+        method: 'GET',
+        data: { search: search },
+        success: function(response) {
+
+            let html = `
+                <table class="table table-hover">
+                    <thead class="bg-primary">
+                        <tr>
+                            <th class="text-white">Código</th>
+                            <th class="text-white">Nombre</th>
+                            <th class="text-white">Stock</th>
+                            <th class="text-white">Descripción</th>
+                            <th class="text-white">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            if (response.length > 0) {
+                response.forEach(function (producto) {
+                    html += `
+                        <tr>
+                            <td>${producto.codigo}</td>
+                            <td>${producto.nombre}</td>
+                            <td>${producto.stock}</td>
+                            <td>${producto.descripcion}</td>
+                            <td>
+<button type="button"
+        class="btn btn-sm btn-primary seleccionar-producto"
+        data-id="${producto.id}">
+    Seleccionar
+</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else {
+                html += `
+                    <tr>
+                        <td colspan="5" class="text-center">
+                            No se encontraron resultados
+                        </td>
+                    </tr>
+                `;
+            }
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            $('#searchProductoR').html(html);
+        },
+        error: function(error) {
+            console.error(error);
+        }
+    });
+
+});
 
         $(document).on('keydown', '.bs-searchbox input', function(event) {
     if (event.keyCode === 13) { // 13 = Enter
@@ -407,6 +494,20 @@ document.getElementById("detalleProducto").textContent = detalle;
     }
 });
 
+$(document).on('click', '.seleccionar-producto', function () {
+    let idProducto = $(this).data('id');
+
+    ProductoSelect(idProducto);
+
+    let modalEl = document.getElementById("modalBuscarProducto");
+    let modal = bootstrap.Modal.getInstance(modalEl);
+
+    if (modal) {
+        modal.hide();
+    }
+});
+
+
 
 // ✅ **Función para cargar todos los clientes al inicio o cuando no hay búsqueda**
 function actualizarClientes() {
@@ -431,7 +532,6 @@ function actualizarClientes() {
         }
     });
 }
-
 
 $('#btn_agregar').click(function() {
     agregarProducto();
@@ -694,6 +794,26 @@ if(nameProducto) {
         }
 
     }
+
+function ProductoSelect(idProducto) {
+
+    let $select = $('#producto_id');
+
+    let id = idProducto.toString().trim();
+
+    // 🔎 Verificar existencia
+    if ($select.find('option[value="' + id + '"]').length === 0) {
+        console.error('Producto no existe en el select:', id);
+        return;
+    }
+
+    // ✅ Seleccionar
+    $select.val(id);
+    $select.selectpicker('refresh');
+    $select.trigger('change');
+}
+
+
 
       function agregarProductoScanner(sku) {
         let dataProducto = "";

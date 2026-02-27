@@ -71,6 +71,18 @@
                         <input type="password" name="password" id="password" class="form-control">
                     </div>
                 </div>
+                                <!----Tienda---->
+                <div class="row mb-4">
+                    <div class="col-sm-4">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fa-solid fa-lock"></i></span>
+                            <input disabled type="text" class="form-control" value="Organización">
+                        </div>
+                    </div>
+                    <div class="col-sm-8">
+                        <input type="text" readonly name="tienda" id="tienda" class="form-control" value="{{ $tienda->Nombre }}">
+                    </div>
+                </div>
 
                 <div class="col text-center">
                     <input class="btn btn-success" type="submit" value="Guardar cambios">

@@ -17,6 +17,9 @@ use App\Models\plantillahtml;
 use Illuminate\Support\Facades\Auth;
 use App\Exports\UniversalExport;
 use Carbon\Carbon;
+
+use function PHPUnit\Framework\returnValue;
+
 class generarPDF extends Controller
 {
     public function generarRecibo()
@@ -35,7 +38,9 @@ class generarPDF extends Controller
 
 public function diarioindex(Request $request)
 {
+    try {
     $fkTienda = session('user_fkTienda');
+
 
     // Lista de cuentas seleccionadas
     $cuentasSeleccionadas = (array) $request->input('cuentas', []);
@@ -117,6 +122,10 @@ public function diarioindex(Request $request)
         'totalDebe',
         'totalHaber'
     ));
+    }catch (\Exception $e) {
+        // Manejo de errores
+        return response()->json(['error' => 'Ocurrió un error al generar el reporte: ' . $e->getMessage()], 500);
+    }
 }
 
 public function exportdiarioExcel(Request $request)
@@ -446,6 +455,7 @@ $HaberFinal=0;
 }
    public function generarMayor(Request $request)
 {
+    try{
     $fkTienda = session('user_fkTienda');
 
 
@@ -588,9 +598,13 @@ $htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
 
     // Finalmente, abrir en el navegador
     return response()->file($rutaArchivo);
+}catch (\Exception $e) {
+    return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+}
 }
    public function generarKardex(Request $request)
 {
+    try{
     $fkTienda = session('user_fkTienda');
 
 
@@ -735,6 +749,9 @@ $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEn
 
     // Finalmente, abrir en el navegador
     return response()->file($rutaArchivo);
+    }catch (\Exception $e) {
+        return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    }
 }
 
 public function fechaHoraEnLetras()
@@ -748,6 +765,7 @@ public function fechaHoraEnLetras()
 
   public function generarBalance(Request $request)
 {
+    try{
     $fkTienda = session('user_fkTienda');
 
     $query = DB::table('plantillahtml as ph')
@@ -892,10 +910,14 @@ public function fechaHoraEnLetras()
     $pdf->save($rutaArchivo);
 
     return response()->file($rutaArchivo);
+    }catch (\Exception $e) {
+     return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    }
 }
 
 public function mayorindex(Request $request)
 {
+    try{
     $fkTienda = session('user_fkTienda');
 
     // Lista de cuentas seleccionadas
@@ -988,6 +1010,9 @@ $HaberFinal=0;
         'totalHaber',
         'SaldoFinal'
     ));
+    }catch (\Exception $e) {
+     return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    }
 }
 public function puntodeequilibrioindex()
 {
@@ -1062,6 +1087,7 @@ function agruparDetalle(array $filas): array
 
 public function KardexInvenarioindex(Request $request)
 {
+    try{
     $fkTienda = session('user_fkTienda');
     $cuentasSeleccionadas = (array) $request->input('producto', []);
 
@@ -1154,6 +1180,9 @@ $values = $debe;
         'values',
         'totalHaber'
     ));
+    }catch (\Exception $e) {
+     return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    }
 }
 
 function renderDetalleOptimizado(
@@ -1328,7 +1357,10 @@ function renderDetalleOptimizado1(
 
    public function generarDiario(Request $request)
 {
+    try {
     $fkTienda = session('user_fkTienda');
+
+
 
     $query = DB::table('plantillahtml as ph')
         ->join('documentdesigns as dd', 'ph.fkDesignDocument', '=', 'dd.id')
@@ -1363,6 +1395,7 @@ function renderDetalleOptimizado1(
         $fechafiltro .= " AND '".$request->fin."'";
         $fechalabel .= " Hasta ".$request->fin;
     }
+
 
     $plantilla = $query->orderBy('ph.updated_at')->first();
 
@@ -1469,10 +1502,15 @@ $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEn
     $pdf->save($rutaArchivo);
 
     return response()->file($rutaArchivo);
+} catch (\Exception $e) {
+  return redirect()->back()
+        ->with('error', 'Ocurrió un error al generar el reporte: ' . $e->getMessage());
+    }
 }
 
 function procesarConsulta($consulta, $tokens)
 {
+    try {
     $consultaprocesada = $consulta;
 
     foreach ($tokens as $token => $valor) {
@@ -1481,9 +1519,21 @@ function procesarConsulta($consulta, $tokens)
     }
 
     return $consultaprocesada;
+    }catch (\Exception $e) {
+
+        // Manejo de errores
+        return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+
+        //    return response()->json([
+        //'success' => false,
+        //'message' => $e->getMessage()
+    //], 500);
+
+    }
 }
 function procesarPlantilla($cab, $htmlDetalle, $pi, $variablesGlobales, $detalle)
 {
+    try{
     foreach ($variablesGlobales as $token => $valor) {
 
         $pattern = '/\{\{\s*' . preg_quote($valor, '/') . '\s*\}\}/';
@@ -1504,9 +1554,16 @@ function procesarPlantilla($cab, $htmlDetalle, $pi, $variablesGlobales, $detalle
     $htmlFinal = $cab . $htmlDetalle . $pi;
 
     return $htmlFinal;
+    }catch (\Exception $e) {
+
+        // Manejo de errores
+        throw new \Exception('Error: ' . $e->getMessage());
+
+    }
 }
 public function ejecutarconsulta($consulta)
     {
+        try {
    $filas = DB::select($consulta);
 
     if (count($filas) == 0) {
@@ -1529,6 +1586,11 @@ public function ejecutarconsulta($consulta)
         "filas"    => $filasArray
     ];
     }
+catch (\Exception $e) {
 
+        // Manejo de errores
+        throw new \Exception('Consulta inválida, es necesario seleccionar fecha incial y final. Detalle: ');
 
+    }
+    }
 }

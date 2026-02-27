@@ -155,6 +155,13 @@ Route::get('/dashboardcompra/exportcompra-excel', [DashboardController::class, '
 Route::post('productos/importar', [compraController::class, 'storeMasivo'])
     ->name('productos.importar.procesar');
 
+    Route::get('/buscarProducto', [ProductoController::class, 'buscarProducto'])
+    ->name('producto.buscarPorCategoria');
+
+    Route::get('/producto/{id}', [ProductoController::class, 'shows']);
+
+
+
 // Descargar plantilla Excel
 Route::get('productos/importar/plantilla', [compraController::class, 'descargarPlantilla'])
     ->name('productos.importar.plantilla');
@@ -275,6 +282,8 @@ Route::post('/update', [CuentaContableController::class, 'update'])->name('updat
 route::get('/etadirect',[etadirectController::class,'index'])->name('etadirect.lista');
 Route::get('/etadirect-formatoEta',[etadirectController::class,'descargarFormeta'])->name('etadirect.formeta');
 Route::post('/etadirect-JoboCommand',[etadirectController::class,'JoboCommand'])->name('etadirect.JoboCommand');
+Route::post('/etadirect-AutomataValidarMamo',[etadirectController::class,'AutomataValidarMamo'])->name('etadirect.AutomataValidarMamo');
+Route::post('/etadirect-AutomataValidarMamoOrden',[etadirectController::class,'AutomataValidarMamoOrden'])->name('etadirect.AutomataValidarMamoOrden');
 Route::post('/etadirect/importar',[etadirectController::class,'importarMAMO'])->name('etadirect.importar');
 Route::post('/exportar-etadirect', [etadirectController::class, 'exportar'])->name('etadirect.exportar');
 

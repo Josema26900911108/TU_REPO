@@ -9,8 +9,12 @@ use App\Models\Marca;
 use App\Models\Presentacione;
 use App\Models\Producto;
 use Exception;
+use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use PhpParser\Node\Stmt\TryCatch;
+
+
 
 class ProductoController extends Controller
 {
@@ -51,6 +55,59 @@ class ProductoController extends Controller
     return view('producto.index', compact('productos'));
 }
 
+public function shows($id)
+{
+    return Producto::findOrFail($id);
+}
+
+
+public function buscarProducto(HttpRequest $request)
+{
+    try {
+        $fkTienda = session('user_fkTienda');
+    $Estatus = session('user_estatus');
+    $search = '%'.$request->input('search').'%';
+
+    $sql = "
+ WITH productosearch AS (
+    select distinct p.id, p.codigo, p.nombre, p.stock, p.descripcion, c.nombre as cat
+    from productos p
+    inner join categoria_producto cp on cp.producto_id = p.id
+    inner join categorias cat on cp.categoria_id = cat.id
+    inner join caracteristicas c on cat.caracteristica_id = c.id
+    where c.nombre like ? and p.fkTienda = ?
+
+    union all
+
+    select p.id, p.codigo, p.nombre, p.stock, p.descripcion, c.nombre as cat
+    from productos p
+    inner join categoria_producto cp on cp.producto_id = p.id
+    inner join categorias cat on cp.categoria_id = cat.id
+    inner join caracteristicas c on cat.caracteristica_id = c.id
+    where p.descripcion like ? and p.fkTienda = ?
+
+    union all
+
+    select p.id, p.codigo, p.nombre, p.stock, p.descripcion, c.nombre as cat
+    from productos p
+    inner join categoria_producto cp on cp.producto_id = p.id
+    inner join categorias cat on cp.categoria_id = cat.id
+    inner join caracteristicas c on cat.caracteristica_id = c.id
+    where c.descripcion like ? and p.fkTienda = ?
+)
+select distinct id, codigo, nombre, stock, descripcion from productosearch;
+
+";
+
+$productos = DB::select($sql, [$search, $fkTienda, $search, $fkTienda, $search, $fkTienda]);
+
+return $productos;
+
+
+    } catch (Exception $e) {
+        return redirect()->back()->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
+    }
+    }
 
     /**
      * Show the form for creating a new resource.

@@ -4,11 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller; // Asegúrate de que esta línea esté presente
 
-use App\Models\Materialmanoobra;
 use Illuminate\Http\Request;
-use App\Http\Requests\StorePersonaRequest;
-use App\Http\Requests\UpdateClienteRequest;
-use App\Http\Requests\StoreClienteExistenteRequest;
 use App\Http\Requests\UpdateTecnicoRequest;
 use App\Models\Cliente;
 use App\Models\User;
@@ -18,7 +14,6 @@ use App\Models\Expedientetecnico;
 use App\Models\Persona;
 use App\Models\Pagotecnico;
 use App\Models\Tienda;
-use App\Models\usuariotienda;
 use App\Models\Expedientefotograficotecnico;
 use Carbon\Carbon;
 use Exception;
@@ -31,11 +26,8 @@ use Spatie\Permission\Models\Role;
 use Intervention\Image\ImageManager;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Drivers\Gd\Driver; // Import GD driver
-use Intervention\Image\Encoders\WebpEncoder; // Import WebP encoder
-use App\Http\Controllers\movimientomaterialesController;
+use Intervention\Image\Encoders\WebpEncoder;
 use App\Models\Tecnico;
-use PhpParser\Node\ArrayItem;
-use PhpParser\Node\Expr\AssignOp\Concat;
 use Illuminate\Pagination\Paginator;
 use Yajra\DataTables\DataTables;
 
@@ -841,25 +833,25 @@ public function fetchrelacionS(Request $request)
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)
             ->where('Status','S')
             ->whereBetween('FECHAINSTALACION',[$fechain, $fechafin])
-            ->paginate(10);
+            ->paginate(25);
 
                 } else {
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)
             ->where('Status','S')
             ->whereBetween('FECHAINSTALACION',[$fechain, $fechafin])
-            ->paginate(10);
+            ->paginate(25);
                 };
                     }else{
                 if ($Estatus == 'ER') {
 
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)
             ->where('Status','S')
-            ->where('fkTecnico',$idtecnico)->paginate(100000);
+            ->where('fkTecnico',$idtecnico)->paginate(25);
 
                 } else {
             $relacion=Expedientetecnico::where('fkTienda',$fkTienda)
             ->where('Status','S')
-            ->where('fkTecnico',$idtecnico)->paginate(100000);
+            ->where('fkTecnico',$idtecnico)->paginate(25);
                 };
                     }
 

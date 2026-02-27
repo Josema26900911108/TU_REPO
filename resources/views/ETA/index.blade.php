@@ -94,16 +94,29 @@
                             </td>
 
                                  <td>
-                        <form action="{{ route('etadirect.JoboCommand') }}" method="POST" enctype="multipart/form-data">
+                        <form action="{{ route('etadirect.AutomataValidarMamo') }}" method="POST" enctype="multipart/form-data">
                             @csrf
 
 
+                            Orden
+                            <input type="text" id="Orden" name="Orden">
                             <label for="fechaincio">Fecha Inicio:</label>
                             <input type="date" name="fechaincio" id="fechaincio" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
+
                             <label for="fechafin">Fecha Fin:</label>
                             <input type="date" name="fechafin" id="fechafin" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
 
 <button type="submit" class="btn btn-success">Trabajar Lotes</button>
+
+                        </form>
+
+                            </td>
+                                                             <td>
+                        <form action="{{ route('etadirect.AutomataValidarMamoOrden') }}" method="POST" enctype="multipart/form-data">
+                            @csrf
+                            Orden
+                            <input type="text" id="Orden" name="Orden">
+                            <button type="submit" class="btn btn-success">Revisar orden</button>
 
                         </form>
 
@@ -320,7 +333,7 @@ window.fillRelacionInv = function(page = 1) {
     $.ajax({
         url: "{{ route('fetchinvtabla') }}",
         method: 'GET',
-        data: { id: id, page : page, count: 1000000 },
+        data: { id: id, page : page },
         success: function(data) {
             $('#tabla_materialesinv_container').html(data);
             console.log('Tabla inventario cargada, inicializando DataTable...');

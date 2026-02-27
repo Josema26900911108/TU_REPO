@@ -18,8 +18,9 @@
         "laravel/tinker": "^2.7",
         "maatwebsite/excel": "3.1.63",
         "milon/barcode": "^11.0",
+        "mossadal/math-parser": "^1.3",
         "spatie/laravel-permission": "^6.0",
-        "symfony/expression-language": "^7.1",
+        "symfony/expression-language": "^7.4",
         "yajra/laravel-datatables-oracle": "^10.11"
     },
     "require-dev": {

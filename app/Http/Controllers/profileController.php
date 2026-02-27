@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Tienda;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
@@ -24,7 +25,9 @@ class profileController extends Controller
     public function index()
     {
         $user = User::find(Auth::user()->id);
-        return view('profile.index', compact('user'));
+        $fkTienda = session('user_fkTienda');
+        $tienda=Tienda::find($fkTienda);
+        return view('profile.index', compact('user', 'tienda'));
     }
 
     /**
