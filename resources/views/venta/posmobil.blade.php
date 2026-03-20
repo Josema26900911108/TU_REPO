@@ -16,242 +16,7 @@
 
 @push('css')
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
 <script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
-<script src="{{ asset('js/quagga.min.js') }}"></script>
-
-     <script type="text/javascript">
-            navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
-            window.URL = window.URL || window.webkitURL || window.mozURL || window.msURL;
-
-            function getUserMedia(constraints, success, failure) {
-                navigator.getUserMedia(constraints, function(stream) {
-                    var videoSrc = (window.URL && window.URL.createObjectURL(stream)) || stream;
-                    success.apply(null, [videoSrc]);
-                }, failure);
-            }
-
-
-            function initCamera(constraints, video, callback) {
-                getUserMedia(constraints, function (src) {
-                    video.src = src;
-                    video.addEventListener('loadeddata', function() {
-                        var attempts = 10;
-
-                        function checkVideo() {
-                            if (attempts > 0) {
-                                if (video.videoWidth > 0 && video.videoHeight > 0) {
-                                    console.log(video.videoWidth + "px x " + video.videoHeight + "px");
-                                    video.play();
-                                    callback();
-                                } else {
-                                    window.setTimeout(checkVideo, 100);
-                                }
-                            } else {
-                                callback('Unable to play video stream.');
-                            }
-                            attempts--;
-                        }
-
-                        checkVideo();
-                    }, false);
-                }, function(e) {
-                    console.log(e);
-                });
-            }
-
-            function copyToCanvas(video, ctx) {
-                ( function frame() {
-                    ctx.drawImage(video, 0, 0);
-                    window.requestAnimationFrame(frame);
-                }());
-            }
-
-            window.addEventListener('load', function() {
-                var constraints = {
-                            video: {
-                                mandatory: {
-                                    minWidth: 1280,
-                                    minHeight: 720
-                                }
-                            }
-                        },
-                        video = document.createElement('video'),
-                        canvas = document.createElement('canvas');
-
-                document.body.appendChild(video);
-                document.body.appendChild(canvas);
-
-                initCamera(constraints, video, function() {
-                    canvas.setAttribute('width', video.videoWidth);
-                    canvas.setAttribute('height', video.videoHeight);
-                    copyToCanvas(video, canvas.getContext('2d'));
-                });
-            }, false);
-
-
-        </script>
-
-<script>
-
-let html5QrCode = null;
-let escaneando = false;
-let escaneandoBarra = false;
-
-function iniciarScannerBarras() {
-    if (escaneandoBarra) return;
-
-    Quagga.init({
-        inputStream: {
-            name: "Live",
-            type: "LiveStream",
-            target: document.querySelector('#reader'), // Tu div
-            constraints: {
-                width: { min: 640 },
-                height: { min: 480 },
-                facingMode: "environment",
-                aspectRatio: { min: 1, max: 2 }
-            },
-        },
-        locator: {
-            patchSize: "medium",
-            halfSample: true
-        },
-        numOfWorkers: 2,
-        decoder: {
-            // Aquí defines los formatos de barras exactos
-            readers: ["ean_reader", "code_128_reader", "ean_8_reader", "upc_reader"]
-        },
-        locate: true
-    }, function(err) {
-        if (err) {
-            console.error(err);
-            return;
-        }
-        Quagga.start();
-        escaneandoBarra = true;
-    });
-
-    // Evento cuando detecta un código
-    Quagga.onDetected(function(result) {
-        let codigo = result.codeResult.code;
-        console.log("Código de barras detectado:", codigo);
-
-        // Evitar lecturas múltiples seguidas (debounce)
-        if (codigo) {
-            if (navigator.vibrate) navigator.vibrate(100);
-
-            // Llamas a tu función de Laravel
-            buscarProductoPorCodigo(codigo);
-
-            // Detener después de leer (opcional)
-            detenerQuagga();
-        }
-    });
-}
-
-function detenerQuagga() {
-    Quagga.stop();
-    escaneandoBarra = false;
-    document.querySelector('#reader').innerHTML = "";
-}
-
-
-
-
-function iniciarScanner(tipo = "barra") {
-    if (escaneando) {
-        console.warn("El escáner ya está en ejecución.");
-        return;
-    }
-
-    // Validar si la librería cargó correctamente
-    if (typeof Html5Qrcode === 'undefined') {
-        alert("Error: La librería de la cámara no se ha cargado. Revisa tu conexión HTTPS.");
-        return;
-    }
-
-    // Instanciar el objeto en el div con id="reader"
-    html5QrCode = new Html5Qrcode("reader");
-    escaneando = true;
-
-    // 2. Configuración optimizada para Códigos de Barras (1D)
-    const config = {
-        fps: 20, // Velocidad de captura (más alto ayuda a enfocar barras)
-        qrbox: tipo === "barra"
-            ? { width: 300, height: 150 } // Rectángulo horizontal para barras
-            : { width: 250, height: 250 }, // Cuadrado para QR
-        aspectRatio: 1.777778, // Proporción 16:9 de celulares modernos
-        formatsToSupport: [
-            "ean_13", "code_128", "ean_8", "upc_a", "upc_e", "qr_code"
-        ],
-        experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true // Usa aceleración por hardware
-        }
-    };
-
-    // 3. Configuración de Cámara (Resolución y Enfoque)
-    const cameraConfig = {
-        facingMode: "environment" // Fuerza la cámara trasera
-    };
-
-    // Iniciar la cámara
-    html5QrCode.start(
-        cameraConfig,
-        config,
-        (codigo) => {
-            // ÉXITO: Código detectado
-            console.log("Lectura exitosa:", codigo);
-
-            // Vibración (solo en Android/Chrome con HTTPS)
-            if (navigator.vibrate) navigator.vibrate(100);
-
-            if (tipo === "barra") {
-                buscarProductoPorCodigo(codigo); // Tu función de Laravel
-            } else {
-                agregarProducto(codigo); // Tu función de Laravel
-            }
-
-            // OPCIONAL: Detener después de una lectura exitosa
-            // StopScanner();
-        },
-        (error) => {
-            // Errores de "No se encontró código en este frame" (silenciados)
-        }
-    ).catch(err => {
-        console.error("Error al iniciar cámara:", err);
-        escaneando = false;
-        html5QrCode = null;
-        alert("No se pudo acceder a la cámara. Asegúrate de usar HTTPS.");
-    });
-}
-
-/**
- * Detiene la cámara y limpia el contenedor
- */
-function StopScanner() {
-    if (!html5QrCode || !escaneando) {
-        console.log("No hay escáner activo para detener.");
-        return;
-    }
-
-    html5QrCode.stop()
-        .then(() => {
-            console.log("Scanner detenido.");
-            escaneando = false;
-            // Limpia el div para que no quede el cuadro negro
-            const readerDiv = document.getElementById("reader");
-            if (readerDiv) readerDiv.innerHTML = "";
-            html5QrCode = null;
-        })
-        .catch(err => {
-            console.error("Error al intentar detener:", err);
-            // Reset forzado en caso de error
-            escaneando = false;
-            html5QrCode = null;
-        });
-}
-</script>
 
 <style>
 body {
@@ -392,7 +157,7 @@ h6 {
             <rect x="12" y="8" width="1" height="1"/>
             </svg>
         </button>
-        <button onclick="iniciarScannerBarras()" class="btn btn-secundary">
+        <button onclick="iniciarScanner('barra')" class="btn btn-secundary">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
             <rect x="1" y="2" width="1" height="12"/>
             <rect x="3" y="2" width="2" height="12"/>
@@ -411,7 +176,7 @@ h6 {
         </button>
     </div>
     <div id="reader" style="width:100%"></div>
-
+    <div id="readerbarra" style="width:100%"></div>
 
 <form id="formVenta" action="{{ route('ventas.storemobile') }}" method="POST">
     @csrf
@@ -511,7 +276,8 @@ document.getElementById("guardar").addEventListener("click", function () {
     form.submit();
 });
 
-
+let scanner = null;
+let escaneando = false;
 
     document.querySelectorAll(".card").forEach(card => {
 
@@ -664,6 +430,63 @@ document.getElementById("buscarInput").addEventListener("keyup", function() {
     }, 300);
 
 });
+function iniciarScanner(tipo = "barra") {
 
+    if (escaneando) return;
+
+    scanner = new Html5Qrcode("reader");
+
+    escaneando = true;
+
+    scanner.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: tipo === "barra"
+                ? { width: 250, height: 150 }
+                : 250
+        },
+
+        (codigo) => {
+
+            console.log("Código ver:", codigo);
+
+                    Swal.fire({
+    icon: 'warning',
+    title: 'Stock insuficiente',
+    text: 'Se escaneo el valor: ' + codigo
+});
+
+            if (tipo === "barra") {
+                buscarProductoPorCodigo(codigo);
+            } else {
+                agregarProducto(codigo);
+            }
+
+
+            // 🔥 si quieres escaneo continuo → NO detener aquí
+            // scanner.stop();
+        },
+
+        (error) => {
+            // ignorar errores
+        }
+    );
+}
+
+function StopScanner() {
+
+    if (!scanner || !escaneando) return;
+
+    scanner.stop()
+    .then(() => {
+        console.log("Scanner detenido");
+        escaneando = false;
+        scanner = null;
+    })
+    .catch(err => {
+        console.error("Error al detener:", err);
+    });
+}
 </script>
 @endsection
