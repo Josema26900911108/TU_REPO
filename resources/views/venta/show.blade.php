@@ -50,7 +50,7 @@
                 <div class="col-sm-6">
                     <div class="input-group">
                         <span title="Tipo de comprobante" id="icon-form" class="input-group-text"><i class="fa-solid fa-file"></i></span>
-                        <input disabled type="text" class="form-control" value="{{$venta->comprobante->tipo_comprobante}}">
+                        <input disabled type="text" class="form-control" value="{{$venta->comprobante->tipo_comprobante  || 0}}">
                     </div>
                 </div>
             </div>
