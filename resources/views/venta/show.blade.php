@@ -66,7 +66,7 @@
                 <div class="col-sm-6">
                     <div class="input-group">
                         <span title="Número de comprobante" id="icon-form" class="input-group-text"><i class="fa-solid fa-hashtag"></i></span>
-                        <input disabled type="text" class="form-control" value="{{$venta->numero_comprobante}}">
+                        <input disabled type="text" class="form-control" value="{{$venta->numero_comprobante || 0}}">
                     </div>
                 </div>
             </div>
