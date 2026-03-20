@@ -187,7 +187,8 @@ h6 {
     <div class="card"
             data-precio="{{ $item->precio_venta }}"
             data-id="{{ $item->id }}"
-            id="producto-{{ $item->id }}">
+            data-codigo="{{ $item->codigo }}"
+            id="producto-{{ $item->codigo }}">
 
             <div class="title">{{ $item->nombre." - ".$item->codigo }}</div>
             <div class="price">
@@ -394,6 +395,7 @@ function agregarProducto(idProducto) {
     let modal = bootstrap.Modal.getInstance(document.getElementById('modalBuscar'));
     modal.hide();
     qtyInput.focus();
+    StopScanner();
 }
 let timeout = null;
 
@@ -451,14 +453,17 @@ function iniciarScanner(tipo = "barra") {
 
             console.log("Código ver:", codigo);
 
+            StopScanner();
+
                     Swal.fire({
     icon: 'warning',
-    title: 'Stock insuficiente',
-    text: 'Se escaneo el valor: ' + codigo
+    title: 'Se ha seleccionado un producto',
+    text: 'Codigo: ' + codigo,
+
 });
 
             if (tipo === "barra") {
-                buscarProductoPorCodigo(codigo);
+                agregarProducto(codigo);
             } else {
                 agregarProducto(codigo);
             }
