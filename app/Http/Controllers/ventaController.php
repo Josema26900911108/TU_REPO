@@ -173,23 +173,26 @@ $productos = User::select('users.id', 'users.name')
 
 
     // Consulta base agrupada por fecha
-    $query = Venta::select(
-            DB::raw("DATE_FORMAT(created_at, '%d/%m/%Y') as fecha"),
-            DB::raw("SUM(total) as total")
-        )
-        ->where('fkTienda', $fkTienda)
-        ->groupBy(DB::raw("DATE_FORMAT(created_at, '%d/%m/%Y')"))
-        ->orderBy(DB::raw("DATE(created_at)"));
+$query = Venta::select(
+        DB::raw("DATE_FORMAT(ventas.created_at, '%d/%m/%Y') as fecha"),
+        DB::raw("SUM(ventas.total) as total")
+    )
+    // Hacemos el join con devoluciones_venta
+    ->join('devoluciones_venta', 'ventas.id', '=', 'devoluciones_venta.venta_id')
+    ->where('ventas.fkTienda', $fkTienda)
+    ->groupBy(DB::raw("DATE_FORMAT(ventas.created_at, '%d/%m/%Y')"))
+    ->orderBy(DB::raw("DATE(ventas.created_at)"));
 
-    // Filtro fecha inicio
-    if ($request->inicio) {
-        $query->whereDate('created_at', '>=', $request->inicio);
-    }
+// Filtro fecha inicio (especificando tabla ventas)
+if ($request->inicio) {
+    $query->whereDate('ventas.created_at', '>=', $request->inicio);
+}
 
-    // Filtro fecha fin
-    if ($request->fin) {
-        $query->whereDate('created_at', '<=', $request->fin);
-    }
+// Filtro fecha fin (especificando tabla ventas)
+if ($request->fin) {
+    $query->whereDate('ventas.created_at', '<=', $request->fin);
+}
+    
 
 if (!empty($productosSeleccionados) && !in_array(0, $productosSeleccionados)) {
     $query->whereIn('user_id', $productosSeleccionados);
@@ -752,7 +755,7 @@ public function CCstoremobile(Request $request)
 
         return response()->json(['error' => 'Error al al realizar la venta.'.$e->getMessage()], 500);
 
-        
+
     }
 }
         public function store(StoreVentaRequest $request)
