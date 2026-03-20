@@ -8,13 +8,17 @@ use Illuminate\Support\Facades\DB;
 use Exception;
 use Illuminate\Http\Request;
 use App\Models\CuentaContable;
-use SebastianBergmann\LinesOfCode\Counter;
+use Illuminate\Support\Facades\Auth;
 
 class ArbolMaterialesController extends Controller
 {
     public function index()
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             $ver=session('user_fkTienda');
             $ver2 = DB::table('arbolmaterial')
             ->where('fkTienda', $ver) // Obtener hijos
@@ -319,6 +323,11 @@ public function add(Request $request)
 public function update(Request $request, Arbolmateriales $cuentaContable)
     {
         try {
+
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
             $fkTienda = session('user_fkTienda');
 
 $request->validate([

@@ -64,11 +64,19 @@
 
                         <!-----Producto---->
                         <div class="col-12">
-                            <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="1" title="Busque un producto aquí">
-                                @foreach ($productos as $item)
-                                <option value="{{$item->id}}-{{$item->stock}}-{{$item->precio_venta}}">{{$item->codigo.' '.$item->nombre}}</option>
-                                @endforeach
-                            </select>
+<select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
+
+    @foreach($productos as $producto)
+        <option value="{{ $producto->id }}"
+                data-img="{{ $producto->img_path }}"
+                data-stock="{{ $producto->stock }}"
+                data-precio="{{ $producto->precio_venta }}"
+                data-detalle="{{ $producto->descripcion }}">
+            {{ $producto->nombre }}
+        </option>
+    @endforeach
+
+</select>
                         </div>
 
                         <!-----Stock--->
@@ -643,17 +651,11 @@ $('#producto_id').change(mostrarValores);
             }
 
         var ventacabecera = @json($ventacabecera);
-        // Suponiendo que ventacabecera tiene objetos con la propiedad 'producto_id' como identificador único
-var ventacabeceraUnico = ventacabecera.filter((value, index, self) =>
-    index === self.findIndex((t) => (
-        t.id === value.id  // Comparar por producto_id
-    ))
-);
-
-console.log(ventacabeceraUnico); // Ahora 'ventacabeceraUnico' debería contener solo objetos únicos
 
 
-ventacabeceraUnico.forEach(function(item) {
+
+
+ventacabecera.forEach(function(item) {
 idventacabecera=item.idventa;
         let idProducto=item.producto_id;
         let cantidad=item.cantidad;
@@ -678,6 +680,7 @@ idventacabecera=item.idventa;
                     sumadocdb=round(total);
                     subiva[cont]=CalcularFormula(formula,subtotal[cont]);
                     resultadoiva=CalcularFormula(formula,total);
+
                     IVA = resultadoiva;
                     //Crear la fila
                     let fila = '<tr id="fila' + cont + '">' +
@@ -868,12 +871,16 @@ let haberacumb=0;
         }
 
     }
-
-    function eliminarProducto(indice) {
+function eliminarProducto(indice) {
         //Calcular valores
-        sumas -= round(subtotal[indice]);
-        IVA = round(sumas / 100 * impuesto);
-        total = round(sumas + IVA);
+        sumas -= round(Cantidad[indice]);
+
+
+
+        total -= round(subtotal[indice]);
+        IVA=CalcularFormula(formula,total);
+
+        sumarArreglos(formulas,monto);
 
         //Mostrar los campos calculados
         $('#sumas').html(sumas);
@@ -888,6 +895,8 @@ let haberacumb=0;
 
         disableButtons();
     }
+
+
     function eliminarCC(indice) {
 
         //Eliminar el fila de la tabla

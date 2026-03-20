@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Documento;
 use App\Models\Persona;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -33,7 +34,11 @@ class materialmanoobraController extends Controller
     public function index()
     {
 
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $fkTienda = session('user_fkTienda');
+
         $Estatus = session('user_estatus');
 
                 if ($Estatus == 'ER') {
@@ -51,7 +56,10 @@ class materialmanoobraController extends Controller
 
     public function show($id)
     {
-        // Lógica para mostrar un cliente específico
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cliente = Cliente::find($id);
         return redirect()->route('clientes.index')->with('success', 'Cliente registrado');
     }
@@ -151,6 +159,9 @@ public function importarMAMO(Request $request)
     public function exist(StoreClienteExistenteRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
             DB::beginTransaction();
 
             // Buscar la persona existente
@@ -175,6 +186,9 @@ public function importarMAMO(Request $request)
 
     public function edit(Cliente $cliente)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $cliente->load('persona.documento');
         $documentos = Documento::all();
         return view('cliente.edit', compact('cliente', 'documentos'));
@@ -183,6 +197,9 @@ public function importarMAMO(Request $request)
     public function update(UpdateClienteRequest $request, Cliente $cliente)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
             DB::beginTransaction();
             Persona::where('id', $cliente->persona->id)
                 ->update($request->validated());
@@ -198,6 +215,9 @@ public function importarMAMO(Request $request)
 
     public function obtenerClientes()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $clientes = Cliente::select('id', 'persona_id')
         ->get();
         return response()->json($clientes);
@@ -205,6 +225,10 @@ public function importarMAMO(Request $request)
 
     public function listaClientes(Request $request)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $query = Cliente::with('persona')->orderBy('persona.nombre', 'asc');
 
         if ($request->has('search')) {
@@ -221,7 +245,9 @@ public function importarMAMO(Request $request)
     public function destroy(string $id)
     {
         try {
-
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
             Materialmanoobra::destroy('id',$id);
 
             return redirect()->route('materialmanoobra.index')->with('success', 'Eliminado Exitosamente');

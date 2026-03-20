@@ -99,7 +99,7 @@ Route::get('/arqueocaja/compras/{arqueocaja}', [ArqueoCajaController::class, 'co
 Route::get('/arqueocaja/ventas/{ventas}', [ArqueoCajaController::class, 'ventas'])->name('arqueocaja.ventas');
 
 Route::get('/arqueocaja/cobrarventas/{ventas}', [ArqueoCajaController::class, 'cobrarventas'])->name('arqueocaja.cobrarventas');
-
+Route::get('/arqueoc/cobventasdirecta/', [ArqueoCajaController::class, 'cobrarventasdir'])->name('arqueocaja.cobventasdir');
 
 Route::get('/login',[loginController::class,'index'])->name('login');
 Route::post('/login',[loginController::class,'login']);
@@ -114,18 +114,32 @@ Route::post('/arqueocaja/store/{arqueocaja}', [ArqueoCajaController::class, 'sto
 Route::post('/venta/storeCC', [ventaController::class, 'storeCC'])->name('ventas.storeCC');
 Route::get('/ventas/cobrarventas/{ventas}', [ventaController::class, 'cobrarventas'])->name('ventas.cobrarventas');
 
+Route::get('/ventas/posmobile/{idcliente}', [ventaController::class, 'posmobile'])->name('ventas.posmobile');
+Route::get('/vent/buscarmobile', [ventaController::class, 'buscar'])
+    ->name('vent.buscarmobile');
+Route::post('/mobilevent/storemobile', [ventaController::class, 'storemobile'])->name('ventas.storemobile');
+Route::post('/CCventmobile', [ventaController::class, 'CCstoremobile'])->name('CCvent.CCstoremobile');
 
+Route::get('/ventas/{venta}', [ventaController::class, 'show'])->name('ventas.show');
 
-Route::get('export/ventas', [VentaController::class, 'exportVentas']);
-//Route::get('ventas/reporte', [VentaController::class, 'ventasReporte'])->name('ventas.ventasreporte');
+Route::get('/mobileventas/posmobileCierre/{idcliente}', [ventaController::class, 'posmobileCierre'])->name('vent.posmobileCierre');
+
+Route::get('export/ventas', [ventaController::class, 'exportVentas']);
+//Route::get('ventas/reporte', [ventaController::class, 'ventasReporte'])->name('ventas.ventasreporte');
 //Reportes
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
 Route::get('/dashboard/export-excel', [DashboardController::class, 'exportExcel'])
     ->name('dashboard.export.excel');
 
-Route::get('/venta/ventasreporte', [VentaController::class, 'ventasReporte'])
+Route::get('/devdashboard/devexport-excel', [DashboardController::class, 'DevexportExcel'])
+    ->name('Devexport.excel');
+
+Route::get('/venta/ventasreporte', [ventaController::class, 'ventasReporte'])
     ->name('ventas.ventasreporte');
+
+Route::get('/devolucionventa/devolucionreporte', [ventaController::class, 'devolucionventasReporte'])
+    ->name('devvent.devolucionventasreporte');
 
     Route::get('/compra/comprasreporte', [compraController::class, 'comprasReporte'])
     ->name('compra.comprareporte');
@@ -159,7 +173,6 @@ Route::post('productos/importar', [compraController::class, 'storeMasivo'])
     ->name('producto.buscarPorCategoria');
 
     Route::get('/producto/{id}', [ProductoController::class, 'shows']);
-
 
 
 // Descargar plantilla Excel

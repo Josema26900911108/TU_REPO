@@ -9,12 +9,14 @@ use Exception;
 use GuzzleHttp\Psr7\Message;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Crypt;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+
 class userController extends Controller
 {
     function __construct()
@@ -29,6 +31,8 @@ class userController extends Controller
      */
     public function getTiendasByEmail(Request $request)
     {
+             
+
         $email = $request->email;
 
         // Verificar que el correo electrónico no esté vacío
@@ -58,6 +62,10 @@ class userController extends Controller
     }
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $users = User::all();
         return view('user.index', compact('users'));
     }
@@ -77,6 +85,10 @@ class userController extends Controller
     public function store(StoreUserRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             $fkTienda = session('user_fkTienda');
             DB::beginTransaction();
 
@@ -131,6 +143,10 @@ class userController extends Controller
      */
     public function edit(User $user)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $roles = Role::all();
         return view('user.edit', compact('user', 'roles'));
     }
@@ -141,6 +157,10 @@ class userController extends Controller
     public function update(UpdateUserRequest $request, User $user)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         DB::beginTransaction();
 
         $data = $request->all();
@@ -181,6 +201,10 @@ class userController extends Controller
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $user = User::find($id);
 
         //Eliminar rol

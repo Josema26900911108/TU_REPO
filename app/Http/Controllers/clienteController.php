@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Documento;
 use App\Models\Persona;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -31,7 +32,9 @@ class clienteController extends Controller
     public function index()
     {
 
-
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
         $clientes = Cliente::with('persona.documento')->get();
 
@@ -40,12 +43,20 @@ class clienteController extends Controller
     }
     public function show($id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         // Lógica para mostrar un cliente específico
         $cliente = Cliente::find($id);
         return redirect()->route('clientes.index')->with('success', 'Cliente registrado');
     }
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $documentos = Documento::all();
         return view('cliente.create', compact('documentos'));
     }
@@ -53,6 +64,10 @@ class clienteController extends Controller
     public function store(StorePersonaRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $persona = Persona::create($request->validated());
             $persona->cliente()->create([
@@ -71,6 +86,11 @@ class clienteController extends Controller
     public function exist(StoreClienteExistenteRequest $request)
     {
         try {
+
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 
             // Buscar la persona existente
@@ -95,6 +115,10 @@ class clienteController extends Controller
 
     public function edit(Cliente $cliente)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cliente->load('persona.documento');
         $documentos = Documento::all();
         return view('cliente.edit', compact('cliente', 'documentos'));
@@ -103,6 +127,10 @@ class clienteController extends Controller
     public function update(UpdateClienteRequest $request, Cliente $cliente)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             Persona::where('id', $cliente->persona->id)
                 ->update($request->validated());
@@ -118,6 +146,10 @@ class clienteController extends Controller
 
     public function obtenerClientes()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $clientes = Cliente::select('id', 'persona_id')
         ->get();
         return response()->json($clientes);
@@ -125,6 +157,10 @@ class clienteController extends Controller
 
     public function listaClientes(Request $request)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $query = Cliente::with('persona')->orderBy('persona.nombre', 'asc');
 
         if ($request->has('search')) {
@@ -141,6 +177,10 @@ class clienteController extends Controller
     public function destroy(string $id)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             $persona = Persona::findOrFail($id);
             $nuevoEstado = $persona->estado == 1 ? 0 : 1;
             $mensaje = $nuevoEstado == 0 ? 'Cliente desactivado' : 'Cliente reactivado';

@@ -10,7 +10,7 @@ use App\Models\Tienda;
 use Exception;
 use Illuminate\Support\Facades\DB;
 use App\Models\Comprobante;
-
+use Illuminate\Support\Facades\Auth;
 class CashRegisterController extends Controller
 {
     function __construct()
@@ -25,6 +25,10 @@ class CashRegisterController extends Controller
      */
     public function index()
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
@@ -48,6 +52,10 @@ class CashRegisterController extends Controller
     }
     public function mostrarDetalles($idComprobante)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
         // Obtener el comprobante seleccionado
         $comprobante = Comprobante::with(['detalles' => function ($query) {
             $query->with('cuentaContable'); // Cargar cuentas contables
@@ -63,11 +71,19 @@ class CashRegisterController extends Controller
 
     public function create()
     {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $tiendas=Tienda::all();
         return view('cash_register.create',compact('tiendas'));
     }
     public function update(UpdateCashRegisterRequest $request, cash_registers $cash)
     {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $ver=$cash->id;
 
         cash_registers::where('id', $cash->id)
@@ -77,6 +93,11 @@ class CashRegisterController extends Controller
     }
     public function close(Request $request, $id)
     {
+
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cashRegister = cash_registers::findOrFail($id);
         $cashRegister->closing_amount = $request->input('closing_amount');
         $cashRegister->closed_at = now();
@@ -97,6 +118,10 @@ class CashRegisterController extends Controller
 
     public function destroy(string $id)
     {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         cash_registers::where('id', $id)->delete();
 
         return redirect()->route('cash.index')->with('success', 'Caja Eliminada correctamente.');
@@ -106,6 +131,11 @@ class CashRegisterController extends Controller
     {
 
         try {
+
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
             DB::beginTransaction();
 
             $ver=$request->validated();

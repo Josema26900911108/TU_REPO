@@ -14,6 +14,7 @@ use GuzzleHttp\Promise\Create;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Database\Seeders\DatosestaticosSeeder;
 use Dom\Document;
+use Illuminate\Support\Facades\Auth;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 
@@ -33,6 +34,10 @@ class tiendaController extends Controller
      */
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda=session('user_fkTienda');
         $idusuario=auth()->user()->id;
         $tiendas = Tienda::join('usuario_tienda', 'tienda.idTienda', '=', 'usuario_tienda.fkTienda')
@@ -58,6 +63,10 @@ class tiendaController extends Controller
 public function store(StoreTiendaRequest $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         DB::beginTransaction();
 
         $imageBase64 = null; // Inicializamos vacío
@@ -103,6 +112,10 @@ Tienda::create(array_merge(
      */
     public function edit(Tienda $tienda)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $tiendas = Tienda::all();
         return view('tienda.edit', compact('tienda', 'tienda'));
     }
@@ -129,6 +142,11 @@ Tienda::create(array_merge(
     public function obtenerplantillas(){
         try{
 
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
+
             $plantillas=plantillahtmlgeneral::all();
             return response()->json($plantillas, 200);
 
@@ -141,6 +159,10 @@ Tienda::create(array_merge(
     public function obtenerplantillaselect(Request $request)
 {
     try {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $plantilla = plantillahtmlgeneral::find($request->idplantilla);
 
 
@@ -165,6 +187,10 @@ Tienda::create(array_merge(
 public function obtenerplantillaselectTienda(Request $request)
 {
     try {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
             $plantilla = plantillahtml::find($request->idplantilla);
 
 
@@ -189,6 +215,10 @@ public function obtenerplantillaselectTienda(Request $request)
 
 public function editfacturaplantilla(Request $request)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $tienda = $request->only(['Titulo', 'cabecera', 'detalle', 'pie','consulta','idTienda','fkDocumentDesing']);
     $tienda['fkTienda'] = $tienda['idTienda'];
     $tienda['plantillahtml'] = $request->input('detallehijo') ?? '<!-- aca ingresar html -->';
@@ -245,6 +275,10 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
 
     public function update(Request $request, Tienda $tienda)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $request->validate([
             'Nombre' => 'max:150'
         ], [
@@ -286,6 +320,10 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         Tienda::where('idTienda', $id)->delete();
 
         return redirect()->route('tienda.index')->with('success', 'tienda eliminado');
@@ -333,6 +371,11 @@ public function ejecutarConsultaConMetadata(Request $request)
 
 public function PDF(Request $request)
 {
+
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $html = $request->input('html');
 
 

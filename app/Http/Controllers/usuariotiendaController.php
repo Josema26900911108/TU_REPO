@@ -8,7 +8,9 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use App\Models\usuariotienda;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+
 class usuariotiendaController extends Controller
 {
     function __construct()
@@ -23,6 +25,10 @@ class usuariotiendaController extends Controller
      */
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         //$userstore2 = usuariotienda::all();
         $userstore2 = usuariotienda::with(['user', 'tienda'])->latest()->get();
 
@@ -33,6 +39,9 @@ class usuariotiendaController extends Controller
 
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
        // $userstore = User::with('users')->latest()->get();
         //$Tienda = Tienda::with('tienda')->latest()->get();
         $userstore = User::all();
@@ -48,6 +57,10 @@ class usuariotiendaController extends Controller
     {
 
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 
             // Crear el nuevo permiso
@@ -76,6 +89,10 @@ class usuariotiendaController extends Controller
      */
     public function edit(usuariotienda $userstore)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $userstore3 = User::all();
         $Tienda=Tienda::all();
         //$userstore3 = usuariotienda::with(['user', 'tienda'])->latest()->get();
@@ -89,6 +106,10 @@ class usuariotiendaController extends Controller
     public function update(Request $request, $idUsuarioTienda)
     {
        try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 $ver=$idUsuarioTienda;
 $ver2=$request->Estatus;
@@ -116,6 +137,10 @@ $ver2=$request->Estatus;
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         usuariotienda::where('idUsuarioTienda', $id)->delete();
 
         return redirect()->route('userstore.index')->with('success', 'tienda eliminado');

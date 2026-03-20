@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateMarcaRequest;
 use App\Models\Caracteristica;
 use App\Models\Marca;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class marcaController extends Controller
@@ -23,6 +24,9 @@ class marcaController extends Controller
      */
     public function index()
     {
+        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $marcas = Marca::with('caracteristica')->latest()->get();
         return view('marca.index',compact('marcas'));
     }
@@ -32,6 +36,10 @@ class marcaController extends Controller
      */
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         return view('marca.create');
     }
 
@@ -67,6 +75,9 @@ class marcaController extends Controller
      */
     public function edit(Marca $marca)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         return view('marca.edit',compact('marca'));
     }
 
@@ -86,6 +97,10 @@ class marcaController extends Controller
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $message = '';
         $marca = Marca::find($id);
         if ($marca->caracteristica->estado == 1) {

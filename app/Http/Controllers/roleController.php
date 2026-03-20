@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -22,6 +23,10 @@ class roleController extends Controller
      */
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $roles = Role::all();
         return view('role.index', compact('roles'));
     }
@@ -31,6 +36,10 @@ class roleController extends Controller
      */
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $permisos = Permission::all();
         return view('role.create', compact('permisos'));
     }
@@ -40,6 +49,10 @@ class roleController extends Controller
      */
     public function store(Request $request)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $request->validate([
             'name' => 'required|unique:roles,name',
             'permission' => 'required'
@@ -77,6 +90,10 @@ class roleController extends Controller
      */
     public function edit(Role $role)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $permisos = Permission::all();
         return view('role.edit', compact('role', 'permisos'));
     }
@@ -86,6 +103,10 @@ class roleController extends Controller
      */
     public function update(Request $request, Role $role)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $request->validate([
             'name' => 'required|unique:roles,name,' . $role->id,
             'permission' => 'required'
@@ -117,9 +138,11 @@ class roleController extends Controller
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         Role::where('id', $id)->delete();
-
-
 
         return redirect()->route('roles.index')->with('success', 'rol eliminado');
     }

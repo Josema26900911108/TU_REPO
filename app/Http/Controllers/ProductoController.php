@@ -10,10 +10,10 @@ use App\Models\Presentacione;
 use App\Models\Producto;
 use Exception;
 use Illuminate\Http\Request as HttpRequest;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use PhpParser\Node\Stmt\TryCatch;
-
 
 
 class ProductoController extends Controller
@@ -30,6 +30,10 @@ class ProductoController extends Controller
      */
     public function index()
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
     $Estatus = session('user_estatus');
 
@@ -57,6 +61,10 @@ class ProductoController extends Controller
 
 public function shows($id)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     return Producto::findOrFail($id);
 }
 
@@ -64,6 +72,10 @@ public function shows($id)
 public function buscarProducto(HttpRequest $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
     $Estatus = session('user_estatus');
     $search = '%'.$request->input('search').'%';
@@ -138,6 +150,10 @@ return $productos;
     public function store(StoreProductoRequest $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         // Recuperar la tienda de la sesión
         $fkTienda = session('user_fkTienda');
 
@@ -231,6 +247,10 @@ return $productos;
     public function update(UpdateProductoRequest $request, Producto $producto)
     {
         try{
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
             DB::beginTransaction();
 
             if ($request->hasFile('img_path')) {

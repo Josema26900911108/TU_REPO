@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Drivers\Gd\Driver; // Import GD driver
 use Intervention\Image\Encoders\WebpEncoder;
 use App\Models\Tecnico;
+use App\Models\usuariotienda;
 use Illuminate\Pagination\Paginator;
 use Yajra\DataTables\DataTables;
 
@@ -50,6 +51,9 @@ class TecnicoController extends Controller
 
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
@@ -87,6 +91,10 @@ class TecnicoController extends Controller
     }
     public function edit($id){
                 try{
+                                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
         $rol = Role::all();
@@ -124,6 +132,10 @@ if ($tienda->isEmpty()) {
     }
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
         $rol = Role::all();
@@ -265,6 +277,10 @@ if ($tienda->isEmpty()) {
     public function exist(Request $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 
          // Procesar imagen y convertir a BLOB
@@ -316,6 +332,10 @@ if($imageBlob!=null){
     public function obtenerdetalless(Request $request){
 
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $param = $request->input('parametros');
 
@@ -340,6 +360,10 @@ if($imageBlob!=null){
 
     public function inventariotecnicoorden($tecbucket)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $orden = Expedientetecnico::where('id', $tecbucket)
             ->where(function($query) {
                 $query->where('Status', 'I')
@@ -523,6 +547,10 @@ $mat = substr($mat, 1);
     public function update(UpdateTecnicoRequest $request, Tecnico $tecnico)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $tecnico->load('persona');
 
@@ -549,6 +577,11 @@ $mat = substr($mat, 1);
         public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecnico $expediente)
     {
         try {
+
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $items = $request->input('items', []);
 
@@ -709,6 +742,10 @@ $mat = substr($mat, 1);
         public function bucket($id)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 
             $fkTienda = session('user_fkTienda');
@@ -731,6 +768,10 @@ $mat = substr($mat, 1);
     public function fetchrelacion(Request $request)
 {
     try{
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
                     $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
                     $idtecnico= $request->input('id');
@@ -776,6 +817,10 @@ $mat = substr($mat, 1);
     public function fetchrelacionTecnico(Request $request)
 {
     try{
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
                     $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
                      $idtecnico = Tecnico::where('fkuser', Auth()->id())->value('id');
@@ -821,6 +866,10 @@ $mat = substr($mat, 1);
 public function fetchrelacionS(Request $request)
 {
     try{
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
                     $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
                     $idtecnico= $request->input('id');
@@ -872,6 +921,10 @@ public function fetchrelacionS(Request $request)
 public function fetchrelacionP(Request $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $Estatus   = session('user_estatus');
         $fkTienda  = session('user_fkTienda');
         $idtecnico = $request->input('id');
@@ -910,6 +963,10 @@ $relacion = Pagotecnico::with(['arbolmanoobra' => function($query) {
 public function fetchrelacionC(Request $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $Estatus   = session('user_estatus');
         $fkTienda  = session('user_fkTienda');
         $idtecnico = $request->input('id');
@@ -943,6 +1000,10 @@ public function fetchrelacionC(Request $request)
     public function fetchrelacioninv(Request $request)
 {
     try{
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
                     $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
                     $idtecnico= $request->input('id');
@@ -971,6 +1032,11 @@ public function fetchrelacionC(Request $request)
 
 public function exportar(Request $request)
 {
+
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
 
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
@@ -1332,6 +1398,10 @@ public function importarInvTecnico(Request $request)
       public function pagocobro($id)
     {
             try {
+                                if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 
 
@@ -1350,9 +1420,11 @@ public function importarInvTecnico(Request $request)
        public function produccion($id)
     {
         try {
+
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
             DB::beginTransaction();
-
-
             $tecnico=Tecnico::where('id',$id)->first();
 
             DB::commit();

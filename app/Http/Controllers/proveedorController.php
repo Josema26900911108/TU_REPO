@@ -8,6 +8,7 @@ use App\Models\Documento;
 use App\Models\Persona;
 use App\Models\Proveedore;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class proveedorController extends Controller
@@ -24,6 +25,10 @@ class proveedorController extends Controller
      */
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $proveedores = Proveedore::with('persona.documento')->get();
         return view('proveedore.index',compact('proveedores'));
     }
@@ -33,6 +38,10 @@ class proveedorController extends Controller
      */
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $documentos = Documento::all();
         return view('proveedore.create',compact('documentos'));
     }
@@ -43,6 +52,10 @@ class proveedorController extends Controller
     public function store(StorePersonaRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $persona = Persona::create($request->validated());
             $persona->proveedore()->create([
@@ -69,6 +82,10 @@ class proveedorController extends Controller
      */
     public function edit(Proveedore $proveedore)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $proveedore->load('persona.documento');
         $documentos = Documento::all();
         return view('proveedore.edit',compact('proveedore','documentos'));
@@ -80,6 +97,10 @@ class proveedorController extends Controller
     public function update(UpdateProveedoreRequest $request, Proveedore $proveedore)
     {
         try{
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 
             Persona::where('id',$proveedore->persona->id)
@@ -98,6 +119,10 @@ class proveedorController extends Controller
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $message = '';
         $persona = Persona::find($id);
         if ($persona->estado == 1) {

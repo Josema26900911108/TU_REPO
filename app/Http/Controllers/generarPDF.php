@@ -24,6 +24,10 @@ class generarPDF extends Controller
 {
     public function generarRecibo()
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     //$pdf = Pdf::loadView('PDF.ticket')->setPaper([0, 0, 226.77, 600], 'portrait'); // térmica
      $pdf = Pdf::loadView('PDF.ticket')
     ->setPaper('a4', 'portrait')
@@ -39,6 +43,10 @@ class generarPDF extends Controller
 public function diarioindex(Request $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
 
 
@@ -130,6 +138,10 @@ public function diarioindex(Request $request)
 
 public function exportdiarioExcel(Request $request)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
 $fkTienda = session('user_fkTienda');
 $productosSeleccionados = (array) $request->input('producto', []);
 
@@ -301,6 +313,10 @@ return Excel::download(new GenericExport($data), 'Diario_reporte_dashboard.xlsx'
 }
 public function balanceindex(request $request)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
 
     // Lista de cuentas seleccionadas
@@ -766,6 +782,9 @@ public function fechaHoraEnLetras()
   public function generarBalance(Request $request)
 {
     try{
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
     $fkTienda = session('user_fkTienda');
 
     $query = DB::table('plantillahtml as ph')
@@ -918,6 +937,10 @@ public function fechaHoraEnLetras()
 public function mayorindex(Request $request)
 {
     try{
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
 
     // Lista de cuentas seleccionadas
@@ -1041,6 +1064,10 @@ public function utilidadesindex()
 }
 public function flujoefectivoindex()
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $pdf = Pdf::loadView('PDF.diario')
     ->setPaper('a4', 'landscape')
     ->setOptions([
@@ -1088,6 +1115,10 @@ function agruparDetalle(array $filas): array
 public function KardexInvenarioindex(Request $request)
 {
     try{
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
     $fkTienda = session('user_fkTienda');
     $cuentasSeleccionadas = (array) $request->input('producto', []);
 

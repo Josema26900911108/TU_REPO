@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Documento;
 use App\Models\Persona;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -32,6 +33,10 @@ class documentosapController extends Controller
 
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
 
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
@@ -57,6 +62,10 @@ class documentosapController extends Controller
     }
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $materialmanoobra = Materialmanoobra::all();
         return view('materialmanoobra.create', compact('materialmanoobra'));
     }
@@ -64,6 +73,11 @@ class documentosapController extends Controller
     public function store(StorePersonaRequest $request)
     {
         try {
+
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $persona = Persona::create($request->validated());
             $persona->cliente()->create([
@@ -82,6 +96,10 @@ class documentosapController extends Controller
     public function exist(StoreClienteExistenteRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
 
             // Buscar la persona existente
@@ -106,6 +124,11 @@ class documentosapController extends Controller
 
     public function edit(Cliente $cliente)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cliente->load('persona.documento');
         $documentos = Documento::all();
         return view('cliente.edit', compact('cliente', 'documentos'));
@@ -114,6 +137,10 @@ class documentosapController extends Controller
     public function update(UpdateClienteRequest $request, Cliente $cliente)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             Persona::where('id', $cliente->persona->id)
                 ->update($request->validated());
@@ -152,6 +179,10 @@ class documentosapController extends Controller
     public function destroy(string $id)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
             $persona = Persona::findOrFail($id);
             $nuevoEstado = $persona->estado == 1 ? 0 : 1;
             $mensaje = $nuevoEstado == 0 ? 'Cliente desactivado' : 'Cliente reactivado';

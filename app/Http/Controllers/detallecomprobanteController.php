@@ -8,11 +8,17 @@ use Illuminate\Support\Facades\DB;
 use Exception;
 use App\Models\DetalleComprobante;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
 
 class detallecomprobanteController extends Controller
 {
     public function create($comprobanteId)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         // Obtener tienda y estatus del usuario desde la sesión
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
@@ -46,6 +52,10 @@ class detallecomprobanteController extends Controller
         public function obtenerdetalles(Request $request)
     {
         try{
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $comprobanteId=$request->idcomprobante;
 
                 $pdo = DB::getPdo();
@@ -88,6 +98,10 @@ return response()->json($detallecomprobante);
 
     public function create2()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 

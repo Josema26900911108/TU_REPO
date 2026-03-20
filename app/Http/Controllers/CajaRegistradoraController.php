@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\CajaRegistradora;
-use App\Http\Requests\StoreCashRequest;
+use Illuminate\Support\Facades\Auth;
 
 class CajaRegistradoraController extends Controller
 {
@@ -16,13 +16,19 @@ class CajaRegistradoraController extends Controller
     }
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cajaregistradora = CajaRegistradora::latest()->get();
         return view('cajaregistradora.index', compact(var_name: 'cajaregistradora'));
 
     }
     public function registrarVenta($venta)
 {
-    // Lógica para registrar la venta
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
     $saldoActual = CajaRegistradora::latest()->first()->saldo ?? 0;
 
@@ -35,7 +41,9 @@ class CajaRegistradoraController extends Controller
 }
 public function registrarCompra($compra)
 {
-    // Lógica para registrar la compra
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
     $saldoActual = CajaRegistradora::latest()->first()->saldo ?? 0;
 
@@ -48,6 +56,10 @@ public function registrarCompra($compra)
 }
 public function arqueoCaja()
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
     $caja = CajaRegistradora::orderBy('created_at', 'desc')->get();
 
     $saldoActual = CajaRegistradora::latest()->first()->saldo ?? 0;

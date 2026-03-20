@@ -8,9 +8,7 @@ use Illuminate\Support\Facades\Auth;
 class loginController extends Controller
 {
     public function index(){
-        if(Auth::check()){
-            return redirect()->route('panel');
-        }
+
         return view('auth.login');
     }
 

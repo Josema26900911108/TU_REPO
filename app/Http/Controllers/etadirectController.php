@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use MathParser\StdMathParser;
 use MathParser\Interpreting\Evaluator;
 
@@ -33,16 +34,21 @@ class etadirectController extends Controller
     public function index()
     {
 
-
-
-
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
         return view('eta.index');
     }
 
         public function fetchrelacionEta(Request $request)
 {
     try{
-                    $Estatus = session('user_estatus');
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
+        $Estatus = session('user_estatus');
                     $fkTienda = session('user_fkTienda');
                     $fechain=$request->input('fechain');
                     $fechafin=$request->input('fechafin');
@@ -80,16 +86,28 @@ class etadirectController extends Controller
 
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $materialmanoobra = Materialmanoobra::all();
         return view('materialmanoobra.create', compact('materialmanoobra'));
     }
 
 public function show(){
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $materialmanoobra = Materialmanoobra::all();
 }
 
 public function importarMAMO(Request $request)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
     set_time_limit(300); // 5 minutos
     ini_set('memory_limit', '512M'); // Aumentar memoria
@@ -197,6 +215,10 @@ public function importarMAMO(Request $request)
 public function AutomataValidarMamo(Request $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $procesados = [];
         $rastro = [];
 
@@ -220,37 +242,59 @@ foreach($mamoorden as $ordenitem){
     ->groupBy('SKU', 'CENTRO')
     ->get();
 
+                $CANT = substr_count($ordenitem->Orden, "25336466");
+      if($CANT>0){
+        $a="25188580_34028679_1021133_102113334028679";
+    }
 
 
 
         foreach ($mamo as $item) {
 
-        if(substr_count($item->CENTRO, "'G845")>0 || substr_count($item->CENTRO, "'G830")>0 || substr_count($item->CENTRO, "'G840")>0 ){
-            $SKUV=$item->CENTRO.$item->SKU;
-        }else{
-            $SKUV=$item->SKU;
-        }
 
-            $relaciones = Material_relaciones::where('depende_SKU', $SKUV)
+if(
+    str_contains($item->CENTRO,"G845") ||
+    str_contains($item->CENTRO,"G830") ||
+    str_contains($item->CENTRO,"G840")
+){
+    $SKUV = $item->CENTRO.$item->SKU;
+
+    $query = Material_relaciones::where('skufinal',$SKUV);
+
+}else{
+
+    $SKUV = $item->SKU;
+
+    $query = Material_relaciones::where('depende_SKU',$SKUV)
+    ->where('skufinal', 'not like', '%G845%')
+    ->where('skufinal', 'not like', '%G830%')
+    ->where('skufinal', 'not like', '%G888%')
+    ->where('skufinal', 'not like', '%G840%');
+}
+
+$relacioness = $query->where('minimo',1)
+                     ->orderBy('id','ASC')
+                     ->get();
+
+if($relacioness->isEmpty()){
+    continue;
+}
+
+$ver = $relacioness->pluck('skufinal');
+
+             $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
+            ->whereIn('skufinal', $ver)
             ->where('minimo',1)
             ->orderBy('id', 'ASC')
             ->get();
+
+            $askuactualselec=$item->SKU;
             $orden = $ordenitem->Orden;
 
 
-                        $conteo = Material_relaciones::where('depende_SKU', $item->SKU)
-    ->whereExists(function ($query) use ($orden) {
-        $query->select(DB::raw(1))
-            ->from('eta')
-            ->whereColumn('eta.SKU', 'material_relaciones.SKU')
-            ->where('eta.Orden', $orden);
-    })
-    ->count();
-
-            $askuactualselec=$item->SKU;
                 $padre = DB::selectOne("
             SELECT distinct e.SKU FROM Eta e
-            inner join material_relaciones mr on e.SKU=mr.SKU where e.Orden=? and mr.depende_SKU=?;
+            inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=?;
     ", [$ordenitem->Orden, $item->SKU]);
 
 
@@ -258,6 +302,16 @@ foreach($mamoorden as $ordenitem){
     if($padre){
             if ($relaciones->isNotEmpty()) {
                 foreach ($relaciones as $relacion) {
+
+                   $conteo = Material_relaciones::where('depende_SKU', $relacion->SKU)
+
+    ->whereExists(function ($query) use ($orden) {
+        $query->select(DB::raw(1))
+            ->from('eta')
+            ->whereColumn('eta.SKU', 'material_relaciones.SKU')
+            ->where('eta.Orden', $orden);
+    })
+    ->count();
 
 if($relacion->maximo==10000){
                                                 $monto = DB::selectOne("
@@ -395,45 +449,68 @@ public function AutomataValidarMamoOrden(Request $request)
 
 
         foreach ($mamo as $item) {
-                                $padre = DB::selectOne("
-            SELECT distinct e.SKU, e.Descripcion as nombre FROM Eta e
-            inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=?;
+
+    $padre = DB::selectOne("
+    SELECT distinct e.SKU, e.Descripcion as nombre FROM Eta e
+    inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=?;
     ", [$orden, $item->SKU]);
+
             if($padre){
 
-        $cantidad = substr_count($item->CENTRO, "'G845");
+if(
+    str_contains($item->CENTRO,"G845") ||
+    str_contains($item->CENTRO,"G830") ||
+    str_contains($item->CENTRO,"G840")
+){
+    $SKUV = $item->CENTRO.$item->SKU;
 
-        if(substr_count($item->CENTRO, "'G845")>0 || substr_count($item->CENTRO, "'G830")>0 || substr_count($item->CENTRO, "'G840")>0 ){
-            $SKUV=$item->CENTRO.$item->SKU;
-        }else{
-            $SKUV=$item->SKU;
-        }
+    $query = Material_relaciones::where('skufinal',$SKUV);
 
+}else{
 
-            $relacioness = Material_relaciones::where('depende_SKU', $SKUV)
-            ->where('minimo',1)
-            ->orderBy('id', 'ASC')
-            ->first();
+    $SKUV = $item->SKU;
+
+    $query = Material_relaciones::where('depende_SKU',$SKUV)
+        ->where('skufinal', 'not like', '%G845%')
+    ->where('skufinal', 'not like', '%G830%')
+    ->where('skufinal', 'not like', '%G888%')
+    ->where('skufinal', 'not like', '%G840%');
+}
+
+$relacioness = $query->where('minimo',1)
+                     ->orderBy('id','ASC')
+                     ->get();
+
+if($relacioness->isEmpty()){
+    continue;
+}
+
+$ver = $relacioness->pluck('skufinal');
+
 
             if(!$relacioness){
                 continue;
             }
 
-            $conteo = Material_relaciones::where('skufinal', $relacioness->skufinal)
-            ->count();
-
-            $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
+             $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
+            ->whereIn('skufinal', $ver)
             ->where('minimo',1)
             ->orderBy('id', 'ASC')
             ->get();
 
             $askuactualselec=$item->SKU;
-
+                $CANT = substr_count($orden, "25336466");
+      if($CANT>0){
+        $a="25188580_34028679_1021133_102113334028679";
+    }
 
 
             if ($relaciones->isNotEmpty()) {
                 foreach ($relaciones as $relacion) {
 
+
+            $conteo = Material_relaciones::where('skufinal', $relacion->skufinal)
+            ->count();
 
 
                   $clave = $orden . '_' . $relacion->SKU. '_' .$relacion->depende_SKU . '_' . $relacion->skufinal.'_'.$relacion->tipo_relacion;
@@ -509,7 +586,7 @@ private function quitarDuplicadosPorOrdenYSKU(array $items): array
     $unicos = [];
 
     foreach ($items as $item) {
-        $clave = $item->Orden . '_' . $item->SKU_Destino.'_'.$item->Resultado;
+        $clave = $item->Orden.''.$item->NOMBRE_Destino;
         $unicos[$clave] = $item;
     }
 
@@ -545,8 +622,8 @@ public function AutomataRecursivo(
     $cantidad = substr_count($skuOrigen, ".");
 
   $clave = $orden . '_' . $skuActual. '_' .$skuOrigen . '_' . $skufinal.'_'.$tipoRelacion;
-
-      if($clave=="25147328_04.32_4018238_34028678_calculo"){
+$CANT = substr_count($clave, "1007881");
+      if($CANT>0){
         $a="25188580_34028679_1021133_102113334028679";
     }
 
@@ -656,6 +733,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
                 'children'      => [],
                 'skuOrigenraiz' => $skufinal,
                 'CENTRO'        => $Centro,
+                'claveunica'     => $clave,
             ];
 
             $procesados[$clave] = $nodo;
@@ -674,6 +752,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
                 'children'      => [],
                 'skuOrigenraiz' => $skufinal,
                 'CENTRO'        => $Centro,
+                'claveunica'     => $clave,
             ];
 
             $procesados[$clave] = $nodo;
@@ -794,15 +873,44 @@ private function evaluarFormulaexp(string $formula, array $variables)
 
         $exp = new \Symfony\Component\ExpressionLanguage\ExpressionLanguage();
 
+        // round
         $exp->register(
             'round',
             fn ($value, $precision = 0) => sprintf('round(%s, %s)', $value, $precision),
             fn ($variables, $value, $precision = 0) => round($value, $precision)
         );
 
+        // floor (ENTERO en Excel)
+        $exp->register(
+            'floor',
+            fn ($value) => sprintf('floor(%s)', $value),
+            fn ($variables, $value) => floor($value)
+        );
+
+        // ceil
+        $exp->register(
+            'ceil',
+            fn ($value) => sprintf('ceil(%s)', $value),
+            fn ($variables, $value) => ceil($value)
+        );
+
+        // max
+        $exp->register(
+            'max',
+            fn (...$args) => sprintf('max(%s)', implode(',', $args)),
+            fn ($variables, ...$args) => max(...$args)
+        );
+
+        // min
+        $exp->register(
+            'min',
+            fn (...$args) => sprintf('min(%s)', implode(',', $args)),
+            fn ($variables, ...$args) => min(...$args)
+        );
+
         return $exp->evaluate($formula, $variables);
 
-    } catch (\Throwable $e) {   // 👈 CAMBIO AQUÍ
+    } catch (\Throwable $e) {
         Log::error('Error al evaluar fórmula: ' . $e->getMessage());
         return 0;
     }
@@ -939,6 +1047,10 @@ private function insertOrUpdateBatch(array $batchData)
     public function store(StorePersonaRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $persona = Persona::create($request->validated());
             $persona->cliente()->create([
@@ -1034,6 +1146,10 @@ $datos = Eta::where('fkTienda', $request->fkTienda)
     public function destroy(string $id)
     {
         try {
+
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
             Eta::destroy('id',$id);
 

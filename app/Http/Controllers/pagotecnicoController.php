@@ -14,10 +14,9 @@ use App\Models\User;
 use App\Models\Documento;
 use App\Models\Persona;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-
-
 class pagotecnicoController  extends Controller
 {
     public function __construct()
@@ -32,8 +31,10 @@ class pagotecnicoController  extends Controller
 
     public function index()
     {
-
-        $fkTienda = session('user_fkTienda');
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
+           $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
                 if ($Estatus == 'ER') {
@@ -51,12 +52,17 @@ class pagotecnicoController  extends Controller
 
     public function show($id)
     {
-        // Lógica para mostrar un cliente específico
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $cliente = Cliente::find($id);
         return redirect()->route('clientes.index')->with('success', 'Cliente registrado');
     }
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $materialmanoobra = Materialmanoobra::all();
         return view('materialmanoobra.create', compact('materialmanoobra'));
     }
@@ -106,6 +112,10 @@ class pagotecnicoController  extends Controller
 
     public function edit(Cliente $cliente)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cliente->load('persona.documento');
         $documentos = Documento::all();
         return view('cliente.edit', compact('cliente', 'documentos'));
@@ -136,6 +146,10 @@ class pagotecnicoController  extends Controller
 
     public function listaClientes(Request $request)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $query = Cliente::with('persona')->orderBy('persona.nombre', 'asc');
 
         if ($request->has('search')) {

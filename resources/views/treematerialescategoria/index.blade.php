@@ -595,7 +595,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" id="cerrar_new" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
-                <button type="submit" id="Enviar" name="Enviar" class="btn btn-primary" form="modal_form">Enviar</button>
+                <button type="submit" id="Enviar" name="Enviar" class="btn btn-primary" form="treeview_form">Enviar</button>
             </div>
         </div>
     </div>
@@ -989,37 +989,36 @@ function moveNode(nodeId, newParentId) {
     }
 
         // Función para llenar el menú desplegable de cuentas padre
-    function fill_estructura() {
+function fill_estructura() {
 
-        $.ajax({
-            url: "{{ route('treecategoria') }}",
-            method: "GET",
-            success: function(data) {
-            // Destruye el selectpicker antes de manipular opciones
+    let currentScroll = window.scrollY;
+
+    $.ajax({
+        url: "{{ route('treecategoria') }}",
+        method: "GET",
+        success: function(data) {
+
             $('#itemmamo_edit').selectpicker('destroy');
-
             $('#itemmamo_new').selectpicker('destroy');
 
-            // Limpia los selects
             $('#itemmamo_edit').empty();
             $('#itemmamo_new').empty();
+
             let options = '<option value="">Seleccione una cuenta padre</option>';
 
             data.forEach(function(cuenta) {
-                    options += '<option value="' + cuenta.id + '">' + cuenta.catalogo +" || "+ cuenta.nombre + '</option>';
-
+                options += '<option value="' + cuenta.id + '">'
+                    + cuenta.catalogo + " || " + cuenta.nombre +
+                    '</option>';
             });
-
 
             $('#itemmamo_edit').html(options).selectpicker('render');
             $('#itemmamo_new').html(options).selectpicker('render');
-            },
-            error: function(xhr, status, error) {
-                Swal.fire('Error', 'Hubo un problema al actualizar.'+xhr.responseText, 'error');
-                console.error('Error al obtener las cuentas padre:', xhr.responseText);
-            }
-        });
-    }
+
+            window.scrollTo(0, currentScroll);
+        }
+    });
+}
 
 
 $("#itemmamo_new").change(function() {

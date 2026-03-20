@@ -105,6 +105,33 @@
                                     @endif
                                     @endcan
                                 </div>
+                                                                <div> <!----Separador----->
+                                    <div class="vr"></div>
+                                </div>
+
+                                <div> <!------Vender a cliente---->
+                                    @can('vender-a-cliente')
+                                   <div>
+                                    <a title="Vender a Cliente por mobil" href="{{route('ventas.posmobile',['idcliente'=>$item])}}">
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+    
+  <path d="M6 10l-1-2h-1" stroke="currentColor" stroke-width="1" fill="none"/>
+  <!-- Teléfono -->
+  <rect x="4" y="1" width="12" height="18" rx="2" stroke="currentColor" fill="none"/>
+
+  <!-- Pantalla (más pequeña y suave) -->
+  <rect x="5.5" y="3" width="9" height="10" fill="currentColor" opacity="0.1"/>
+
+  <!-- Carrito (más grande 🔥) -->
+  <path d="M6 10h8l-1.5 3H7.5z" fill="currentColor"/>
+  <circle cx="8" cy="14.5" r="0.8" fill="currentColor"/>
+  <circle cx="12" cy="14.5" r="0.8" fill="currentColor"/>
+
+</svg>
+                                    </a>
+                                </div>
+                                    @endcan
+                                </div>
 
                             </div>
                         </td>

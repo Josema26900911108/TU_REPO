@@ -7,7 +7,9 @@ use App\Http\Requests\UpdateCategoriaRequest;
 use App\Models\Caracteristica;
 use App\Models\Categoria;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+
 
 class categoriaController extends Controller
 {
@@ -25,6 +27,10 @@ class categoriaController extends Controller
      */
     public function index()
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $categorias = Categoria::with('caracteristica')->latest()->get();
 
         return view('categoria.index', ['categorias' => $categorias]);
@@ -35,6 +41,10 @@ class categoriaController extends Controller
      */
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         return view('categoria.create');
     }
 
@@ -44,6 +54,10 @@ class categoriaController extends Controller
     public function store(StoreCaracteristicaRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $caracteristica = Caracteristica::create($request->validated());
             $caracteristica->categoria()->create([
@@ -70,6 +84,9 @@ class categoriaController extends Controller
      */
     public function edit(Categoria $categoria)
     {
+        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         return view('categoria.edit', ['categoria' => $categoria]);
     }
 
@@ -78,6 +95,10 @@ class categoriaController extends Controller
      */
     public function update(UpdateCategoriaRequest $request, Categoria $categoria)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         Caracteristica::where('id', $categoria->caracteristica->id)
             ->update($request->validated());
 
@@ -89,6 +110,10 @@ class categoriaController extends Controller
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $message = '';
         $categoria = Categoria::find($id);
         if ($categoria->caracteristica->estado == 1) {

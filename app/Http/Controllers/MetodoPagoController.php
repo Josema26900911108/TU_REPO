@@ -1,6 +1,8 @@
 <?php
 
 namespace App\Http\Controllers;
+
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 use Illuminate\Http\Request;
@@ -10,7 +12,9 @@ class MetodoPagoController extends Controller
     public function detalle($id)
 {
 
-
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
     $result = DB::table('caja as c')
     ->rightJoin('cajametodopago as cm', 'c.idCaja', '=', 'cm.fkCaja')
     ->rightJoin('metodopago as m', 'm.idMetodoPago', '=', 'cm.fkMetodoPago')

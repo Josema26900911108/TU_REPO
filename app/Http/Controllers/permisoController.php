@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use App\Models\Permiso;
+use Illuminate\Support\Facades\Auth;
+
 
 class permisoController extends Controller
 {
@@ -22,6 +24,9 @@ class permisoController extends Controller
      */
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         $permiso = Permission::all();
         return view('permiso.index', compact('permiso'));
     }
@@ -31,6 +36,9 @@ class permisoController extends Controller
      */
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         return view('permiso.create');
     }
 
@@ -39,6 +47,10 @@ class permisoController extends Controller
      */
     public function store(Request $request)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $request->validate([
             'name' => 'required|unique:permissions,name'
         ], [
@@ -77,6 +89,10 @@ class permisoController extends Controller
      */
     public function edit(Permission $permiso)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $permisos = Permission::all();
         return view('permiso.edit', compact('permiso', 'permiso'));
     }
@@ -86,6 +102,10 @@ class permisoController extends Controller
      */
     public function update(Request $request, Permission $permiso)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $request->validate([
             'name' => 'required|unique:permissions,name'
         ], [
@@ -121,6 +141,10 @@ class permisoController extends Controller
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         Permission::where('id', $id)->delete();
 
         return redirect()->route('permiso.index')->with('success', 'permiso eliminado');

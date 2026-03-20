@@ -24,6 +24,10 @@ class profileController extends Controller
      */
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $user = User::find(Auth::user()->id);
         $fkTienda = session('user_fkTienda');
         $tienda=Tienda::find($fkTienda);
@@ -67,6 +71,10 @@ class profileController extends Controller
      */
     public function update(Request $request, User $profile)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $request->validate([
             'name' => 'required',
             'email' => 'required|unique:users,email,' . $profile->id,

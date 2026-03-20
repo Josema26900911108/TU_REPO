@@ -54,7 +54,7 @@
                     @foreach ($ventas as $item)
                     <tr>
                         <td>
-                            <p class="fw-semibold mb-1">{{$item->comprobante->tipo_comprobante}}</p>
+                            <p class="fw-semibold mb-1">{{$item->comprobante->tipo_comprobante ?? 0}}</p>
                             <p class="text-muted mb-0">{{$item->numero_comprobante}}</p>
                         </td>
                         <td>
@@ -79,8 +79,21 @@
 
                                 @can('mostrar-venta')
 
-                                                                            @if ($item->estado == 1)
-                                                <form action="{{ route('ventas.cobrarventas', ['ventas' => $item->id]) }}" method="get">
+                                                @if ($item->estado == 1)
+                                                    @if(is_null(optional($item->comprobante)->tipo_comprobante))
+
+                                                 <form action="{{ route('vent.posmobileCierre', ['idcliente' => $item->id]) }}" method="get">
+                                                    <button type="submit" class="btn btn-info">Cobrar
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                                        <rect x="4" y="1" width="8" height="14" rx="2" ry="2" stroke="currentColor" fill="none"/>
+                                                        <rect x="5.5" y="3" width="5" height="8" fill="currentColor" opacity="0.2"/>
+                                                        <circle cx="8" cy="13" r="0.7" fill="currentColor"/>
+                                                        <path d="M8 5.5c-1 0-1.5.5-1.5 1s.5.8 1.5 1 1.5.5 1.5 1-.5 1-1.5 1-1.5-.5-1.5-.5"  stroke="currentColor" fill="none" stroke-width="0.8"/>
+                                                        </svg>
+                                                    </button>
+                                                </form>
+                                                @else
+                                                                                                <form action="{{ route('ventas.cobrarventas', ['ventas' => $item->id]) }}" method="get">
                                                     <button type="submit" class="btn btn-info">Cobrar
                                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-cash-stack" viewBox="0 0 16 16">
                                                         <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
@@ -88,6 +101,7 @@
                                                       </svg>
                                                     </button>
                                                 </form>
+                                                @endif
                                                 @else
                                                     <form action="{{route('ventas.show', ['venta'=>$item]) }}" method="get">
                                                         <button type="submit" class="btn btn-success">

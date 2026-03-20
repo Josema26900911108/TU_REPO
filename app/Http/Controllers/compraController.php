@@ -25,6 +25,8 @@ use App\Models\Presentacione;
 use App\Models\Lote;
 use App\Models\CompraProducto;
 use App\Models\DetalleComprobante;
+use Illuminate\Support\Facades\Auth;
+
 
 
 class compraController extends Controller
@@ -42,6 +44,11 @@ class compraController extends Controller
      */
     public function index()
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -87,6 +94,10 @@ class compraController extends Controller
 
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
         $cuentasContables = CuentaContable::where('fkTienda', $fkTienda)->get();
@@ -113,6 +124,10 @@ class compraController extends Controller
     public function store(StoreCompraRequest $request)
     {
         try{
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $fkTienda = session('user_fkTienda');
             $id=auth()->id();
@@ -257,16 +272,27 @@ class compraController extends Controller
 
     public function cargamasiva()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         return view('compra.cargamasiva');
     }
 
       public function descargarPlantilla()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         return response()->download(public_path('plantillas/plantilla_productos.xlsx'));
     }
 
     public function storeMasivo(Request $request)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $request->validate([
             'zipfile' => 'required|mimes:zip'
         ]);
@@ -430,6 +456,10 @@ class compraController extends Controller
 
     public function generarRecibo($arqueocaja)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
     $Tienda = Tienda::where('idTienda', $fkTienda)->first();
 $arqueocaja = (int) $arqueocaja;
@@ -588,6 +618,10 @@ public function ejecutarconsulta($consulta)
 
     public function comprasReporte(Request $request)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
 
     // Filtro de productos (array)
@@ -656,6 +690,10 @@ $productos = Producto::select('id', 'nombre')
 
     public function Lista()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         // Aquí ejecutamos la consulta
         $clientes = Compra::join('personas as p', 'clientes.persona_id', '=', 'p.id')
                            ->select('clientes.id', 'p.razon_social as nombre')
@@ -672,6 +710,10 @@ $productos = Producto::select('id', 'nombre')
 
     public function mostrarDetalles($idComprobante)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         // Consultar los detalles del comprobante junto con las cuentas contables
         $detalles = DB::table('detalle_comprobantes as dc')
             ->join('cuentas_contables as cc', 'dc.fkCuentaContable', '=', 'cc.id')
@@ -695,6 +737,10 @@ $productos = Producto::select('id', 'nombre')
 
         public function mostrarDetallesScanner($SKU)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $fkTienda = session('user_fkTienda');
                 $pdo = DB::getPdo();
         $stmt = $pdo->prepare("

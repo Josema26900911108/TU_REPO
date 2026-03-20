@@ -19,6 +19,7 @@
     </ol>
 </div>
 
+
 <form action="{{ route('ventas.store') }}" method="post">
     @csrf
     <div class="container-lg mt-4">
@@ -34,7 +35,7 @@
 
                         <!-----SKU---->
                         <div class="col-sm-4">
-                            <label for="cantidad" class="form-label">SKU:</label>
+                            <label for="SKU" class="form-label">SKU:</label>
                             <input type="number" name="SKU" id="SKU" class="form-control">
                         </div>
 
@@ -246,10 +247,18 @@
                         <!----User--->
                         <input type="hidden" name="user_id" value="{{ auth()->user()->id }}">
 
-                        <!--Botones--->
-                        <div class="col-12 text-center">
-                            <button type="submit" class="btn btn-success" id="guardar">Realizar venta</button>
-                        </div>
+                                @can('pre-venta')
+                                <div class="col-12 text-center">
+                                        <button type="submit" class="btn btn-success" id="guardar">Realizar pre-venta</button>
+                                </div>
+                                @endcan
+                                @can('cobrar-ventadirecta')
+                                <div class="col-12 text-center">
+                                        <button type="submit" class="btn btn-success" id="guardar">Realizar venta</button>
+                                </div>
+                                @endcan
+
+
 
                     </div>
                 </div>
@@ -611,9 +620,10 @@ $('#producto_id').change(mostrarValores);
             totalMASIVA = 0;
             cantidadarticulos=0;
 
-    function mostrarValores() {
+function mostrarValores() {
 
-            let option = this.selectedOptions[0];
+    let select = document.getElementById('producto_id');
+    let option = select.selectedOptions[0];
 
     let stock = option.getAttribute('data-stock');
     let precio = option.getAttribute('data-precio');
@@ -621,7 +631,7 @@ $('#producto_id').change(mostrarValores);
     document.getElementById('stock').value = stock;
     document.getElementById('precio_venta').value = precio;
 
-    }
+}
 
     function mostrarValoresScanner() {
 
@@ -796,21 +806,8 @@ if(nameProducto) {
     }
 
 function ProductoSelect(idProducto) {
-
-    let $select = $('#producto_id');
-
-    let id = idProducto.toString().trim();
-
-    // 🔎 Verificar existencia
-    if ($select.find('option[value="' + id + '"]').length === 0) {
-        console.error('Producto no existe en el select:', id);
-        return;
-    }
-
-    // ✅ Seleccionar
-    $select.val(id);
-    $select.selectpicker('refresh');
-    $select.trigger('change');
+    $('#producto_id').selectpicker('val', idProducto.toString());
+    $('#producto_id').trigger('change');
 }
 
 

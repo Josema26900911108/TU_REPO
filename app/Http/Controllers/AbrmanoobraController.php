@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Exception;
 use Illuminate\Http\Request;
-use App\Models\CuentaContable;
+use Illuminate\Support\Facades\Auth;
 use SebastianBergmann\LinesOfCode\Counter;
 
 class AbrmanoobraController extends Controller
@@ -15,6 +15,11 @@ class AbrmanoobraController extends Controller
     public function index()
     {
         try {
+
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             $ver=session('user_fkTienda');
             $ver2 = DB::table('arbolmanoobra')
             ->where('fkTienda', $ver) // Obtener hijos
@@ -56,6 +61,11 @@ class AbrmanoobraController extends Controller
     }
     public function createRootArbmanoobraIfNotExist()
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         // Check if root nodes already exist
 
         $rootNodesCount = DB::table('arbolmanoobra')
@@ -108,6 +118,9 @@ class AbrmanoobraController extends Controller
     }
     public function fetch()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         // Obtener todas las Arbmanoobra raíz (aquellas que no tienen padre)
         $Arbmanoobra = DB::table('arbolmanoobra')
             ->whereNull('padre_id') // Filtra las Arbmanoobra que no tienen padre
@@ -268,6 +281,7 @@ class AbrmanoobraController extends Controller
 
 public function add(Request $request)
 {
+        
     $request->validate([
         'nombre_new' => 'required',
         'cuenta_id_new' => 'required',

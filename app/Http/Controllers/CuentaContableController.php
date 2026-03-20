@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Exception;
 use Illuminate\Http\Request;
 use App\Models\CuentaContable;
+use Illuminate\Support\Facades\Auth;
 use SebastianBergmann\LinesOfCode\Counter;
 
 class CuentaContableController extends Controller
@@ -13,6 +14,10 @@ class CuentaContableController extends Controller
     public function index()
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             $ver=session('user_fkTienda');
             $ver2 = DB::table('cuentas_contables')
             ->where('fkTienda', $ver) // Obtener hijos
@@ -54,7 +59,9 @@ class CuentaContableController extends Controller
     }
     public function createRootCuentasIfNotExist()
     {
-        // Check if root nodes already exist
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
         $rootNodesCount = DB::table('cuentas_contables')
         ->whereNull('padre_id')
@@ -85,7 +92,10 @@ class CuentaContableController extends Controller
     }
     public function fetch()
     {
-        // Obtener todas las cuentas raíz (aquellas que no tienen padre)
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cuentas = DB::table('cuentas_contables')
             ->whereNull('padre_id') // Filtra las cuentas que no tienen padre
             ->get();
@@ -101,6 +111,10 @@ class CuentaContableController extends Controller
 public function delete(Request $request)
 {
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         DB::beginTransaction();
 
         DB::table('cuentas_contables')
@@ -301,6 +315,9 @@ public function ReporteDiario(Request $request)
 }
 public function add(Request $request)
 {
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
 
     $cuenta=DB::table('cuentas_contables')->insert([
@@ -320,6 +337,10 @@ public function update(Request $request, CuentaContable $cuentaContable)
 
 
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         DB::beginTransaction();
 
 DB::table('cuentas_contables')

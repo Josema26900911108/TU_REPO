@@ -54,13 +54,37 @@
                 <div class="p-3 border border-3 border-primary">
                     <div class="row gy-4">
 
+                        <!-----SKU---->
+                        <div class="col-sm-4">
+                            <label for="cantidad" class="form-label">SKU:</label>
+                            <input type="number" name="SKU" id="SKU" class="form-control">
+                        </div>
+
                         <!-----Producto---->
                         <div class="col-12">
-                            <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="1" title="Busque un producto aquí">
-                                @foreach ($productos as $item)
-                                <option value="{{$item->id}}-{{$item->stock}}-{{$item->precio_venta}}">{{$item->codigo.' '.$item->nombre}}</option>
-                                @endforeach
-                            </select>
+
+<select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
+
+    @foreach($productos as $producto)
+        <option value="{{ $producto->id }}"
+                data-img="{{ $producto->img_path }}"
+                data-stock="{{ $producto->stock }}"
+                data-precio="{{ $producto->precio_venta }}"
+                data-detalle="{{ $producto->descripcion }}">
+            {{ $producto->nombre }}
+        </option>
+    @endforeach
+
+</select>
+
+
+
+<button type="button" class="btn btn-primary" id="btnVerProducto">
+    Ver
+</button>
+<button type="button" class="btn btn-primary" id="btnBuscarProducto">
+    Buscar
+</button>
                         </div>
 
                         <!-----Stock--->
@@ -320,7 +344,45 @@
         </div>
     </div>
 
+   <div class="modal fade" id="modalBuscarProducto" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
 
+      <div class="modal-header">
+        <h5 class="modal-title">Busqueda de Producto por categoria</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body text-center">
+<input type="text" name="searchproducto" id="searchproducto">
+<div name="searchProductoR" id="searchProductoR"></div>
+
+
+
+</select>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalProducto" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle del Producto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body text-center">
+        <img id="imgProducto" src="" class="img-fluid mb-3" style="max-height:350px;">
+        <p id="detalleProducto"></p>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 </form>
 @endsection
@@ -363,8 +425,199 @@ const contenedor = document.getElementById('contenedor-dinamico');
     //Constantes
     const impuesto = 12;
 
+
     $(document).ready(function() {
 
+            $('#producto_id').selectpicker();
+
+
+    document.getElementById("btnVerProducto").addEventListener("click", function() {
+
+        let select = document.getElementById("producto_id");
+        let selected = select.selectedOptions[0];
+
+        if (!selected) {
+            alert("Seleccione un producto primero");
+            return;
+        }
+
+        let imagen = selected.dataset.img; // ya no será undefined
+        let detalle = selected.dataset.detalle;
+        let ruta = "/storage/productos/" + imagen;
+
+        document.getElementById("imgProducto").src = ruta;
+        document.getElementById("detalleProducto").textContent = detalle;
+
+        let modal = new bootstrap.Modal(document.getElementById("modalProducto"));
+        modal.show();
+    });
+
+        document.getElementById("btnBuscarProducto").addEventListener("click", function() {
+
+
+
+        let modal = new bootstrap.Modal(document.getElementById("modalBuscarProducto"));
+        modal.show();
+    });
+
+$('#searchproducto').on('input', function () {
+
+    let search = $(this).val();
+
+    if (search.length < 2) {
+        $('#searchProductoR').html('');
+        return;
+    }
+
+    $.ajax({
+        url: "{{ route('producto.buscarPorCategoria') }}",
+        method: 'GET',
+        data: { search: search },
+        success: function(response) {
+
+            let html = `
+                <table class="table table-hover">
+                    <thead class="bg-primary">
+                        <tr>
+                            <th class="text-white">Código</th>
+                            <th class="text-white">Nombre</th>
+                            <th class="text-white">Stock</th>
+                            <th class="text-white">Descripción</th>
+                            <th class="text-white">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            if (response.length > 0) {
+                response.forEach(function (producto) {
+                    html += `
+                        <tr>
+                            <td>${producto.codigo}</td>
+                            <td>${producto.nombre}</td>
+                            <td>${producto.stock}</td>
+                            <td>${producto.descripcion}</td>
+                            <td>
+<button type="button"
+        class="btn btn-sm btn-primary seleccionar-producto"
+        data-id="${producto.id}">
+    Seleccionar
+</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else {
+                html += `
+                    <tr>
+                        <td colspan="5" class="text-center">
+                            No se encontraron resultados
+                        </td>
+                    </tr>
+                `;
+            }
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            $('#searchProductoR').html(html);
+        },
+        error: function(error) {
+            console.error(error);
+        }
+    });
+
+});
+
+
+
+        $(document).on('keydown', '.bs-searchbox input', function(event) {
+    if (event.keyCode === 13) { // 13 = Enter
+        event.preventDefault(); // Evita que el Enter seleccione un elemento automáticamente
+        var searchTerm = $(this).val().trim();
+
+        if (searchTerm.length > 0) {
+            var $select = $('#cliente_id');
+
+            $.ajax({
+                url: "{{ route('client.obtener') }}",
+                method: 'GET',
+                data: { search: searchTerm },
+                success: function(response) {
+                    $select.html('').selectpicker('destroy'); // 🔄 Limpiar y destruir selectpicker
+
+                    if (response.length > 0) {
+                        response.forEach(function(cliente) {
+                            $select.append('<option value="' + cliente.id + '">' +
+                                           cliente.persona.numero_documento + ' - ' +
+                                           cliente.persona.razon_social + '</option>');
+                        });
+                    } else {
+                        $select.append('<option value="">No se encontraron resultados</option>');
+                        actualizarClientes();
+                    }
+
+                    $select.selectpicker(); // 🔄 Reinicializar selectpicker
+                    setTimeout(() => $('.bs-searchbox input').val(searchTerm).trigger('focus'), 50);
+                },
+                error: function(xhr, status, error) {
+                    console.error(error);
+                }
+            });
+        } else {
+            actualizarClientes(); // Si no hay búsqueda, cargar todos los clientes
+        }
+    }
+});
+
+$(document).on('click', '.seleccionar-producto', function () {
+
+    let idProducto = $(this).data('id');
+
+    ProductoSelect(idProducto);
+
+    // quitar foco del botón
+    this.blur();
+
+    let modalEl = document.getElementById("modalBuscarProducto");
+    let modal = bootstrap.Modal.getInstance(modalEl);
+
+    if (modal) {
+        modal.hide();
+    }
+});
+
+function ProductoSelect(idProducto) {
+    $('#producto_id').selectpicker('val', idProducto.toString());
+    $('#producto_id').trigger('change');
+
+}
+
+// ✅ **Función para cargar todos los clientes al inicio o cuando no hay búsqueda**
+function actualizarClientes() {
+    $.ajax({
+        url: "{{ route('client.obtener') }}",
+        method: 'GET',
+        success: function(response) {
+            var $select = $('#cliente_id');
+
+            // 🔥 **Eliminar opciones previas y reinicializar selectpicker**
+            $select.html('').selectpicker('destroy');
+
+            response.forEach(function(cliente) {
+                $select.append('<option value="' + cliente.id + '">' + cliente.persona.numero_documento+' - '+cliente.persona.razon_social + '</option>');
+            });
+
+            // 🔄 **Reiniciar selectpicker**
+            $select.selectpicker();
+        },
+        error: function(xhr, status, error) {
+            console.error(error);
+        }
+    });
+}
 
 $('#btn_agregar').click(function() {
     agregarProducto();
@@ -577,9 +830,54 @@ $('#producto_id').change(mostrarValores);
             cantidadarticulos=0;
 
     function mostrarValores() {
-        let dataProducto = document.getElementById('producto_id').value.split('-');
-        $('#stock').val(dataProducto[1]);
-        $('#precio_venta').val(dataProducto[2]);
+
+            let option = this.selectedOptions[0];
+
+    let stock = option.getAttribute('data-stock');
+    let precio = option.getAttribute('data-precio');
+
+    document.getElementById('stock').value = stock;
+    document.getElementById('precio_venta').value = precio;
+
+    }
+
+    function mostrarValoresScanner() {
+
+
+var comprobanteId = $("#SKU").val();
+if (comprobanteId) {
+    $.ajax({
+        url: '/compras/detallesSCAN/' + comprobanteId + '',
+        type: 'GET',
+        success: function(response) {
+
+                if (!response || response.length === 0) {
+                    console.warn("No se encontró producto.");
+                    return;
+                }
+
+            var detalle = response[0];
+
+                let idProducto = detalle.producto_id;
+                let seleccionable = idProducto + "-" +detalle.existencia+"-"+detalle.precio_venta;
+
+                $("#producto_id option").each(function () {
+                    let v = $(this).val();
+                    if (v.startsWith(seleccionable)) {
+                        $("#producto_id").val(v).change();
+                        $('.selectpicker').selectpicker('refresh');
+                        return false; // salir del each
+                    }
+                });
+                $('#precio_venta').val(detalle.precio_venta);
+                $('#stock').val(detalle.existencia);
+        },
+        error: function(xhr, status, error) {
+            console.error("Error al cargar los detalles:", error);
+        }
+    });
+}
+
     }
 
     function llenarTablaventas() {
@@ -631,17 +929,10 @@ $('#producto_id').change(mostrarValores);
             }
 
         var ventacabecera = @json($ventacabecera);
-        // Suponiendo que ventacabecera tiene objetos con la propiedad 'producto_id' como identificador único
-var ventacabeceraUnico = ventacabecera.filter((value, index, self) =>
-    index === self.findIndex((t) => (
-        t.id === value.id  // Comparar por producto_id
-    ))
-);
-
-console.log(ventacabeceraUnico); // Ahora 'ventacabeceraUnico' debería contener solo objetos únicos
 
 
-ventacabeceraUnico.forEach(function(item) {
+
+ventacabecera.forEach(function(item) {
 idventacabecera=item.idventa;
         let idProducto=item.producto_id;
         let cantidad=item.cantidad;
@@ -857,11 +1148,150 @@ let haberacumb=0;
 
     }
 
+      function agregarProductoScanner(sku) {
+        let dataProducto = "";
+        //Obtener valores de los campos
+        let idProducto = 0;
+        let nameProducto = "";
+
+        var comprobanteId = sku;
+if (comprobanteId) {
+    $.ajax({
+        url: '/compras/detallesSCAN/' + comprobanteId + '',
+        type: 'GET',
+        success: function(response) {
+
+                if (!response || response.length === 0) {
+                    console.warn("No se encontró producto.");
+                    return;
+                }
+
+            var detalle = response[0];
+
+                let idProductos = detalle.producto_id;
+                let seleccionable = idProductos + "-" +detalle.existencia+"-"+detalle.precio_venta;
+                dataProducto = seleccionable;
+                idProducto = detalle.producto_id;
+                nameProducto = detalle.producto_nombre;
+
+                $("#producto_id option").each(function () {
+                    let v = $(this).val();
+                    if (v.startsWith(seleccionable)) {
+                        $("#producto_id").val(v).change();
+                        $('#producto_id').selectpicker('refresh');
+                        return false; // salir del each
+                    }
+                });
+                $('#precio_venta').val(detalle.precio_venta);
+                $('#stock').val(detalle.existencia);
+
+                if(nameProducto) {
+    // Do something with the selected product name
+} else {
+    console.log("Producto no seleccionado");
+}
+
+        let cantidad = $('#cantidad').val();
+        let precioVenta = detalle.precio_venta;
+        let descuento = $('#descuento').val();
+        let stock = detalle.existencia;
+        var comprobante = document.getElementById('comprobante_id').value;
+
+        if (comprobante === "") {
+            alert("Por favor, seleccione un comprobante.");
+            return false; // Detiene la ejecución de la función
+                    }
+
+        if (descuento == '') {
+            descuento = 0;
+        }
+
+        //Validaciones
+        //1.Para que los campos no esten vacíos
+        if (idProducto != '' && cantidad != '') {
+
+            //2. Para que los valores ingresados sean los correctos
+            if (parseInt(cantidad) > 0 && (cantidad % 1 == 0) && parseFloat(descuento) >= 0) {
+
+                //3. Para que la cantidad no supere el stock
+                if (parseInt(cantidad) <= parseInt(stock)) {
+                    //Calcular valores
+
+                    subtotal[cont] = round(cantidad * precioVenta - descuento);
+                    sumas += cantidad;
+                    total+=subtotal[cont];
+
+                    sumadocdb=round(total);
+                    subiva[cont]=CalcularFormula(formula,subtotal[cont]);
+                    resultadoiva=CalcularFormula(formula,total);
+                    IVA = resultadoiva;
+                    //Crear la fila
+                    let fila = '<tr id="fila' + cont + '">' +
+                        '<th>' + (cont + 1) + '</th>' +
+                        '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
+                        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
+                        '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVenta + '">' + precioVenta + '</td>' +
+                        '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
+                        '<td><input type="hidden" name="arraydescuento[]" value="' + descuento + '">' + descuento + '</td>' +
+                        '<td>' + subtotal[cont] + '</td>' +
+                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+                        '</tr>';
+
+                    //Acciones después de añadir la fila
+                    $('#tabla_detalle_tbody').append(fila);
+                    limpiarCampos();
+
+                    disableButtons();
+
+                    resultadoiva = resultadoiva.toFixed(2);
+
+            producto[cont]=idProducto;
+            Cantidad[cont]=cantidad;
+            precioventa[cont]=parseFloat(precioVenta);
+            nombre[cont]=nameProducto;
+            cantidadarticulos+=parseInt(Cantidad[cont],15);
+            Descuento[cont]=descuento;
+            cont++;
+            sumarArreglos(formulas,monto);
+
+                    //Mostrar los campos calculados
+                    $('#sumas').html(sumas);
+                    $('#IVA').html(IVA);
+                    $('#total').html(total);
+                    $('#subiva').val(subiva);
+                    $('#impuesto').val(IVA);
+                    $('#inputTotal').val(total);
+                } else {
+                    showModal('Cantidad incorrecta');
+                }
+
+            } else {
+                showModal('Valores incorrectos');
+            }
+
+        }
+
+
+        },
+        error: function(xhr, status, error) {
+            console.error("Error al cargar los detalles:", error);
+        }
+    });
+}
+
+    }
+
+
     function eliminarProducto(indice) {
         //Calcular valores
-        sumas -= round(subtotal[indice]);
-        IVA = round(sumas / 100 * impuesto);
-        total = round(sumas + IVA);
+        sumas -= round(Cantidad[indice]);
+
+
+
+        total -= round(subtotal[indice]);
+        IVA=CalcularFormula(formula,total);
+
+        sumarArreglos(formulas,monto);
 
         //Mostrar los campos calculados
         $('#sumas').html(sumas);
@@ -876,6 +1306,7 @@ let haberacumb=0;
 
         disableButtons();
     }
+
     function eliminarCC(indice) {
 
         //Eliminar el fila de la tabla
@@ -1099,6 +1530,53 @@ let haberacumb=0;
     `;
     return nuevoDiv;
 }
+let lastInputTime = 0;
+
+document.getElementById("SKU").addEventListener("keydown", function (e) {
+
+    // Registrar tiempo entre teclas
+    const now = Date.now();
+    const delta = now - lastInputTime;
+    lastInputTime = now;
+
+    // Si presiona ENTER
+    if (e.key === "Enter") {
+        e.preventDefault();
+
+        let sku = this.value.trim();
+
+        // Si no hay nada, solo limpiar y enfocar
+        if (sku === "") {
+            this.focus();
+            return;
+        }
+
+        // Detectar si fue lector de código de barras:
+        // Si la escritura fue demasiado rápida (<80ms por tecla)
+        const isScanner = delta < 80;
+        const cantidades = $("#cantidad").val();
+
+
+        if (isScanner) {
+            // Caso lector de código de barras
+            if(cantidades===1 || cantidades===""){
+                $("#cantidad").val(1);
+            }
+            $("#descuento").val(0);
+            $("#SKU").val("");     // limpiar
+            $("#SKU").focus();     // regresar el foco
+            agregarProductoScanner(sku);
+        } else {
+            // Caso ingreso manual con teclado
+            $("#cantidad").val(sku);  // copiar número del SKU a cantidad
+            $("#SKU").val("");        // limpiar
+            $("#SKU").focus();        // regresar el foco
+        }
+    }
+});
+
+
+
     function round(num, decimales = 2) {
         var signo = (num >= 0 ? 1 : -1);
         num = num * signo;

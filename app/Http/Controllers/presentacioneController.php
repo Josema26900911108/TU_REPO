@@ -7,6 +7,7 @@ use App\Http\Requests\UpdatePresentacioneRequest;
 use App\Models\Caracteristica;
 use App\Models\Presentacione;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class presentacioneController extends Controller
@@ -23,6 +24,10 @@ class presentacioneController extends Controller
      */
     public function index()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $presentaciones = Presentacione::with('caracteristica')->latest()->get();
         return view('presentacione.index', compact('presentaciones'));
     }
@@ -32,6 +37,9 @@ class presentacioneController extends Controller
      */
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
         return view('presentacione.create');
     }
 
@@ -41,6 +49,10 @@ class presentacioneController extends Controller
     public function store(StoreCaracteristicaRequest $request)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             DB::beginTransaction();
             $caracteristica = Caracteristica::create($request->validated());
             $caracteristica->presentacione()->create([
@@ -67,6 +79,10 @@ class presentacioneController extends Controller
      */
     public function edit(Presentacione $presentacione)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         return view('presentacione.edit',compact('presentacione'));
     }
 
@@ -86,6 +102,10 @@ class presentacioneController extends Controller
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
         $message = '';
         $presentacione = Presentacione::find($id);
         if ($presentacione->caracteristica->estado == 1) {

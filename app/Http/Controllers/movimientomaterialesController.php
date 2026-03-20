@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Documento;
 use App\Models\Persona;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -33,6 +34,10 @@ class movimientomaterialesController extends Controller
     public function index()
     {
 
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -51,12 +56,20 @@ class movimientomaterialesController extends Controller
 
     public function show($id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         // Lógica para mostrar un cliente específico
         $cliente = Cliente::find($id);
         return redirect()->route('clientes.index')->with('success', 'Cliente registrado');
     }
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $materialmanoobra = Materialmanoobra::all();
         return view('materialmanoobra.create', compact('materialmanoobra'));
     }
@@ -106,6 +119,10 @@ class movimientomaterialesController extends Controller
 
     public function edit(Cliente $cliente)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $cliente->load('persona.documento');
         $documentos = Documento::all();
         return view('cliente.edit', compact('cliente', 'documentos'));
@@ -152,6 +169,10 @@ class movimientomaterialesController extends Controller
     public function destroy(string $id)
     {
         try {
+                            if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
             $persona = Persona::findOrFail($id);
             $nuevoEstado = $persona->estado == 1 ? 0 : 1;
             $mensaje = $nuevoEstado == 0 ? 'Cliente desactivado' : 'Cliente reactivado';

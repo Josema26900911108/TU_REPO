@@ -11,6 +11,8 @@ use App\Models\Material_relaciones;
 use App\Models\treematerialescategoria;
 use SebastianBergmann\LinesOfCode\Counter;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+
 
 use function Laravel\Prompts\text;
 use function PHPUnit\Framework\isNull;
@@ -20,6 +22,11 @@ class TreematerialescategoriaController extends Controller
     public function index()
     {
         try {
+
+        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
             $ver=session('user_fkTienda');
             $ver2 = DB::table('treematerialescategoria')
             ->where('fkTienda', $ver) // Obtener hijos

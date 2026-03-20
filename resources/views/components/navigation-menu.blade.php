@@ -95,9 +95,26 @@
                         @can('crear-compra')
                         <a class="nav-link" href="{{ route('ventas.create') }}">Crear</a>
                         @endcan
+
                         @can('reporte-venta')
                         <a class="nav-link" href="{{ route('ventas.ventasreporte') }}"><i class="fa-solid fa-chart-pie"></i>Reporte Ventas</a>
+<a class="nav-link" href="{{ route('devvent.devolucionventasreporte') }}">
+    <!-- Icono SVG ajustado a tamaño de menú (18px a 20px) -->
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px; vertical-align: middle;">
+        <!-- Caja de producto -->
+        <path d="M21 8.5V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V8.5M21 8.5L12 3L3 8.5M21 8.5L12 14L3 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <!-- Círculo de fondo para la flecha -->
+        <circle cx="17" cy="15" r="5" fill="white" stroke="#EF4444" stroke-width="1.5"/>
+
+        <!-- Flecha de retorno -->
+        <path d="M18.5 14.5C18.5 14.5 17.5 13.5 16 13.5C14.5 13.5 13.5 14.5 13.5 16M13.5 16L12.5 15M13.5 16L14.5 17" stroke="#EF4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span>Devoluciones Ventas</span>
+</a>
+
                         @endcan
+
 
                     </nav>
                 </div>

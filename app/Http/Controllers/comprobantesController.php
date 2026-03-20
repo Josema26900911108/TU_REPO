@@ -10,6 +10,9 @@ use App\Models\DetalleComprobante;
 use App\Models\DocumentDesings;
 use App\Models\plantillahtml;
 use Database\Seeders\DatosestaticosSeeder;
+use Illuminate\Support\Facades\Auth;
+
+
 class comprobantesController extends Controller
 {
     function __construct()
@@ -23,6 +26,10 @@ class comprobantesController extends Controller
 
 public function index()
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
     $Estatus = session('user_estatus');
 
@@ -77,6 +84,10 @@ public function index()
      */
     public function create()
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -105,6 +116,10 @@ public function index()
      */
     public function store(Request $request)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
 $request->validate([
     'tipo_comprobante' => [
         'required',
@@ -153,6 +168,10 @@ $request->validate([
      */
     public function edit(Comprobante $comprobante)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
         $id = $comprobante->id;
@@ -185,7 +204,9 @@ $request->validate([
      */
     public function update(Request $request, Comprobante $comprobante)
     {
-
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
         $request->validate([
             'tipo_comprobante' => [
@@ -226,6 +247,9 @@ $request->validate([
      */
     public function destroy(string $id)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
 
         DetalleComprobante::where('fkComprobante', $id)->delete();
         Comprobante::where('id', $id)->delete();
@@ -236,6 +260,10 @@ $request->validate([
     }
     public function storeDetalleComprobante(Request $request)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        
     // Validación de los datos que vienen del formulario
     $request->validate([
         'nombre' => 'required|string|max:255',

@@ -19,6 +19,10 @@ class ArqueoCajaController extends Controller
 {
     public function show($arqueoqueja)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -55,6 +59,11 @@ class ArqueoCajaController extends Controller
     }
     public function compras($arqueoqueja)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -128,6 +137,11 @@ class ArqueoCajaController extends Controller
     }
     public function pagos($arqueoqueja)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -164,6 +178,11 @@ class ArqueoCajaController extends Controller
     }
     public function ingresos($arqueoqueja)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -200,6 +219,12 @@ class ArqueoCajaController extends Controller
     }
     public function retiros($arqueoqueja)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -236,6 +261,11 @@ class ArqueoCajaController extends Controller
     }
     public function bancos($arqueoqueja)
     {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
+
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
@@ -278,6 +308,11 @@ class ArqueoCajaController extends Controller
     }
     public function cobrarventas($idventa)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
         if(Auth::check()){
         $id=$idventa;
         $fkTienda = session('user_fkTienda');
@@ -290,7 +325,7 @@ class ArqueoCajaController extends Controller
             ->where('fkTienda',$fkTienda)
             ->groupBy('producto_id');
 
-        $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
+             $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
             $join->on('cpr.producto_id', '=', 'productos.id')
                 ->whereIn('cpr.created_at', function ($query) use ($subquery) {
                     $query->select('max_created_at')
@@ -298,7 +333,7 @@ class ArqueoCajaController extends Controller
                         ->whereRaw('subquery.producto_id = cpr.producto_id');
                 });
         })
-            ->select('productos.nombre', 'productos.id', 'productos.stock', 'cpr.precio_venta')
+            ->select('productos.nombre', 'productos.img_path', 'descripcion', 'productos.id', 'productos.stock', 'cpr.precio_venta')
             ->where('productos.fkTienda',$fkTienda)
             ->where('productos.estado', 1)
             ->where('productos.stock', '>', 0)
@@ -315,7 +350,7 @@ class ArqueoCajaController extends Controller
 
         $ventacabecera = DB::table('ventas as v')
         ->join('producto_venta as pv', 'pv.venta_id', '=', 'v.id')
-        ->join('clientes as cl', 'pv.venta_id', '=', 'v.id')
+        ->join('clientes as cl', 'cl.id', '=', 'v.cliente_id')
         ->join('personas as pr', 'pr.id', '=', 'cl.persona_id')
         ->join('tienda as t', 't.idTienda', '=', 'v.fkTienda')
         ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
@@ -342,8 +377,127 @@ class ArqueoCajaController extends Controller
     }
     }
 
+     public function cobrarventasdir()
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+
+    $fkTienda = session('user_fkTienda');
+    $Estatus  = session('user_estatus');
+
+    // CUENTAS CONTABLES
+    $cuentasContables = CuentaContable::where('fkTienda', $fkTienda)->get();
+
+    // SUBQUERY PARA ULTIMO PRECIO
+    $subquery = DB::table('compra_producto')
+        ->select('producto_id', DB::raw('MAX(created_at) as max_created_at'))
+        ->where('fkTienda', $fkTienda)
+        ->groupBy('producto_id');
+
+    // PRODUCTOS
+    $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
+
+        $join->on('cpr.producto_id', '=', 'productos.id')
+        ->whereIn('cpr.created_at', function ($query) use ($subquery) {
+
+            $query->select('max_created_at')
+                ->fromSub($subquery, 'subquery')
+                ->whereRaw('subquery.producto_id = cpr.producto_id');
+
+        });
+
+    })
+    ->select(
+        'productos.nombre',
+        'productos.img_path',
+        'productos.descripcion',
+        'productos.id',
+        'productos.stock',
+        'cpr.precio_venta'
+    )
+    ->where('productos.fkTienda', $fkTienda)
+    ->where('productos.estado', 1)
+    ->where('productos.stock', '>', 0)
+    ->get();
+
+    // CLIENTES
+    $clientes = Cliente::whereHas('persona', function ($query) {
+        $query->where('estado', 1);
+    })->get();
+
+    // COMPROBANTES
+    $comprobantes = Comprobante::with('tienda')
+        ->where('fkTienda', $fkTienda)
+        ->where('ClaveVista', 'DV')
+        ->get();
+
+    // VENTAS
+    $ventacabecera = DB::table('ventas as v')
+        ->join('producto_venta as pv', 'pv.venta_id', '=', 'v.id')
+        ->join('clientes as cl', 'cl.id', '=', 'v.cliente_id')
+        ->join('personas as pr', 'pr.id', '=', 'cl.persona_id')
+        ->join('tienda as t', 't.idTienda', '=', 'v.fkTienda')
+        ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
+        ->join('users as u', 'u.id', '=', 'v.user_id')
+        ->join('productos as pro', 'pro.id', '=', 'pv.producto_id')
+        ->select(
+            'v.id as idventa',
+            'pro.nombre as nameProducto',
+            'pv.precio_venta',
+            'pro.stock',
+            'pv.producto_id',
+            'pv.cantidad',
+            'pv.descuento',
+            'cm.formula',
+            'v.cliente_id',
+            'v.comprobante_id',
+            't.idTienda',
+            'v.id',
+            'v.fecha_hora',
+            'v.numero_comprobante',
+            'v.total',
+            'pr.razon_social',
+            'pr.numero_documento',
+            't.Nombre',
+            'u.name',
+            'v.estado',
+            'cm.tipo_comprobante',
+            'pr.tipo_persona'
+        )
+        ->where('v.fkTienda', $fkTienda)
+        ->where('v.estado', 1)
+        ->distinct()
+        ->get();
+
+    // PRIMERA VENTA (si existe)
+    $venta = $ventacabecera->first();
+
+    $selectedItemId     = $venta?->cliente_id;
+    $selectedItemIdcomp = $venta?->comprobante_id;
+    $comprobantenumero  = $venta?->numero_comprobante;
+    $idventa            = $venta?->idventa;
+
+    return view('arqueocaja.ventas', compact(
+        'productos',
+        'clientes',
+        'comprobantes',
+        'ventacabecera',
+        'selectedItemId',
+        'selectedItemIdcomp',
+        'comprobantenumero',
+        'cuentasContables',
+        'idventa'
+    ));
+}
+
     public function generarRecibo($arqueocaja)
 {
+
+                if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
     //$pdf = Pdf::loadView('pdf.ticket')->setPaper([0, 0, 226.77, 600], 'portrait'); // térmica
     $fkTienda = session('user_fkTienda');
     $Tienda = Tienda::where('idTienda', $fkTienda)->first();
@@ -410,6 +564,9 @@ class ArqueoCajaController extends Controller
  */
 function procesarPlantilla($cab, $htmlDetalle, $pi, $variablesGlobales, $detalle)
 {
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
     foreach ($variablesGlobales as $token => $valor) {
 
         $pattern = '/\{\{\s*' . preg_quote($valor, '/') . '\s*\}\}/';
@@ -563,6 +720,11 @@ if ($Estatus == 'ER') {
 
              public function destroy(Request $request, $id)
     {
+
+                    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
    //dd(request()->method());
 
    $idventa=$request->input('idventa');

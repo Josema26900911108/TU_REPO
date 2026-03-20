@@ -70,7 +70,13 @@ class PermissionSeeder extends Seeder
             'crear-venta',
             'mostrar-venta',
             'eliminar-venta',
+            'pre-venta',
             'cobrar-ventadirecta',
+            'vender-a-cliente',
+
+            //venta mobil
+            'crear-ventamobile',
+            'ver-ventamobile',
 
             //Reporte
             'reporte-venta',
