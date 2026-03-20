@@ -16,8 +16,75 @@
 
 @push('css')
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
 
+<script src="{{ asset('js/html5-qrcode.min.js') }}"></script>|
+
+<script>let html5QrCode = null; // Variable global
+let escaneando = false;
+
+function iniciarScanner(tipo = "barra") {
+    if (escaneando) return;
+
+    // CORRECCIÓN: Quita el "const" para usar la variable global
+    html5QrCode = new Html5Qrcode("reader");
+    escaneando = true;
+
+    const config = {
+        fps: 20,
+        qrbox: tipo === "barra" ? { width: 300, height: 150 } : 250,
+        aspectRatio: 1.777778,
+        formatsToSupport: [ "ean_13", "code_128", "ean_8", "upc_a", "upc_e", "qr_code" ],
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+        }
+    };
+
+    html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (codigo) => {
+            console.log("Código detectado:", codigo);
+            if (navigator.vibrate) navigator.vibrate(100);
+
+            if (tipo === "barra") {
+                buscarProductoPorCodigo(codigo);
+            } else {
+                agregarProducto(codigo);
+            }
+
+            // Si quieres que se detenga tras leer un producto, descomenta la siguiente línea:
+            // StopScanner();
+        },
+        (error) => { /* errores de lectura normales */ }
+    ).catch(err => {
+        console.error("Error al iniciar:", err);
+        escaneando = false;
+        html5QrCode = null;
+    });
+}
+
+function StopScanner() {
+    if (!html5QrCode || !escaneando) {
+        console.log("No hay scanner activo para detener.");
+        return;
+    }
+
+    html5QrCode.stop()
+        .then(() => {
+            console.log("Scanner detenido correctamente");
+            escaneando = false;
+            // Limpia el HTML interno para que no quede el cuadro negro
+            document.getElementById("reader").innerHTML = "";
+            html5QrCode = null;
+        })
+        .catch(err => {
+            console.error("Error al detener:", err);
+            escaneando = false;
+            html5QrCode = null;
+        });
+}
+
+</script>
 <style>
 body {
     font-family: Arial, sans-serif;
@@ -176,7 +243,7 @@ h6 {
         </button>
     </div>
     <div id="reader" style="width:100%"></div>
-    <div id="readerbarra" style="width:100%"></div>
+
 
 <form id="formVenta" action="{{ route('ventas.storemobile') }}" method="POST">
     @csrf
@@ -430,56 +497,6 @@ document.getElementById("buscarInput").addEventListener("keyup", function() {
     }, 300);
 
 });
-function iniciarScanner(tipo = "barra") {
 
-    if (escaneando) return;
-
-    scanner = new Html5Qrcode("reader");
-
-    escaneando = true;
-
-    scanner.start(
-        { facingMode: "environment" },
-        {
-            fps: 10,
-            qrbox: tipo === "barra"
-                ? { width: 250, height: 150 }
-                : 250
-        },
-
-        (codigo) => {
-
-            console.log("Código:", codigo);
-
-            if (tipo === "barra") {
-                buscarProductoPorCodigo(codigo);
-            } else {
-                agregarProducto(codigo);
-            }
-
-            // 🔥 si quieres escaneo continuo → NO detener aquí
-            // scanner.stop();
-        },
-
-        (error) => {
-            // ignorar errores
-        }
-    );
-}
-
-function StopScanner() {
-
-    if (!scanner || !escaneando) return;
-
-    scanner.stop()
-    .then(() => {
-        console.log("Scanner detenido");
-        escaneando = false;
-        scanner = null;
-    })
-    .catch(err => {
-        console.error("Error al detener:", err);
-    });
-}
 </script>
 @endsection
