@@ -19,13 +19,14 @@
 
 <script src="{{ asset('js/html5-qrcode.min.js') }}"></script>|
 
-<script>let html5QrCode = null; // Variable global
+<script>
+
+let html5QrCode = null;
 let escaneando = false;
 
 function iniciarScanner(tipo = "barra") {
     if (escaneando) return;
 
-    // CORRECCIÓN: Quita el "const" para usar la variable global
     html5QrCode = new Html5Qrcode("reader");
     escaneando = true;
 
@@ -83,8 +84,8 @@ function StopScanner() {
             html5QrCode = null;
         });
 }
-
 </script>
+
 <style>
 body {
     font-family: Arial, sans-serif;
@@ -343,8 +344,7 @@ document.getElementById("guardar").addEventListener("click", function () {
     form.submit();
 });
 
-let scanner = null;
-let escaneando = false;
+
 
     document.querySelectorAll(".card").forEach(card => {
 
