@@ -194,7 +194,7 @@ h6 {
     <div class="card"
             data-precio="{{ $item->precio_venta }}"
             data-id="{{ $item->id }}"
-            id="producto-{{ $item->id }}">
+            id="producto-{{ $item->codigo }}">
 
             <div class="title">{{ $item->nombre." - ".$item->codigo }}</div>
             <div class="price">
@@ -231,7 +231,7 @@ h6 {
     <div class="card-prod"
             data-precio="{{ $item->precio_venta }}"
             data-id="{{ $item->id }}"
-            id="producto-{{ $item->id }}">
+            id="producto-{{ $item->codigo }}">
 
             <div class="title">{{ $item->nombre." - ".$item->codigo }}</div>
             <div class="price">

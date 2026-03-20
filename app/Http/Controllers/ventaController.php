@@ -192,7 +192,7 @@ if ($request->inicio) {
 if ($request->fin) {
     $query->whereDate('ventas.created_at', '<=', $request->fin);
 }
-    
+
 
 if (!empty($productosSeleccionados) && !in_array(0, $productosSeleccionados)) {
     $query->whereIn('user_id', $productosSeleccionados);
@@ -331,6 +331,8 @@ public function exportVentas()
             'productos.id',
             'productos.nombre',
             'productos.stock',
+            'productos.codigo',
+            'productos.descripcion',
             DB::raw('COALESCE(cpr.precio_venta) as precio_venta')
         )
         ->where('productos.fkTienda', $fkTienda)
