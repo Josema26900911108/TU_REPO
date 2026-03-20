@@ -17,12 +17,147 @@
 @push('css')
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-<script src="{{ asset('js/html5-qrcode.min.js') }}"></script>|
+<script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
+<script src="{{ asset('js/quagga.min.js') }}"></script>
+
+     <script type="text/javascript">
+            navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+            window.URL = window.URL || window.webkitURL || window.mozURL || window.msURL;
+
+            function getUserMedia(constraints, success, failure) {
+                navigator.getUserMedia(constraints, function(stream) {
+                    var videoSrc = (window.URL && window.URL.createObjectURL(stream)) || stream;
+                    success.apply(null, [videoSrc]);
+                }, failure);
+            }
+
+
+            function initCamera(constraints, video, callback) {
+                getUserMedia(constraints, function (src) {
+                    video.src = src;
+                    video.addEventListener('loadeddata', function() {
+                        var attempts = 10;
+
+                        function checkVideo() {
+                            if (attempts > 0) {
+                                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                                    console.log(video.videoWidth + "px x " + video.videoHeight + "px");
+                                    video.play();
+                                    callback();
+                                } else {
+                                    window.setTimeout(checkVideo, 100);
+                                }
+                            } else {
+                                callback('Unable to play video stream.');
+                            }
+                            attempts--;
+                        }
+
+                        checkVideo();
+                    }, false);
+                }, function(e) {
+                    console.log(e);
+                });
+            }
+
+            function copyToCanvas(video, ctx) {
+                ( function frame() {
+                    ctx.drawImage(video, 0, 0);
+                    window.requestAnimationFrame(frame);
+                }());
+            }
+
+            window.addEventListener('load', function() {
+                var constraints = {
+                            video: {
+                                mandatory: {
+                                    minWidth: 1280,
+                                    minHeight: 720
+                                }
+                            }
+                        },
+                        video = document.createElement('video'),
+                        canvas = document.createElement('canvas');
+
+                document.body.appendChild(video);
+                document.body.appendChild(canvas);
+
+                initCamera(constraints, video, function() {
+                    canvas.setAttribute('width', video.videoWidth);
+                    canvas.setAttribute('height', video.videoHeight);
+                    copyToCanvas(video, canvas.getContext('2d'));
+                });
+            }, false);
+
+
+        </script>
 
 <script>
 
 let html5QrCode = null;
 let escaneando = false;
+let escaneandoBarra = false;
+
+function iniciarScannerBarras() {
+    if (escaneandoBarra) return;
+
+    Quagga.init({
+        inputStream: {
+            name: "Live",
+            type: "LiveStream",
+            target: document.querySelector('#reader'), // Tu div
+            constraints: {
+                width: { min: 640 },
+                height: { min: 480 },
+                facingMode: "environment",
+                aspectRatio: { min: 1, max: 2 }
+            },
+        },
+        locator: {
+            patchSize: "medium",
+            halfSample: true
+        },
+        numOfWorkers: 2,
+        decoder: {
+            // Aquí defines los formatos de barras exactos
+            readers: ["ean_reader", "code_128_reader", "ean_8_reader", "upc_reader"]
+        },
+        locate: true
+    }, function(err) {
+        if (err) {
+            console.error(err);
+            return;
+        }
+        Quagga.start();
+        escaneandoBarra = true;
+    });
+
+    // Evento cuando detecta un código
+    Quagga.onDetected(function(result) {
+        let codigo = result.codeResult.code;
+        console.log("Código de barras detectado:", codigo);
+
+        // Evitar lecturas múltiples seguidas (debounce)
+        if (codigo) {
+            if (navigator.vibrate) navigator.vibrate(100);
+
+            // Llamas a tu función de Laravel
+            buscarProductoPorCodigo(codigo);
+
+            // Detener después de leer (opcional)
+            detenerQuagga();
+        }
+    });
+}
+
+function detenerQuagga() {
+    Quagga.stop();
+    escaneandoBarra = false;
+    document.querySelector('#reader').innerHTML = "";
+}
+
+
+
 
 function iniciarScanner(tipo = "barra") {
     if (escaneando) {
@@ -257,7 +392,7 @@ h6 {
             <rect x="12" y="8" width="1" height="1"/>
             </svg>
         </button>
-        <button onclick="iniciarScanner('barra')" class="btn btn-secundary">
+        <button onclick="iniciarScannerBarras()" class="btn btn-secundary">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
             <rect x="1" y="2" width="1" height="12"/>
             <rect x="3" y="2" width="2" height="12"/>
