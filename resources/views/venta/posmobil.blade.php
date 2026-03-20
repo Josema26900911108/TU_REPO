@@ -25,61 +25,93 @@ let html5QrCode = null;
 let escaneando = false;
 
 function iniciarScanner(tipo = "barra") {
-    if (escaneando) return;
+    if (escaneando) {
+        console.warn("El escáner ya está en ejecución.");
+        return;
+    }
 
+    // Validar si la librería cargó correctamente
+    if (typeof Html5Qrcode === 'undefined') {
+        alert("Error: La librería de la cámara no se ha cargado. Revisa tu conexión HTTPS.");
+        return;
+    }
+
+    // Instanciar el objeto en el div con id="reader"
     html5QrCode = new Html5Qrcode("reader");
     escaneando = true;
 
+    // 2. Configuración optimizada para Códigos de Barras (1D)
     const config = {
-        fps: 20,
-        qrbox: tipo === "barra" ? { width: 300, height: 150 } : 250,
-        aspectRatio: 1.777778,
-        formatsToSupport: [ "ean_13", "code_128", "ean_8", "upc_a", "upc_e", "qr_code" ],
+        fps: 20, // Velocidad de captura (más alto ayuda a enfocar barras)
+        qrbox: tipo === "barra"
+            ? { width: 300, height: 150 } // Rectángulo horizontal para barras
+            : { width: 250, height: 250 }, // Cuadrado para QR
+        aspectRatio: 1.777778, // Proporción 16:9 de celulares modernos
+        formatsToSupport: [
+            "ean_13", "code_128", "ean_8", "upc_a", "upc_e", "qr_code"
+        ],
         experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
+            useBarCodeDetectorIfSupported: true // Usa aceleración por hardware
         }
     };
 
+    // 3. Configuración de Cámara (Resolución y Enfoque)
+    const cameraConfig = {
+        facingMode: "environment" // Fuerza la cámara trasera
+    };
+
+    // Iniciar la cámara
     html5QrCode.start(
-        { facingMode: "environment" },
+        cameraConfig,
         config,
         (codigo) => {
-            console.log("Código detectado:", codigo);
+            // ÉXITO: Código detectado
+            console.log("Lectura exitosa:", codigo);
+
+            // Vibración (solo en Android/Chrome con HTTPS)
             if (navigator.vibrate) navigator.vibrate(100);
 
             if (tipo === "barra") {
-                buscarProductoPorCodigo(codigo);
+                buscarProductoPorCodigo(codigo); // Tu función de Laravel
             } else {
-                agregarProducto(codigo);
+                agregarProducto(codigo); // Tu función de Laravel
             }
 
-            // Si quieres que se detenga tras leer un producto, descomenta la siguiente línea:
+            // OPCIONAL: Detener después de una lectura exitosa
             // StopScanner();
         },
-        (error) => { /* errores de lectura normales */ }
+        (error) => {
+            // Errores de "No se encontró código en este frame" (silenciados)
+        }
     ).catch(err => {
-        console.error("Error al iniciar:", err);
+        console.error("Error al iniciar cámara:", err);
         escaneando = false;
         html5QrCode = null;
+        alert("No se pudo acceder a la cámara. Asegúrate de usar HTTPS.");
     });
 }
 
+/**
+ * Detiene la cámara y limpia el contenedor
+ */
 function StopScanner() {
     if (!html5QrCode || !escaneando) {
-        console.log("No hay scanner activo para detener.");
+        console.log("No hay escáner activo para detener.");
         return;
     }
 
     html5QrCode.stop()
         .then(() => {
-            console.log("Scanner detenido correctamente");
+            console.log("Scanner detenido.");
             escaneando = false;
-            // Limpia el HTML interno para que no quede el cuadro negro
-            document.getElementById("reader").innerHTML = "";
+            // Limpia el div para que no quede el cuadro negro
+            const readerDiv = document.getElementById("reader");
+            if (readerDiv) readerDiv.innerHTML = "";
             html5QrCode = null;
         })
         .catch(err => {
-            console.error("Error al detener:", err);
+            console.error("Error al intentar detener:", err);
+            // Reset forzado en caso de error
             escaneando = false;
             html5QrCode = null;
         });
