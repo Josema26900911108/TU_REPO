@@ -501,6 +501,10 @@ public function CCstoremobile(Request $request)
             return redirect()->route('login');
         }
 
+            $request->validate([
+        'comprobante_id' => 'required'
+    ]);
+
         DB::beginTransaction();
 
         $fkTienda = session('user_fkTienda');
@@ -746,8 +750,9 @@ public function CCstoremobile(Request $request)
 
         Log::error('Error en storeCC: ' . $e->getMessage());
 
-        return redirect()->route('ventas.show', ['venta' => $venta])
-            ->with('error', 'Error: ' . $e->getMessage());
+        return response()->json(['error' => 'Error al al realizar la venta.'.$e->getMessage()], 500);
+
+        
     }
 }
         public function store(StoreVentaRequest $request)
