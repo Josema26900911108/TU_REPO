@@ -592,13 +592,23 @@ function iniciarScanner(tipo = "barra") {
 
         (codigo) => {
 
-            console.log("Código:", codigo);
+            console.log("Código ver:", codigo);
+
+            StopScanner();
+
+                    Swal.fire({
+    icon: 'warning',
+    title: 'Se ha seleccionado un producto',
+    text: 'Codigo: ' + codigo,
+
+});
 
             if (tipo === "barra") {
-                buscarProductoPorCodigo(codigo);
+                agregarProducto(codigo);
             } else {
                 agregarProducto(codigo);
             }
+
 
             // 🔥 si quieres escaneo continuo → NO detener aquí
             // scanner.stop();
@@ -625,8 +635,5 @@ function StopScanner() {
     });
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-    calcularTotalGeneral();
-});
 </script>
 @endsection
