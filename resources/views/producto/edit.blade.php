@@ -29,7 +29,7 @@
 
                 <div class="row g-4">
                     <!----Codigo---->
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <label for="codigo" class="form-label">Código:</label>
                         <input type="text" name="codigo" id="codigo" class="form-control" value="{{old('codigo',$producto->codigo)}}">
                         @error('codigo')
@@ -46,20 +46,21 @@
                         @enderror
                     </div>
 
+<div class="col-md-2">
+    <!--- Perecedero --->
+    <div class="form-check form-switch mt-4">
+        <input class="form-check-input" type="checkbox" name="perecedero" id="perecedero" value="1"
+            {{ old('perecedero', $producto->perecedero) == 1 ? 'checked' : '' }}>
+        <label class="form-check-label" for="perecedero">¿Es producto perecedero?</label>
+    </div>
+</div>
+
+
                     <!---Descripción---->
                     <div class="col-12">
                         <label for="descripcion" class="form-label">Descripción:</label>
                         <textarea name="descripcion" id="descripcion" rows="3" class="form-control">{{old('descripcion',$producto->descripcion)}}</textarea>
                         @error('descripcion')
-                        <small class="text-danger">{{'*'.$message}}</small>
-                        @enderror
-                    </div>
-
-                    <!---Fecha de vencimiento---->
-                    <div class="col-md-6">
-                        <label for="fecha_vencimiento" class="form-label">Fecha de vencimiento:</label>
-                        <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control" value="{{old('fecha_vencimiento',$producto->fecha_vencimiento)}}">
-                        @error('fecha_vencimiento')
                         <small class="text-danger">{{'*'.$message}}</small>
                         @enderror
                     </div>

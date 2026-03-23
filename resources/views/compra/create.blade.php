@@ -39,6 +39,7 @@
     @foreach($productos as $producto)
         <option class="bs-title-option" value="{{ $producto->id }}"
                 data-img="{{ $producto->img_path }}"
+                data-perecedero="{{ $producto->perecedero }}"
                 data-detalle="{{ $producto->descripcion }}">
             {{ $producto->nombre }}
         </option>
@@ -54,6 +55,13 @@
 
 
                         </div>
+
+                        <div class="col-md-4" id="contenedor_fecha" style="display: none;">
+                            <label for="fecha_vencimiento" class="form-label">Fecha de Vencimiento:</label>
+                            <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control">
+                            <small class="text-danger">Producto perecedero: requiere fecha.</small>
+                        </div>
+
 
                         <!-----Cantidad---->
                         <div class="col-sm-4 mb-2">
@@ -73,6 +81,7 @@
                             <input type="number" name="precio_venta" id="precio_venta" class="form-control" step="0.1">
                         </div>
 
+
                         <!-----botón para agregar--->
                         <div class="col-12 mb-4 mt-2 text-end">
                             <button id="btn_agregar" class="btn btn-primary" type="button">Agregar</button>
@@ -88,6 +97,7 @@
                                             <th class="text-white">Producto</th>
                                             <th class="text-white">Cantidad</th>
                                             <th class="text-white">Precio compra</th>
+                                            <th class="text-white">Lote</th>
                                             <th class="text-white">IVA compra</th>
                                             <th class="text-white">Precio venta</th>
                                             <th class="text-white">Subtotal</th>
@@ -97,6 +107,7 @@
                                     <tbody>
                                         <tr>
                                             <th></th>
+                                            <td></td>
                                             <td></td>
                                             <td></td>
                                             <td></td>
@@ -570,6 +581,8 @@ document.getElementById("detalleProducto").textContent = detalle;
             let cantidad = $('#cantidad').val();
             let precioCompra = $('#precio_compra').val();
             let precioVenta = $('#precio_venta').val();
+            let esPerecedero = $('#producto_id').find('option:selected').data('perecedero');
+            let fechaVencimiento = $('#fecha_vencimiento').val();
 
 
             var comprobante = document.getElementById('comprobante_id').value;
@@ -624,6 +637,7 @@ document.getElementById("detalleProducto").textContent = detalle;
                             '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
                             '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
                             '<td><input type="hidden" name="arraypreciocompra[]" value="' + precioCompra + '">' + precioCompra + '</td>' +
+                            '<td><input type="hidden" name="arrayfecha_vencimiento[]" value="' + fechaVencimiento + '">' + (esPerecedero == 1 ? fechaVencimiento : 'N/A') + '</td>' +
                             '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
                             '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVenta + '">' + precioVenta + '</td>' +
                             '<td>' + subtotal[cont] + '</td>' +
@@ -1104,6 +1118,27 @@ function construirsumarCC(arr1, arr2, A){
 
         $('#impuesto').val(IVA);
     }
+
+    $(document).ready(function() {
+    $('#producto_id').on('change', function() {
+        // Obtener la opción seleccionada
+        let selectedOption = $(this).find('option:selected');
+
+        // Obtener el valor del atributo data-perecedero (asegúrate que sea 1 o 0)
+        let esPerecedero = selectedOption.data('perecedero');
+
+        if (esPerecedero == 1) {
+            // Mostrar campo y hacerlo obligatorio
+            $('#contenedor_fecha').fadeIn();
+            $('#fecha_vencimiento').prop('required', true);
+        } else {
+            // Ocultar campo y limpiar valor
+            $('#contenedor_fecha').fadeOut();
+            $('#fecha_vencimiento').prop('required', false).val('');
+        }
+    });
+});
+
 
     </script>
 @endpush

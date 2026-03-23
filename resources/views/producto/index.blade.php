@@ -42,6 +42,7 @@
                         <th>Nombre</th>
                         <th>Marca</th>
                         <th>Presentación</th>
+                        <th>Vencimiento</th>
                         <th>Categorías</th>
                         <th>Estado</th>
                         <!------Eliminar producto---->
@@ -66,6 +67,28 @@
                         <td>
                             {{$item->presentacione->caracteristica->nombre}}
                         </td>
+    <td>
+    @php
+        // Suponiendo que tienes una relación 'lotes' en tu modelo Producto
+        $loteProximo = $item->lotes()->where('cantidad', '>', 0)->orderBy('fecha_vencimiento', 'asc')->first();
+    @endphp
+
+    @if($loteProximo)
+        @php
+            $dias = now()->diffInDays($loteProximo->fecha_vencimiento, false);
+        @endphp
+
+        @if($dias <= 0)
+            <span class="badge bg-danger" title="Lote: {{ $loteProximo->codigo_lote }}">VENCIDO</span>
+        @elseif($dias <= 30)
+            <span class="badge bg-warning text-dark" title="Vence el: {{ $loteProximo->fecha_vencimiento }}">Próximo ({{ $dias }} días)</span>
+        @else
+            <span class="badge bg-info text-white">Al día</span>
+        @endif
+    @else
+        <span class="text-muted" style="font-size: 0.8rem;">Sin stock/lotes</span>
+    @endif
+</td>
                         <td>
                             @foreach ($item->categorias as $category)
                             <div class="container" style="font-size: small;">

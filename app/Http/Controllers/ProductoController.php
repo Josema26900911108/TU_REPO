@@ -178,11 +178,11 @@ return $productos;
             'codigo' => $request->codigo,
             'nombre' => $request->nombre,
             'descripcion' => $request->descripcion,
-            'fecha_vencimiento' => $request->fecha_vencimiento,
             'img_path' => $name,
             'marca_id' => $request->marca_id,
             'presentacione_id' => $request->presentacione_id,
-            'fkTienda' => $fkTienda
+            'fkTienda' => $fkTienda,
+            'perecedero' => $request->perecedero ? 1 : 0
         ]);
 
         // Guardar el producto
@@ -250,7 +250,7 @@ return $productos;
                             if(!Auth::check()){
             return redirect()->route('login');
         }
-        
+
             DB::beginTransaction();
 
             if ($request->hasFile('img_path')) {
@@ -269,10 +269,10 @@ return $productos;
                 'codigo' => $request->codigo,
                 'nombre' => $request->nombre,
                 'descripcion' => $request->descripcion,
-                'fecha_vencimiento' => $request->fecha_vencimiento,
                 'img_path' => $name,
                 'marca_id' => $request->marca_id,
-                'presentacione_id' => $request->presentacione_id
+                'presentacione_id' => $request->presentacione_id,
+                'perecedero' => $request->perecedero ? 1 : 0
             ]);
 
             $producto->save();

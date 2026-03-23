@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Exports\UniversalExport;
+use App\Models\Lotesalarma;
 use App\Models\User;
 use Maatwebsite\Excel\Facades\Excel;
 use MathParser\StdMathParser;
@@ -245,19 +246,38 @@ public function exportVentas()
             ->where('fkTienda',$fkTienda)
             ->groupBy('producto_id');
 
-        $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
-            $join->on('cpr.producto_id', '=', 'productos.id')
-                ->whereIn('cpr.created_at', function ($query) use ($subquery) {
-                    $query->select('max_created_at')
-                        ->fromSub($subquery, 'subquery')
-                        ->whereRaw('subquery.producto_id = cpr.producto_id');
-                });
-        })
-            ->select('productos.nombre', 'productos.img_path', 'descripcion', 'productos.id', 'productos.stock', 'cpr.precio_venta')
-            ->where('productos.fkTienda',$fkTienda)
-            ->where('productos.estado', 1)
-            ->where('productos.stock', '>', 0)
-            ->get();
+      $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
+        $join->on('cpr.producto_id', '=', 'productos.id')
+            ->whereIn('cpr.created_at', function ($query) use ($subquery) {
+                $query->select('max_created_at')
+                    ->fromSub($subquery, 'subquery')
+                    ->whereRaw('subquery.producto_id = cpr.producto_id');
+            });
+    })
+    ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
+        $join->on('l.producto_id', '=', 'productos.id')
+             ->where('l.cantidad', '>', 0)
+             ->where('l.fkTienda', $fkTienda)
+             // Seleccionamos el ID del lote que vence primero para evitar ambigüedad
+             ->whereRaw('l.id = (SELECT id FROM lotesalarma WHERE producto_id = productos.id AND cantidad > 0 ORDER BY fecha_vencimiento ASC, id ASC LIMIT 1)');
+    })
+    ->select(
+        'productos.nombre',
+        'productos.img_path',
+        'productos.descripcion',
+        'productos.id',
+        'productos.stock',
+        'cpr.precio_venta',
+        'productos.perecedero',
+        'l.fecha_vencimiento',
+        'l.numero_lote', // Asegúrate que en la tabla sea 'numero_lote' y no 'codigo_lote'
+        'l.cantidad as cantidad_lote'
+    )
+    ->where('productos.fkTienda', $fkTienda)
+    ->where('productos.estado', 1)
+    ->where('productos.stock', '>', 0)
+    ->get();
+
 
         $clientes = Cliente::whereHas('persona', function ($query) {
             $query->where('estado', 1);
@@ -832,16 +852,9 @@ public function CCstoremobile(Request $request)
                         'descuento' => $arrayDescuento[$cont],
                     ]
                 ]);
-/*
-                $venta->productos()->syncWithoutDetaching([
-                    $arrayProducto_id[$cont] => [
-                        'cantidad' => $arrayCantidad[$cont],
-                        'precio_venta' => $arrayPrecioVenta[$cont],
-                        'descuento' => $arrayDescuento[$cont],
-                        'fkTienda',$fkTienda
-                    ]
-                ]);
-*/
+
+                $this->descontarLotesConTrazabilidad($venta->id, $arrayProducto_id[$cont], $arrayCantidad[$cont], $fkTienda);
+
                 //Actualizar stock
                 $producto = Producto::find($arrayProducto_id[$cont]);
                 $stockActual = $producto->stock;
@@ -864,6 +877,70 @@ public function CCstoremobile(Request $request)
 
         return redirect()->route('ventas.index')->with('success','Venta exitosa');
     }
+
+    private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidad, $fkTienda)
+{
+    // Buscamos los lotes disponibles del producto ordenados por vencimiento
+    $lotes = DB::table('lotesalarma')
+        ->where('producto_id', $productoId)
+        ->where('fkTienda', $fkTienda)
+        ->where('cantidad', '>', 0)
+        ->orderBy('fecha_vencimiento', 'asc')
+        ->get();
+
+    foreach ($lotes as $lote) {
+        if ($cantidad <= 0) break;
+
+        // Determinamos cuánto podemos tomar de este lote
+        $cantidadTomada = min($lote->cantidad, $cantidad);
+
+        // A. Descontar del lote original
+        DB::table('lotesalarma')->where('id', $lote->id)->decrement('cantidad', $cantidadTomada);
+
+        // B. REGISTRAR LA TRAZABILIDAD (La tabla que propusiste)
+        DB::table('lote_ventas')->insert([
+            'venta_id'   => $ventaId,
+            'lote_id'    => $lote->id,
+            'cantidad'   => $cantidadTomada,
+            'producto_id' => $productoId,
+            'status' => 'I', // I = Inactivo (descontado), A
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+
+        $cantidad -= $cantidadTomada;
+    }
+
+    // Opcional: Validar si al final $cantidad > 0 significa que no hubo stock suficiente en lotes
+}
+
+
+    private function descontarDeLotes($ventaId, $productoId, $cantidad, $fkTienda) {
+    $lotes = DB::table('lotesalarma')
+        ->where('producto_id', $productoId)
+        ->where('fkTienda', $fkTienda)
+        ->where('cantidad', '>', 0)
+        ->orderBy('fecha_vencimiento', 'asc')
+        ->get();
+
+    foreach ($lotes as $lote) {
+        if ($cantidad <= 0) break;
+        $cantidadTomada = min($lote->cantidad, $cantidad);
+
+        // 1. Descontar del lote
+        DB::table('lotesalarma')->where('id', $lote->id)->decrement('cantidad', $cantidadTomada);
+
+        // 2. REGISTRAR DE QUÉ LOTE SALIÓ (Trazabilidad)
+        DB::table('lote_ventas')->insert([
+            'venta_id' => $ventaId,
+            'lote_id' => $lote->id,
+            'cantidad' => $cantidadTomada,
+            'created_at' => now()
+        ]);
+
+        $cantidad -= $cantidadTomada;
+    }
+}
 
     private function evaluarFormula($formula, $A)
 {
@@ -890,6 +967,59 @@ public function CCstoremobile(Request $request)
     } catch (\Exception $e) {
 
         return 0;
+    }
+}
+// Función para descontar usando FEFO y registrar trazabilidad
+private function descontarLotesTrazabilidad($ventaId, $productoId, $cantidad, $fkTienda) {
+    $lotes = DB::table('lotesalarma')
+        ->where('producto_id', $productoId)
+        ->where('fkTienda', $fkTienda)
+        ->where('cantidad', '>', 0)
+        ->orderBy('fecha_vencimiento', 'asc')
+        ->get();
+
+    foreach ($lotes as $lote) {
+        if ($cantidad <= 0) break;
+        $tomar = min($lote->cantidad, $cantidad);
+
+        DB::table('lotesalarma')->where('id', $lote->id)->decrement('cantidad', $tomar);
+
+        DB::table('lote_ventas')->insert([
+            'venta_id' => $ventaId,
+            'lote_id' => $lote->id,
+            'producto_id' => $productoId,
+            'status' => 'C',
+            'cantidad' => $tomar,
+            'created_at' => now()
+        ]);
+        $cantidad -= $tomar;
+    }
+}
+
+// Función para devolver stock a los lotes originales exactos
+private function devolverLotesTrazabilidad($ventaId, $productoId, $cantidadDevuelta) {
+    // Buscamos de qué lotes salió este producto en esta venta (orden inverso al descuento)
+    $registros = DB::table('lote_ventas')
+        ->join('lotesalarma', 'lote_ventas.lote_id', '=', 'lotesalarma.id')
+        ->where('lote_ventas.venta_id', $ventaId)
+        ->where('lote_ventas.producto_id', $productoId)
+        ->select('lote_ventas.*')
+        ->orderBy('lote_ventas.id', 'desc')
+        ->get();
+
+    foreach ($registros as $reg) {
+        if ($cantidadDevuelta <= 0) break;
+        $regresar = min($reg->cantidad, $cantidadDevuelta);
+
+        DB::table('lotesalarma')->where('id', $reg->lote_id)->increment('cantidad', $regresar);
+
+        // Actualizamos o eliminamos el registro de trazabilidad
+        if ($regresar == $reg->cantidad) {
+            DB::table('lote_ventas')->where('id', $reg->id)->update(['status' => 'A', 'cantidad' => 0]);
+        } else {
+            DB::table('lote_ventas')->where('id', $reg->id)->decrement('cantidad', $regresar);
+        }
+        $cantidadDevuelta -= $regresar;
     }
 }
 
@@ -1056,38 +1186,28 @@ $productosOriginales = DB::table('producto_venta')
 $productosProcesados = [];
 
 for ($cont = 0; $cont < $sizeArray; $cont++) {
-
     $productoId = $arrayProducto_id[$cont];
     $cantidadNueva = intval($arrayCantidad[$cont]);
-    $precioVenta = $arrayPrecioVenta[$cont];
-    $descuento = $arrayDescuento[$cont];
+    $precioVenta = $arrayPrecioVenta[$cont]; // Asegúrate de capturar esto del array
+    $descuento = $arrayDescuento[$cont];     // Asegúrate de capturar esto del array
 
     $productosProcesados[] = $productoId;
 
     if(isset($productosOriginales[$productoId])){
-
         $cantidadOriginal = intval($productosOriginales[$productoId]->cantidad);
 
-        // ✔ detectar devolución
         if($cantidadNueva < $cantidadOriginal){
-
-            $cantidadDevuelta = $cantidadOriginal - $cantidadNueva;
-
-            DB::table('devoluciones_venta')->insert([
-                'venta_id' => $venta->id,
-                'producto_id' => $productoId,
-                'cantidad_devuelta' => $cantidadDevuelta,
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-
-            // devolver al stock
-            DB::table('productos')
-            ->where('id',$productoId)
-            ->increment('stock',$cantidadDevuelta);
+            $diff = $cantidadOriginal - $cantidadNueva;
+            $this->devolverLotesTrazabilidad($venta->id, $productoId, $diff);
+            DB::table('productos')->where('id', $productoId)->increment('stock', $diff);
+        }
+        elseif ($cantidadNueva > $cantidadOriginal) {
+            $diff = $cantidadNueva - $cantidadOriginal;
+            $this->descontarLotesTrazabilidad($venta->id, $productoId, $diff, $fkTienda);
+            DB::table('productos')->where('id', $productoId)->decrement('stock', $diff);
         }
 
-        // ✔ actualizar pivote
+        // 🔥 ESTA ES LA PARTE QUE TE FALTABA: ACTUALIZAR EL PIVOTE FÍSICAMENTE
         DB::table('producto_venta')
             ->where('venta_id', $venta->id)
             ->where('producto_id', $productoId)
@@ -1095,27 +1215,25 @@ for ($cont = 0; $cont < $sizeArray; $cont++) {
                 'cantidad' => $cantidadNueva,
                 'precio_venta' => $precioVenta,
                 'descuento' => $descuento,
-                'fkTienda' => $fkTienda
+                'fkTienda' => $fkTienda,
+                'updated_at' => now()
             ]);
 
     } else {
-
-        // ✔ producto nuevo en la venta
-        $venta->productos()->attach([
-            $productoId => [
-                'cantidad' => $cantidadNueva,
-                'precio_venta' => $precioVenta,
-                'fkTienda' => $fkTienda,
-                'descuento' => $descuento,
-            ]
-        ]);
-
-        // descontar stock
-        DB::table('productos')
-            ->where('id',$productoId)
-            ->decrement('stock',$cantidadNueva);
+        // ... (Tu código de attach para productos nuevos está bien)
     }
 }
+
+
+// PRODUCTOS ELIMINADOS COMPLETAMENTE
+foreach($productosOriginales as $productoId => $productoOriginal){
+    if(!in_array($productoId, $productosProcesados)){
+        $this->devolverLotesTrazabilidad($venta->id, $productoId, $productoOriginal->cantidad);
+        DB::table('productos')->where('id', $productoId)->increment('stock', $productoOriginal->cantidad);
+        // ... (Tu código de delete pivote y devoluciones_venta se mantiene)
+    }
+}
+
 
 # detectar productos eliminados completamente de la venta
 
@@ -1441,6 +1559,27 @@ public function ejecutarconsulta($consulta)
         return view('venta.show',compact('venta'));
     }
 
+public function descontarStock($producto_id, $cantidadAVender) {
+    // Buscamos los lotes de ese producto ordenados por el que vence más pronto
+    $lotes = Lotesalarma::where('producto_id', $producto_id)
+                ->where('cantidad', '>', 0)
+                ->orderBy('fecha_vencimiento', 'asc')
+                ->get();
+
+    foreach ($lotes as $lote) {
+        if ($cantidadAVender <= 0) break;
+
+        if ($lote->cantidad >= $cantidadAVender) {
+            $lote->decrement('cantidad', $cantidadAVender);
+            $cantidadAVender = 0;
+        } else {
+            $cantidadAVender -= $lote->cantidad;
+            $lote->update(['cantidad' => 0]);
+        }
+    }
+}
+
+
     /**
      * Show the form for editing the specified resource.
      */
@@ -1483,7 +1622,24 @@ public function destroy(string $id)
                     'stock' => DB::raw("stock + $cantidad")
                 ]);
 
+                        // Al devolver un producto de una venta específica:
+$registrosLote = DB::table('lote_ventas')
+    ->where('venta_id', $id)
+    ->where('producto_id', $producto->id) // O buscar por producto
+    ->get();
+
+foreach ($registrosLote as $reg) {
+    // Regresar la cantidad exacta a su lote de origen
+    DB::table('lotesalarma')->where('id', $reg->lote_id)->increment('cantidad', $reg->cantidad);
+
+    // Opcional: Eliminar o marcar como devuelto en lote_ventas
+        DB::table('lote_ventas')->where('id', $reg->id)->update(['status' => 'A']);
+}
+
         }
+
+
+
 
         //Cambiar estado de la venta
         $venta->update([

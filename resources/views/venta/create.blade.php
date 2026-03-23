@@ -49,6 +49,9 @@
                 data-img="{{ $producto->img_path }}"
                 data-stock="{{ $producto->stock }}"
                 data-precio="{{ $producto->precio_venta }}"
+                data-lote="{{ $producto->numero_lote ?? 'N/A' }}"
+                data-vence="{{ $producto->fecha_vencimiento ?? 'N/A' }}"
+                data-cantidadlote="{{ $producto->cantidad_lote ?? 'N/A' }}"
                 data-detalle="{{ $producto->descripcion }}">
             {{ $producto->nombre }}
         </option>
@@ -56,7 +59,9 @@
 
 </select>
 
-
+<div class="mt-2">
+    <small class="text-primary font-weight-bold" id="info_lote_guia"></small>
+</div>
 
 <button type="button" class="btn btn-primary" id="btnVerProducto">
     Ver
@@ -631,6 +636,16 @@ function mostrarValores() {
     document.getElementById('stock').value = stock;
     document.getElementById('precio_venta').value = precio;
 
+    let lote = option.getAttribute('data-lote');
+    let vence = option.getAttribute('data-vence');
+    let cantidadlote = option.getAttribute('data-cantidadlote');
+
+    if(lote !== 'N/A') {
+        $('#info_lote_guia').html(`<i class="fas fa-box"></i> SUGERENCIA: Tomar del <b>Lote: ${lote}</b> (Vence: ${vence}) - Cantidad en lote: ${cantidadlote})`);
+    } else {
+        $('#info_lote_guia').text("");
+    }
+
 }
 
     function mostrarValoresScanner() {
@@ -958,7 +973,7 @@ if (comprobanteId) {
         $('#total').html(total);
         $('#subiva').html(subiva);
         $('#impuesto').val(IVA);
-        $('#InputTotal').val(total);
+        $('#inputTotal').val(total);
 
         //Eliminar el fila de la tabla
         $('#fila' + indice).remove();
@@ -1136,6 +1151,6 @@ document.getElementById("SKU").addEventListener("keydown", function (e) {
         num = num.toString().split('e');
         return signo * (num[0] + 'e' + (num[1] ? (+num[1] - decimales) : -decimales));
     }
-    //Fuente: https://es.stackoverflow.com/questions/48958/redondear-a-dos-decimales-cuando-sea-necesario
+
 </script>
 @endpush

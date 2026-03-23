@@ -22,37 +22,43 @@ class StoreProductoRequest extends FormRequest
      */
 public function rules(): array
 {
-    $id = $this->route('producto'); // ID del producto cuando estás editando
+    // Extraemos el ID correctamente, ya sea que venga como objeto o como número
+    $productoId = $this->route('producto');
+    $id = is_object($productoId) ? $productoId->id : $productoId;
+
+    $fkTienda = session('user_fkTienda');
 
     return [
         'codigo' => [
             'required',
             'max:50',
-            Rule::unique('productos')
-                ->ignore($id) // evita error al editar
-                ->where(fn($query) =>
-                    $query->where('fkTienda', session('user_fkTienda'))
-                ),
+            Rule::unique('productos', 'codigo')
+                ->ignore($id)
+                ->where(function ($query) use ($fkTienda) {
+                    return $query->where('fkTienda', $fkTienda);
+                }),
         ],
 
         'nombre' => [
             'required',
             'max:150',
-            Rule::unique('productos')
-                ->ignore($id) // evita error al editar
-                ->where(fn($query) =>
-                    $query->where('fkTienda', session('user_fkTienda'))
-                ),
+            Rule::unique('productos', 'nombre')
+                ->ignore($id)
+                ->where(function ($query) use ($fkTienda) {
+                    return $query->where('fkTienda', $fkTienda);
+                }),
         ],
 
-        'descripcion' => 'nullable|max:255',
+        'descripcion'       => 'nullable|max:255',
         'fecha_vencimiento' => 'nullable|date',
-        'img_path' => 'nullable|image|mimes:png,jpg,jpeg|max:2048',
-        'marca_id' => 'required|integer|exists:marcas,id',
-        'presentacione_id' => 'required|integer|exists:presentaciones,id',
-        'categorias' => 'required'
+        'img_path'          => 'nullable|image|mimes:png,jpg,jpeg|max:2048',
+        'marca_id'          => 'required|integer|exists:marcas,id',
+        'presentacione_id'  => 'required|integer|exists:presentaciones,id',
+        'categorias'        => 'required|array', // Aseguramos que sea un array
+        'perecedero'        => 'boolean'
     ];
 }
+
 
     public function attributes()
     {

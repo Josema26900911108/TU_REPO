@@ -1299,7 +1299,7 @@ if (comprobanteId) {
         $('#total').html(total);
         $('#subiva').html(subiva);
         $('#impuesto').val(IVA);
-        $('#InputTotal').val(total);
+        $('#inputTotal').val(total);
 
         //Eliminar el fila de la tabla
         $('#fila' + indice).remove();

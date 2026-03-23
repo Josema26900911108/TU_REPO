@@ -18,7 +18,8 @@ class Producto extends Model
         'marca_id',
         'presentacione_id',
         'img_path',
-        'fkTienda'
+        'fkTienda',
+        'perecedero'
     ];
 
     public function compras()
@@ -61,10 +62,9 @@ class Producto extends Model
     public function cliente(){
         return $this->belongsTo(Cliente::class);
     }
-        public function lotes()
-    {
-        return $this->hasMany(Lote::class);
-    }
+public function lotes() {
+    return $this->hasMany(Lotesalarma::class)->where('cantidad', '>', 0);
+}
 
     public function movimientos()
     {

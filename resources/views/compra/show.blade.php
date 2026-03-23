@@ -163,6 +163,7 @@
                         <th class="text-white">Precio de compra</th>
                         <th class="text-white">Precio de venta</th>
                         <th class="text-white">Subtotal</th>
+                        <th class="text-white">Lote</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -183,12 +184,19 @@
                         <td class="td-subtotal">
                             {{($item->pivot->cantidad) * ($item->pivot->precio_compra)}}
                         </td>
+                        <td>
+                            @foreach ($lotecopra as $lote)
+                                @if ($lote->producto_id == $item->id)
+                                    {{ "($lote->numero_lote | Fecha: $lote->fecha_vencimiento)" }}
+                                @endif
+                            @endforeach
+                        </td>
                     </tr>
                     @endforeach
                 </tbody>
                 <tfoot>
                     <tr>
-                        <th colspan="5"></th>
+                        <th colspan="6"></th>
                     </tr>
                     <tr>
                         <th colspan="4">Subtotal sin Impuestos:</th>

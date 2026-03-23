@@ -25,6 +25,7 @@ use App\Models\Presentacione;
 use App\Models\Lote;
 use App\Models\CompraProducto;
 use App\Models\DetalleComprobante;
+use App\Models\Lotesalarma;
 use Illuminate\Support\Facades\Auth;
 
 
@@ -121,153 +122,154 @@ class compraController extends Controller
         return view('compra.create',compact('cuentasContables','proveedores','comprobantes','productos'));
     }
 
-    public function store(StoreCompraRequest $request)
-    {
-        try{
-                            if(!Auth::check()){
+public function store(StoreCompraRequest $request)
+{
+    try {
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
 
-            DB::beginTransaction();
-            $fkTienda = session('user_fkTienda');
-            $id=auth()->id();
-            //1.Recuperar los arrays
-            $arrayProducto_id = $request->get('arrayidproducto');
-            $arrayCantidad = $request->get('arraycantidad');
-            $arrayPrecioCompra = $request->get('arraypreciocompra');
-            $arrayPrecioVenta = $request->get('arrayprecioventa');
-            $arraysubiva = $request->get('arraysubiva');
-            $tipofolio = $request->get('TipoFolio');
-            $total=$request->total  ?? 0;
-            $proveedor_id=$request->proveedore_id;
-            $comprobante_id=$request->comprobante_id;
-            $numero_comprobante=$request->numero_comprobante;
-            $impuestotal=$request->impuesto ?? 0;
-            $fecha=$request->fecha;
-            $fecha_hora=$request->fecha_hora;
-            $arrayDescuento = $request->get('arraydescuento');
-            $arrayidcuenta = $request->get('arrayidcuenta');
-            $arraymonto = $request->get('arraymonto');
-            $arraytipomovimiento = $request->get('arraytipomovimiento');
+        DB::beginTransaction();
+        $fkTienda = session('user_fkTienda');
+        $id = auth()->id();
 
+        // 1. Recuperar los arrays (Incluyendo el nuevo de fecha de vencimiento)
+        $arrayProducto_id = $request->get('arrayidproducto');
+        $arrayCantidad = $request->get('arraycantidad');
+        $arrayPrecioCompra = $request->get('arraypreciocompra');
+        $arrayPrecioVenta = $request->get('arrayprecioventa');
+        $arraysubiva = $request->get('arraysubiva');
+        $arrayFechaVencimiento = $request->get('arrayfecha_vencimiento'); // <--- Recuperado de tu JS
 
+        $tipofolio = $request->get('TipoFolio');
+        $total = $request->total ?? 0;
+        $proveedor_id = $request->proveedore_id;
+        $comprobante_id = $request->comprobante_id;
+        $numero_comprobante = $request->numero_comprobante;
+        $impuestotal = $request->impuesto ?? 0;
+        $fecha = $request->fecha;
+        $fecha_hora = $request->fecha_hora;
+        $arrayidcuenta = $request->get('arrayidcuenta');
+        $arraymonto = $request->get('arraymonto');
+        $arraytipomovimiento = $request->get('arraytipomovimiento');
 
-            //Llenar tabla compras
-            $compra = Compra::create([
-                'fecha_hora'=>$fecha_hora,
-                'impuesto'=>$impuestotal,
-                'numero_comprobante'=>$numero_comprobante,
-                'total'=>$total+$impuestotal,
-                'estado'=>'I',
-                'comprobante_id'=>$comprobante_id,
-                'proveedore_id'=>$proveedor_id,
-                'create_at'=>$fecha,
-                'update_at'=>$fecha,
-                'fkTienda'=>$fkTienda
-            ]);
+        // Llenar tabla compras
+        $compra = Compra::create([
+            'fecha_hora' => $fecha_hora,
+            'impuesto' => $impuestotal,
+            'numero_comprobante' => $numero_comprobante,
+            'total' => $total + $impuestotal,
+            'estado' => 'I',
+            'comprobante_id' => $comprobante_id,
+            'proveedore_id' => $proveedor_id,
+            'create_at' => $fecha,
+            'update_at' => $fecha,
+            'fkTienda' => $fkTienda
+        ]);
 
-               $folio = Folio::create([
-                'descripcion'=>'Venta n.'.$compra->id.', por un total de Q. '.$total+$impuestotal.', numero de comprobante: '.$numero_comprobante.'.',
-                'cabecera'=>'Venta cerrada por caja.',
-                'EstatusContable'=>'C',
-                'TipoFolio'=>$tipofolio,
-                'FechaContabilizacion'=>now(),
-                'fkUsuario'=>$id,
-                'fkComprobante'=>$comprobante_id,
-                'created_at'=>now(),
-                'updated_at'=>now(),
-                'fkTienda'=>$fkTienda,
-                'idOrigen'=>$compra->id,
-                'TipoMovimiento'=>'C'
-            ]);
+        $folio = Folio::create([
+            'descripcion' => 'Compra n.' . $compra->id . ', por un total de Q. ' . ($total + $impuestotal) . ', numero de comprobante: ' . $numero_comprobante . '.',
+            'cabecera' => 'Compra registrada por almacén.',
+            'EstatusContable' => 'C',
+            'TipoFolio' => $tipofolio,
+            'FechaContabilizacion' => now(),
+            'fkUsuario' => $id,
+            'fkComprobante' => $comprobante_id,
+            'created_at' => now(),
+            'updated_at' => now(),
+            'fkTienda' => $fkTienda,
+            'idOrigen' => $compra->id,
+            'TipoMovimiento' => 'C'
+        ]);
 
-                                    // Extraer todos los números de la cadena
-            preg_match_all('/\d+/', $numero_comprobante, $coincidencias);
-
-            // Obtener primer y último número si existen
-            if (!empty($coincidencias[0])) {
-                $primerNumero = $coincidencias[0][0];
-                $ultimoNumero = $coincidencias[0][count($coincidencias[0]) - 1];
-
-            }else {
-                $primerNumero = '';
-                $ultimoNumero = '';
-            };
-
-        if($tipofolio=="F"){
-        $numero_comprobante2=$primerNumero.$tipofolio.$folio->idFolio.$folio->TipoMovimiento;
-
-    }else{
-        $comprobantenomenclatura=Comprobante::where('id',$comprobante_id)->first();
-        $numero_comprobante2=$primerNumero.$tipofolio.$folio->idFolio.$comprobantenomenclatura->ClaveVista.$comprobantenomenclatura->id;
-
+        // Lógica de nomenclatura de comprobante (Se mantiene igual)
+        preg_match_all('/\d+/', $numero_comprobante, $coincidencias);
+        if (!empty($coincidencias[0])) {
+            $primerNumero = $coincidencias[0][0];
+            $ultimoNumero = $coincidencias[0][count($coincidencias[0]) - 1];
+        } else {
+            $primerNumero = ''; $ultimoNumero = '';
         };
+
+        // Llenar DetalleFolio
         $cuentaArray = count($arrayidcuenta);
         $cont = 0;
+        while ($cont < $cuentaArray) {
+            DetalleFolio::create([
+                'Monto' => $arraymonto[$cont],
+                'Naturaleza' => $arraytipomovimiento[$cont],
+                'fkCuenetaContable' => $arrayidcuenta[$cont],
+                'fkUsuario' => $id,
+                'fkTienda' => $fkTienda,
+                'fkFolio' => $folio->idFolio,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+            $cont++;
+        }
 
-        while($cont < $cuentaArray) {
-    DetalleFolio::create([
-        'Monto' => $arraymonto[$cont],
-        'Naturaleza' => $arraytipomovimiento[$cont],
-        'fkCuenetaContable' => $arrayidcuenta[$cont],
-        'fkUsuario' => $id,
-        'fkTienda' => $fkTienda,
-        'fkFolio' => $folio->idFolio,
-        'created_at' => now(),
-        'updated_at' => now()
-    ]);
-    $cont++;
-}
+        // 2. Realizar el llenado de productos, stock y Lotes
+        $siseArray = count($arrayProducto_id);
+        $cont = 0;
+        while ($cont < $siseArray) {
+            $compra->productos()->attach([
+                $arrayProducto_id[$cont] => [
+                    'cantidad' => $arrayCantidad[$cont],
+                    'precio_compra' => $arrayPrecioCompra[$cont],
+                    'precio_venta' => $arrayPrecioVenta[$cont],
+                    'impuesto' => $arraysubiva[$cont],
+                    'fkTienda' => $fkTienda,
+                    'Naturaleza' => 'D',
+                    'Estado' => 'I'
+                ]
+            ]);
 
-            //Llenar tabla compra_producto
+            // 3. Actualizar el stock
+            $producto = Producto::find($arrayProducto_id[$cont]);
+            $stockActual = $producto->stock;
+            $stockNuevo = intval($arrayCantidad[$cont]);
 
-            //2.Realizar el llenado
-            $siseArray = count($arrayProducto_id);
-            $cont = 0;
-            while($cont < $siseArray){
-                $compra->productos()->attach([
-                    $arrayProducto_id[$cont] => [
-                        'cantidad' => $arrayCantidad[$cont],
-                        'precio_compra' => $arrayPrecioCompra[$cont],
-                        'precio_venta' => $arrayPrecioVenta[$cont],
-                        'impuesto'=>$arraysubiva[$cont],
-                        'fkTienda'=>$fkTienda,
-                        'Naturaleza'=>'D',
-                        'Estado'=>'I'
-                    ]
-                ]);
-
-                //3.Actualizar el stock
-                $producto = Producto::find($arrayProducto_id[$cont]);
-                $stockActual = $producto->stock;
-                $stockNuevo = intval($arrayCantidad[$cont]);
-
-                DB::table('productos')
-                ->where('id',$producto->id)
+            DB::table('productos')
+                ->where('id', $producto->id)
                 ->update([
                     'stock' => $stockActual + $stockNuevo
                 ]);
 
-
-
-                $cont++;
-
-
+            // 4. NUEVO: Insertar Alarma de Lote (Solo si hay fecha válida)
+            if (!empty($arrayFechaVencimiento[$cont]) && $arrayFechaVencimiento[$cont] != 'N/A') {
+                DB::table('lotesalarma')->insert([
+                    'producto_id' => $arrayProducto_id[$cont],
+                    'numero_lote' => 'COMP-' . $compra->id . '-' . $producto->id,
+                    'cantidad' => $stockNuevo,
+                    'fecha_vencimiento' => $arrayFechaVencimiento[$cont],
+                    'fkTienda' => $fkTienda,
+                    'compra_id' => $compra->id,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
             }
 
-            DB::commit();
-        }catch(Exception $e){
-            DB::rollBack();
-            dd($e->getMessage());
+            $cont++;
         }
-        return redirect()->route('compras.index')->with('success','compra exitosa');
 
+        DB::commit();
+    } catch (Exception $e) {
+        DB::rollBack();
+        dd($e->getMessage());
     }
+    return redirect()->route('compras.index')->with('success', 'compra exitosa');
+}
 
 
     public function show(Compra $compra)
     {
-        return view('compra.show',compact('compra'));
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
+        $lotecopra = Lotesalarma::where('compra_id',$compra->id)->get();
+
+        return view('compra.show',compact('compra','lotecopra'));
     }
 
     public function cargamasiva()
@@ -355,7 +357,7 @@ class compraController extends Controller
             $cat = Categoria::firstOrCreate(['nombre' => $categoria], ['fkTienda' => $fkTienda]);
             $mar = Marca::firstOrCreate(['nombre' => $marca], ['fkTienda' => $fkTienda]);
             $pre = presentacione::firstOrCreate(['nombre' => $present], ['fkTienda' => $fkTienda]);
-            $lot = Lote::firstOrCreate(['codigo' => $lote], ['fkTienda' => $fkTienda]);
+            $lot = Lotesalarma::firstOrCreate(['codigo' => $lote], ['fkTienda' => $fkTienda]);
             $prov = Proveedore::firstOrCreate(['nombre' => $proveedor], ['fkTienda' => $fkTienda]);
 
             // ================= EXISTENTES ============================
@@ -740,7 +742,7 @@ $productos = Producto::select('id', 'nombre')
                         if(!Auth::check()){
             return redirect()->route('login');
         }
-        
+
         $fkTienda = session('user_fkTienda');
                 $pdo = DB::getPdo();
         $stmt = $pdo->prepare("

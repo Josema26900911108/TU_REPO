@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\GenericExport;
+use App\Models\Lotesalarma;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,9 @@ class DashboardController extends Controller
                         if(!Auth::check()){
             return redirect()->route('login');
         }
+$vencimientosCriticos =  Lotesalarma::where('fecha_vencimiento', '<=', now()->addDays(15))
+    ->where('cantidad', '>', 0)
+    ->count();
 
         $data = DB::table('ventas')
             ->select('fecha_hora', 'total')
@@ -25,7 +29,7 @@ class DashboardController extends Controller
         $labels = $data->pluck('fecha');
         $values = $data->pluck('total');
 
-        return view('dashboard.index', compact('labels', 'values', 'data'));
+        return view('dashboard.index', compact('labels', 'values', 'data','vencimientosCriticos'));
     }
 
 public function exportExcel(Request $request)
