@@ -11,11 +11,25 @@
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
                 <li><a class="dropdown-item" href="{{ route('profile.index') }}">Configuraciones</a></li>
                 <li><a class="dropdown-item" href="#!">Registro de actividad</a></li>
+
                 <li>
                     <hr class="dropdown-divider" />
                 </li>
                 <li><a class="dropdown-item" href="{{ route('logout') }}">Cerrar sesión</a></li>
             </ul>
         </li>
+<li class="nav-item dropdown">
+    <a class="nav-link" data-toggle="dropdown" href="#">
+        <i class="far fa-bell"></i>
+        <span class="badge badge-warning">{{ auth()->user()->unreadNotifications->count() }}</span>
+    </a>
+    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
+        @foreach (auth()->user()->unreadNotifications as $notification)
+            <a href="#" class="dropdown-item">
+                {{ $notification->data['mensaje'] }}
+            </a>
+        @endforeach
+    </div>
+</li>
     </ul>
 </nav>

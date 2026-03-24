@@ -26,6 +26,7 @@ use App\Models\Lote;
 use App\Models\CompraProducto;
 use App\Models\DetalleComprobante;
 use App\Models\Lotesalarma;
+use App\Models\MovimientoMateriales;
 use Illuminate\Support\Facades\Auth;
 
 
@@ -191,6 +192,7 @@ public function store(StoreCompraRequest $request)
             $primerNumero = ''; $ultimoNumero = '';
         };
 
+
         // Llenar DetalleFolio
         $cuentaArray = count($arrayidcuenta);
         $cont = 0;
@@ -237,7 +239,7 @@ public function store(StoreCompraRequest $request)
 
             // 4. NUEVO: Insertar Alarma de Lote (Solo si hay fecha válida)
             if (!empty($arrayFechaVencimiento[$cont]) && $arrayFechaVencimiento[$cont] != 'N/A') {
-                DB::table('lotesalarma')->insert([
+                $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
                     'producto_id' => $arrayProducto_id[$cont],
                     'numero_lote' => 'COMP-' . $compra->id . '-' . $producto->id,
                     'cantidad' => $stockNuevo,
@@ -248,6 +250,19 @@ public function store(StoreCompraRequest $request)
                     'updated_at' => now()
                 ]);
             }
+
+                    MovimientoMateriales::create([
+    'fkTienda' => $fkTienda,
+    'fkMateriales' => $producto->id,
+    'fkLotes' => $idLoteGenerado, // El ID que obtuviste al crear el lote
+    'clase_movimiento' => '101', // Entrada de mercancía
+    'tipo_movimiento' => 'COMPRA',
+    'cantidad' => $stockNuevo,
+    'documento_material' => $compra->numero_comprobante,
+    'referencia' => "Comp ID: {$compra->id}",
+    'fecha_contabilizacion' => now(),
+    'origen_uso' => 'otros'
+]);
 
             $cont++;
         }

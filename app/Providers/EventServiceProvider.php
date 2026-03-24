@@ -25,10 +25,10 @@ class EventServiceProvider extends ServiceProvider
      *
      * @return void
      */
-    public function boot()
-    {
-        //
-    }
+public function boot()
+{
+    \App\Models\MovimientoMateriales::observe(\App\Observers\MovimientoMaterialesObserver::class);
+}
 
     /**
      * Determine if events and listeners should be automatically discovered.

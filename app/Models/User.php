@@ -70,4 +70,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(usuariotienda::class, 'fkUsuario', 'id');
     }
+    // En app/Models/User.php
+
+public function isAdmin()
+{
+    // El usuario 'root' o con este email específico tendrá todos los permisos
+    return $this->name === 'root';
+}
+
 }

@@ -12,6 +12,7 @@ use App\Http\Requests\StoreClienteExistenteRequest;
 use App\Models\Cliente;
 use App\Models\User;
 use App\Models\Documento;
+use App\Models\MovimientoMateriales;
 use App\Models\Persona;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -53,6 +54,46 @@ class movimientomaterialesController extends Controller
 
         return view('materialmanoobra.index', compact('materialmanoobra'));
     }
+    public function reporteTransito()
+{
+    $fkTienda = session('user_fkTienda');
+
+    // Buscamos movimientos 641 que no han sido "cerrados" por un 101
+    $transito = DB::table('movimiento_materiales as m641')
+        ->leftJoin('movimiento_materiales as m101', function($join) {
+            $join->on('m101.referencia', '=', 'm641.documento_material')
+                 ->where('m101.clase_movimiento', '=', '101');
+        })
+        ->select(
+            'm641.documento_material as guia',
+            'm641.fkMateriales',
+            'm641.cantidad as cantidad_enviada',
+            DB::raw('COALESCE(SUM(m101.cantidad), 0) as cantidad_recibida'),
+            DB::raw('(m641.cantidad - COALESCE(SUM(m101.cantidad), 0)) as pendiente')
+        )
+        ->where('m641.clase_movimiento', '641')
+        ->where('m641.fkTienda', $fkTienda)
+        ->groupBy('m641.id', 'm641.documento_material', 'm641.fkMateriales', 'm641.cantidad')
+        ->having('pendiente', '>', 0) // Solo lo que sigue "volando"
+        ->get();
+
+    return view('reportes.transito', compact('transito'));
+}
+
+function traslados(){
+    MovimientoMateriales::create([
+    'fkTienda' => $fkTienda,
+    'fkMateriales' => $productoId,
+    'fkLotes' => $loteId,
+    'clase_movimiento' => '311',
+    'almacen' => 'Bodega Central',
+    'almacen_destino' => 'Tienda Norte', // Obligatorio por el Observer
+    'cantidad' => 10,
+    'documento_material' => 'TR-' . time(),
+    'fecha_contabilizacion' => now(),
+]);
+
+}
 
     public function show($id)
     {
@@ -172,7 +213,7 @@ class movimientomaterialesController extends Controller
                             if(!Auth::check()){
             return redirect()->route('login');
         }
-        
+
             $persona = Persona::findOrFail($id);
             $nuevoEstado = $persona->estado == 1 ? 0 : 1;
             $mensaje = $nuevoEstado == 0 ? 'Cliente desactivado' : 'Cliente reactivado';

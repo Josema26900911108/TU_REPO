@@ -83,6 +83,20 @@ class etadirectController extends Controller
 
 }
 
+public function reporteTecnicos()
+{
+    return DB::table('movimiento_materiales')
+        ->select(
+            'contrata as tecnico',
+            'fkMateriales',
+            DB::raw('SUM(CASE WHEN clase_movimiento = "251" THEN cantidad ELSE -cantidad END) as saldo_pendiente'),
+            DB::raw('MIN(created_at) as fecha_entrega_mas_antigua')
+        )
+        ->whereIn('clase_movimiento', ['251', '252', '221']) // Salida, Devolución, Consumo
+        ->groupBy('contrata', 'fkMateriales')
+        ->having('saldo_pendiente', '>', 0)
+        ->get();
+}
 
     public function create()
     {

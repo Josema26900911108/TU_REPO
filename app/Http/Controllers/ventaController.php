@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Auth;
 use App\Exports\UniversalExport;
 use App\Models\Lotesalarma;
 use App\Models\User;
+use App\Models\MovimientoMateriales;
 use Maatwebsite\Excel\Facades\Excel;
 use MathParser\StdMathParser;
 use MathParser\Interpreting\Evaluator;
@@ -903,9 +904,20 @@ public function CCstoremobile(Request $request)
             'lote_id'    => $lote->id,
             'cantidad'   => $cantidadTomada,
             'producto_id' => $productoId,
-            'status' => 'I', // I = Inactivo (descontado), A
+            'status' => 'C', // I = Inactivo (descontado), A
             'created_at' => now(),
             'updated_at' => now()
+        ]);
+
+        DB::table('materiales_movimientos')->insert([
+            'fkTienda' => $fkTienda,
+            'fkMateriales' => $productoId,
+            'fkLotes' => $lote->id,
+            'clase_movimiento' => '652', // Clase de Salida por Venta
+            'tipo_movimiento' => 'VENTA',
+            'cantidad' => $cantidadTomada,
+            'referencia' => "Venta#$ventaId",
+            'fecha_contabilizacion' => now(),
         ]);
 
         $cantidad -= $cantidadTomada;
@@ -981,44 +993,52 @@ private function descontarLotesTrazabilidad($ventaId, $productoId, $cantidad, $f
     foreach ($lotes as $lote) {
         if ($cantidad <= 0) break;
         $tomar = min($lote->cantidad, $cantidad);
-
-        DB::table('lotesalarma')->where('id', $lote->id)->decrement('cantidad', $tomar);
-
+        // Registrar trazabilidad exacta
         DB::table('lote_ventas')->insert([
             'venta_id' => $ventaId,
             'lote_id' => $lote->id,
             'producto_id' => $productoId,
-            'status' => 'C',
             'cantidad' => $tomar,
-            'created_at' => now()
+            'created_at' => now(),
+            'status' => 'C' // I = Inactivo (descontado), A = Activo (devuelto)
         ]);
+
         $cantidad -= $tomar;
     }
 }
 
+
 // Función para devolver stock a los lotes originales exactos
-private function devolverLotesTrazabilidad($ventaId, $productoId, $cantidadDevuelta) {
-    // Buscamos de qué lotes salió este producto en esta venta (orden inverso al descuento)
+private function devolverLotesTrazabilidad($ventaId, $productoId, $cantidadDevuelta, $fkTienda) {
     $registros = DB::table('lote_ventas')
-        ->join('lotesalarma', 'lote_ventas.lote_id', '=', 'lotesalarma.id')
-        ->where('lote_ventas.venta_id', $ventaId)
-        ->where('lote_ventas.producto_id', $productoId)
-        ->select('lote_ventas.*')
-        ->orderBy('lote_ventas.id', 'desc')
+        ->where('venta_id', $ventaId)
+        ->where('producto_id', $productoId)
+        ->where('cantidad', '>', 0)
+        ->orderBy('id', 'desc')
         ->get();
 
     foreach ($registros as $reg) {
         if ($cantidadDevuelta <= 0) break;
         $regresar = min($reg->cantidad, $cantidadDevuelta);
 
-        DB::table('lotesalarma')->where('id', $reg->lote_id)->increment('cantidad', $regresar);
+        // 1. REGISTRAR EL MOVIMIENTO (Esto disparará el Observer para subir el stock)
+        MovimientoMateriales::create([
+            'fkTienda' => $fkTienda,
+            'fkMateriales' => $productoId,
+            'fkLotes' => $reg->lote_id,
+            'clase_movimiento' => '653', // Clase de Devolución
+            'tipo_movimiento' => 'DEVOLUCION',
+            'cantidad' => $regresar,
+            'referencia' => "Dev Vent#$ventaId",
+            'fecha_contabilizacion' => now(),
+        ]);
 
-        // Actualizamos o eliminamos el registro de trazabilidad
-        if ($regresar == $reg->cantidad) {
-            DB::table('lote_ventas')->where('id', $reg->id)->update(['status' => 'A', 'cantidad' => 0]);
-        } else {
-            DB::table('lote_ventas')->where('id', $reg->id)->decrement('cantidad', $regresar);
-        }
+        // 2. Actualizar estatus de trazabilidad original
+        DB::table('lote_ventas')->where('id', $reg->id)->update([
+            'status' => ($regresar == $reg->cantidad) ? 'DEVUELTO' : 'PARCIAL',
+            'cantidad' => $reg->cantidad - $regresar // Lo que queda en manos del cliente
+        ]);
+
         $cantidadDevuelta -= $regresar;
     }
 }
@@ -1198,7 +1218,7 @@ for ($cont = 0; $cont < $sizeArray; $cont++) {
 
         if($cantidadNueva < $cantidadOriginal){
             $diff = $cantidadOriginal - $cantidadNueva;
-            $this->devolverLotesTrazabilidad($venta->id, $productoId, $diff);
+            $this->devolverLotesTrazabilidad($venta->id, $productoId, $diff, $fkTienda);
             DB::table('productos')->where('id', $productoId)->increment('stock', $diff);
         }
         elseif ($cantidadNueva > $cantidadOriginal) {
@@ -1206,6 +1226,15 @@ for ($cont = 0; $cont < $sizeArray; $cont++) {
             $this->descontarLotesTrazabilidad($venta->id, $productoId, $diff, $fkTienda);
             DB::table('productos')->where('id', $productoId)->decrement('stock', $diff);
         }
+
+        DB::table('movimiento_materiales')
+        ->join('lote_ventas', 'movimiento_materiales.fkLotes', '=', 'lote_ventas.lote_id')
+            ->where('lote_ventas.venta_id', $venta->id)
+            ->where('movimiento_materiales.fkMateriales', $productoId)
+            ->update([
+                'documento_material' => $venta->numero_comprobante,
+                'fecha_contabilizacion' => now()
+            ]);
 
         // 🔥 ESTA ES LA PARTE QUE TE FALTABA: ACTUALIZAR EL PIVOTE FÍSICAMENTE
         DB::table('producto_venta')
@@ -1228,7 +1257,7 @@ for ($cont = 0; $cont < $sizeArray; $cont++) {
 // PRODUCTOS ELIMINADOS COMPLETAMENTE
 foreach($productosOriginales as $productoId => $productoOriginal){
     if(!in_array($productoId, $productosProcesados)){
-        $this->devolverLotesTrazabilidad($venta->id, $productoId, $productoOriginal->cantidad);
+        $this->devolverLotesTrazabilidad($venta->id, $productoId, $productoOriginal->cantidad, $fkTienda);
         DB::table('productos')->where('id', $productoId)->increment('stock', $productoOriginal->cantidad);
         // ... (Tu código de delete pivote y devoluciones_venta se mantiene)
     }

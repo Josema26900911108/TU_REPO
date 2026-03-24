@@ -4,6 +4,12 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Lotesalarma;
+use App\Models\User;
+use Illuminate\Notifications\Notification;
+
+
+use App\Notifications\LoteVencimientoNotification;
+
 
 class RevisarVencimientos extends Command
 {
@@ -21,25 +27,19 @@ class RevisarVencimientos extends Command
      */
     protected $description = 'Command description';
 
-public function handle()
-{
-    // Buscamos lotes que venzan en los próximos 30 días
-    $fechaLimite = now()->addDays(30)->format('Y-m-d');
-
-    $lotesProximos = Lotesalarma::where('fecha_vencimiento', '<=', $fechaLimite)
-        ->where('cantidad', '>', 0)
-        ->where('notificado', false)
+public function handle() {
+    $lotesProximos = Lotesalarma::where('cantidad', '>', 0)
+        ->whereDate('fecha_vencimiento', '<=', now()->addDays(15))
         ->get();
 
+    $admins = User::where('rol', 'admin')->get();
+
     foreach ($lotesProximos as $lote) {
-        // Opción A: Enviar Email al administrador
-        // Mail::to('admin@tuempresa.com')->send(new AlertaVencimiento($lote));
-
-        // Opción B: Crear una notificación en la DB para el Dashboard
-        // Notification::send($user, new LotePorVencer($lote));
-
-        $lote->update(['notificado' => true]);
+        foreach ($admins as $admin) {
+            $admin->notify(new LoteVencimientoNotification($lote));
+        }
     }
 }
+
 
 }

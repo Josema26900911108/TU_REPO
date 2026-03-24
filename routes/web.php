@@ -43,10 +43,13 @@ use App\Models\Compra;
 use App\Models\Comprobante;
 use App\Models\CuentaContable;
 use App\Models\Cliente;
+use App\Models\Lotesalarma;
 use App\Models\MovimientoMaterial;
 use App\Models\Persona;
 use App\Models\Tecnico;
 use App\Models\Tienda;
+use App\Models\User;
+use App\Notifications\LoteVencimientoNotification;
 use Barryvdh\DomPDF\Facade as PDF;
 
 
@@ -468,6 +471,17 @@ Route::get('clientes/lista', [clienteController::class, 'listaClientes'])
 Route::resource('userstore', usuariotiendaController::class);
 
 Route::post('/tiendas', [userController::class, 'getTiendasByEmail'])->middleware('web');
+
+Route::get('/test-notification', function () {
+    $user = User::where('name', 'root')->first();
+    $lote = Lotesalarma::first(); // Asegúrate de que exista al menos uno
+
+    if ($user && $lote) {
+        $user->notify(new LoteVencimientoNotification($lote));
+        return "Notificación enviada a la base de datos.";
+    }
+    return "No se encontró usuario o lote.";
+});
 
 
 Route::get('/401', function () {
