@@ -112,7 +112,8 @@
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                                    <form action="{{ route('users.destroy',['user'=>$item['id']]) }}" method="post">
+                                    
+                                        <form action="{{ route('tecnico.destroy', $item['id']) }}" method="POST">
                                         @method('DELETE')
                                         @csrf
                                         <button type="submit" class="btn btn-danger">Confirmar</button>

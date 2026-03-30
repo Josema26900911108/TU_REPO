@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Response;
 use Spatie\Permission\Models\Role;
 use Intervention\Image\ImageManager;
 use Illuminate\Support\Facades\Storage;
-use Intervention\Image\Drivers\Gd\Driver; // Import GD driver
+use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\WebpEncoder;
 use App\Models\Tecnico;
 use App\Models\usuariotienda;
@@ -184,24 +184,10 @@ if ($tienda->isEmpty()) {
     public function store(Request $request)
     {
 
-    $request->validate([
-        'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
-    ]);
 
         try {
-            DB::beginTransaction();
-//creacion de entidad persona
-            $persona = Persona::create(array_merge([
-                'razon_social'=>$request->razon_social,
-                'direccion'=>$request->direccion,
-                'tipo_persona'=>$request->tipo_persona,
-                'estado'=>1,
-                'documento_id'=>$request->documento_id,
-                'numero_documento'=>$request->numero_documento,
-                'fkuser'=>$request->user,
-                'created_at'=>now()
-            ]));
 
+            DB::beginTransaction();
          // Procesar imagen y convertir a BLOB
         $file = $request->file('image');
         $manager = new ImageManager(new Driver());
@@ -274,60 +260,82 @@ if ($tienda->isEmpty()) {
         return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado');
 
     }
+
     public function exist(Request $request)
-    {
-        try {
-                            if(!Auth::check()){
-            return redirect()->route('login');
-        }
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Sesión expirada.'], 401);
+    }
 
-            DB::beginTransaction();
+    try {
+        DB::beginTransaction();
 
-         // Procesar imagen y convertir a BLOB
-        $file = $request->file('image');
-        if($file!=null){
-        $manager = new ImageManager(new Driver());
-
-        $image = $manager->read($file->getPathname())
-                         ->resize(800, 800, function ($constraint) {
-                             $constraint->aspectRatio();
-                             $constraint->upsize();
-                         });
-
-        // Convertir a WebP y obtener como cadena binaria
-        $webpEncoder = new WebpEncoder(quality: 80);
-        $imageBlob = $image->encode($webpEncoder);
-        }
-$tecnico = Tecnico::findOrFail($request['idtecnico']);
+        // 1. Procesar imagen (solo si existe)
+    $file = $request->file('image');
+    $manager = new ImageManager(new Driver());
 
 
-           $tecnico->update(
-['fkuser'=>$request->user,
-            'fkTienda'=>$request->tienda,
-            'codigo'=>$request->numero_eta,
-            'especialidad'=>$request->especialidad,
-            'updated_at' => now(),
+// Luego manipulas la imagen
+    $image = $manager->read($file->getPathname())
+        ->resize(300, 300, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        })
+        ->toWebp(50); // calidad 50%
+
+        $imageBase64 = (string) $image;
+
+        // 2. Buscar la Persona (esta sí debe existir obligatoriamente)
+        $persona = Persona::findOrFail($request->persona_id);
+
+        $request->validate([
+                'email.unique' => 'El correo electrónico ya existe en el sistema, por favor elige uno nuevo.'
             ]);
 
+            $fieldHash = Hash::make($request->password);
+$user = User::updateOrCreate(
+    ['email' => $request->email], // Busca por email
+    [
+        'name'     => $persona->razon_social,
+        'password' => $fieldHash,
+        'logo'     => $imageBase64, // El binario del toString()
+        'updated_at' => now()
+    ]
+);
 
-if($imageBlob!=null){
-               $tecnico->update(
-['logo'=>$imageBlob,
-]);
+            $user->assignRole($request->role);  
 
+        // 3. BUSCAR O CREAR el técnico vinculado a esa persona
+        // Usamos updateOrCreate para que si no existe, lo inserte
+        $tecnico = Tecnico::updateOrCreate(
+            ['fkpersona' => $persona->id], // Condición para buscar
+            [
+                'nombre'       => $persona->razon_social, // Datos para actualizar/crear
+                'fkTienda'     => $request->tienda,
+                'codigo'       => $request->numero_eta,
+                'especialidad' => $request->especialidad,
+                'fkuser'=>$user->id,
+                'updated_at'   => now()
+            ]
+        );
+
+        // 4. Actualizar logo si se subió uno
+        if ($imageBase64) {
+            $tecnico->update(['logo' => $imageBase64]);
+        }
+
+        DB::commit();
+
+        return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Error en Exist: ' . $e->getMessage());
+        return response()->json(['error' => 'Error: ' . $e->getMessage()], 500);
+    }
 }
 
-            DB::commit();
 
-            return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado exitosamente.');
-
-
-        } catch (Exception $e) {
-            DB::rollBack();
-            Log::error('Error al registrar cliente existente - Persona ID: ' . $request->persona_id . ' - Error: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Error al registrar el cliente.');
-        }
-    }
 
     public function obtenerdetalless(Request $request){
 
@@ -1529,18 +1537,40 @@ return response()->json($detallecomprobante);
     }
 
     public function destroy(string $id)
-    {
-        try {
-            $persona = Persona::findOrFail($id);
-            $nuevoEstado = $persona->estado == 1 ? 0 : 1;
-            $mensaje = $nuevoEstado == 0 ? 'Cliente desactivado' : 'Cliente reactivado';
-
-            $persona->update(['estado' => $nuevoEstado]);
-
-            return redirect()->route('clientes.index')->with('success', $mensaje);
-        } catch (Exception $e) {
-            Log::error('Error al cambiar estado del cliente - ID: ' . $id . ' - Error: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Error al cambiar el estado del cliente.');
-        }
+{
+    if(!Auth::check()){
+        return redirect()->route('login');
     }
+
+    // Buscamos al técnico y su usuario relacionado directamente
+    // Nota: $id aquí debe ser el ID del Técnico o de la Persona según tu tabla
+    $tecnico = Tecnico::where('id', $id)->first();
+
+    if (!$tecnico || !$tecnico->fkuser) {
+        return back()->with('error', 'No se encontró el usuario asociado a este técnico.');
+    }
+
+    try {
+        DB::beginTransaction();
+
+        // 1. Desactivar técnico
+        $tecnico->update(['especialidad' => 'INACTIVO']); 
+
+        // 2. Desactivar usuario
+        $user = User::findOrFail($tecnico->fkuser);
+        $user->status = 0; 
+        $user->save();
+
+        // 3. Quitar roles (Spatie)
+        $user->roles()->detach();
+
+        DB::commit();
+        return redirect()->route('tecnico.lista')->with('success', 'Técnico y usuario desactivados correctamente.');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->with('error', 'Error al procesar la baja: ' . $e->getMessage());
+    }
+}
+
 }

@@ -24,6 +24,10 @@ use App\Http\Controllers\userController;
 use App\Http\Controllers\ventaController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CashRegisterController;
+use App\Http\Controllers\centroController;
+use App\Http\Controllers\CentrosOrganizacionController;
+use App\Http\Controllers\RecetaController;
+use App\Http\Controllers\MenuController;
 use App\Http\Controllers\comprobantesController;
 use App\Http\Controllers\CuentaContableController;
 use App\Http\Controllers\DashboardController;
@@ -39,6 +43,7 @@ use App\Http\Controllers\tiendaController;
 use App\Http\Controllers\treematerialescategoriaController;
 use App\Http\Controllers\usuariotiendaController;
 use App\Models\ArqueoCaja;
+use App\Models\CentrosOrganizacion;
 use App\Models\Compra;
 use App\Models\Comprobante;
 use App\Models\CuentaContable;
@@ -92,8 +97,30 @@ Route::resources([
     'etadirect'=>etadirectController::class,
     'arbolmateriales'=>ArbolMaterialesController::class,
     'abrmanoobra'=>AbrmanoobraController::class,
-    'treematerialescategoria'=>TreematerialescategoriaController::class
+    'treematerialescategoria'=>TreematerialescategoriaController::class,
+    'centros' => centroController::class,
+    'centroorganizacion'=>CentrosOrganizacionController::class,
 ]);
+
+
+//CENTROS
+Route::post('/centrosstore', [centroController::class, 'store'])->name('centros.store');
+Route::get('/centros', [centroController::class, 'index'])->name('centro.index');
+Route::get('/panelcentros', [centroController::class, 'index'])->name('centros.index');
+
+
+//centros organizacion
+Route::post('/organizacioncentros',[CentrosOrganizacionController::class,'store'])->name('centroorganizacion.store');
+Route::get('/orgcentro',[CentrosOrganizacionController::class,'index'])->name('centroorganizacion.index');
+Route::get('/panelorgcent',[CentrosOrganizacionController::class,'index'])->name('centroorganizaciones.index');
+Route::get('centroorganizacion/{centroorganizacion}/edit', [CentrosOrganizacionController::class, 'edit'])->name('centroorganizacion.edit');
+
+//recetas
+Route::resource('recetas', RecetaController::class);
+Route::get('menu', [MenuController::class, 'index'])->name('menu.index');
+Route::get('menu/{id}', [MenuController::class, 'show'])->name('menu.show');
+
+
 
 Route::get('/arqueocaja/show/{arqueocaja}', [ArqueoCajaController::class, 'show'])->name('arqueocaja.show');
 Route::get('/arqueocaja/panel/{arqueocaja}', [ArqueoCajaController::class, 'panel'])->name('arqueocaja.panel');
@@ -354,11 +381,15 @@ Route::get('/movimientomateriales/lista',[movimientomaterialesController::class,
 
 Route::get('/tecnico',[TecnicoController::class,'index'])->name('tecnico.lista');
 Route::post('/tecnico/crear',[TecnicoController::class,'store'])->name('tecnico.store');
-Route::post('/tecnico/editar',[TecnicoController::class,'exist'])->name('tecnico.exist');
+Route::post('/Editecni/editar',[TecnicoController::class,'exist'])->name('tecnico.exist');
 Route::post('/tecnico/exist',[TecnicoController::class,'exist'])->name('tecnico.storexist');
 Route::get('/tecnico/{user}/edit',[TecnicoController::class,'edit'])->name('tecnico.edit');
 Route::get('buckettecnicoconstruccion/{tecbucket}', [TecnicoController::class,'inventariotecnicoorden'])
     ->name('tecnico.inventario');
+// Cambia Route::get por Route::delete
+Route::delete('/eliminartecnico/{id}', [TecnicoController::class, 'destroy'])->name('tecnico.destroy');
+
+
 
 Route::get('/verbtecnico/{usbucket}/ver-bucket',[TecnicoController::class,'bucket'])->name('tecnico.bucket');
 Route::get('/buckettecnicos',[TecnicoController::class,'bucketlista'])->name('tecnico.buckettecnico');
@@ -462,11 +493,22 @@ Route::get('clientes/lista', [clienteController::class, 'listaClientes'])
             $query->where('estado', '<>', 0);
         })
         ->get();
-
-
         // Retornar los resultados como JSON
         return response()->json($persona);
     })->name('client.obtenerfill');
+
+        Route::get('/test-tecnicofill', function(Request $request) {
+        // Obtener el término de búsqueda desde la URL
+        $searchTerm = $request->get('search', '');
+        // Filtrar los clientes según el término de búsqueda
+        $persona = Persona::with('tecnico')
+        ->whereDoesntHave('tecnico', function ($query) {
+            $query->where('estado', '<>', 0);
+        })
+        ->get();
+        // Retornar los resultados como JSON
+        return response()->json($persona);
+    })->name('tecnico.obtenerfill');
 
 Route::resource('userstore', usuariotiendaController::class);
 

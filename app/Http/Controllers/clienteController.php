@@ -12,6 +12,7 @@ use App\Models\Cliente;
 use App\Models\User;
 use App\Models\Documento;
 use App\Models\Persona;
+use App\Models\Tecnico;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -94,12 +95,12 @@ class clienteController extends Controller
             DB::beginTransaction();
 
             // Buscar la persona existente
-            $persona = Persona::findOrFail($request->persona_id);
-
+            $persona = Persona::where('id', $request->persona_id)->firstOrFail();
+            
             // Verificar si ya existe en clientes
-            if ($persona->cliente) {
-                return redirect()->back()->with('error', 'La persona ya está registrada como cliente.');
-            }
+        if ($persona->cliente()->exists()) {
+            return response()->json(['error' => 'La persona ya está registrada como cliente.'], 422);
+        }
 
             // Registrar como cliente
             $persona->cliente()->create(['persona_id' => $persona->id]);

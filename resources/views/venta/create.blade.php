@@ -20,7 +20,7 @@
 </div>
 
 
-<form action="{{ route('ventas.store') }}" method="post">
+<form id="formVenta" action="{{ route('ventas.store') }}" method="post">
     @csrf
     <div class="container-lg mt-4">
         <div class="row gy-4">
@@ -52,6 +52,7 @@
                 data-lote="{{ $producto->numero_lote ?? 'N/A' }}"
                 data-vence="{{ $producto->fecha_vencimiento ?? 'N/A' }}"
                 data-cantidadlote="{{ $producto->cantidad_lote ?? 'N/A' }}"
+                data-reglas="{{ json_encode($producto->reglas_json) ?? 'N/A' }}"
                 data-detalle="{{ $producto->descripcion }}">
             {{ $producto->nombre }}
         </option>
@@ -163,6 +164,7 @@
                                 </table>
                             </div>
                         </div>
+                        
 
                         <!--Boton para cancelar venta--->
                         <div class="col-12">
@@ -252,11 +254,7 @@
                         <!----User--->
                         <input type="hidden" name="user_id" value="{{ auth()->user()->id }}">
 
-                                @can('pre-venta')
-                                <div class="col-12 text-center">
-                                        <button type="submit" class="btn btn-success" id="guardar">Realizar pre-venta</button>
-                                </div>
-                                @endcan
+                       
                                 @can('cobrar-ventadirecta')
                                 <div class="col-12 text-center">
                                         <button type="submit" class="btn btn-success" id="guardar">Realizar venta</button>
@@ -715,6 +713,59 @@ if (comprobanteId) {
 
         $('#impuesto').val(IVA);
     }
+
+    $('#guardar').on('click', function(e) {
+    e.preventDefault();
+
+    let formElement = document.getElementById('formVenta');
+    let formData = new FormData(formElement);
+
+    // OPCIONAL: Si tu tabla no tiene inputs ocultos, puedes capturar los datos 
+    // de un array global (si es que usas uno para llenar la tabla)
+    // formData.append('detalles', JSON.stringify(arrayDetalles));
+
+    $.ajax({
+        url: "{{ route('ventas.store') }}",
+        method: "POST",
+        data: formData,
+        processData: false,
+        contentType: false,
+        beforeSend: function() {
+            Swal.fire({
+                title: 'Guardando...',
+                text: 'Por favor espere',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+        },
+        success: function(res) {
+            Swal.fire('¡Éxito!', res.success, 'success')
+                .then(() => location.href = "{{ route('ventas.index') }}");
+        },
+error: function(xhr) {
+    let mensaje = "Error al guardar";
+    
+    if (xhr.status === 422) {
+        // Captura los errores de validación de Laravel
+        let errores = xhr.responseJSON.errors;
+        mensaje = "Faltan campos obligatorios:<br><ul>";
+        $.each(errores, function(key, value) {
+            mensaje += "<li>" + value[0] + "</li>";
+        });
+        mensaje += "</ul>";
+    } else if (xhr.responseJSON && xhr.responseJSON.error) {
+        mensaje = xhr.responseJSON.error;
+    }
+
+    Swal.fire({
+        icon: 'error',
+        title: 'Error de Validación',
+        html: mensaje // Usamos 'html' para que se vea la lista
+    });
+}
+
+    });
+});
 
     function CalcularFormula(formulalocal, montoA) {
             // Reemplazar "A" en la fórmula con el valor de la variable A

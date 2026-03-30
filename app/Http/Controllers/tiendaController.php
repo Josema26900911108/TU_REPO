@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Tienda;
 use App\Models\plantillahtml;
+use App\Models\Centro;
 use App\Http\Requests\StoreTiendaRequest;
 use App\Models\DocumentDesings;
 use App\Models\plantillahtmlgeneral;
@@ -41,9 +42,15 @@ class tiendaController extends Controller
         $fkTienda=session('user_fkTienda');
         $idusuario=auth()->user()->id;
         $tiendas = Tienda::join('usuario_tienda', 'tienda.idTienda', '=', 'usuario_tienda.fkTienda')
-        ->select('tienda.*')
+        ->join('centro', 'tienda.idTienda', '=', 'centro.fkTienda')
+        ->select(
+            'centro.codigo as centro_codigo',
+            'centro.nombre as centro_nombre',
+            'tienda.*'
+        )
         ->where('usuario_tienda.fkUsuario', $idusuario)
         ->get();
+
 
         return view('tienda.index', compact('tiendas'));
     }
@@ -53,8 +60,10 @@ class tiendaController extends Controller
      */
     public function create()
     {
+        $fkTienda=session('user_fkTienda');
+        $centros=Centro::all()->where('fkTienda',$fkTienda);
 
-        return view('tienda.create');
+        return view('tienda.create',compact('centros'));
     }
 
     /**
@@ -88,6 +97,7 @@ Tienda::create(array_merge(
         'municipio' => $request->municipio,
         'descripcion' => $request->descripcion,
         'representante' => $request->representante,
+        'fkCentro'=>$request->centro,
         'nit' => $request->nit,
     ]
 ));
@@ -112,10 +122,6 @@ Tienda::create(array_merge(
      */
     public function edit(Tienda $tienda)
     {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
         $tiendas = Tienda::all();
         return view('tienda.edit', compact('tienda', 'tienda'));
     }
@@ -303,6 +309,7 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
                     'descripcion' => $request->descripcion,
                     'Telefono' => $request->Telefono,
                     'logo' => $imageBase64 ?? null,
+                    'fkCentro'=>$request->centro,
                 ]);
 
 
@@ -371,11 +378,6 @@ public function ejecutarConsultaConMetadata(Request $request)
 
 public function PDF(Request $request)
 {
-
-                if(!Auth::check()){
-            return redirect()->route('login');
-        }
-        
         $html = $request->input('html');
 
 

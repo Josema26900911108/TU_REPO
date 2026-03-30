@@ -274,6 +274,7 @@ public function exportVentas()
         'l.numero_lote', // Asegúrate que en la tabla sea 'numero_lote' y no 'codigo_lote'
         'l.cantidad as cantidad_lote'
     )
+    ->with(['reglasPrecios', 'modificadores'])
     ->where('productos.fkTienda', $fkTienda)
     ->where('productos.estado', 1)
     ->where('productos.stock', '>', 0)
@@ -774,8 +775,6 @@ public function CCstoremobile(Request $request)
 
         DB::rollBack();
 
-        Log::error('Error en storeCC: ' . $e->getMessage());
-
         return response()->json(['error' => 'Error al al realizar la venta.'.$e->getMessage()], 500);
 
 
@@ -785,7 +784,6 @@ public function CCstoremobile(Request $request)
     {
         try{
             DB::beginTransaction();
-
             $fkTienda = session('user_fkTienda');
             $Estatus = session('user_estatus');
 
@@ -871,17 +869,48 @@ public function CCstoremobile(Request $request)
             }
 
             DB::commit();
+
+            return redirect()->route('ventas.index')->with('success','Venta exitosa');
         }catch(Exception $e){
             DB::rollBack();
-            return back()->withErrors($e->getMessage());
+                    return response()->json([
+            'error' => 'Error técnico: ' . $e->getMessage()
+        ], 500); 
         }
-
-        return redirect()->route('ventas.index')->with('success','Venta exitosa');
+       
     }
 
-    private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidad, $fkTienda)
+private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidad, $fkTienda)
 {
-    // Buscamos los lotes disponibles del producto ordenados por vencimiento
+    // 1. Obtener datos de la venta y el producto
+    $venta = Venta::findOrFail($ventaId);
+    $producto = Producto::findOrFail($productoId);
+
+    // CASO A: PRODUCTO NO PERECEDERO (Descuento directo de stock general)
+    if ($producto->perecedero == 0) { // O la lógica que uses: 'N', false, etc.
+        $producto->decrement('stock', $cantidad);
+        
+        // Registrar movimiento general (sin lote específico)
+        MovimientoMateriales::create([
+            'fkTienda' => $fkTienda,
+            'fkMateriales' => $productoId,
+            'fkLotes' => null, // No aplica lote
+            'clase_movimiento' => '601',
+            'tipo_movimiento' => 'VENTA',
+            'cantidad' => $cantidad,
+            'documento_material' => $venta->numero_comprobante,
+            'referencia' => "Vent ID: {$ventaId} (No perecedero)",
+            'fecha_contabilizacion' => now(),
+            'centro' => session('centro'),
+            'almacen' => session('centro'),
+            'origen_uso' => 'otros',
+            'unidad_medida_base' => 'PZA',
+            'posicion_documento' => 1
+        ]);
+        return; // Terminamos aquí para productos no perecederos
+    }
+
+    // CASO B: PRODUCTO PERECEDERO (Lógica de Lotes / FIFO)
     $lotes = DB::table('lotesalarma')
         ->where('producto_id', $productoId)
         ->where('fkTienda', $fkTienda)
@@ -889,42 +918,53 @@ public function CCstoremobile(Request $request)
         ->orderBy('fecha_vencimiento', 'asc')
         ->get();
 
+    $cont = 0;
     foreach ($lotes as $lote) {
         if ($cantidad <= 0) break;
 
-        // Determinamos cuánto podemos tomar de este lote
         $cantidadTomada = min($lote->cantidad, $cantidad);
 
-        // A. Descontar del lote original
+        // Descontar del lote
         DB::table('lotesalarma')->where('id', $lote->id)->decrement('cantidad', $cantidadTomada);
 
-        // B. REGISTRAR LA TRAZABILIDAD (La tabla que propusiste)
+        // Registrar trazabilidad de lote
         DB::table('lote_ventas')->insert([
-            'venta_id'   => $ventaId,
-            'lote_id'    => $lote->id,
-            'cantidad'   => $cantidadTomada,
+            'venta_id'    => $ventaId,
+            'lote_id'     => $lote->id,
+            'cantidad'    => $cantidadTomada,
             'producto_id' => $productoId,
-            'status' => 'C', // I = Inactivo (descontado), A
-            'created_at' => now(),
-            'updated_at' => now()
+            'status'      => 'C',
+            'created_at'  => now(),
+            'updated_at'  => now()
         ]);
-
-        DB::table('materiales_movimientos')->insert([
+        
+        // Movimiento por cada lote tomado
+        MovimientoMateriales::create([
             'fkTienda' => $fkTienda,
             'fkMateriales' => $productoId,
-            'fkLotes' => $lote->id,
-            'clase_movimiento' => '652', // Clase de Salida por Venta
+            'fkLotes' => $lote->id, 
+            'clase_movimiento' => '601',    
             'tipo_movimiento' => 'VENTA',
-            'cantidad' => $cantidadTomada,
-            'referencia' => "Venta#$ventaId",
+            'cantidad' => $cantidadTomada * -1,
+            'documento_material' => $venta->numero_comprobante,
+            'referencia' => "Vent ID: {$ventaId} (Lote: {$lote->id})",
             'fecha_contabilizacion' => now(),
+            'centro' => session('centro'),
+            'almacen' => session('centro'),
+            'origen_uso' => 'venta_directa',
+            'unidad_medida_base' => 'PZA',
+            'posicion_documento' => $cont + 1
         ]);
 
+        $cont++;
         $cantidad -= $cantidadTomada;
     }
 
-    // Opcional: Validar si al final $cantidad > 0 significa que no hubo stock suficiente en lotes
+    if ($cantidad > 0) {
+        throw new \Exception("Stock insuficiente en lotes para el producto perecedero: {$producto->nombre}");
+    }
 }
+
 
 
     private function descontarDeLotes($ventaId, $productoId, $cantidad, $fkTienda) {
@@ -1031,6 +1071,13 @@ private function devolverLotesTrazabilidad($ventaId, $productoId, $cantidadDevue
             'cantidad' => $regresar,
             'referencia' => "Dev Vent#$ventaId",
             'fecha_contabilizacion' => now(),
+            'centro' => session('centro'),
+            'almacen' => session('centro'),
+            'origen_uso' => 'otros',
+            'unidad_medida_base' => 'PZA',
+            'posicion_documento' => 1,
+            'created_at' => now(),
+            'updated_at' => now()
         ]);
 
         // 2. Actualizar estatus de trazabilidad original
@@ -1248,6 +1295,8 @@ for ($cont = 0; $cont < $sizeArray; $cont++) {
                 'updated_at' => now()
             ]);
 
+            
+
     } else {
         // ... (Tu código de attach para productos nuevos está bien)
     }
@@ -1312,8 +1361,9 @@ return redirect()->route('ventas.show', ['venta' => $venta->id])
     } catch (Exception $e) {
         DB::rollBack();
         Log::error('Error en storeCC: ' . $e->getMessage());
-        return redirect()->route('arqueocaja.cobrarventas', ['ventas' => $venta->id])
-                 ->with('error', 'Error al guardar la venta: '. $e->getMessage());
+
+        return response()->json(['error' => 'Error al guardar la venta: ' . $e->getMessage()], 500);
+            
 
 
     }

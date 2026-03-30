@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\loginRequest;
+use App\Models\Tienda;
 use Illuminate\Support\Facades\Auth;
 
 class loginController extends Controller
@@ -14,6 +15,8 @@ class loginController extends Controller
 
     public function login(loginRequest $request)
     {
+
+    if (Auth::attempt(['email' => $request->email, 'password' => $request->password, 'status' => 1])) {
         // Validar credenciales
         if (!Auth::validate($request->only('email', 'password'))) {
             return redirect()->to('login')->withErrors('Credenciales incorrectas');
@@ -23,6 +26,12 @@ class loginController extends Controller
         $user = Auth::getProvider()->retrieveByCredentials($request->only('email', 'password'));
         Auth::login($user);
         $user->idtienda=$request->idTienda;
+
+        $centro = Tienda::join('centro', 'tienda.idTienda', '=', 'centro.fkTienda')
+            ->where('tienda.idTienda', $request->idTienda)
+            ->select('centro.codigo')
+            ->first();
+        
         // Obtener información adicional, como la tienda a la que está asignado el usuario
         // Supongamos que el usuario tiene una relación con la tienda
         $tienda = $request->idTienda; // Aquí asumiendo que hay una relación definida
@@ -34,9 +43,15 @@ class loginController extends Controller
             'user_fkTienda' => $tienda ? $tienda : null, // Verificamos si hay una tienda asignada
             'idTienda' => $tienda ? $tienda : null, // Verificamos si hay una tienda asignada
             'logo' => $tienda ? $tienda : null, // Verificamos si hay una tienda asignada
+            'centro' => $centro->codigo ? $centro->codigo : null,
         ]);
 
             return redirect()->route('panel')->with('success', 'Bienvenido ' . $user->name);
+            } else {
+                
+                return redirect()->route('login')->with('Error', 'No se pudo iniciar sesion favor validar Correo, Contraseña, y validar si usuario esta activo en sistema.');
+ 
+}
     }
 
 }

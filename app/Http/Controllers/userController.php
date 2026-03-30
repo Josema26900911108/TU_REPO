@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\User;
+use App\Models\Tecnico;
 use Exception;
 use GuzzleHttp\Psr7\Message;
 use Illuminate\Http\Request;
@@ -119,7 +120,7 @@ class userController extends Controller
             //Crear usuario
             $user = User::create(array_merge($request->all(), ['fkTienda' => $fkTienda], ['logo'=>$imageBase64]));
             //Asignar su rol
-            $user->assignRole($request->role);
+            $user->assignRole($request->role);  
 
             DB::commit();
         } catch (Exception $e) {
@@ -199,21 +200,28 @@ class userController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+public function destroy(string $id)
+{
+    try {
+        $user = User::findOrFail($id);
 
-        $user = User::find($id);
+        // En lugar de borrar, desactivamos
+        $user->status = 0; 
+        $user->save();
 
-        //Eliminar rol
         $rolUser = $user->getRoleNames()->first();
         $user->removeRole($rolUser);
 
-        //Eliminar usuario
-        $user->delete();
+        // Opcional: Quitarle los permisos de técnico si existe
+        $tecnico = Tecnico::where('fkuser', $user->id)->first();
+        if ($tecnico) {
+            $tecnico->update(['especialidad' => 'INACTIVO']); // O lo que prefieras
+        }
 
-        return redirect()->route('users.index')->with('success','Usuario eliminado');
+        return redirect()->route('users.index')->with('success', 'Usuario desactivado correctamente.');
+    } catch (\Exception $e) {
+        return back()->with('error', 'Error al desactivar: ' . $e->getMessage());
     }
+}
+
 }

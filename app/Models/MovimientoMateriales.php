@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class MovimientoMateriales extends Model
 {
-      use NestedSetTrait;
+ 
 
     protected $table = 'movimiento_materiales'; // Cambia 'tienda' por el nombre correcto de tu tabla
     protected $primaryKey = 'id'; // Especifica la clave primaria

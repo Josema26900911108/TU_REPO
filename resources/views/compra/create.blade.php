@@ -20,7 +20,7 @@
     </ol>
 </div>
 
-<form action="{{ route('compras.store') }}" method="post">
+<form id="formCompra" action="{{ route('compras.store') }}" method="post">
     @csrf
 
     <div class="container-lg mt-4">
@@ -175,12 +175,16 @@
                 </div>
                 <div class="p-3 border border-3 border-success">
                     <div class="row">
+
+
+
+
                         <!--Proveedor-->
                         <div class="col-12 mb-2">
                             <label for="proveedore_id" class="form-label">Proveedor:</label>
-                            <select name="proveedore_id" id="proveedore_id" class="form-control selectpicker show-tick" data-live-search="true" title="Selecciona" data-size='2'>
+                            <select name="proveedore_id" id="proveedore_id" class="form-control selectpicker show-tick" data-live-search="true" title="Selecciona" data-size='5'>
                                 @foreach ($proveedores as $item)
-                                <option value="{{$item->id}}">{{$item->persona->razon_social}}</option>
+                                <option value="{{$item->id}}" {{ old("proveedore_id") == $item->id ? "selected" : ''}}>{{$item->persona->razon_social}}</option>
                                 @endforeach
                             </select>
                             @error('proveedore_id')
@@ -193,7 +197,7 @@
                             <label for="comprobante_id" class="form-label">Comprobante:</label>
                             <select name="comprobante_id" id="comprobante_id" class="form-control selectpicker" title="Selecciona">
                                 @foreach ($comprobantes as $item)
-                                <option value="{{$item->id}}">{{$item->tipo_comprobante}}</option>
+                                <option value="{{$item->id}}" {{old('comprobante_id')==$item->id ? 'selected' : ''}}>{{$item->tipo_comprobante}}</option>
                                 @endforeach
                             </select>
                             @error('comprobante_id')
@@ -201,27 +205,32 @@
                             @enderror
                         </div>
                         <div class="col-12">
-                                                    <div class="form-group">
-                                                        <label for="TipoFolio">Tipo de Folio:</label>
-                                                        <div id="TipoFolio">
-                                                            <label class="radio-inline">
-                                                                <input type="radio" id="TipoFolio" name="TipoFolio" value="A" checked> Automatico
-                                                            </label>
-                                                            <label class="radio-inline">
-                                                                <input type="radio" id="TipoFolio" name="TipoFolio" value="M"> Manual
-                                                            </label>
-                                                            <label class="radio-inline">
-                                                                <input type="radio" id="TipoFolio" name="TipoFolio" value="F"> Folio Manual
-                                                            </label>
-                                                        </div>
-                                                    @error('TipoFolio')
-                                                    <small class="text-danger">{{ '*'.$message }}</small>
-                                                    @enderror
-                                                </div>
+
+<div class="form-group">
+    <label for="TipoFolio">Tipo de Folio:</label>
+    <div>
+        <label class="radio-inline">
+            {{-- Solo 'A' lleva el segundo parámetro en old() como valor por defecto --}}
+            <input type="radio" name="TipoFolio" value="A" {{ old('TipoFolio', 'A') == 'A' ? 'checked' : '' }}> Automatico
+        </label>
+        <label class="radio-inline">
+            {{-- Para los demás, comparamos sin valor por defecto --}}
+            <input type="radio" name="TipoFolio" value="M" {{ old('TipoFolio') == 'M' ? 'checked' : '' }}> Manual
+        </label>
+        <label class="radio-inline">
+            <input type="radio" name="TipoFolio" value="F" {{ old('TipoFolio') == 'F' ? 'checked' : '' }}> Folio Manual
+        </label>
+    </div>
+    @error('TipoFolio')
+    <small class="text-danger">{{ '*'.$message }}</small>
+    @enderror
+</div>
+
+                                                <input type="hidden" name="items_tabla" id="items_tabla">
                                                                                                 <!--MontoFolio---->
                         <div class="col-sm-6">
                             <label for="MontoFolio" class="form-label">Monto:</label>
-                            <input readonly type="text" name="MontoFolio" id="MontoFolio" class="form-control border-success">
+                            <input readonly type="text" name="MontoFolio" id="MontoFolio" class="form-control border-success" value="{{ old('MontoFoliio') }}">
                             @error('MontoFolio')
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
@@ -231,7 +240,7 @@
                         <!--Numero de comprobante-->
                         <div class="col-12">
                             <label for="numero_comprobante" class="form-label">Numero de comprobante:</label>
-                            <input type="text" name="numero_comprobante" id="numero_comprobante" class="form-control" value="">
+                            <input type="text" name="numero_comprobante" id="numero_comprobante" class="form-control" value="{{ old('numero_comprobante') }}" require>
                             @error('numero_comprobante')
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
@@ -240,7 +249,7 @@
                         <!--Impuesto---->
                         <div class="col-sm-6 mb-2">
                             <label for="impuesto" class="form-label">Impuesto:</label>
-                            <input readonly type="text" name="impuesto" id="impuesto" class="form-control border-success">
+                            <input readonly type="text" name="impuesto" id="impuesto" class="form-control border-success" value="{{ old('impuesto') }}">
                             @error('impuesto')
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
@@ -289,25 +298,7 @@
         </div>
     </div>
 
-     <div class="modal fade" id="modalProducto" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-
-      <div class="modal-header">
-        <h5 class="modal-title">Detalle del Producto</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-
-      <div class="modal-body text-center">
-        <img id="imgProducto" src="" class="img-fluid mb-3" style="max-height:350px;">
-        <p id="detalleProducto"></p>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-<div class="modal fade" id="modalProducto" tabindex="-1">
+ <div class="modal fade" id="modalProducto" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
 
@@ -1118,6 +1109,59 @@ function construirsumarCC(arr1, arr2, A){
 
         $('#impuesto').val(IVA);
     }
+$('#guardar').on('click', function(e) {
+    e.preventDefault();
+
+    let formElement = document.getElementById('formCompra');
+    let formData = new FormData(formElement);
+
+    // OPCIONAL: Si tu tabla no tiene inputs ocultos, puedes capturar los datos 
+    // de un array global (si es que usas uno para llenar la tabla)
+    // formData.append('detalles', JSON.stringify(arrayDetalles));
+
+    $.ajax({
+        url: "{{ route('compras.store') }}",
+        method: "POST",
+        data: formData,
+        processData: false,
+        contentType: false,
+        beforeSend: function() {
+            Swal.fire({
+                title: 'Guardando...',
+                text: 'Por favor espere',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+        },
+        success: function(res) {
+            Swal.fire('¡Éxito!', res.success, 'success')
+                .then(() => location.href = "{{ route('compras.index') }}");
+        },
+error: function(xhr) {
+    let mensaje = "Error al guardar";
+    
+    if (xhr.status === 422) {
+        // Captura los errores de validación de Laravel
+        let errores = xhr.responseJSON.errors;
+        mensaje = "Faltan campos obligatorios:<br><ul>";
+        $.each(errores, function(key, value) {
+            mensaje += "<li>" + value[0] + "</li>";
+        });
+        mensaje += "</ul>";
+    } else if (xhr.responseJSON && xhr.responseJSON.error) {
+        mensaje = xhr.responseJSON.error;
+    }
+
+    Swal.fire({
+        icon: 'error',
+        title: 'Error de Validación',
+        html: mensaje // Usamos 'html' para que se vea la lista
+    });
+}
+
+    });
+});
+
 
     $(document).ready(function() {
     $('#producto_id').on('change', function() {
@@ -1137,6 +1181,16 @@ function construirsumarCC(arr1, arr2, A){
             $('#fecha_vencimiento').prop('required', false).val('');
         }
     });
+
+       let datosViejos = {!! json_encode(old('items_tabla')) !!};
+    
+    if (datosViejos) {
+        let productos = JSON.parse(datosViejos);
+        productos.forEach(p => {
+            // Llamas a tu función que dibuja la fila en la tabla
+            agregarFilaATabla(p); 
+        });
+    }
 });
 
 

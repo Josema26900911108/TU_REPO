@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Crear cliente')
+@section('title', 'Crear Tecnico')
 
 @push('css')
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/css/bootstrap-select.min.css">
@@ -253,7 +253,8 @@
                 </div>
             </div>
             <div class="card-footer text-center" id="btnguardarnuevo">
-                <button type="submit" class="btn btn-primary">Guardar</button>
+                <button type="submit" id="btnGuardar" class="btn btn-primary">Guardar Técnico</button>
+
             </div>
         </form>
     </div>
@@ -265,9 +266,9 @@
             <div class="card-body text-bg-light">
                 <div class="row g-3">
                     <div class="col-12">
-                        <label for="persona_id" class="form-label">Cliente:</label>
+                        <label for="persona_id" class="form-label">Tecnico:</label>
                         <select name="persona_id" id="persona_id" class="form-control selectpicker show-tick" data-live-search="true" required>
-                            <option value="" disabled selected>Selecciona un cliente</option>
+                            <option value="" disabled selected>Selecciona un Tecnico</option>
                         </select>
                         @error('persona_id')
                         <small class="text-danger">{{ '*'.$message }}</small>
@@ -437,11 +438,86 @@
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
 <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Si hay errores de validación de Laravel
+        @if ($errors->any())
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de validación',
+                html: '<ul>@foreach ($errors->all() as $error) <li>{{ $error }}</li> @endforeach</ul>',
+                confirmButtonText: 'Corregir'
+            });
+        @endif
+
+        // Si hay un mensaje de error personalizado desde el catch del controlador
+        @if (session('error'))
+            Swal.fire({
+                icon: 'error',
+                title: 'Operación fallida',
+                text: "{{ session('error') }}",
+                confirmButtonText: 'Entendido'
+            });
+        @endif
+
+        // Si todo salió bien
+        @if (session('success'))
+            Swal.fire({
+                icon: 'success',
+                title: '¡Éxito!',
+                text: "{{ session('success') }}",
+                timer: 3000,
+                showConfirmButton: false
+            });
+        @endif
+    });
+
+   
+</script>
+
+<script>
     $(document).ready(function() {
+
+    // Asegúrate de que el ID del <form> sea exactamente "formNuevoCliente"
+$('#formNuevoCliente').on('submit', function(e) {
+    e.preventDefault(); // <--- ESTO ES LO QUE EVITA LA PÁGINA BLANCA
+
+    let formData = new FormData(this);
+
+$.ajax({
+    url: $(this).attr('action'),
+    method: 'POST',
+    data: formData,
+    processData: false,
+    contentType: false,
+    success: function(response) {
+        // 'response' es el JSON que viste en pantalla
+        Swal.fire({
+            icon: 'success',
+            title: '¡Éxito!',
+            text: response.success, // Muestra "Técnico procesado exitosamente"
+            showConfirmButton: false,
+            timer: 1500
+        }).then(() => {
+            // ESTA ES LA PARTE QUE HACE LA REDIRECCIÓN
+            window.location.href = response.redirect; 
+        });
+    },
+    error: function(xhr) {
+        let mensaje = xhr.responseJSON ? xhr.responseJSON.error : "Error desconocido";
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: mensaje
+        });
+    }
+});
+});
+
+
         // Función para cargar clientes existentes
         function actualizarClientes() {
             $.ajax({
-                url: "{{ route('client.obtenerfill') }}",
+                url: "{{ route('tecnico.obtenerfill') }}",
                 method: 'GET',
                 success: function(response) {
                     var $select = $('#persona_id');

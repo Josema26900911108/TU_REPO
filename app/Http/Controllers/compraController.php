@@ -261,18 +261,26 @@ public function store(StoreCompraRequest $request)
     'documento_material' => $compra->numero_comprobante,
     'referencia' => "Comp ID: {$compra->id}",
     'fecha_contabilizacion' => now(),
-    'origen_uso' => 'otros'
+    'centro' => session('centro'),
+    'almacen'=>session('centro'),
+    'origen_uso' => 'compra_nacional',
+    'unidad_medida_base'=>'PZA',
+    'posicion_documento'=>$cont+1
 ]);
 
             $cont++;
         }
 
         DB::commit();
+
+        return redirect()->route('compras.index')->with('success', 'compra exitosa');
     } catch (Exception $e) {
         DB::rollBack();
-        dd($e->getMessage());
+        return response()->json([
+            'error' => $e->getMessage()
+        ], 500);
     }
-    return redirect()->route('compras.index')->with('success', 'compra exitosa');
+    
 }
 
 

@@ -137,6 +137,20 @@ class PermissionSeeder extends Seeder
             'crear-tienda',
             'editar-tienda',
             'eliminar-tienda',
+
+            //Centro
+            'ver-centro',
+            'crear-centro',
+            'editar-centro',
+            'eliminar-centro',
+            'ver-centro',
+
+            //Organizacion centros
+            'ver-centroorganizacion',
+            'crear-centroorganizacion',
+            'editar-centroorganizacion',
+            'eliminar-centroorganizacion',
+            'ver-centroorganizacion',
             //Usuario por Tienda
             'ver-usuariotienda',
             'editar-usuariotienda',

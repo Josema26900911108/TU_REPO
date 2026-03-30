@@ -17,20 +17,22 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        $user = User::create([
+    $user = User::updateOrCreate(
+        ['email' => 'josema.alvarezgarcia@gmail.com'], // Criterio de búsqueda
+        [
             'name' => 'root',
-            'email' => 'josema.alvarezgarcia@gmail.com',
             'password' => bcrypt('12345678')
-        ]);
+        ]
+    );
 
         //Usuario administrador
-        $rol = Role::create(['name' => 'administrador']);
+        $rol = Role::updateOrCreate(['name' => 'administrador']);
         $permisos = Permission::pluck('id','id')->all();
         $rol->syncPermissions($permisos);
         //$user = User::find(1);
         $user->assignRole('administrador');
 
-            $store = Tienda::create([
+            $store = Tienda::updateOrCreate([
             'Nombre' => 'root',
             'Direccion' => 'No aplica',
             'EstatusContable'=>'A',
@@ -41,7 +43,7 @@ class UserSeeder extends Seeder
             'nit' => '123456789'
         ]);
 
-           $userstore = usuariotienda::create([
+           $userstore = usuariotienda::updateOrCreate([
             'fkUsuario' => $user->id,
             'fkTienda' => $store->idTienda,
             'Estatus' => 'ER'

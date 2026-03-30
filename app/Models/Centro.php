@@ -8,7 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 class Centro extends Model
 {
     use HasFactory;
-        protected $fillable = ['codigo', 'nombre'];
+        protected $fillable = ['codigo', 'nombre', 'fkTienda'];
+        protected $table = 'centro';
 
     public function tienda() {
         return $this->hasMany(Tienda::class);

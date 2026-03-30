@@ -171,6 +171,20 @@
                 </a>
                 @endcan
 
+                @can('ver-centro')
+                <a class="nav-link" href="{{ route('centros.index') }}">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                    Centros de Costo
+                </a>
+                @endcan
+
+                @can('ver-centroorganizacion')
+                <a class="nav-link" href="{{ route('centroorganizaciones.index') }}">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-sitemap"></i></div>
+                    Organizacion Centros
+                </a>
+                @endcan
+
                 @can('ver-marca')
                 <a class="nav-link" href="{{ route('marcas.index') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-bullhorn"></i></div>
@@ -292,14 +306,14 @@
                 @can('ver-tecnico')
                 <a class="nav-link" href="{{ route('tecnico.lista') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-vcard"></i></div>
-                    Tecnico
+                    Tecnico/Piloto
                 </a>
                 @endcan
 
                 @can('ver-tecnico')
                 <a class="nav-link" href="{{ route('tecnico.buckettecnico') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-vcard"></i></div>
-                    Bucket Tecnico
+                    Bucket Tecnico/Piloto
                 </a>
                 @endcan
 
@@ -419,7 +433,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Manejar enlaces de collapse (los que tienen # en href)
+    
     const collapseLinks = document.querySelectorAll('#layoutSidenav_nav .nav-link[href="#"]');
     collapseLinks.forEach(link => {
         if (link.classList.contains('active')) {
