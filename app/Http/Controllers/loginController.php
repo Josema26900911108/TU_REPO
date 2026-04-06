@@ -40,10 +40,10 @@ class loginController extends Controller
 
         session([
             'nombreUsuario' => $user->name,
-            'user_fkTienda' => $tienda ? $tienda : null, // Verificamos si hay una tienda asignada
-            'idTienda' => $tienda ? $tienda : null, // Verificamos si hay una tienda asignada
-            'logo' => $tienda ? $tienda : null, // Verificamos si hay una tienda asignada
-            'centro' => $centro->codigo ? $centro->codigo : null,
+            'user_fkTienda' => $tienda ?? null,
+            'idTienda' => $tienda ?? null,
+            'logo' => $tienda ?? null,
+            'centro' => ($centro && $centro->codigo) ? $centro->codigo : null,
         ]);
 
             return redirect()->route('panel')->with('success', 'Bienvenido ' . $user->name);
