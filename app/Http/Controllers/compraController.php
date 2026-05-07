@@ -221,66 +221,90 @@ public function store(StoreCompraRequest $request)
             $cont++;
         }
 
-        // 2. Realizar el llenado de productos, stock y Lotes
-        $siseArray = count($arrayProducto_id);
-        $cont = 0;
-        while ($cont < $siseArray) {
-            $compra->productos()->attach([
-                $arrayProducto_id[$cont] => [
-                    'cantidad' => $arrayCantidad[$cont],
-                    'precio_compra' => $arrayPrecioCompra[$cont],
-                    'precio_venta' => $arrayPrecioVenta[$cont],
-                    'impuesto' => $arraysubiva[$cont],
-                    'fkTienda' => $fkTienda,
-                    'Naturaleza' => 'D',
-                    'Estado' => 'I'
-                ]
-            ]);
+// 1. Agrupar productos por ID, Fecha, Precio Compra y Precio Venta
+$productosConsolidados = [];
+foreach ($arrayProducto_id as $index => $id) {
+    $fecha = $arrayFechaVencimiento[$index] ?? 'N/A';
+    $pCompra = $arrayPrecioCompra[$index];
+    $pVenta = $arrayPrecioVenta[$index];
+    
+    // La llave ahora es una combinación de todos los factores de igualdad
+    $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
 
-            // 3. Actualizar el stock
-            $producto = Producto::find($arrayProducto_id[$cont]);
-            $stockActual = $producto->stock;
-            $stockNuevo = intval($arrayCantidad[$cont]);
+    if (!isset($productosConsolidados[$key])) {
+        $productosConsolidados[$key] = [
+            'id'            => $id,
+            'cantidad'      => 0,
+            'precio_compra' => $pCompra,
+            'precio_venta'  => $pVenta,
+            'impuesto'      => 0,
+            'fecha'         => $fecha
+        ];
+    }
+    
+    // Sumamos cantidades e impuestos solo si la llave es idéntica
+    $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
+    $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index]);
+}
 
-            DB::table('productos')
-                ->where('id', $producto->id)
-                ->update([
-                    'stock' => $stockActual + $stockNuevo
-                ]);
+// 2. Procesar el array consolidado
+$posicion = 1;
+foreach ($productosConsolidados as $item) {
+    $idLoteGenerado = null;
+    $producto = Producto::find($item['id']);
 
-            // 4. NUEVO: Insertar Alarma de Lote (Solo si hay fecha válida)
-            if (!empty($arrayFechaVencimiento[$cont]) && $arrayFechaVencimiento[$cont] != 'N/A') {
-                $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
-                    'producto_id' => $arrayProducto_id[$cont],
-                    'numero_lote' => 'COMP-' . $compra->id . '-' . $producto->id,
-                    'cantidad' => $stockNuevo,
-                    'fecha_vencimiento' => $arrayFechaVencimiento[$cont],
-                    'fkTienda' => $fkTienda,
-                    'compra_id' => $compra->id,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            }
+    // Crear Lote Único para este grupo consolidado
+    if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
+        $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
+            'producto_id'       => $item['id'],
+            'numero_lote'       => 'L-' . date('Ymd', strtotime($item['fecha'])),
+            'cantidad'          => $item['cantidad'],
+            'fecha_vencimiento' => $item['fecha'],
+            'fkTienda'          => $fkTienda,
+            'compra_id'         => $compra->id,
+            'notificado'        => 0,
+            'created_at'        => now(),
+            'updated_at'        => now()
+        ]);
+    }
 
-                    MovimientoMateriales::create([
-    'fkTienda' => $fkTienda,
-    'fkMateriales' => $producto->id,
-    'fkLotes' => $idLoteGenerado, // El ID que obtuviste al crear el lote
-    'clase_movimiento' => '101', // Entrada de mercancía
-    'tipo_movimiento' => 'COMPRA',
-    'cantidad' => $stockNuevo,
-    'documento_material' => $compra->numero_comprobante,
-    'referencia' => "Comp ID: ||{$compra->id}||",
-    'fecha_contabilizacion' => now(),
-    'centro' => session('centro'),
-    'almacen'=>session('centro'),
-    'origen_uso' => 'compra_nacional',
-    'unidad_medida_base'=>'PZA',
-    'posicion_documento'=>$cont+1
-]);
+    // Insertar en detalle de compra (Pivote)
+    $compra->productos()->attach([
+        $item['id'] => [
+            'cantidad'      => $item['cantidad'],
+            'precio_compra' => $item['precio_compra'],
+            'precio_venta'  => $item['precio_venta'],
+            'impuesto'      => $item['impuesto'],
+            'fkTienda'      => $fkTienda,
+            'fkLote'        => $idLoteGenerado, // ID de la tabla lotesalarma
+            'Naturaleza'    => 'D',
+            'Estado'        => 'I'
+        ]
+    ]);
 
-            $cont++;
-        }
+    // Actualizar Stock global
+    $producto->increment('stock', $item['cantidad']);
+
+    // Registro en Kardex (Movimientos)
+    MovimientoMateriales::create([
+        'fkTienda'              => $fkTienda,
+        'fkMateriales'          => $item['id'],
+        'fkLotes'               => $idLoteGenerado,
+        'clase_movimiento'      => '101',
+        'tipo_movimiento'       => 'COMPRA',
+        'cantidad'              => $item['cantidad'],
+        'documento_material'    => $compra->numero_comprobante,
+        'referencia'            => "Comp ID: ||{$compra->id}||",
+        'fecha_contabilizacion' => now(),
+        'centro'                => session('centro') ?? 'C1',
+        'almacen'               => session('centro') ?? 'A1',
+        'origen_uso'            => 'compra_nacional',
+        'unidad_medida_base'    => 'PZA',
+        'posicion_documento'    => $posicion++
+    ]);
+}
+
+
 
         DB::commit();
 
