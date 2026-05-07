@@ -17,7 +17,12 @@ class centroController extends Controller
 
         $fkTienda = session('user_fkTienda');
 
-    $centros=Centro::all()->where('fkTienda',$fkTienda);
+    $centros=Centro::all();
+    if(session('user_estatus') != 'ER'){
+        $centros->where('fkTienda',$fkTienda);
+    }
+
+
         return view('centro.index', compact('centros'));
     }
 
