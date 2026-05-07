@@ -30,7 +30,9 @@ class usuariotiendaController extends Controller
         }
 
         //$userstore2 = usuariotienda::all();
-        $userstore2 = usuariotienda::with(['user', 'tienda'])->latest()->get();
+        $userstore2 = usuariotienda::with(['user', 'tienda'])->latest()
+        ->where('fkTienda', session('user_fkTienda'))
+        ->get();
 
         $ver=$userstore2;
 
