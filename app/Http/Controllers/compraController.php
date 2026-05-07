@@ -259,7 +259,7 @@ public function store(StoreCompraRequest $request)
     'tipo_movimiento' => 'COMPRA',
     'cantidad' => $stockNuevo,
     'documento_material' => $compra->numero_comprobante,
-    'referencia' => "Comp ID: {$compra->id}",
+    'referencia' => "Comp ID: ||{$compra->id}||",
     'fecha_contabilizacion' => now(),
     'centro' => session('centro'),
     'almacen'=>session('centro'),
@@ -423,7 +423,9 @@ public function store(StoreCompraRequest $request)
                 'fecha' => now(),
                 'total' => ($pcompra * $stock) + ($piva * $stock),
                 'impuesto' => $piva * $stock,
-                'estado' => 'I',
+                'estado' => '1',
+                'fkUserCC' => auth()->id(),
+                'fkUserCreate' => auth()->id(),
                 'fkTienda' => $fkTienda
             ]);
 

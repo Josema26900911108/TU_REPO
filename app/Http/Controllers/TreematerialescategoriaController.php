@@ -552,6 +552,7 @@ INNER JOIN (
             // Validar campos mínimos
             if (!isset($data['SKUPADRE']) || !isset($data['SKU']) || !isset($data['minimo'])  || !isset($data['maximo'])  || !isset($data['depende_SKU']) || !isset($data['nombre'])) continue;
 
+
             $skupadress=$data['SKUPADRE'] ?? '';
     // Convertir campos potencialmente con caracteres especiales a UTF-8
 
@@ -561,16 +562,13 @@ INNER JOIN (
 $nombre       = mb_convert_encoding($data['nombre'] ?? '', 'UTF-8', 'ISO-8859-1');
 $SKU        = mb_convert_encoding($data['SKU'] ?? '', 'UTF-8', 'ISO-8859-1');
 $depende_SKU        = mb_convert_encoding($data['depende_SKU'] ?? '', 'UTF-8', 'ISO-8859-1');
+$skuFinal        = mb_convert_encoding($data['sku_final'] ?? '', 'UTF-8', 'ISO-8859-1');
+$formula        = mb_convert_encoding($data['formula'] ?? '', 'UTF-8', 'ISO-8859-1');
 $tipo_relacion        = mb_convert_encoding($data['tipo_relacion'] ?? '', 'UTF-8', 'ISO-8859-1');
 $maximo=$data['maximo'] ?? 1;
 $minimo=$data['minimo'] ?? 0;
-$skupadre=$this->obtenerpadre($skupadress, $depende_SKU);
-usleep(500); // 500,000 microsegundos
-$skuval = $skupadre[0]['SKU'] ?? '';
-$idmasivo = $skupadre[0]['id'] ?? '';
-
-
-if($skuval<>$SKU){
+$idmasivo = DB::table('treematerialescategoria')->where('SKU', $skupadress)->where('fkTienda', $idTienda)->value('id');
+if($idmasivo){
 // Insertar o actualizar
 DB::table('material_relaciones')->updateOrInsert(
     [
@@ -582,6 +580,8 @@ DB::table('material_relaciones')->updateOrInsert(
         'idtree'=>$idmasivo,
         'maximo'=>$maximo,
         'minimo'=>$minimo,
+        'skufinal'=>$skuFinal,
+        'formula'=>$formula,
     ],
     [
         'fkTienda' => $idTienda,

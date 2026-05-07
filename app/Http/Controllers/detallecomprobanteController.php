@@ -41,6 +41,7 @@ class detallecomprobanteController extends Controller
     }
         // Consultar las cuentas contables que tienen padre
         $cuentacontable = DB::table('cuentas_contables')
+        ->where('fkTienda', $fkTienda)
             ->whereNotNull('padre_id') // Asegurar que no sea NULL
             ->get();
 

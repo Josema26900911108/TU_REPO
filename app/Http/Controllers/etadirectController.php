@@ -226,373 +226,200 @@ public function importarMAMO(Request $request)
     }
 }
 
+private function ejecutarLogicaInterna($orden, $item, &$procesados, &$rastro)
+{
+$centrosEspeciales = ["'G845", "'G830", "'G888", "'G840"];
+$patronG8 = "'G888";
+
+$esEspecial = false;
+// Verificamos si es especial (por lista o por patrón 'G8)
+if (str_contains($item->CENTRO, $patronG8)) {
+    $esEspecial = true;
+}
+
+// 1. Aseguramos que el centro se limpie o valide bien
+$centroLimpio = $item->CENTRO;
+$centrosEspeciales = ["'G845", "'G830", "'G888", "'G840"];
+$patronG8 = "'G8";
+
+// Forzamos la detección de especial
+$esEspecial = false;
+if (str_contains($centroLimpio, $patronG8)) {
+    $esEspecial = true;
+}
+
+if ($esEspecial) {
+    // CONSULTA ESPECÍFICA (Prioridad 1)
+    // Usamos selectRaw para añadir una columna 'prioridad'
+    $especifica = Material_relaciones::selectRaw("*, 1 as prioridad")
+        ->where('skufinal', 'like','%'.trim($centroLimpio) . trim($item->SKU).'%')
+        ->where('minimo', '>=', 1);
+
+    // CONSULTA GENERAL (Prioridad 2)
+    $general = Material_relaciones::selectRaw("*, 2 as prioridad")
+        ->where('depende_SKU', $item->SKU)
+        ->where('minimo', '>=', 1)
+        ->where(function($q) use ($centrosEspeciales, $patronG8) {
+            foreach ($centrosEspeciales as $ce) {
+                $q->where('skufinal', 'like', '%' . $ce . '%');
+            }
+            $q->where('skufinal', 'like', '%' . $patronG8 . '%');
+        });
+
+$generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
+    ->where('depende_SKU', $item->SKU)
+    ->where('minimo', '>=', 1)
+    ->where(function($q) use ($patronG8, $item) {
+        $q->where('skufinal', 'not like', $patronG8 . '%');
+        $q->Where('skufinal', 'not like', $item->SKU.'%');
+    });
+
+    // Unimos y GENERAL FINAL
+    $relaciones = $especifica->unionAll($general)->unionAll($generalTOTAL)
+        ->orderBy('prioridad', 'ASC')
+        ->orderBy('id', 'ASC')
+        ->get();
+
+} else {
+    // Centros normales
+    $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
+        ->where('minimo', '>=', 1)
+        ->where(function($q) use ($centrosEspeciales, $patronG8) {
+            foreach ($centrosEspeciales as $ce) {
+                $q->where('skufinal', 'not like', '%' . $ce . '%');
+            }
+            $q->where('skufinal', 'not like', '%' . $patronG8 . '%');
+        })
+        ->orderBy('id', 'ASC')
+        ->get();
+}
+
+
+if ($relaciones->isEmpty()) {
+    return;
+}
+
+
+    foreach ($relaciones as $relacion) {
+        // 3. Conteo de precisión: Solo cuenta lo que existe en la Orden actual
+        $conteo = Material_relaciones::where('depende_SKU', $relacion->SKU)
+            ->whereExists(function ($q) use ($orden) {
+                $q->select(DB::raw(1))
+                  ->from('eta')
+                  ->whereColumn('eta.SKU', 'material_relaciones.SKU')
+                  ->where('eta.Orden', $orden);
+            })->count();
+
+        // 4. Caso especial: Acumulado de categoría (Máximo 10000)
+        if ($relacion->maximo == 10000) {
+            $monto = DB::selectOne("
+                SELECT SUM(e.Cantidad) AS total 
+                FROM Eta e 
+                INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU 
+                INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id 
+                INNER JOIN (
+                    SELECT tmc.SKU FROM treematerialescategoria tm 
+                    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id 
+                    WHERE tm.SKU = ?
+                ) as tmcp on tmc.SKU = tmcp.SKU 
+                WHERE e.Orden = ?", [$item->SKU, $orden]);
+            
+            $item->Cantidad = $monto->total ?? 0;
+        }
+
+        // 5. Obtener información jerárquica del padre (Treematerialescategoria)
+        $padre = DB::table('treematerialescategoria as tm')
+            ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+            ->where('tm.SKU', $relacion->SKU)
+            ->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')
+            ->first();
+
+        // 6. Iniciar Autómata Recursivo si encontramos la información del padre
+        if ($padre) {
+            $this->AutomataRecursivo(
+                $relacion->SKU,      // skuActual
+                $orden,               // orden
+                $conteo,              // recuento
+                $item->Cantidad,      // valor
+                $relacion->maximo ?? 0,
+                $relacion->minimo ?? 0,
+                $relacion->formula ?? '',
+                $procesados,
+                $relacion->tipo_relacion,
+                0,                    // val (inicial)
+                $rastro,
+                $item->SKU,           // skuOrigen
+                $relacion->SKU,       // skuOrigenraiz
+                0,                    // nivel
+                $relacion->skufinal,
+                $padre,
+                $item->CENTRO,
+                $relacion->nombre
+            );
+        }
+    }
+}
+
+
+
 public function AutomataValidarMamo(Request $request)
 {
-    try {
-                        if(!Auth::check()){
-            return redirect()->route('login');
+    if(!Auth::check()) return redirect()->route('login');
+    $procesados = []; $rastro = [];
+    $limite = $request->input('Orden', 10);
+    
+    $mamoorden = Eta::whereBetween('created_at', [
+            Carbon::parse($request->fechaincio)->startOfDay(),
+            Carbon::parse($request->fechafin)->endOfDay()
+        ])->select('Orden')->groupBy('Orden')->limit($limite)->get();
+
+    foreach($mamoorden as $ordenitem) {
+        $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+                 ->where('Orden', $ordenitem->Orden)->groupBy('SKU', 'CENTRO')->get();
+
+        foreach ($items as $item) {
+            $this->ejecutarLogicaInterna($ordenitem->Orden, $item, $procesados, $rastro);
         }
-
-        $procesados = [];
-        $rastro = [];
-
-        $limite = $request->input('Orden');
-        $fechainicial = $request->input('fechaincio');
-        $fechafinal = $request->input('fechafin');
-        $mamoorden = Eta::whereBetween('created_at', [
-    Carbon::parse($fechainicial)->startOfDay(),
-    Carbon::parse($fechafinal)->endOfDay()
-])
-->select('Orden')
-->groupBy('Orden')
-->limit($limite)->get();
-
-foreach($mamoorden as $ordenitem){
-
-
-        $mamo=DB::table('eta')
-    ->select('CENTRO','SKU', DB::raw('SUM(cantidad) as Cantidad'))
-    ->where('Orden', $ordenitem->Orden)
-    ->groupBy('SKU', 'CENTRO')
-    ->get();
-
-                $CANT = substr_count($ordenitem->Orden, "25336466");
-      if($CANT>0){
-        $a="25188580_34028679_1021133_102113334028679";
     }
 
-
-
-        foreach ($mamo as $item) {
-
-
-if(
-    str_contains($item->CENTRO,"G845") ||
-    str_contains($item->CENTRO,"G830") ||
-    str_contains($item->CENTRO,"G840")
-){
-    $SKUV = $item->CENTRO.$item->SKU;
-
-    $query = Material_relaciones::where('skufinal',$SKUV);
-
-}else{
-
-    $SKUV = $item->SKU;
-
-    $query = Material_relaciones::where('depende_SKU',$SKUV)
-    ->where('skufinal', 'not like', '%G845%')
-    ->where('skufinal', 'not like', '%G830%')
-    ->where('skufinal', 'not like', '%G888%')
-    ->where('skufinal', 'not like', '%G840%');
-}
-
-$relacioness = $query->where('minimo',1)
-                     ->orderBy('id','ASC')
-                     ->get();
-
-if($relacioness->isEmpty()){
-    continue;
-}
-
-$ver = $relacioness->pluck('skufinal');
-
-             $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
-            ->whereIn('skufinal', $ver)
-            ->where('minimo',1)
-            ->orderBy('id', 'ASC')
-            ->get();
-
-            $askuactualselec=$item->SKU;
-            $orden = $ordenitem->Orden;
-
-
-                $padre = DB::selectOne("
-            SELECT distinct e.SKU FROM Eta e
-            inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=?;
-    ", [$ordenitem->Orden, $item->SKU]);
-
-
-
-    if($padre){
-            if ($relaciones->isNotEmpty()) {
-                foreach ($relaciones as $relacion) {
-
-                   $conteo = Material_relaciones::where('depende_SKU', $relacion->SKU)
-
-    ->whereExists(function ($query) use ($orden) {
-        $query->select(DB::raw(1))
-            ->from('eta')
-            ->whereColumn('eta.SKU', 'material_relaciones.SKU')
-            ->where('eta.Orden', $orden);
-    })
-    ->count();
-
-if($relacion->maximo==10000){
-                                                $monto = DB::selectOne("
-                    SELECT distinct SUM(e.Cantidad) AS total
-    FROM Eta e
-    INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
-    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
-    INNER JOIN (SELECT distinct tmc.SKU
-    FROM treematerialescategoria tm
-    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
-    WHERE tm.SKU =  ? ) as tmcp on tmc.SKU=tmcp.SKU
-    WHERE e.Orden = ? ;
-    ", [$item->SKU, $orden]);
-    $item->Cantidad = $monto ? ($monto->total ?? 0) : 0;
-}
-                 $padre = DB::selectOne("
-        SELECT
-            tmc.SKU,
-            tmc.nombre,
-            tmc.minimo,
-            tmc.limite,
-            tmc.tipo,
-            tmc.valor
-        FROM treematerialescategoria tm
-        INNER JOIN treematerialescategoria tmc
-            ON tm.padre_id = tmc.id
-        WHERE tm.SKU = ?
-        LIMIT 1
-    ", [$relacion->SKU]);
-
-        if (!$padre) {
-        continue;
-    }
-
-                    $this->AutomataRecursivo(
-                        $relacion->SKU,
-                        $ordenitem->Orden,
-                        $conteo,
-                        $item->Cantidad,
-                        $relacion->maximo  ?? 0,
-                        $relacion->minimo  ?? 0,
-                        $relacion->formula,
-                        $procesados,
-                        $relacion->tipo_relacion,
-                        0,
-                     $rastro,
-                   $askuactualselec,
-                     $relacion->SKU,
-                     0,
-                        $relacion->skufinal,
-                        $padre,
-                     $item->CENTRO
-                    );
-
-                }
-            }
-        }
-        }
-        }
-
-        $procesados = array_values($procesados);
-
-        $validaciones = $this->quitarDuplicadosPorOrdenYSKU($procesados);
-
-            // Construir árbol jerárquico
-    //$arbol = $this->construirArbol(array_values($validaciones));
-
-//      return response()->json(['validaciones' => $validaciones], 200, [], JSON_PRETTY_PRINT);
-
-if (ob_get_level()) {
-    ob_end_clean();
-}
-
-return response()->streamDownload(function () use ($validaciones) {
-
-    $handle = fopen('php://output', 'w');
-
-    fputcsv($handle, [
-        'Orden',
-        'SKU_Origen',
-        'SKU_Destino',
-        'NOMBRE_Destino',
-        'ValorEntrada',
-        'Resultado',
-        'TipoRelacion',
-        'formula',
-        'Nivel',
-        'skuOrigenraiz',
-        'CENTRO',
-    ]);
-
-    foreach ($validaciones as $fila) {
-
-        fputcsv($handle, [
-            $fila->Orden ?? '',
-            $fila->SKU_Origen ?? '',
-            $fila->SKU_Destino ?? '',
-            $fila->NOMBRE_Destino ?? '',
-            $fila->ValorEntrada ?? '',
-            $fila->Resultado ?? '',
-            $fila->TipoRelacion ?? '',
-            $fila->formula ?? '',
-            $fila->Nivel ?? '',
-            $fila->skuOrigenraiz ?? '',
-            $fila->CENTRO ?? '',
-        ]);
-    }
-
-    fclose($handle);
-
-}, 'validaciones_mamo.csv');
-
-
-    } catch (\Exception $e) {
-        return 'Error: ' . $e->getMessage();
-    }
+    return $this->descargarCSV($this->quitarDuplicadosPorOrdenYSKU($procesados), 'validaciones_lote.csv');
 }
 
 public function AutomataValidarMamoOrden(Request $request)
 {
-    try {
-        $procesados = [];
-        $rastro = [];
+    if(!Auth::check()) return response()->json(['error' => 'No autorizado'], 401);
+    $procesados = []; $rastro = [];
+    $orden = $request->input('Orden');
 
-        $orden = $request->input('Orden');
+    $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+             ->where('Orden', $orden)->groupBy('SKU', 'CENTRO')->get();
 
-        $mamo=DB::table('eta')
-    ->select('CENTRO','SKU', DB::raw('SUM(cantidad) as Cantidad'))
-    ->where('Orden', $orden)
-    ->groupBy('SKU', 'CENTRO')
-    ->get();
-
-
-
-
-
-        foreach ($mamo as $item) {
-
-    $padre = DB::selectOne("
-    SELECT distinct e.SKU, e.Descripcion as nombre FROM Eta e
-    inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=?;
-    ", [$orden, $item->SKU]);
-
-            if($padre){
-
-if(
-    str_contains($item->CENTRO,"G845") ||
-    str_contains($item->CENTRO,"G830") ||
-    str_contains($item->CENTRO,"G840")
-){
-    $SKUV = $item->CENTRO.$item->SKU;
-
-    $query = Material_relaciones::where('skufinal',$SKUV);
-
-}else{
-
-    $SKUV = $item->SKU;
-
-    $query = Material_relaciones::where('depende_SKU',$SKUV)
-        ->where('skufinal', 'not like', '%G845%')
-    ->where('skufinal', 'not like', '%G830%')
-    ->where('skufinal', 'not like', '%G888%')
-    ->where('skufinal', 'not like', '%G840%');
-}
-
-$relacioness = $query->where('minimo',1)
-                     ->orderBy('id','ASC')
-                     ->get();
-
-if($relacioness->isEmpty()){
-    continue;
-}
-
-$ver = $relacioness->pluck('skufinal');
-
-
-            if(!$relacioness){
-                continue;
-            }
-
-             $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
-            ->whereIn('skufinal', $ver)
-            ->where('minimo',1)
-            ->orderBy('id', 'ASC')
-            ->get();
-
-            $askuactualselec=$item->SKU;
-                $CANT = substr_count($orden, "25336466");
-      if($CANT>0){
-        $a="25188580_34028679_1021133_102113334028679";
-    }
-
-
-            if ($relaciones->isNotEmpty()) {
-                foreach ($relaciones as $relacion) {
-
-
-            $conteo = Material_relaciones::where('skufinal', $relacion->skufinal)
-            ->count();
-
-
-                  $clave = $orden . '_' . $relacion->SKU. '_' .$relacion->depende_SKU . '_' . $relacion->skufinal.'_'.$relacion->tipo_relacion;
-
-if($relacion->maximo==10000){
-                                                $monto = DB::selectOne("
-                    SELECT distinct SUM(e.Cantidad) AS total
-    FROM Eta e
-    INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
-    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
-    INNER JOIN (SELECT distinct tmc.SKU
-    FROM treematerialescategoria tm
-    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
-    WHERE tm.SKU =  ? ) as tmcp on tmc.SKU=tmcp.SKU
-    WHERE e.Orden = ? ;
-    ", [$item->SKU, $orden]);
-    $item->Cantidad = $monto ? ($monto->total ?? 0) : 0;
-}
-
-    if (in_array($clave, $rastro)) {
-    continue; // 🔁 ciclo detectado
-}
-
-                    $this->AutomataRecursivo(
-                        $relacion->SKU,
-                        $orden,
-                        $conteo,
-                        $item->Cantidad,
-                        $relacion->maximo  ?? 0,
-                        $relacion->minimo  ?? 0,
-                        $relacion->formula,
-                        $procesados,
-                        $relacion->tipo_relacion,
-                        0,
-                     $rastro,
-                   $askuactualselec,
-                     $relacion->SKU,
-                     0,
-                     $relacion->skufinal,
-                     $padre,
-                     $item->CENTRO
-                    );
-
-                }
-            }
+    foreach ($items as $item) {
+        if($item->SKU=="1021571"){
+            $A="1021571";
         }
+        $this->ejecutarLogicaInterna($orden, $item, $procesados, $rastro);
+    }
+
+    $validaciones = $this->quitarDuplicadosPorOrdenYSKU($procesados);
+    return response()->json(['validaciones' => $validaciones], 200, [], JSON_PRETTY_PRINT);
 }
 
-
-
-        $procesados = array_values($procesados);
-
-        $validaciones = $this->quitarDuplicadosPorOrdenYSKU($procesados);
-
-            // Construir árbol jerárquico
-    $arbol = $this->construirArbol(array_values($validaciones));
-
-    // Retornar como JSON con estructura de árbol
-        return response()->json(['validaciones' => $validaciones], 200, [], JSON_PRETTY_PRINT);
-
-
-
-
-
-
-    } catch (\Exception $e) {
-        return 'Error: ' . $e->getMessage();
-    }
+private function descargarCSV($validaciones, $nombreArchivo)
+{
+    if (ob_get_level()) ob_end_clean();
+    return response()->streamDownload(function () use ($validaciones) {
+        $handle = fopen('php://output', 'w');
+        fputcsv($handle, ['Orden','SKU_Origen','SKU_Destino','msj','ValorEntrada','Resultado','TipoRelacion','formula','Nivel','skuOrigenraiz','CENTRO','NOMBRE_Destino']);
+        foreach ($validaciones as $f) {
+            fputcsv($handle, [
+                $f->Orden, $f->SKU_Origen, $f->SKU_Destino, $f->msj, 
+                $f->ValorEntrada, $f->Resultado, $f->TipoRelacion, $f->formula, 
+                $f->Nivel, $f->skuOrigenraiz, $f->CENTRO, $f->NOMBRE_Destino
+            ]);
+        }
+        fclose($handle);
+    }, $nombreArchivo);
 }
 
 private function quitarDuplicadosPorOrdenYSKU(array $items): array
@@ -600,8 +427,23 @@ private function quitarDuplicadosPorOrdenYSKU(array $items): array
     $unicos = [];
 
     foreach ($items as $item) {
-        $clave = $item->Orden.''.$item->NOMBRE_Destino;
-        $unicos[$clave] = $item;
+        // Creamos la clave combinando el Nombre y la Orden como solicitaste
+        $clave = $item->NOMBRE_Destino . '_' . $item->Orden;
+
+        // Si la clave no existe, guardamos el item actual
+        if (!isset($unicos[$clave])) {
+            $unicos[$clave] = $item;
+        } else {
+            // LÓGICA DE PRIORIDAD:
+            // Si el que ya tenemos guardado NO cumple (Resultado <= 0)
+            // pero el nuevo SI cumple (Resultado > 0), lo reemplazamos
+            $actualCumple = $unicos[$clave]->Resultado > 0;
+            $nuevoCumple = $item->Resultado > 0;
+
+            if (!$actualCumple && $nuevoCumple) {
+                $unicos[$clave] = $item;
+            }
+        }
     }
 
     return array_values($unicos);
@@ -625,7 +467,8 @@ public function AutomataRecursivo(
     int $nivel = 0,
     string $skufinal,
     ?object &$padre,
-    string $Centro
+    string $Centro,
+    string $mensaj=''
 ) {
     try {
 
@@ -636,7 +479,7 @@ public function AutomataRecursivo(
     $cantidad = substr_count($skuOrigen, ".");
 
   $clave = $orden . '_' . $skuActual. '_' .$skuOrigen . '_' . $skufinal.'_'.$tipoRelacion;
-$CANT = substr_count($clave, "1007881");
+$CANT = substr_count($clave, "01.011007881TRAMO");
       if($CANT>0){
         $a="25188580_34028679_1021133_102113334028679";
     }
@@ -658,24 +501,35 @@ $rastro[] = $clave;
         $cantidad=0;
     $cantidad = substr_count($skuOrigen, ".");
 
-     if($cantidad==1){
+     if($cantidad>=1){
 
 
     $total = DB::selectOne("
-    SELECT distinct SUM(e.Cantidad) AS total
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
     FROM Eta e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+    INNER JOIN (
+        SELECT DISTINCT tmc.SKU
+        FROM treematerialescategoria tm
+        INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+        WHERE tmc.SKU = ?
+    ) AS tmcp ON tmc.SKU = tmcp.SKU
     WHERE e.Orden = ?
-      AND tmc.SKU = ?
-", [$orden, $skuOrigen]);
+) AS subconsulta
+", [$skuActual,$orden]);
 } else{
     $total = DB::selectOne("
-    SELECT distinct SUM(e.Cantidad) AS total
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
     FROM Eta e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
-    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
-    WHERE e.Orden = ? AND tm.SKU = ?
+    WHERE e.Orden = ? 
+      AND tm.SKU = ?
+) AS subconsulta
 ", [$orden, $skuOrigen]);
 }
 
@@ -685,24 +539,35 @@ $rastro[] = $clave;
     $cantidad = substr_count($skuActual, ".");
 
 
-    if($cantidad==1){
+    if($cantidad>=1){
 
 
     $total = DB::selectOne("
-    SELECT distinct SUM(e.Cantidad) AS total
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
     FROM Eta e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+    INNER JOIN (
+        SELECT DISTINCT tmc.SKU
+        FROM treematerialescategoria tm
+        INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+        WHERE tmc.SKU = ?
+    ) AS tmcp ON tmc.SKU = tmcp.SKU
     WHERE e.Orden = ?
-      AND tmc.SKU = ?
-", [$orden, $skuActual]);
+) AS subconsulta
+", [$skuActual,$orden]);
 } else{
     $total = DB::selectOne("
-    	SELECT distinct (e.Cantidad) AS total
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
     FROM Eta e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
-    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
-    WHERE e.Orden = ? AND tm.SKU = ?
+    WHERE e.Orden = ? 
+      AND tm.SKU = ?
+) AS subconsulta
 ", [$orden, $skuActual]);
 }
 
@@ -718,6 +583,10 @@ $variables = [
     'total'  => $nivel ?? 0,
     'valant' => $val ?? 0,
 ];
+
+if($clave=="25542286_02.15_34033641_02.1534033641UNIDAD_requiere"){
+    $a="25188580_34028673_34028677_102113334028679";
+}
 
 $resultado=0;
     $resultado = $this->evaluarFormulaexp($formula, $variables);
@@ -738,7 +607,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
                 'Orden'         => $orden,
                 'SKU_Origen'    => $skuActual,
                 'SKU_Destino'   => $skuOrigen,
-                'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
+                'msj'           => $mensaj,
                 'ValorEntrada'  => $valor,
                 'Resultado'     => $resultado == 10000 ? $val : $resultado,
                 'TipoRelacion'  => $resultado < 0 ? $tipoRelacion . " - Exceso" : $tipoRelacion,
@@ -748,6 +617,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
                 'skuOrigenraiz' => $skufinal,
                 'CENTRO'        => $Centro,
                 'claveunica'     => $clave,
+                'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
             ];
 
             $procesados[$clave] = $nodo;
@@ -757,7 +627,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
                 'Orden'         => $orden,
                 'SKU_Origen'    => $skuActual,
                 'SKU_Destino'   => $skuOrigen,
-                'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
+                'msj'           => $mensaj,
                 'ValorEntrada'  => $valor,
                 'Resultado'     => $resultado == 10000 ? $val : $resultado,
                 'TipoRelacion'  => $resultado < 0 ? $tipoRelacion . " - Exceso" : $tipoRelacion,
@@ -767,6 +637,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
                 'skuOrigenraiz' => $skufinal,
                 'CENTRO'        => $Centro,
                 'claveunica'     => $clave,
+                'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
             ];
 
             $procesados[$clave] = $nodo;
@@ -787,8 +658,8 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
 
 
     foreach ($relaciones as $relacion) {
-
-            if($orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion == "25221156_02.03_1021134_GRA1008443_calculo"){
+$a=$orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion;
+            if($orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion == "25658138_34028704_34028710_40144661001856_calculo"){
         $a=$orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion;
     }
 
@@ -807,7 +678,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
   $rastro[] = $clave;
     continue; // 🚫 Evitar procesar el mismo nodo en esta ram
     }
-
+$SKUSSS=$relacion->SKU;
     if($tipoRelacion=="calculo" ){
           $padre = DB::selectOne("
             SELECT distinct e.SKU FROM Eta e
@@ -870,7 +741,8 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
     $nivel + 1,
     $relacion->skufinal,
     $padre,
-                     $Centro
+                     $Centro,
+                     $relacion->nombre
         );
     }  } catch (Exception $e) {
 
@@ -929,6 +801,8 @@ private function evaluarFormulaexp(string $formula, array $variables)
         return 0;
     }
 }
+
+
 
 private function construirArbol(array $nodosPlano)
 {

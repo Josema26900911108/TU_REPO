@@ -147,9 +147,10 @@
     </div>
 
     <div class="tab-pane fade" id="inventario" role="tabpanel" aria-labelledby="inventario-tab">
-        @can('crear-etamaterial')
+        
         <div class="card">
             <div class="card-header">
+                @can('crear-etamaterial')
                 <table>
                             <td>
 
@@ -175,7 +176,7 @@
                                 <span id="nombre-archivoinv" class="ml-2 text-muted">Ningún archivo seleccionado</span>
                             </form>
                             </td>
-</table>
+</table>@endcan
                         <div id="tabla_materialesinv_container">
                         </div>
 
@@ -187,6 +188,7 @@
         <div class="card">
             <div class="card-header">
                         <div>
+                            
                             <table><tr>
 </tr>
 <tr>
@@ -251,8 +253,6 @@
         </div>
     </div>
 
-
-        @endcan
     </div>
 
 @endsection

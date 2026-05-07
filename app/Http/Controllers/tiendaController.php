@@ -33,27 +33,28 @@ class tiendaController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+public function index()
+{
+    if(!Auth::check()){
+        return redirect()->route('login');
+    }
 
-        $fkTienda=session('user_fkTienda');
-        $idusuario=auth()->user()->id;
-        $tiendas = Tienda::join('usuario_tienda', 'tienda.idTienda', '=', 'usuario_tienda.fkTienda')
+    $idusuario = auth()->user()->id;
+
+    // Ejecuta la consulta y guarda el resultado en $tiendas
+    $tiendas = Tienda::join('usuario_tienda', 'tienda.idTienda', '=', 'usuario_tienda.fkTienda')
         ->join('centro', 'tienda.idTienda', '=', 'centro.fkTienda')
         ->select(
             'centro.codigo as centro_codigo',
-            'centro.nombre as centro_nombre',
+            'centro.nombre as centro_nombre',   
             'tienda.*'
         )
         ->where('usuario_tienda.fkUsuario', $idusuario)
-        ->get();
+        ->get(); // <--- Aquí es donde realmente se obtienen los registros
 
+    return view('tienda.index', compact('tiendas'));
+}
 
-        return view('tienda.index', compact('tiendas'));
-    }
 
     /**
      * Show the form for creating a new resource.

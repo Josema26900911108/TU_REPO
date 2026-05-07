@@ -379,7 +379,9 @@ Route::get('/documentosap/lista',[documentosapController::class,'index'])->name(
 Route::get('/movimientomateriales/lista',[movimientomaterialesController::class,'index'])->name('movimientomateriales.lista');
 
 
-Route::get('/tecnico',[TecnicoController::class,'index'])->name('tecnico.lista');
+
+Route::get('/tecnico', [TecnicoController::class, 'index'])->name('tecnico.lista');
+
 Route::post('/tecnico/crear',[TecnicoController::class,'store'])->name('tecnico.store');
 Route::post('/Editecni/editar',[TecnicoController::class,'exist'])->name('tecnico.exist');
 Route::post('/tecnico/exist',[TecnicoController::class,'exist'])->name('tecnico.storexist');
@@ -406,7 +408,7 @@ Route::post('/exportar-tecnicoordenes', [TecnicoController::class, 'exportar'])-
 Route::get('/tecnicoTtabla', [TecnicoController::class, 'fetchrelacionTecnico'])->name('fetchtablaT');
 
 
-Route::get('/tecnicoTtabla', [etadirectController::class, 'fetchrelacionEta'])->name('fetchrelacionEta');
+Route::get('/etaTtabla', [etadirectController::class, 'fetchrelacionEta'])->name('fetchrelacionEta');
 
 
 Route::get('/tecnicotabla', [TecnicoController::class, 'fetchrelacion'])->name('fetchtabla');
@@ -418,6 +420,9 @@ Route::get('/manoobracategoria/{id}', [TecnicoController::class, 'fillEstructura
 Route::get('/inventariolista', [TecnicoController::class, 'InventarioLista'])->name('inventariolista');
 
 Route::get('/inventariolistadetalle', [TecnicoController::class, 'obtenerdetalless'])->name('inventariolistadetalles');
+
+    Route::post('/tecnico/validar-materiales', [TecnicoController::class, 'validarMaterialesTecnicos'])
+        ->name('tecnico.validar.materiales');
 
 
 Route::get('/abrinventariotecnico', [TecnicoController::class, 'fetch2'])->name('fetchabrestructura');

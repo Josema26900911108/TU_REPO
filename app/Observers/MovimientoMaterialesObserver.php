@@ -81,7 +81,7 @@ class MovimientoMaterialesObserver
                 'origen_uso' => 'consumo_produccion',
                 'cantidad' => $cantidadTotalADescontar,
                 'documento_material' => $movimientoPadre->documento_material,
-                'referencia' => "Insumo de: {$producto->nombre}",
+                'referencia' => "Insumo de: ||{$producto->nombre}||",
                 'fecha_contabilizacion' => now(),
                 'centro' => $movimientoPadre->centro,
                 'almacen' => $movimientoPadre->almacen,
@@ -115,7 +115,7 @@ class MovimientoMaterialesObserver
     public function deleting(MovimientoMateriales $movimiento)
     {
         $usuario = auth()->user();
-        if ($movimiento->created_at->diffInHours(now()) > 24 && (!$usuario || !$usuario->hasRole('root'))) {
+        if ($movimiento->created_at->diffInHours(now()) > 24 && (!$usuario || $usuario->role != 'root')) {
             throw new \Exception("Acceso Denegado: Solo el usuario Root puede anular movimientos antiguos.");
         }
     }

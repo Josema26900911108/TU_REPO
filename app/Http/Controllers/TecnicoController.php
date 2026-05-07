@@ -15,6 +15,8 @@ use App\Models\Persona;
 use App\Models\Pagotecnico;
 use App\Models\Tienda;
 use App\Models\Expedientefotograficotecnico;
+use App\Models\MovimientoMateriales;
+use App\Models\Producto;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -30,6 +32,7 @@ use Intervention\Image\Encoders\WebpEncoder;
 use App\Models\Tecnico;
 use App\Models\usuariotienda;
 use Illuminate\Pagination\Paginator;
+use PhpParser\Node\Expr\BinaryOp\Mod;
 use Yajra\DataTables\DataTables;
 
 
@@ -251,13 +254,16 @@ if ($tienda->isEmpty()) {
             ]));
 
             DB::commit();
+            
+            return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado');
+
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Error al registrar cliente: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Error al registrar el cliente.');
         }
 
-        return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado');
+        
 
     }
 
@@ -285,25 +291,15 @@ if ($tienda->isEmpty()) {
 
         $imageBase64 = (string) $image;
 
+        $idpersona=Tecnico::where('id',$request->idtecnico)->value('fkpersona');
         // 2. Buscar la Persona (esta sí debe existir obligatoriamente)
-        $persona = Persona::findOrFail($request->persona_id);
+        $persona = Persona::findOrFail($idpersona);
 
         $request->validate([
                 'email.unique' => 'El correo electrónico ya existe en el sistema, por favor elige uno nuevo.'
             ]);
 
             $fieldHash = Hash::make($request->password);
-$user = User::updateOrCreate(
-    ['email' => $request->email], // Busca por email
-    [
-        'name'     => $persona->razon_social,
-        'password' => $fieldHash,
-        'logo'     => $imageBase64, // El binario del toString()
-        'updated_at' => now()
-    ]
-);
-
-            $user->assignRole($request->role);  
 
         // 3. BUSCAR O CREAR el técnico vinculado a esa persona
         // Usamos updateOrCreate para que si no existe, lo inserte
@@ -314,7 +310,7 @@ $user = User::updateOrCreate(
                 'fkTienda'     => $request->tienda,
                 'codigo'       => $request->numero_eta,
                 'especialidad' => $request->especialidad,
-                'fkuser'=>$user->id,
+                'fkuser'=>$request->user,
                 'updated_at'   => now()
             ]
         );
@@ -366,6 +362,26 @@ $user = User::updateOrCreate(
         }
     }
 
+    public function validarMaterialesTecnicos(Request $request) {
+    $materialesInput = $request->input('materiales', []);
+    $procesados = [];
+    $rastro = [];
+
+    foreach ($materialesInput as $item) {
+        // Convertimos a objeto para que sea compatible con tu lógica de ejecutarLogicaInterna
+        $objItem = (object)[
+            'SKU' => $item['sku'],
+            'Cantidad' => $item['cantidad'],
+            'CENTRO' => 'TEMP' // Opcional si no filtras por centro aquí
+        ];
+        
+        $this->ejecutarLogicaInterna(0, $objItem, $procesados, $rastro);
+    }
+
+    return response()->json(['validaciones' => array_values($procesados)]);
+}
+
+
     public function inventariotecnicoorden($tecbucket)
     {
                         if(!Auth::check()){
@@ -374,13 +390,13 @@ $user = User::updateOrCreate(
 
         $orden = Expedientetecnico::where('id', $tecbucket)
             ->where(function($query) {
-                $query->where('Status', 'I')
-                    ->orWhere('Status', 'S');
+                $query->where('Estatus', 'I')
+                    ->orWhere('Estatus', 'S');
             })
             ->first();
 
 
-        $tecnico = Tecnico::find($orden->fkTecnico)->first();
+        $tecnico = Tecnico::where('id',$orden->fkTecnico)->first();
 
 
         return view('buckettecnico.edit', compact('tecbucket', 'orden','tecnico'));
@@ -476,81 +492,77 @@ try {
 
     }
 
-        public function InventarioLista(request $request)
-    {
+  public function InventarioLista(request $request)
+{
     try {
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
-        $iss=$request->id1;
-$sqlll = "
-WITH RECURSIVE nodo_padre AS (
-    -- Caso base: nodo raíz conocido
-    SELECT id, padre_id, nombre, sku
-    FROM arbolmanoobra
-    WHERE id = ? and fkTienda= ?
-    UNION ALL
-    -- Recorriendo hacia abajo (hijos)
-    SELECT a.id, a.padre_id, a.nombre, a.sku
-    FROM arbolmanoobra a
-    INNER JOIN nodo_padre np ON a.padre_id = np.id
-    WHERE a.fkTienda= ?
-),
+        
+        $sqlll = "
+        WITH RECURSIVE nodo_padre AS (
+            SELECT id, padre_id, nombre, sku, aplicafotografia as apf, Tipo_servicio as TP
+            FROM arbolmanoobra
+            WHERE id = ? and fkTienda= ?
+            UNION ALL
+            SELECT a.id, a.padre_id, a.nombre, a.sku, aplicafotografia as apf, Tipo_servicio as TP
+            FROM arbolmanoobra a
+            INNER JOIN nodo_padre np ON a.padre_id = np.id
+            WHERE a.fkTienda= ?
+        ),
+        cte_raiz AS ( SELECT * FROM nodo_padre )
+        SELECT DISTINCT
+            ams.nombre, ams.sku, ams.limite, ams.minimo, ams.fkTienda, ams.padre_id, 
+            r.apf, r.TP, am.nombre as categoria_nombre
+        FROM cte_raiz as r
+        JOIN treematerialescategoria AS am ON am.nombre COLLATE utf8mb4_unicode_ci = r.nombre
+        JOIN treematerialescategoria AS ams ON ams.padre_id = am.id";
 
-cte_raiz AS (
-    SELECT * FROM nodo_padre
-)
-
-SELECT DISTINCT
-ams.nombre, ams.sku, ams.limite, ams.minimo, ams.fkTienda, ams.padre_id
-FROM cte_raiz as r
-JOIN treematerialescategoria AS am
-ON am.nombre COLLATE utf8mb4_unicode_ci = r.nombre
-JOIN treematerialescategoria AS ams ON ams.padre_id = am.id
-
-";
-$stmt = $pdo->prepare($sqlll);
-$stmt->execute([$request->id1, $fkTienda, $fkTienda]);
-
-
+        $stmt = $pdo->prepare($sqlll);
+        $stmt->execute([$request->id1, $fkTienda, $fkTienda]);
         $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-$resultado = [];
-$mat="";
-foreach ($detallecomprobante as $key => $value) {
-    $cantidadTotal = MovimientoMaterial::where('fkTienda', $fkTienda)
-        ->where('SKU', $value['sku'])
-        ->sum('cantidad');
+        // Detectar si hay algún registro de tipo MO
+        $contieneMO = collect($detallecomprobante)->contains('TP', 'MO');
 
-        $mat=$mat.','.$value['sku'];
-}
-
-$mat = substr($mat, 1);
-
-
-
-    $resultado = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sku', '=', 'movimientomateriales.SKU')
-    ->where('movimientomateriales.fkTienda', $fkTienda)
-    ->where('fkTecnico', $request->id2)
-    ->where('movimientomateriales.STATUS', 'I')
-    ->whereIn('movimientomateriales.SKU', explode(',', $mat))
-    ->select(
-        'movimientomateriales.id',
-        'movimientomateriales.serie',
-        'tmc.nombre as categoria_nombre',
-        'tmc.sku as sku',
-        DB::raw('IFNULL(movimientomateriales.cantidad, 1) as cantidad')
-    )
-    ->get();
-
-        return response()->json($resultado->toArray());
-
-
-            } catch (Exception $e) {
-            dd($e);
-            DB::rollBack();
+        if ($contieneMO) {
+            // Caso MO: Construimos el array manualmente
+            $final = [];
+            foreach ($detallecomprobante as $value) {
+                $final[] = [
+                    'id'               => 0,
+                    'serie'            => '',
+                    'categoria_nombre' => $value['nombre'], // 'nombre' de ams
+                    'sku'              => $value['sku'],
+                    'cantidad'         => $value['limite']
+                ];
+            }
+        } else {
+            // Caso Materiales: Buscamos en MovimientoMaterial
+            $skus = collect($detallecomprobante)->pluck('sku')->toArray();
+            
+            $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sku', '=', 'movimientomateriales.SKU')
+                ->where('movimientomateriales.fkTienda', $fkTienda)
+                ->where('fkTecnico', $request->id2)
+                ->whereIn('movimientomateriales.SKU', $skus)
+                ->where('movimientomateriales.STATUS', 'A')
+                ->select(
+                    'movimientomateriales.id',
+                    'movimientomateriales.serie',
+                    'tmc.nombre as categoria_nombre',
+                    'tmc.sku as sku',
+                    DB::raw('IFNULL(movimientomateriales.cantidad, 1) as cantidad')
+                )
+                ->get();
         }
 
+        // Si es colección de Laravel usamos toArray(), si es array lo dejamos tal cual
+        return response()->json(is_array($final) ? $final : $final->toArray());
+
+    } catch (Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
     }
+}
+
 
     public function update(UpdateTecnicoRequest $request, Tecnico $tecnico)
     {
@@ -583,169 +595,176 @@ $mat = substr($mat, 1);
     }
 
         public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecnico $expediente)
-    {
-        try {
+{
+    try {
+        if (!Auth::check()) return redirect()->route('login');
 
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+        DB::beginTransaction();
 
-            DB::beginTransaction();
-            $items = $request->input('items', []);
+        $iditems = $request->input('arrayiditem', []);
+        
+        foreach ($iditems as $contar => $iditem) {
+            
+            // 1. Si el item es 0, es Mano de Obra nueva. Si no, es un material de inventario.
+            if ($iditem == 0) {
+// 1. CRITERIOS DE BÚSQUEDA: Solo lo mínimo para identificar el registro
+// Si ya existe un registro con este SKU para este Expediente y Técnico, que lo ACTUALICE.
+$nuevoMovimiento = MovimientoMaterial::updateOrCreate(
+    // 1. Criterios de búsqueda
+    [
+        'fkExpediente' => $expediente->id,
+        'fkTecnico'    => $expediente->fkTecnico,
+        'SKU'          => $request->input('arraysku')[$contar] ?? '-',
+        'TIPO'         => 'MO',
+    ],
+    // 2. Datos a actualizar o insertar
+    [
+        'fkTienda'       => $expediente->fkTienda,
+        'serie'          => ($request->input('arrayserie')[$contar] ?? null) ?: '-',
+        'cantidad'       => $request->input('arraycantidad')[$contar] ?? 1,
+        'CENTRO'         => 'CF',
+        'ESTATUS'        => 'INSTALADO',
+        'almacen'        => 'ALMA',
+        'TIPOMOVIMIENTO' => 'INSTALADO',
+        'Naturaleza'     => 'H',
+        'Status'         => 'S',
+        'Lote'           => 'A000',
+        'MAC1'           => '-',
+        'MAC2'           => '-',
+        'MAC3'           => '-',
+        'COSTO'          => 0,
+        'unidadmedida'   => 'UNIDAD',
+        'Modificado_el'  => now(),
+        'Modificado_por' => Auth::user()->name,
+    ]
+);
 
-                $iditems = $request->input('arrayiditem', []);
-                $contar=0;
+// 3. SOLO SI ES UN REGISTRO NUEVO, asignamos los campos de creación
+if ($nuevoMovimiento->wasRecentlyCreated) {
+    $nuevoMovimiento->update([
+        'Creado_el'  => now(),
+        'Creado_por' => Auth::user()->name,
+    ]);
+}
 
-
-                foreach ($iditems as $iditem) {
-
-                    MovimientoMaterial::where('id', $iditems)
-                        ->where('cantidad','>=',$request->input('arraycantidad')[$contar])
-                        ->update([
-                            'Estatus' => 'S',
-                            'updated_at' => now(),
-                            'Status' => 'C',
-                        ]);
-
-//obtiene datos de movimienot de materiales con iditem seleccionado por tecnico y los guarda en $mat, esta variable se utilizara para actualizar inventario del registro del item y compararlo con lo que el tenico selecciona.
-                       $mat= MovimientoMaterial::where('id', $iditem)
-                        ->get();
-
-                        //validamos que la cantidad en inventario sea mayor o igual a la que el tecnico selecciona
-                            $valor=$mat[0]->cantidad-$request->input('arraycantidad')[$contar];
-                            if($valor>=0){
-
-                                //si es meno o igual, validamos el material (mano de obra o material) actualizamos el stock, y en el caso de lo seriado lo pasamos a estatus "C" y "S", y actualizamos la cantidad en lo no seriado o mano de obra
-                            MovimientoMaterial::where('id', $iditem)
-                            ->whereNot('TIPO', 'MO')
-                            ->where('serie', '-')
-                            ->update([
-                                'Estatus' => 'S',
-                                'updated_at' => now(),
-                                'cantidad'=>$valor
-                            ]);
-
-                            MovimientoMaterial::where('id', $iditem)
-                            ->where('serie','<>', '-')
-                            ->whereNot('TIPO', 'MO')
-                            ->update([
-                                'Estatus' => 'S',
-                                'updated_at' => now(),
-                                'Status' => 'C',
-                            ]);
-
-                            } else{
-                            MovimientoMaterial::where('id', $iditem)
-                            ->whereNot('TIPO', 'MO')
-                            ->update([
-                                'Estatus' => 'S',
-                                'updated_at' => now(),
-                                'Status' => 'C',
-                                'cantidad'=>0
-                                ]);
-                            }
-                        MovimientoMaterial::insert([
-                            'fkTienda' => $expediente->fkTienda,
-                            'SKU' => $request->input('SKU',$request->input('arraysku')[$contar]) ?? '-',
-                            'serie' => $request->input('serie',$request->input('arrayserie')[$contar]) ?? '-',
-                            'cantidad' => $request->input('cantidad',$request->input('arraycantidad')[$contar]) ?? 1,
-                            'Centro' => 'CF',
-                            'ESTATUS' => $mat[0]->ESTATUS ?? 'C',
-                            'created_at' => now(),
-                            'Creado_por' => Auth::user()->name,
-                            'TIPO' => $mat[0]->TIPO,
-                            'almacen'  => $mat[0]->almacen ?? 'ALMA',
-                            'TIPOMOVIMIENTO'=>221,
-                            'Naturaleza'=>'H',
-                            'MAC1'=>$mat[0]->MAC1 ?? 'N/A',
-                            'MAC2'=>$mat[0]->MAC2 ?? 'N/A',
-                            'MAC3'=>$mat[0]->MAC3 ?? 'N/A',
-                            'COSTO'=>$mat[0]->COSTO,
-                            'Modificado_el'=>now(),
-                            'Modificado_por'=>Auth::user()->name,
-                            'creado_el'=>now(),
-                            'Status'=>'C',
-                            'unidadmedida'=>$mat[0]->unidadmedida ?? 'UNIDAD',
-                            'Lote'=>$mat[0]->lote ?? 'A00',
-                            'fkExpediente'=>$expediente->id,
-                        ]);
-
-                        Pagotecnico::insert([
-                            'Orden' => $expediente->Orden,
-                            'SKU' => $request->input('SKU',$request->input('arraysku')[$contar]),
-                            'Descripcion' => $request->input('arraynameProducto')[$contar],
-                            'OBS' => 'Pago por servicio tecnico',
-                            'Cantidad' => $request->input('cantidad',$request->input('arraycantidad')[$contar]),
-                            'COSTOPAGO' => $request->input('COSTOPAGO',$request->input('arraycantidad')[$contar]*$mat[0]->COSTO),
-                            'created_at' => now(),
-                            'fkTienda' => $expediente->fkTienda,
-                            'fkTecnico' => $expediente->fkTecnico,
-                            'Naturaleza'=>'D',
-                            'Status'=>'C',
-                        ]);
-
-                Expedientetecnico::where('id', $expediente->id)
-                ->update([
+$iditem = $nuevoMovimiento->id;
+            } else {
+                // Actualizar estatus del item de inventario existente
+                MovimientoMaterial::where('id', $iditem)->update([
+                    'Estatus' => 'INSTALADO',
                     'Status' => 'S',
-                    'FECHAINSTALACION' => now(),
-                    'OBS'=>$expediente->OBS.' ||OBS TECNICO: '.$request->input('obs'),
+                    'updated_at' => now(),
                 ]);
-
-        $cantidad = $request['arraycantidad'][$contar] ?? 1;
-                    $items = $request->input('items', [])[$contar] ?? [];
-
-        $photos   = $items['photos'] ?? [];
-        $names   = $items['names'] ?? [];
-
-
-
-              foreach ($photos as $i => $photoBase64) {
-            // 1. Separar metadata del base64
-            @list($type, $fileData) = explode(';', $photoBase64);
-            @list(, $fileData) = explode(',', $fileData);
-
-            if ($fileData) {
-                $fileData = base64_decode($fileData);
-
-                // 2. Obtener extensión
-                $extension = str_contains($type, 'png') ? 'png' : 'jpg';
-
-                // 3. Definir nombre único
-                $fileName = $names[$i] .'_'.$request->input('arraynameProducto')[$contar];
-                $fileName = preg_replace('/[^A-Za-z0-9_\-]/', '_', $fileName).'.'. $extension;
-
-
-                // 4. Guardar en storage/app/public/fotos/ordenes/{id}
-                $path = "public/fotos/ordenes/{$expediente->Orden}";
-
-                Expedientefotograficotecnico::create([
-                    'fkTienda' => $expediente->fkTienda,
-                    'Orden' => $expediente->Orden,
-                    'fotografia' => "storage/fotos/ordenes/{$expediente->Orden}/{$fileName}",
-                    'created_at' => now()
-                ]);
-
-                Storage::put("{$path}/{$fileName}", $fileData);
             }
-        }
 
+            // 2. Obtener los datos del movimiento (sea el nuevo o el existente)
+            $mat = MovimientoMaterial::find($iditem);
 
-
-                        $contar=$contar+1;
+            // 3. Lógica de Inventario (Solo para materiales, no para Mano de Obra)
+            if ($mat->TIPO !== 'MO') {
+                $nuevaCantidad = $mat->cantidad - ($request->input('arraycantidad')[$contar] ?? 0);
+                
+                if ($mat->serie == '-') {
+                    $mat->update(['cantidad' => max(0, $nuevaCantidad), 'Estatus' => 'INSTALADO']);
+                } else {
+                    $mat->update(['Status' => 'S', 'Estatus' => 'INSTALADO']);
                 }
+            }
 
+// 1. Usar updateOrCreate (modelo) para obtener un objeto, no un booleano
+$nuevoMovimientoPago = Pagotecnico::updateOrCreate([
+    'Orden'       => $expediente->Orden,
+    'SKU'         => $request->input('arraysku')[$contar],
+    'fkTienda'    => $expediente->fkTienda,
+    'fkTecnico'   => $expediente->fkTecnico,
+], [
+    'Descripcion' => $request->input('arraynameProducto')[$contar],
+    'OBS'         => 'Pago por servicio tecnico',
+    'Cantidad'    => $request->input('arraycantidad')[$contar],
+    'COSTOPAGO'   => ($request->input('arraycantidad')[$contar] ?? 1) * ($mat->COSTO ?? 0),
+    'Naturaleza'  => 'D',
+    'Status'      => 'S',
+    // updated_at se gestiona solo si el modelo tiene timestamps
+]);
 
+// 2. Ahora sí puedes usar wasRecentlyCreated
+if ($nuevoMovimientoPago->wasRecentlyCreated) {
+    // Nota: Verifica si es 'created_at' (estándar) o 'create_at' como pusiste
+    $nuevoMovimientoPago->update([
+        'created_at'  => now() 
+    ]);
+}
 
+            // 5. Procesamiento de Fotos (Mantenemos tu lógica de base64)
+            $itemInput = $request->input('items', [])[$contar] ?? [];
+            $photos = $itemInput['photos'] ?? [];
+            $names = $itemInput['names'] ?? [];
 
-            DB::commit();
-        } catch (Exception $e) {
-            DB::rollBack();
-            Log::error('Error al actualizar tecnico: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Error al actualizar el tecnico.');
+            foreach ($photos as $i => $photoBase64) {
+                // 1. Separar metadata del base64
+                @list($type, $fileData) = explode(';', $photoBase64);
+                @list(, $fileData) = explode(',', $fileData);
+
+                if ($fileData) {
+                    $fileData = base64_decode($fileData);
+
+                    // 2. Obtener extensión
+                    $extension = str_contains($type, 'png') ? 'png' : 'jpg';
+
+                    // 3. Definir nombre único (usando el nombre del producto para identificar qué se instaló)
+                    $nombreLimpio = preg_replace('/[^A-Za-z0-9_\-]/', '_', $names[$i] ?? 'foto');
+                    $productoNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $request->input('arraynameProducto')[$contar] ?? 'item');
+                    
+                    $fileName = "{$nombreLimpio}_{$productoNombre}_" . uniqid() . ".{$extension}";
+
+                    // 4. Definir ruta y guardar en storage
+                    // La ruta física: storage/app/public/fotos/ordenes/{orden}
+                    $directory = "public/fotos/ordenes/{$expediente->Orden}";
+                    $path = "{$directory}/{$fileName}";
+
+                    if (!Storage::exists($directory)) {
+                        Storage::makeDirectory($directory);
+                    }
+
+                    Storage::put($path, $fileData);
+
+                    // 5. Crear el registro en la base de datos
+                    Expedientefotograficotecnico::create([
+                        'fkTienda'   => $expediente->fkTienda,
+                        'Orden'      => $expediente->Orden,
+                        // Guardamos la ruta que será accesible desde el navegador (usando el symlink)
+                        'fotografia' => "storage/fotos/ordenes/{$expediente->Orden}/{$fileName}",
+                    ]);
+                }
+            }
+
         }
 
-        return redirect()->route('tecnico.buckettecnico')->with('success', 'Orden actualizada');
+        if($expediente->OBS==''){
+        $expediente->update([
+            'Status' => 'S',
+            'FECHAINSTALACION' => now(),
+        ]);
+        }else{
+        // 6. Finalizar Expediente
+        $expediente->update([
+            'Status' => 'S',
+            'FECHAINSTALACION' => now(),
+            'OBS' => $expediente->OBS . ' ||OBS TECNICO: ' . $request->input('obs'),
+        ]);
+        }
+
+
+
+        DB::commit();
+return redirect()->route('tecnico.buckettecnico')->with('success', 'Orden actualizada');
+        
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
     }
+}
 
         public function bucket($id)
     {
@@ -1022,7 +1041,7 @@ public function fetchrelacionC(Request $request)
                 $query->select('SKU', 'nombre as descripcion');
             }])
             ->where('fkTienda', $fkTienda)
-            ->where('ESTATUS', 'A')
+            ->where('ESTATUS', 'DISPONIBLE')
             ->where('fkTecnico', $idtecnico)
             ->orderBy('created_at', 'desc')
             ->paginate($request->input('count', 15));
@@ -1124,7 +1143,7 @@ public function exportar(Request $request)
                 if ($Estatus == 'ER') {
                     $tecnicos=Tecnico::where('fkTienda',$fkTienda)->get();
                     $expediente=Expedientetecnico::where('fkTienda',$fkTienda)
-                    ->where('ESTATUS','I')
+                    ->where('ESTATUS','A')
                     ->get();
                     $tecnico=null;
                 } else {
@@ -1132,13 +1151,13 @@ public function exportar(Request $request)
                     $tecnico=Tecnico::where('fkTienda',$fkTienda)
                     ->where('id',$idtecnico)->first();
                     $expediente=Expedientetecnico::where('fkTienda',$fkTienda)
-                    ->where('ESTATUS','I')
+                    ->where('ESTATUS','A')
                     ->where('fkTecnico',$idtecnico)->get();
                 };
 
             DB::commit();
 
-            return view('tecnico.bucketlista', compact('tecnicos','tecnico','expediente','Estatus'));
+            return view('buckettecnico.index', compact('tecnicos','tecnico','expediente','Estatus'));
 
         } catch (Exception $e) {
             DB::rollBack();
@@ -1150,202 +1169,249 @@ public function exportar(Request $request)
     }
 public function importarMAMO(Request $request)
 {
-    $fkTienda = session('user_fkTienda');
-    $id = $request->input('id');
+    if (!Auth::check()) return redirect()->route('login');
 
-    // Validar archivo
+    $fkTienda = session('user_fkTienda');
+    $idDestino = $request->input('id'); // Técnico que recibe las órdenes
+    $nombreUsuario = session('nombreUsuario');
+
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
     ]);
 
     $file = fopen($request->file('archivo')->getRealPath(), 'r');
-    $encabezado = fgetcsv($file); // leer encabezados
+    $encabezado = fgetcsv($file); 
 
     DB::beginTransaction();
-
     try {
-        $fila = 1; // para loggear el número de fila
+        $fila = 1;
         while (($linea = fgetcsv($file)) !== false) {
             $fila++;
             $data = array_combine($encabezado, $linea);
 
-            // Validar campos mínimos
-            if (!isset($data['Orden']) || !isset($data['virtual']) || !isset($data['NOMBRECLIENTE'])) continue;
+            // 1. VALIDACIÓN DE CAMPOS CRÍTICOS
+            if (empty($data['Orden']) || empty($data['virtual'])) continue;
 
-            // Convertir campos a UTF-8
-            $orden         = mb_convert_encoding($data['Orden'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $virtual       = mb_convert_encoding($data['virtual'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $status        = mb_convert_encoding($data['Status'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $tiposervicio  = mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $tipoorden     = mb_convert_encoding($data['Tipo_orden'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $nombrecliente = mb_convert_encoding($data['NOMBRECLIENTE'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $direccion     = mb_convert_encoding($data['DIRECCION'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $obs           = mb_convert_encoding($data['OBS'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $siglas        = mb_convert_encoding($data['SIGLASCENTRAL'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $area          = mb_convert_encoding($data['AREA'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $fechainst     = mb_convert_encoding($data['FECHAINSTALACION'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $autoriza      = mb_convert_encoding($data['AUTORIZA'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $estatus       = mb_convert_encoding($data['ESTATUS'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $tecnologia    = mb_convert_encoding($data['TECNOLOGIA'] ?? '', 'UTF-8', 'ISO-8859-1');
+            $orden = trim($data['Orden']);
+            $virtual = trim($data['virtual']);
+            $ahora = now();
 
-            // Convertir fecha de forma segura
-            $fecha = null;
-            if (!empty($fechainst)) {
+            // 2. TRATAMIENTO DE FECHA
+            $fechaInst = null;
+            if (!empty($data['FECHAINSTALACION'])) {
                 try {
-                    $fecha = Carbon::createFromFormat('d/m/Y', $fechainst)->format('Y-m-d H:i:s');
+                    $fechaInst = Carbon::createFromFormat('d/m/Y', $data['FECHAINSTALACION'])->format('Y-m-d H:i:s');
                 } catch (\Exception $e) {
-                    Log::warning("Fila {$fila} - Fecha inválida: {$fechainst} (Orden: {$orden})");
-                    $fecha = null; // o puedes asignar hoy: now()->format('Y-m-d')
+                    $fechaInst = $ahora; 
                 }
             }
 
-            // Insertar o actualizar
-            DB::table('expedientetecnico')->updateOrInsert(
-                [
-                    'orden' => $orden,
-                    'virtual' => $virtual,
-                    'fkTienda' => $fkTienda,
-                    'fkTecnico' => $id,
-                    'FECHAINSTALACION' => $fecha,
-                ],
-                [
-                    'status' => $status,
-                    'fkTecnico' => $id,
-                    'tipo_servicio' => $tiposervicio,
-                    'tipo_orden' => $tipoorden,
-                    'nombrecliente' => $nombrecliente,
-                    'direccion' => $direccion,
-                    'obs' => $obs,
-                    'SIGLASCENTRAL' => $siglas,
-                    'area' => $area,
-                    'FECHAINSTALACION' => $fecha,
-                    'autoriza' => $autoriza,
-                    'Estatus' => $estatus,
-                    'TECNOLOGIA' => $tecnologia,
-                    'updated_at' => now(),
-                ]
-            );
+            // 3. LOGICA DE REASIGNACIÓN (Trazabilidad)
+            // Buscamos si la orden ya existe y está activa con otro técnico
+            $expedientePrevio = DB::table('expedientetecnico')
+                ->where('orden', $orden)
+                ->where('virtual', $virtual)
+                ->where('fkTienda', $fkTienda)
+                ->where('Estatus', '!=', 'RE') // Evitamos los ya procesados
+                ->first();
+
+            if ($expedientePrevio) {
+                // Si el técnico es el mismo, solo actualizamos datos y saltamos
+                if ($expedientePrevio->fkTecnico == $idDestino) {
+                    DB::table('expedientetecnico')->where('id', $expedientePrevio->id)->update([
+                        'status' => $data['Status'] ?? $expedientePrevio->status,
+                        'updated_at' => $ahora
+                    ]);
+                    continue;
+                }
+
+                // Si es un técnico diferente, "cerramos" el expediente anterior
+                DB::table('expedientetecnico')
+                    ->where('id', $expedientePrevio->id)
+                    ->update([
+                        'Estatus' => 'RE',
+                        'obs' => ($expedientePrevio->OBS . " | Reasignada a técnico ID: $idDestino por $nombreUsuario"),
+                        'updated_at' => $ahora
+                    ]);
+            }
+
+            // 4. INSERTAR LA ORDEN PARA EL NUEVO TÉCNICO
+            // Usamos insert para mantener el historial de quién ha tenido la orden
+            DB::table('expedientetecnico')->insert([
+                'orden'            => $orden,
+                'virtual'          => $virtual,
+                'fkTienda'         => $fkTienda,
+                'fkTecnico'        => $idDestino,
+                'status'           => $data['Status'] ?? 'PENDIENTE',
+                'tipo_servicio'    => mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'tipo_orden'       => mb_convert_encoding($data['Tipo_orden'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'nombrecliente'    => mb_convert_encoding($data['NOMBRECLIENTE'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'direccion'        => mb_convert_encoding($data['DIRECCION'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'obs'              => mb_convert_encoding($data['OBS'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'SIGLASCENTRAL'    => $data['SIGLASCENTRAL'] ?? '',
+                'area'             => $data['AREA'] ?? '',
+                'FECHAINSTALACION' => $fechaInst,
+                'autoriza'         => $data['AUTORIZA'] ?? '',
+                'Estatus'          => $data['ESTATUS'] ?? 'AC',
+                'TECNOLOGIA'       => $data['TECNOLOGIA'] ?? '',
+                'created_at'       => $ahora,
+                'updated_at'       => $ahora,
+            ]);
         }
 
+        fclose($file);
         DB::commit();
-        return back()->with('success', 'Mano de Obra o Materiales de Eta importados correctamente.');
+        return back()->with('success', 'Expedientes técnicos procesados y reasignados correctamente.');
 
     } catch (\Exception $e) {
         DB::rollBack();
-        Log::error('Error al importar CSV: ' . $e->getMessage());
-        return back()->with('error', 'Error al importar: ' . $e->getMessage());
+        if (isset($file)) fclose($file);
+        Log::error('Error al importar Expediente: ' . $e->getMessage());
+        return back()->with('error', 'Error en fila ' . $fila . ': ' . $e->getMessage());
     }
 }
 
+
 public function importarInvTecnico(Request $request)
 {
-    $fkTienda = session('user_fkTienda');
-    $id = $request->input('id');
-    $nombreUsuario=session('nombreUsuario');
-    $user = User::find(Auth::user()->id);
-    // Validar archivo
-    $request->validate([
-        'archivoinv' => 'required|file|mimes:csv,txt',
-    ]);
+    if (!Auth::check()) return redirect()->route('login');
 
+    $fkTienda = session('user_fkTienda');
+    $idDestino = $request->input('id'); 
+    $nombreUsuario = session('nombreUsuario');
+    $CentroDestino=Tecnico::where('id', $idDestino)->value('codigo') ?? 'N/A';
+    
+    $request->validate(['archivoinv' => 'required|file|mimes:csv,txt']);
     $file = fopen($request->file('archivoinv')->getRealPath(), 'r');
-    $encabezado = fgetcsv($file); // leer encabezados
+    $encabezado = fgetcsv($file); 
 
     DB::beginTransaction();
-
     try {
-        $fila = 1; // para loggear el número de fila
+        $fila = 1;
+        $instaladosContador = 0;
+
         while (($linea = fgetcsv($file)) !== false) {
             $fila++;
             $data = array_combine($encabezado, $linea);
+            if (empty($data['SKU']) || empty($data['cantidad'])) continue;
 
-            // Validar campos mínimos
-            if (!isset($data['serie']) || !isset($data['SKU']) || !isset($data['MAC1'])) continue;
+            $sku = trim($data['SKU']);
+            $serie = trim($data['serie'] ?? '');
+            $cantidad = floatval($data['cantidad']);
+            $docRef = 'IMP-' . now()->format('dmY:H:i:s') . '-' . $serie;
+            $ahora = now();
 
-            // Convertir campos a UTF-8
-            $serie         = mb_convert_encoding($data['serie'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $SKU       = mb_convert_encoding($data['SKU'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $almacen        = mb_convert_encoding($data['almacen'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $Lote  = mb_convert_encoding($data['Lote'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $MAC1     = mb_convert_encoding($data['MAC1'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $MAC2 = mb_convert_encoding($data['MAC2'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $MAC3     = mb_convert_encoding($data['MAC3'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $ESTATUS          = mb_convert_encoding($data['ESTATUS'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $COSTO        = mb_convert_encoding($data['COSTO'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $CENTRO         = mb_convert_encoding($data['CENTRO'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $TIPO     = mb_convert_encoding($data['TIPO'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $unidadmedida      = mb_convert_encoding($data['unidadmedida'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $TIPOMOVIMIENTO       = mb_convert_encoding($data['TIPOMOVIMIENTO'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $Naturaleza   = mb_convert_encoding($data['Naturaleza'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $Status   = mb_convert_encoding($data['Status'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $cantidad   = mb_convert_encoding($data['cantidad'] ?? '', 'UTF-8', 'ISO-8859-1');
+            // 1. OBTENER O CREAR PRODUCTO
+            $producto = Producto::firstOrCreate(
+                ['codigo' => $sku],
+                [
+                    'nombre' => mb_convert_encoding($data['descripcion'] ?? "Producto $sku", 'UTF-8', 'ISO-8859-1'),
+                    'fkTienda' => $fkTienda, 'estado' => 1, 'marca_id' => 1, 'presentacione_id' => 1,
+                    'stock' => 0, 'precio_base' => 0, 'stock_minimo' => 1, 'perecedero' => 0
+                ]
+            );
 
+            // 2. IMPEDIR TRASPASO SI ESTÁ INSTALADO
+            $stockActual = DB::table('movimientomateriales')
+                ->where('serie', $serie)
+                ->where('SKU', $sku)
+                ->where('fkTienda', $fkTienda)
+                ->where('Status', 'A')
+                ->first();
 
-            // Convertir fecha de forma segura
-            $fecha = now();
-            if (!empty($fechainst)) {
-                try {
-                    $fecha = Carbon::createFromFormat('d/m/Y', $fechainst)->format('Y-m-d');
-                } catch (\Exception $e) {
-                    Log::warning("Fila {$fila} - Fecha inválida: {$fechainst} (Orden: {$serie})");
-                    $fecha = null; // o puedes asignar hoy: now()->format('Y-m-d')
-                }
+            if ($stockActual && $stockActual->ESTATUS == 'INSTALADO') {
+                $instaladosContador++;
+                continue; 
             }
 
-            // Insertar o actualizar
+            // 3. BUSCAR ÚLTIMO DUEÑO (Historial)
+            $ultimoMov = MovimientoMateriales::where('fkMateriales', $producto->id)
+                ->where('referencia', 'LIKE', "%$serie%")
+                ->where('fkTienda', $fkTienda)
+                ->orderBy('id', 'desc')->first();
+
+            $idOrigen = $ultimoMov ? $ultimoMov->contrata : null;
+            $CentroOrigen=Tecnico::where('id', $idOrigen)->value('codigo') ?? 'N/A';
+            if ($idOrigen == $idDestino) continue;
+
+            // 4. REGISTRAR SALIDA DEL ANTERIOR
+            if ($idOrigen) {
+                MovimientoMateriales::create([
+                    'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idOrigen,
+                    'clase_movimiento' => '251', 'cantidad' => $cantidad * -1,
+                    'referencia' => "SALIDA SERIE: $serie | TRASPASO A $idDestino",
+                    'tipo_movimiento' => 'TRASPASO_SALIDA', 'documento_material' => $docRef,
+                    'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
+                    'almacen' => $CentroOrigen, 'centro' => $data['CENTRO'] ?? 'G817',
+                    'unidad_medida_base' => $data['unidadmedida'] ?? 'PZA'
+                ]);
+
+                DB::table('movimientomateriales')
+                    ->where('serie', $serie)
+                    ->where('SKU', $sku)
+                    ->where('fkTecnico', $idOrigen)
+                    ->update([
+                        'ESTATUS' => 'TRASLADADO',
+                        'Status' => 'I',
+                        'updated_at' => $ahora
+                    ]);
+            }
+
+            // 5. REGISTRAR ENTRADA EN HISTORIAL (Destino)
+            MovimientoMateriales::create([
+                'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idDestino,
+                'clase_movimiento' => $idOrigen ? '252' : '101', 'cantidad' => $cantidad,
+                'referencia' => "ENTRADA SERIE: $serie | ORIGEN: " . ($idOrigen ?? 'BODEGA'),
+                'tipo_movimiento' => 'TRASPASO_ENTRADA', 'documento_material' => $docRef,
+                'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
+                'centro' => $data['CENTRO'] ?? 'G817', 'almacen' => $CentroDestino,
+                'unidad_medida_base' => $data['unidadmedida'] ?? 'PZA'
+            ]);
+
+            // 6. ASIGNAR STOCK AL NUEVO TÉCNICO (Blindado contra Error 1364)
             DB::table('movimientomateriales')->updateOrInsert(
                 [
                     'serie' => $serie,
-                    'SKU' => $SKU,
+                    'SKU' => $sku,
+                    'fkTecnico' => $idDestino,
                     'fkTienda' => $fkTienda,
-                    'fkTecnico' => $id,
-                    'almacen' => $almacen,
-                    'Lote' => $Lote,
-                    'MAC1' => $MAC1,
-                    'MAC2' => $MAC2,
-                    'MAC3' => $MAC3,
-                    'ESTATUS' => $ESTATUS,
-                    'COSTO' => $COSTO,
-                    'CENTRO' => $CENTRO,
-                    'TIPO' => $TIPO,
-                    'unidadmedida' => $unidadmedida,
-                    'TIPOMOVIMIENTO' => $TIPOMOVIMIENTO,
-                    'Naturaleza' => $Naturaleza,
-                    'Status' => $Status,
-                    'Modificado_el'=> $fecha,
-                    'Modificado_por' => $nombreUsuario,
-                    'Creado_el' => $fecha,
-                    'Creado_por' => $nombreUsuario,
-                    'cantidad' => $cantidad,
                 ],
                 [
-                    'fkTienda' => $fkTienda,
-                    'fkTecnico' => $id,
-                    'Lote' => $Lote,
-                    'MAC1' => $MAC1,
-                    'MAC2' => $MAC2,
-                    'MAC3' => $MAC3,
-                    'COSTO' => $COSTO,
-                    'CENTRO' => $CENTRO,
-                    'unidadmedida' => $unidadmedida,
-                    'TIPOMOVIMIENTO' => $TIPOMOVIMIENTO,
-                    'Naturaleza' => $Naturaleza,
-                    'Status' => $Status,
-                    'updated_at' => now(),
-                    'Modificado_el'=> $fecha,
-                    'Modificado_por' => $nombreUsuario,
+                    'almacen' => $data['almacen'] ?? 'A000',
+                    'Lote' => $data['Lote'] ?? 'N/A',
+                    'MAC1' => $data['MAC1'] ?? '', // <-- Evita error si el CSV no lo trae
+                    'MAC2' => $data['MAC2'] ?? '',
+                    'MAC3' => $data['MAC3'] ?? '',
+                    'COSTO' => $data['COSTO'] ?? 0,
+                    'TIPO' => $data['TIPO'] ?? 'MAT',
+                    'ESTATUS' => 'DISPONIBLE',
+                    'Status' => 'A',
+                    'Naturaleza'=> 'E',
+                    'CENTRO' => $data['CENTRO'] ?? 'G817',
                     'cantidad' => $cantidad,
+                    'unidadmedida' => $data['unidadmedida'] ?? 'PZA',
+                    'TIPOMOVIMIENTO' => 'TRASPASO_ENTRADA',
+                    'Modificado_el' => $ahora->format('Y-m-d'),
+                    'Modificado_por' => $nombreUsuario,
+                    'Creado_el' => $ahora->format('Y-m-d'),
+                    'Creado_por' => $nombreUsuario,
+                    'updated_at' => $ahora
                 ]
             );
         }
 
+        fclose($file);
         DB::commit();
-        return back()->with('success', 'Mano de Obra o Materiales de Eta importados correctamente.');
+        
+        $msg = "Inventario procesado.";
+        if($instaladosContador > 0) $msg .= " Se omitieron $instaladosContador series ya instaladas.";
+        
+        return back()->with('success', $msg);
 
     } catch (\Exception $e) {
         DB::rollBack();
-        Log::error('Error al importar CSV: ' . $e->getMessage());
-        return back()->with('error', 'Error al importar: ' . $e->getMessage());
+        if (isset($file)) fclose($file);
+        return back()->with('error', 'Error en fila ' . $fila . ': ' . $e->getMessage());
     }
 }
 

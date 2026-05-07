@@ -12,11 +12,11 @@
 
 @section('content')
 <div class="container-fluid px-4">
-    <h1 class="mt-4 text-center">Editar Caja</h1>
+    <h1 class="mt-4 text-center">Asignar Tienda a usuario</h1>
     <ol class="breadcrumb mb-4">
         <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
         <li class="breadcrumb-item"><a href="{{ route('cash.index')}}">Caja</a></li>
-        <li class="breadcrumb-item active">Editar Caja</li>
+        <li class="breadcrumb-item active">Reasignar Tienda a usuario</li>
     </ol>
 
     <div class="card text-bg-light">

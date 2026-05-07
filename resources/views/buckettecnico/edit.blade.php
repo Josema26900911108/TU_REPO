@@ -317,7 +317,7 @@
                     </div>
                 </div>
             </div>
-                @if ($orden->Status == 'I')
+                @if ($orden->ESTATUS == 'I')
                             <div class="card-footer text-center">
                                 <button type="submit" onclick="prepareForm()" class="btn btn-primary">Actualizar</button>
                             </div>
@@ -468,35 +468,101 @@ function prepareForm() {
 
         };
 
-    function llenaritems() {
+function llenaritems() {
+    let id = "{{ $id3 ?? 0 }}";
 
-                id = "{{ $id3 ?? 0 }}";
+    $.ajax({
+        url: "{{ route('inventariolistadetalles') }}",
+        method: 'GET',
+        data: { parametros: id },
+        success: function(response) {
+            // Limpiamos el cuerpo de la tabla antes de llenar
+            $('#detalle_tbody').empty();
 
+            response.forEach(function(material) {
+                let fila = '<tr>' +
+                    '<td>' + material.id + '</td>' +
+                    '<td>' + material.cantidad + '</td>' +
+                    '<td>' + material.Descripcion + '</td>' +
+                    '<td>' + material.sku + '</td>' +
+                    '<td>' + material.serie + '</td>' +
+                    '<td><span class="badge badge-secondary">Cargado</span></td>' + // Para diferenciar de los nuevos
+                    '</tr>';
+                $('#detalle_tbody').append(fila);
+            });
 
-        $.ajax({
-            url: "{{ route('inventariolistadetalles') }}",
-            method: 'GET',
-            data: { parametros: id },
-            success: function(response) {
+            // Sincronizamos allItems con los datos del servidor
+            // Usamos .map para crear el array de objetos correctamente
+            allItems = response.map(function(material) {
+                return {
+                    idItem: material.id, // Usamos idItem para ser consistentes con agregarItem()
+                    nameProducto: material.Descripcion,
+                    cantidad: material.cantidad,
+                    nameserie: material.serie,
+                    sku: material.sku,
+                    photos: [] 
+                };
+            });
 
-                response.forEach(function(material) {
-                   let fila = '<tr>' +
-                            '<td>' + material.id + '</td>' +
-                            '<td>' + material.cantidad + '</td>' +
-                            '<td>' + material.Descripcion + '</td>' +
-                            '<td>' + material.sku + '</td>' +
-                            '<td>' + material.serie + '</td>' +
-                            '</tr>';
-                    $('#detalle_tbody').append(fila);
-
-                });
-            },
-            error: function(xhr) {
-                Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
-            }
-        });
-
+            // Una vez cargados los items, ejecutamos el autómata para validar el presupuesto inicial
+            validarExcesosAutomata();
+        },
+        error: function(xhr) {
+            Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
         }
+    });
+}
+
+function validarRelacionMateriales() {
+    // Extraemos solo SKU y Cantidad de tu array allItems (el que mostraste en la imagen)
+    let materialesParaValidar = allItems.map(item => {
+        return {
+            sku: item.sku,
+            cantidad: item.cantidad
+        };
+    });
+
+    $.ajax({
+        url: "{{ route('tecnico.validar.materiales') }}", // Nueva ruta para lógica pura de materiales
+        method: "POST",
+        data: {
+            _token: "{{ csrf_token() }}",
+            materiales: materialesParaValidar,
+            fkTienda: "{{ session('user_fkTienda') }}"
+        },
+        success: function(response) {
+            let lista = $('#lista-errores-automata');
+            let contenedor = $('#contenedor-alertas-automata');
+            lista.empty();
+            let errorEncontrado = false;
+
+            // La respuesta recorre las relaciones (requiere, cálculo, incompatible)
+            if (response.validaciones) {
+                response.validaciones.forEach(function(v) {
+                    if (v.Resultado > 0 || v.TipoRelacion.includes('Exceso')) {
+                        errorEncontrado = true;
+                        lista.append(`
+                            <li class="text-danger">
+                                <strong>Error en ${v.SKU_Destino}:</strong> ${v.msj} 
+                                <br><small>Cálculo: ${v.Resultado} (Basado en formula: ${v.formula})</small>
+                            </li>
+                        `);
+                    }
+                });
+            }
+
+            if (errorEncontrado) {
+                contenedor.fadeIn();
+                $('#btn-finalizar').prop('disabled', true); // Bloquea si hay error técnico
+            } else {
+                contenedor.fadeOut();
+                $('#btn-finalizar').prop('disabled', false);
+            }
+        }
+    });
+}
+
+
 
 
         function agregarItem() {
