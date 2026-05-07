@@ -71,6 +71,7 @@
                     <div class="row mb-4">
                         <label for="clavevista" class="col-md-auto col-form-label">Vista a Mostrar:</label>
                         <select data-size="4" title="Seleccione una Vista" data-live-search="true" name="clavevista" id="clavevista" class="form-control selectpicker show-tick">
+                            <option value="">Deshabilitar</option>
                             @foreach ($clavevista as $clave => $valor)
 
                             <option value="{{$clave}}" {{ old('ClaveVista') == $clave ? 'selected' : '' }}>{{$valor}}</option>
