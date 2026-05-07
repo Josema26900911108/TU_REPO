@@ -23,25 +23,27 @@ class CashRegisterController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
-    {
-
-                    if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
-        $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
-            if($Estatus=='ER'){
-                $cashRegister = cash_registers::with('tienda')
-                ->latest()->get();
-            }else{
-                $cashRegister = cash_registers::with('tienda')
-                ->where('fkTienda',$fkTienda)
-                ->latest()->get();
-            }
-        return view('cash_register.index', compact('cashRegister'));
+public function index()
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+
+    // 1. Iniciamos la consulta con la relación
+    $query = cash_registers::with('tienda')->latest();
+
+    // 2. Aplicamos el filtro solo si NO es administrador (ER)
+    if (session('user_estatus') !== 'ER') {
+        $query->where('fkTienda', session('user_fkTienda'));
+    }
+
+    // 3. Ejecutamos la consulta una sola vez al final
+    $cashRegister = $query->get();
+
+    return view('cash_register.index', compact('cashRegister'));
+}
+
+
     public function open(Request $request)
     {
         $cashRegister = new cash_registers();

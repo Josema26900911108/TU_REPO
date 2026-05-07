@@ -554,15 +554,33 @@ document.getElementById("detalleProducto").textContent = detalle;
         return resultados; // Devolver el arreglo de resultados
     };
 
-    function CalcularFormula(formulalocal, montoA) {
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluadaiva = formulalocal.replace(/A/g, montoA);
-            // Evaluar la fórmula usando math.js
-            resultadoiva = math.evaluate(formulaEvaluadaiva);
-            // Redondear el resultado a 2 decimales
-            resultadoiva = parseFloat(resultadoiva.toFixed(2));
-            return resultadoiva;
+  function CalcularFormula(formulalocal, montoA) {
+    try {
+        // 1. Validar que la fórmula no sea nula o vacía
+        if (!formulalocal) return 0;
+
+        // 2. Reemplazar "A" con el valor de montoA
+        // Usamos (montoA) entre paréntesis para evitar errores en fórmulas como A*2 -> (10)*2
+        let formulaEvaluadaiva = formulalocal.replace(/A/g, `(${montoA})`);
+
+        // 3. Evaluar con math.js
+        let resultadoiva = math.evaluate(formulaEvaluadaiva);
+
+        // 4. VALIDACIÓN CLAVE: Si mathjs devuelve un objeto complejo, obtener el valor primitivo
+        if (typeof resultadoiva === 'object' && resultadoiva.hasOwnProperty('value')) {
+            resultadoiva = resultadoiva.value;
+        }
+
+        // 5. Convertir a número y aplicar toFixed de forma segura
+        let numeroFinal = parseFloat(resultadoiva) || 0;
+        return parseFloat(numeroFinal.toFixed(2));
+
+    } catch (error) {
+        console.error("Error al calcular fórmula: " + formulalocal, error);
+        return 0;
     }
+}
+
 
 
         function agregarProducto() {
@@ -581,6 +599,12 @@ document.getElementById("detalleProducto").textContent = detalle;
             alert("Por favor, seleccione un comprobante.");
             return false; // Detiene la ejecución de la función
                     }
+
+                    if (!formula) {
+    alert("Error: No se ha cargado la fórmula del comprobante. Es probable que no cuente con detalles, por favor revise el comprobante seleccionado.");
+    return false;
+}
+
             //Validaciones
             //1.Para que los campos no esten vacíos
             if (nameProducto != '' && nameProducto != undefined && cantidad != '' && precioCompra != '' && precioVenta != '') {
