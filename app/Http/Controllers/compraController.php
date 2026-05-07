@@ -154,6 +154,17 @@ public function store(StoreCompraRequest $request)
         $arraymonto = $request->get('arraymonto');
         $arraytipomovimiento = $request->get('arraytipomovimiento');
 
+        if($numero_comprobante==0){
+                     $comprobantenomenclatura=Comprobante::where('id',$comprobante_id)->first();
+
+                    $ultimoNumero = Compra::where('fkTienda', $fkTienda)
+                            ->lockForUpdate()
+                            ->count('numero_comprobante');
+
+        $numero_comprobante = $ultimoNumero ? $ultimoNumero + 1 : 1;
+        $numero_comprobante=$numero_comprobante.$tipofolio.$comprobantenomenclatura->ClaveVista.$comprobantenomenclatura->id;
+        }
+
         // Llenar tabla compras
         $compra = Compra::create([
             'fecha_hora' => $fecha_hora,
