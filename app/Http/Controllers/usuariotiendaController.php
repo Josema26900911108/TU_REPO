@@ -23,24 +23,26 @@ class usuariotiendaController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
-        //$userstore2 = usuariotienda::all();
-        $userstore2 = usuariotienda::with(['user', 'tienda'])->latest();
-
-        if(session('user_estatus') != 'ER'){
-        $userstore2->where('fkTienda', session('user_fkTienda'));
-        }
-        $userstore2->get();
-
-        $ver=$userstore2;
-
-        return view('userstore.index', compact('userstore2'));
+public function index()
+{
+    if(!Auth::check()){
+        return redirect()->route('login');
     }
+
+    // 1. Iniciamos la consulta
+    $query = usuariotienda::with(['user', 'tienda'])->latest();
+
+    // 2. Aplicamos el filtro si NO es administrador (ER)
+    if(session('user_estatus') != 'ER'){
+        $query->where('fkTienda', session('user_fkTienda'));
+    }
+
+    // 3. ¡IMPORTANTE! Asignar el resultado de ->get() a la variable
+    $userstore2 = $query->get(); 
+
+    return view('userstore.index', compact('userstore2'));
+}
+
 
     public function create()
     {

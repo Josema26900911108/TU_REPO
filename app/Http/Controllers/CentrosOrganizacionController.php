@@ -12,32 +12,38 @@ use Illuminate\Support\Facades\Log;
 
 class CentrosOrganizacionController extends Controller
 {
-    public function index(){
-        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+   public function index() {
+    if(!Auth::check()){
+        return redirect()->route('login');
+    }
 
-        $fkTienda = session('user_fkTienda');
+    $fkTienda = session('user_fkTienda');
 
-        $Tiendas=Tienda::all()->where('EstatusContable','A');
+    // 1. Esto está bien, pero recuerda que devuelve una colección filtrada
+    $Tiendas = Tienda::where('EstatusContable', 'A')->get();
 
-$CentroOrganizacion = Tienda::join('centros_organizacion', 'tienda.idTienda', '=', 'centros_organizacion.fkTiendaPrincipal')
-    ->join('centro', 'centros_organizacion.fkCentro', '=', 'centro.id')
-    ->where('centros_organizacion.fkTiendaPrincipal', $fkTienda)
-    ->select(
-        'centros_organizacion.id', // <--- ESTE ID ES VITAL
+    // 2. Iniciamos el Query Builder
+    $query = Tienda::join('centros_organizacion', 'tienda.idTienda', '=', 'centros_organizacion.fkTiendaPrincipal')
+        ->join('centro', 'centros_organizacion.fkCentro', '=', 'centro.id');
+
+    // 3. Aplicamos filtro de seguridad
+    if(session('user_estatus') != 'ER'){
+        $query->where('centros_organizacion.fkTiendaPrincipal', $fkTienda);
+    }
+
+    // 4. ¡ESTA ES LA PARTE CLAVE! Ejecutar y asignar el resultado
+    $CentroOrganizacion = $query->select(
+        'centros_organizacion.id',
         'tienda.Nombre as Tienda',
         'tienda.EstatusContable',
         'centro.codigo',
         'centro.nombre as Centro',
-        'centros_organizacion.status',
-    )
-    ->get();
+        'centros_organizacion.status'
+    )->get(); // <--- Aquí guardamos los datos reales en la variable
 
+    return view('centroorganizacion.index', compact('CentroOrganizacion', 'Tiendas'));
+}
 
-
-        return view('centroorganizacion.index', compact('CentroOrganizacion'));
-    }
 
     public function create(){
         if(!Auth::check()){

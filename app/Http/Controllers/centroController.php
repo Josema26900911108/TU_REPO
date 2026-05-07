@@ -10,21 +10,27 @@ use Illuminate\Support\Facades\Log;
 
 class centroController extends Controller
 {
-    public function index(){
-        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+public function index() {
+    if(!Auth::check()){
+        return redirect()->route('login');
+    }
 
-        $fkTienda = session('user_fkTienda');
+    $fkTienda = session('user_fkTienda');
 
-    $centros=Centro::all();
+    // Creamos la consulta
+    $query = Centro::query();
+
+    // Filtramos solo si NO es administrador (ER)
     if(session('user_estatus') != 'ER'){
-        $centros->where('fkTienda',$fkTienda);
+        $query->where('fkTienda', $fkTienda);
     }
 
+    // Ejecutamos y guardamos el resultado
+    $centros = $query->get();
 
-        return view('centro.index', compact('centros'));
-    }
+    return view('centros.index', compact('centros'));
+}
+
 
     public function create(){
         if(!Auth::check()){
