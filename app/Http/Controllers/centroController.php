@@ -28,7 +28,7 @@ public function index() {
     // Ejecutamos y guardamos el resultado
     $centros = $query->get();
 
-    return view('centros.index', compact('centros'));
+    return view('centro.index', compact('centros'));
 }
 
 
