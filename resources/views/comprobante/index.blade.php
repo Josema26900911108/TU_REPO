@@ -62,6 +62,7 @@
                             <th>Comprobante</th>
                             <th>Formula</th>
                             <th>Tienda</th>
+                            <th>Habilitado</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -81,6 +82,12 @@
                                         Sin tienda asignada
                                     @endif
                                 </td>
+                                <td>
+                                    @if($item->ClaveVista!="")
+                                        <span class="badge bg-success">Sí</span>
+                                    @else
+                                        <span class="badge bg-danger">No</span>
+                                    @endif  
                                 <td>
 
                                     @can('ver-comprobante')
