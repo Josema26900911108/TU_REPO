@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Centro;
 use App\Models\CentrosOrganizacion;
+use App\Models\Producto;
 use App\Models\Tienda;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CentrosOrganizacionController extends Controller
@@ -17,29 +19,31 @@ class CentrosOrganizacionController extends Controller
         return redirect()->route('login');
     }
 
-    $fkTienda = session('user_fkTienda');
+$fkTienda = session('user_fkTienda');
 
-    // 1. Esto está bien, pero recuerda que devuelve una colección filtrada
-    $Tiendas = Tienda::where('EstatusContable', 'A')->get();
+// 1. Iniciamos el Query Builder desde la tabla pivote para mayor claridad
+$query = DB::table('centros_organizacion as co')
+    ->join('tienda as t', 't.idTienda', '=', 'co.fkTiendaDependiente') // Join con la dependiente
+    ->join('centro as c', 'c.id', '=', 'co.fkCentro'); // Join con el centro
 
-    // 2. Iniciamos el Query Builder
-    $query = Tienda::join('centros_organizacion', 'tienda.idTienda', '=', 'centros_organizacion.fkTiendaPrincipal')
-        ->join('centro', 'centros_organizacion.fkCentro', '=', 'centro.id');
+// 2. Aplicamos filtro de seguridad por Tienda Principal
+if(session('user_estatus') != 'ER'){
+    $query->where('co.fkTiendaPrincipal', $fkTienda);
+}
 
-    // 3. Aplicamos filtro de seguridad
-    if(session('user_estatus') != 'ER'){
-        $query->where('centros_organizacion.fkTiendaPrincipal', $fkTienda);
-    }
+// 3. Ejecutar con la selección de campos exacta de tu SQL
+$CentroOrganizacion = $query->select(
+    'co.id',
+    't.Nombre as Tienda',
+    't.EstatusContable',
+    'co.status',
+    'c.codigo',
+    'c.nombre as Centro'
+)->get();
 
-    // 4. ¡ESTA ES LA PARTE CLAVE! Ejecutar y asignar el resultado
-    $CentroOrganizacion = $query->select(
-        'centros_organizacion.id',
-        'tienda.Nombre as Tienda',
-        'tienda.EstatusContable',
-        'centro.codigo',
-        'centro.nombre as Centro',
-        'centros_organizacion.status'
-    )->get(); // <--- Aquí guardamos los datos reales en la variable
+// Opcional: Si necesitas las tiendas para otro select en la vista
+$Tiendas = Tienda::where('EstatusContable', 'A')->get();
+
 
     return view('centroorganizacion.index', compact('CentroOrganizacion', 'Tiendas'));
 }
@@ -53,6 +57,81 @@ class CentrosOrganizacionController extends Controller
         $centros=Centro::all()->where('fkTienda',session('user_fkTienda'));
         return view('centroorganizacion.create', compact('Tiendas','centros'));
     }
+
+        public function createTraslado(){
+        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+        $TiendasOrigen=Tienda::all()->where('EstatusContable','A');
+        $TiendasDestino=Tienda::all()->where('EstatusContable','A');
+        $Productos=Producto::all()->where('fkTienda',session('user_fkTienda'));
+        
+        return view('centroorganizacion.traslado', compact('TiendasOrigen','TiendasDestino'));
+    }
+
+
+     public function storeTraslado(Request $request)
+{
+    // fkTiendaActual es la que envía, fkTiendaDestino es la que recibe
+    $request->validate([
+        'producto_id' => 'required',
+        'cantidad' => 'required|numeric|min:1',
+        'fkTiendaDestino' => 'required'
+    ]);
+
+    try {
+        DB::beginTransaction();
+
+        $tiendaOrigenId = Auth::user()->fkTienda; // Tienda del usuario logueado
+        $productoOrigen = Producto::where('id', $request->producto_id)
+                                  ->where('fkTienda', $tiendaOrigenId)
+                                  ->firstOrFail();
+
+        if ($productoOrigen->stock < $request->cantidad) {
+            return back()->withErrors(['error' => 'Stock insuficiente en origen.']);
+        }
+
+        // 1. Descontar Stock Origen
+        $productoOrigen->decrement('stock', $request->cantidad);
+
+        // 2. Aumentar o Crear Stock en Destino
+        // Buscamos si el producto ya existe en la tienda destino por código
+        $productoDestino = Producto::where('codigo', $productoOrigen->codigo)
+                                   ->where('fkTienda', $request->fkTiendaDestino)
+                                   ->first();
+
+        if ($productoDestino) {
+            $productoDestino->increment('stock', $request->cantidad);
+        } else {
+            // Si no existe, lo clonamos a la nueva tienda
+            $productoDestino = $productoOrigen->replicate();
+            $productoDestino->fkTienda = $request->fkTiendaDestino;
+            $productoDestino->stock = $request->cantidad;
+            $productoDestino->save();
+        }
+
+        // 3. Registrar en Movimiento_Materiales
+        DB::table('movimiento_materiales')->insert([
+            'fkTienda' => $tiendaOrigenId,
+            'fkMateriales' => $productoOrigen->id,
+            'clase_movimiento' => '301', // Código estándar para traslados
+            'tipo_movimiento' => 'TRASLADO',
+            'origen_uso' => 'traslado_entre_bodegas',
+            'cantidad' => $request->cantidad,
+            'fecha_contabilizacion' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+            // Agrega aquí los campos de 'centro' o 'almacen' según tus modelos de Centros
+        ]);
+
+        DB::commit();
+        return redirect()->back()->with('success', 'Movimiento realizado con éxito.');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return redirect()->back()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
+    }
+}
 
     public function store(Request $request){
         if(!Auth::check()){

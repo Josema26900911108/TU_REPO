@@ -124,7 +124,9 @@ Tienda::create(array_merge(
     public function edit(Tienda $tienda)
     {
         $tiendas = Tienda::all();
-        return view('tienda.edit', compact('tienda', 'tienda'));
+        $fkTienda=session('user_fkTienda');
+        $centros=Centro::all()->where('fkTienda',$fkTienda);
+        return view('tienda.edit', compact('tienda', 'tienda', 'centros'));
     }
 
         public function editfactura($idTienda)
@@ -280,48 +282,49 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
     //return view('tienda.editfactura', compact('desings','tienda','plantilla','fkTienda'))->with('success', 'Se guarda plantilla existosamente.');
 }
 
-    public function update(Request $request, Tienda $tienda)
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
-        $request->validate([
-            'Nombre' => 'max:150'
-        ], [
-            'Nombre.required' => 'El nombre del tienda es obligatorio.'
-        ]);
-
-        try {
-            DB::beginTransaction();
-
-            // Opción 1: Convertir imagen a Base64 desde el archivo subido
-            if ($request->hasFile('image')) {
-                $image = $request->file('image');
-                $imageBase64 = base64_encode(file_get_contents($image->path()));
-            }
-
-
-            //Actualizar rol
-            tienda::where('idTienda', $tienda->idTienda)
-                ->update([
-                    'Nombre' => $request->Nombre,
-                    'Direccion' => $request->Direccion,
-                    'descripcion' => $request->descripcion,
-                    'Telefono' => $request->Telefono,
-                    'logo' => $imageBase64 ?? null,
-                    'fkCentro'=>$request->centro,
-                ]);
-
-
-            DB::commit();
-        } catch (Exception $e) {
-            dd($e);
-            DB::rollBack();
-        }
-
-        return redirect()->route('tienda.index')->with('success', 'tienda editado');
+  public function update(Request $request, Tienda $tienda)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+
+    $request->validate([
+        'Nombre' => 'max:150'
+    ], [
+        'Nombre.max' => 'El nombre de la tienda es muy largo.'
+    ]);
+
+    try {
+        DB::beginTransaction();
+
+        // 1. Preparamos los datos básicos
+        $data = [
+            'Nombre'      => $request->Nombre,
+            'Direccion'   => $request->Direccion,
+            'descripcion' => $request->descripcion,
+            'Telefono'    => $request->Telefono,
+            'fkCentro'    => $request->centro,
+        ];
+
+        // 2. Solo si hay una imagen nueva, la agregamos al array de actualización
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $data['logo'] = base64_encode(file_get_contents($image->path()));
+        }
+
+        // 3. Ejecutamos la actualización con el array dinámico
+        $tienda->update($data);
+
+        DB::commit();
+        return redirect()->route('tienda.index')->with('success', 'Tienda editada correctamente');
+
+    } catch (Exception $e) {
+        DB::rollBack();
+        // Es mejor usar logs en producción, pero para debug:
+        return back()->withErrors(['error' => 'Error al actualizar: ' . $e->getMessage()]);
+    }
+}
+
 
     /**
      * Remove the specified resource from storage.

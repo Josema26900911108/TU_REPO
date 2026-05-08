@@ -68,6 +68,19 @@
                     @enderror
                 </div>
 
+                                    <div class="col-md-6">
+                        <label for="centro" class="form-label">Centro:</label>
+                        <select class="form-select" name="centro" id="centro" required>
+                            <option value="" selected disabled>Seleccione una opción</option>
+                            @foreach ($centros as $item)
+                            <option value="{{ $item->id }}" {{ old('centro') == $item->id ? 'selected' : '' }}>{{ $item->codigo }} - {{ $item->nombre }}</option>
+                            @endforeach
+                        </select>
+                        @error('centro')
+                        <small class="text-danger">{{ '*'.$message }}</small>
+                        @enderror
+                    </div>
+
             </div>
         </div>
 

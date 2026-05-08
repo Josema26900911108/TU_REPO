@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\Documento;
 use App\Models\MovimientoMateriales;
 use App\Models\Persona;
+use App\Models\Producto;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -114,6 +115,70 @@ function traslados(){
         $materialmanoobra = Materialmanoobra::all();
         return view('materialmanoobra.create', compact('materialmanoobra'));
     }
+
+    public function storeTraslado(Request $request)
+{
+    // fkTiendaActual es la que envía, fkTiendaDestino es la que recibe
+    $request->validate([
+        'producto_id' => 'required',
+        'cantidad' => 'required|numeric|min:1',
+        'fkTiendaDestino' => 'required'
+    ]);
+
+    try {
+        DB::beginTransaction();
+
+        $tiendaOrigenId = Auth::user()->fkTienda; // Tienda del usuario logueado
+        $productoOrigen = Producto::where('id', $request->producto_id)
+                                  ->where('fkTienda', $tiendaOrigenId)
+                                  ->firstOrFail();
+
+        if ($productoOrigen->stock < $request->cantidad) {
+            return back()->withErrors(['error' => 'Stock insuficiente en origen.']);
+        }
+
+        // 1. Descontar Stock Origen
+        $productoOrigen->decrement('stock', $request->cantidad);
+
+        // 2. Aumentar o Crear Stock en Destino
+        // Buscamos si el producto ya existe en la tienda destino por código
+        $productoDestino = Producto::where('codigo', $productoOrigen->codigo)
+                                   ->where('fkTienda', $request->fkTiendaDestino)
+                                   ->first();
+
+        if ($productoDestino) {
+            $productoDestino->increment('stock', $request->cantidad);
+        } else {
+            // Si no existe, lo clonamos a la nueva tienda
+            $productoDestino = $productoOrigen->replicate();
+            $productoDestino->fkTienda = $request->fkTiendaDestino;
+            $productoDestino->stock = $request->cantidad;
+            $productoDestino->save();
+        }
+
+        // 3. Registrar en Movimiento_Materiales
+        DB::table('movimiento_materiales')->insert([
+            'fkTienda' => $tiendaOrigenId,
+            'fkMateriales' => $productoOrigen->id,
+            'clase_movimiento' => '301', // Código estándar para traslados
+            'tipo_movimiento' => 'TRASLADO',
+            'origen_uso' => 'traslado_entre_bodegas',
+            'cantidad' => $request->cantidad,
+            'fecha_contabilizacion' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+            // Agrega aquí los campos de 'centro' o 'almacen' según tus modelos de Centros
+        ]);
+
+        DB::commit();
+        return redirect()->back()->with('success', 'Movimiento realizado con éxito.');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return redirect()->back()->withErrors(['error' => 'Error: ' . $e->getMessage()]);
+    }
+}
+
 
     public function store(StorePersonaRequest $request)
     {
