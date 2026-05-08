@@ -29,8 +29,11 @@ public function index()
         return redirect()->route('login');
     }
 
+    $fkTienda = session('user_fkTienda');
+    $Estatus = session('user_estatus');
     // 1. Iniciamos la consulta con la relación
     $query = cash_registers::with('tienda')->latest();
+
 
     // 2. Aplicamos el filtro solo si NO es administrador (ER)
     if (session('user_estatus') !== 'ER') {

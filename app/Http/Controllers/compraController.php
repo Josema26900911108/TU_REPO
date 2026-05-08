@@ -172,6 +172,8 @@ public function store(StoreCompraRequest $request)
             'numero_comprobante' => $numero_comprobante,
             'total' => $total + $impuestotal,
             'estado' => 'I',
+            'fkUserCreate' => $id,
+            'fkUserCC' => $id,
             'comprobante_id' => $comprobante_id,
             'proveedore_id' => $proveedor_id,
             'create_at' => $fecha,
