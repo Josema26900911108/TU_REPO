@@ -48,13 +48,13 @@
         <option value="{{ $producto->id }}"
                 data-img="{{ $producto->img_path }}"
                 data-stock="{{ $producto->stock }}"
-                data-precio="{{ $producto->precio_venta }}"
+                data-precio="{{ $producto->precio_venta }}" 
                 data-lote="{{ $producto->numero_lote ?? 'N/A' }}"
                 data-vence="{{ $producto->fecha_vencimiento ?? 'N/A' }}"
                 data-cantidadlote="{{ $producto->cantidad_lote ?? 'N/A' }}"
                 data-reglas="{{ json_encode($producto->reglas_json) ?? 'N/A' }}"
                 data-detalle="{{ $producto->descripcion }}">
-            {{ $producto->nombre }}
+            {{ $producto->nombre }} - {{ $producto->stock }}
         </option>
     @endforeach
 

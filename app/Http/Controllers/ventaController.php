@@ -242,27 +242,9 @@ public function exportVentas()
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
-        $subquery = DB::table('compra_producto')
-            ->select('producto_id', DB::raw('MAX(created_at) as max_created_at'))
-            ->where('fkTienda',$fkTienda)
-            ->groupBy('producto_id');
+     $fkTienda = 4; // O la variable que estés usando
 
-      $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
-        $join->on('cpr.producto_id', '=', 'productos.id')
-            ->whereIn('cpr.created_at', function ($query) use ($subquery) {
-                $query->select('max_created_at')
-                    ->fromSub($subquery, 'subquery')
-                    ->whereRaw('subquery.producto_id = cpr.producto_id');
-            });
-    })
-    ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
-        $join->on('l.producto_id', '=', 'productos.id')
-             ->where('l.cantidad', '>', 0)
-             ->where('l.fkTienda', $fkTienda)
-             // Seleccionamos el ID del lote que vence primero para evitar ambigüedad
-             ->whereRaw('l.id = (SELECT id FROM lotesalarma WHERE producto_id = productos.id AND cantidad > 0 ORDER BY fecha_vencimiento ASC, id ASC LIMIT 1)');
-    })
-    ->select(
+$productos = Producto::select(
         'productos.nombre',
         'productos.img_path',
         'productos.descripcion',
@@ -271,14 +253,30 @@ public function exportVentas()
         'cpr.precio_venta',
         'productos.perecedero',
         'l.fecha_vencimiento',
-        'l.numero_lote', // Asegúrate que en la tabla sea 'numero_lote' y no 'codigo_lote'
+        'l.numero_lote', // Corregido: numero_lote (sin la S al final)
         'l.cantidad as cantidad_lote'
     )
+    // Join para el precio: Buscamos el ID de la última compra para evitar duplicados
+    ->join('compra_producto as cpr', function ($join) use ($fkTienda) {
+        $join->on('cpr.id', '=', DB::raw("(SELECT id FROM compra_producto 
+            WHERE producto_id = productos.id 
+            AND fkTienda = $fkTienda 
+            ORDER BY created_at DESC, id DESC LIMIT 1)"));
+    })
+    // Join para el lote: Buscamos el lote más próximo a vencer
+    ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
+        $join->on('l.id', '=', DB::raw("(SELECT id FROM lotesalarma 
+            WHERE producto_id = productos.id 
+            AND cantidad > 0 
+            AND fkTienda = $fkTienda 
+            ORDER BY fecha_vencimiento ASC, id ASC LIMIT 1)"));
+    })
     ->with(['reglasPrecios', 'modificadores'])
     ->where('productos.fkTienda', $fkTienda)
     ->where('productos.estado', 1)
     ->where('productos.stock', '>', 0)
     ->get();
+
 
 
         $clientes = Cliente::whereHas('persona', function ($query) {
