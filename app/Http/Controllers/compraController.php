@@ -259,7 +259,7 @@ foreach ($productosConsolidados as $item) {
     if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
         $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
             'producto_id'       => $item['id'],
-            'numero_lote'       => 'L-' . date('Ymd', strtotime($item['fecha'])),
+            'numero_lote'       => 'L-' . date('Ymd', strtotime($item['fecha'])).'.'.$compra->id.'.'.($posicion++),
             'cantidad'          => $item['cantidad'],
             'fecha_vencimiento' => $item['fecha'],
             'fkTienda'          => $fkTienda,
