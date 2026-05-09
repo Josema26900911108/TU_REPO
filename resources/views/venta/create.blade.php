@@ -928,6 +928,146 @@ if (comprobanteId) {
         success: function(response) {
 
                 if (!response || response.length === 0) {
+                    console.warn("Nose encontró producto.");
+
+                                        Swal.fire({
+    icon: 'warning',
+    title: 'El producto no se encuentra dentro de la lista de disponibles producto',
+    text: 'Codigo: ' + comprobanteId,
+
+});
+                    return;
+                }
+
+            var detalle = response[0];
+
+                let idProductos = detalle.producto_id;
+                let seleccionable = idProductos + "-" +detalle.existencia+"-"+detalle.precio_venta;
+                dataProducto = seleccionable;
+                idProducto = detalle.producto_id;
+                nameProducto = detalle.producto_nombre;
+
+                $("#producto_id option").each(function () {
+                    let v = $(this).val();
+                    if (v.startsWith(seleccionable)) {
+                        $("#producto_id").val(v).change();
+                        $('#producto_id').selectpicker('refresh');
+                        return false; // salir del each
+                    }
+                });
+                $('#precio_venta').val(detalle.precio_venta);
+                $('#stock').val(detalle.existencia);
+
+                if(nameProducto) {
+    // Do something with the selected product name
+} else {
+    console.log("Producto no seleccionado");
+}
+
+        let cantidad = $('#cantidad').val();
+        let precioVenta = detalle.precio_venta;
+        let descuento = $('#descuento').val();
+        let stock = detalle.existencia;
+        var comprobante = document.getElementById('comprobante_id').value;
+
+        if (comprobante === "") {
+            alert("Por favor, seleccione un comprobante.");
+            return false; // Detiene la ejecución de la función
+                    }
+
+        if (descuento == '') {
+            descuento = 0;
+        }
+
+        //Validaciones
+        //1.Para que los campos no esten vacíos
+        if (idProducto != '' && cantidad != '') {
+
+            //2. Para que los valores ingresados sean los correctos
+            if (parseInt(cantidad) > 0 && (cantidad % 1 == 0) && parseFloat(descuento) >= 0) {
+
+                //3. Para que la cantidad no supere el stock
+                if (parseInt(cantidad) <= parseInt(stock)) {
+                    //Calcular valores
+
+                    subtotal[cont] = round(cantidad * precioVenta - descuento);
+                    sumas += cantidad;
+                    total+=subtotal[cont];
+
+                    sumadocdb=round(total);
+                    subiva[cont]=CalcularFormula(formula,subtotal[cont]);
+                    resultadoiva=CalcularFormula(formula,total);
+                    IVA = resultadoiva;
+                    //Crear la fila
+                    let fila = '<tr id="fila' + cont + '">' +
+                        '<th>' + (cont + 1) + '</th>' +
+                        '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
+                        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
+                        '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVenta + '">' + precioVenta + '</td>' +
+                        '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
+                        '<td><input type="hidden" name="arraydescuento[]" value="' + descuento + '">' + descuento + '</td>' +
+                        '<td>' + subtotal[cont] + '</td>' +
+                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+                        '</tr>';
+
+                    //Acciones después de añadir la fila
+                    $('#tabla_detalle_tbody').append(fila);
+                    limpiarCampos();
+
+                    disableButtons();
+
+                    resultadoiva = resultadoiva.toFixed(2);
+
+            producto[cont]=idProducto;
+            Cantidad[cont]=cantidad;
+            precioventa[cont]=parseFloat(precioVenta);
+            nombre[cont]=nameProducto;
+            cantidadarticulos+=parseInt(Cantidad[cont],15);
+            Descuento[cont]=descuento;
+            cont++;
+            sumarArreglos(formulas,monto);
+
+                    //Mostrar los campos calculados
+                    $('#sumas').html(sumas);
+                    $('#IVA').html(IVA);
+                    $('#total').html(total);
+                    $('#subiva').val(subiva);
+                    $('#impuesto').val(IVA);
+                    $('#inputTotal').val(total);
+                } else {
+                    showModal('Cantidad incorrecta');
+                }
+
+            } else {
+                showModal('Valores incorrectos');
+            }
+
+        }
+
+
+        },
+        error: function(xhr, status, error) {
+            console.error("Error al cargar los detalles:", error);
+        }
+    });
+}
+
+    }
+
+      function agregarProductoScannerCam(sku) {
+        let dataProducto = "";
+        //Obtener valores de los campos
+        let idProducto = 0;
+        let nameProducto = "";
+
+        var comprobanteId = sku;
+if (comprobanteId) {
+    $.ajax({
+        url: '/compras/detallesSCAN/' + comprobanteId + '',
+        type: 'GET',
+        success: function(response) {
+
+                if (!response || response.length === 0) {
                     console.warn("No se encontró producto.");
                     return;
                 }
@@ -1261,19 +1401,18 @@ function iniciarScanner(tipo = "barra") {
             console.log("Código ver:", codigo);
 
             StopScanner();
-
-                    Swal.fire({
+            if (tipo === "barra") {
+                agregarProductoScanner(codigo);
+            } else {
+                agregarProductoScanner(codigo);
+            }
+                                Swal.fire({
     icon: 'warning',
     title: 'Se ha seleccionado un producto',
     text: 'Codigo: ' + codigo,
 
 });
 
-            if (tipo === "barra") {
-                agregarProductoScanner(codigo);
-            } else {
-                agregarProductoScanner(codigo);
-            }
 
 
             // 🔥 si quieres escaneo continuo → NO detener aquí
