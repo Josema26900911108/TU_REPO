@@ -62,12 +62,18 @@ $Tiendas = Tienda::where('EstatusContable', 'A')->get();
         if(!Auth::check()){
             return redirect()->route('login');
         }
-        $TiendasOrigen=Tienda::all()->where('EstatusContable','A');
-        $TiendasDestino=Tienda::all()->where('EstatusContable','A');
+        $TiendasPivote=CentrosOrganizacion::all()->where('fkTiendaPrincipal',session('user_fkTienda'));
+        
+        $TiendasDestino=Tienda::all()->where('EstatusContable','A')
+        ->whereIn('idTienda',$TiendasPivote->pluck('fkTiendaDependiente')->toArray());
+
+        $TiendasOrigen=Tienda::all()->where('EstatusContable','A')
+        ->whereIn('idTienda',$TiendasPivote->pluck('fkTiendaDependiente')->toArray());
         $Productos=Producto::all()->where('fkTienda',session('user_fkTienda'));
         
         return view('centroorganizacion.traslado', compact('TiendasOrigen','TiendasDestino'));
     }
+
 
 
      public function storeTraslado(Request $request)

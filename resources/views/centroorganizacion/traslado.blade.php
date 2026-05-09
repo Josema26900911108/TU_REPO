@@ -12,15 +12,15 @@
 
 @section('content')
 <div class="container-fluid px-4">
-    <h1 class="mt-4 text-center">Crear Centro Organizacion</h1>
+    <h1 class="mt-4 text-center">Crear Traslado entre organizaciones</h1>
     <ol class="breadcrumb mb-4">
         <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
         <li class="breadcrumb-item"><a href="{{ route('centroorganizacion.index')}}">Centros Organizacion</a></li>
-        <li class="breadcrumb-item active">Crear Centro Organizacion</li>
+        <li class="breadcrumb-item active">Crear Traslado</li>
     </ol>
 
     <div class="card text-bg-light">
-        <form action="{{ route('centroorganizacion.store') }}" method="post">
+        <form action="{{ route('centroorganizacion.storetraslado') }}" method="post">
             @csrf
             <div class="card-body">
                 <div class="row g-4">
@@ -28,7 +28,7 @@
                     <div class="col-md-12">
                         <label for="fkTiendaDependiente" class="form-label">Tienda Destino:</label>
                         <select name="fkTiendaDependiente" id="fkTiendaDependiente" class="form-control selectpicker show-tick" data-live-search="true" title="Selecciona" data-size='11'>
-                        @foreach ($Tiendas as $Tienda)
+                        @foreach ($TiendasOrigen as $Tienda)
                             <option value="{{ $Tienda->idTienda }}">{{ $Tienda->Nombre }}</option>
                         @endforeach
                         </select>
@@ -40,8 +40,8 @@
                     <div class="col-md-12">
                         <label for="fkCentro" class="form-label">Centro:</label>
                         <select name="fkCentro" id="fkCentro" class="form-control selectpicker show-tick" data-live-search="true" title="Selecciona" data-size='11'>
-                        @foreach ($centros as $centro)
-                            <option value="{{ $centro->id }}">{{ $centro->codigo.' - '.$centro->nombre }}</option>
+                        @foreach ($TiendasDestino as $Tienda)
+                            <option value="{{ $Tienda->idTienda }}">{{ $Tienda->Nombre }}</option>
                         @endforeach
                         </select>
                         @error('fkCentro')

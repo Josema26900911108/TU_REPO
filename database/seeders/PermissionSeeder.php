@@ -151,6 +151,7 @@ class PermissionSeeder extends Seeder
             'editar-centroorganizacion',
             'eliminar-centroorganizacion',
             'ver-centroorganizacion',
+            'trasladar-centro',
             //Usuario por Tienda
             'ver-usuariotienda',
             'editar-usuariotienda',

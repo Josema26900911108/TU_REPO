@@ -20,15 +20,32 @@
         <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
         <li class="breadcrumb-item active">Centros de Organizacion</li>
     </ol>
-
-    @can('crear-centro')
-    <div class="mb-4">
+<div class="card">
+    <table class="table table-striped">
+    <tr>
+        <td>
+                @can('crear-centro')
+    <div class="d-flex justify-content-end">
         <a href="{{route('centroorganizacion.create')}}">
             <button type="button" class="btn btn-primary">Añadir nuevo registro</button>
         </a>
     </div>
     @endcan
+        </td>
+        <td>
+            
+    @can('trasladar-centro')
+    <div class="d-flex justify-content-end">
+        <a href="{{route('centroorganizacion.createtraslado')}}">
+            <button type="button" class="btn btn-primary">Crear Traslado</button>
+        </a>
+    </div>
+    @endcan
+        </td>
+    </table>
 
+
+</div>
     <div class="card">
         <div class="card-header">
             <i class="fas fa-table me-1"></i>

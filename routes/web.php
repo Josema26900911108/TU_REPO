@@ -111,6 +111,8 @@ Route::get('/panelcentros', [centroController::class, 'index'])->name('centros.i
 
 //centros organizacion
 Route::post('/organizacioncentros',[CentrosOrganizacionController::class,'store'])->name('centroorganizacion.store');
+Route::post('/organizacioncentros',[CentrosOrganizacionController::class,'storeTraslado'])->name('centroorganizacion.storetraslado');
+Route::get('/trasladarcentro',[CentrosOrganizacionController::class,'createTraslado'])->name('centroorganizacion.createtraslado');
 Route::get('/orgcentro',[CentrosOrganizacionController::class,'index'])->name('centroorganizacion.index');
 Route::get('/panelorgcent',[CentrosOrganizacionController::class,'index'])->name('centroorganizaciones.index');
 Route::get('centroorganizacion/{centroorganizacion}/edit', [CentrosOrganizacionController::class, 'edit'])->name('centroorganizacion.edit');

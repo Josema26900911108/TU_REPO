@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/math.js') }}"></script>
+<script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
 @endpush
 
 @section('content')
@@ -19,6 +20,41 @@
     </ol>
 </div>
 
+<div class="container">
+    <div class="card-bt">
+        <button onclick="iniciarScanner('qr')" class="btn btn-success">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <rect x="1" y="1" width="4" height="4"/>
+            <rect x="11" y="1" width="4" height="4"/>
+            <rect x="1" y="11" width="4" height="4"/>
+            <rect x="6" y="6" width="1" height="1"/>
+            <rect x="8" y="6" width="1" height="1"/>
+            <rect x="6" y="8" width="1" height="1"/>
+            <rect x="8" y="8" width="1" height="1"/>
+            <rect x="10" y="10" width="1" height="1"/>
+            <rect x="12" y="8" width="1" height="1"/>
+            </svg>
+        </button>
+        <button onclick="iniciarScanner('barra')" class="btn btn-secundary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <rect x="1" y="2" width="1" height="12"/>
+            <rect x="3" y="2" width="2" height="12"/>
+            <rect x="6" y="2" width="1" height="12"/>
+            <rect x="8" y="2" width="2" height="12"/>
+            <rect x="11" y="2" width="1" height="12"/>
+            <rect x="13" y="2" width="2" height="12"/>
+            </svg>
+        </button>
+
+        <button onclick="StopScanner()" class="btn btn-danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <rect x="2" y="2" width="12" height="12" rx="2"/>
+            <rect x="5" y="5" width="6" height="6" fill="white"/>
+            </svg>
+        </button>
+    </div>
+        <div id="reader" style="width:100%"></div>
+    <div id="readerbarra" style="width:100%"></div>
 
 <form id="formVenta" action="{{ route('ventas.store') }}" method="post">
     @csrf
@@ -1203,5 +1239,70 @@ document.getElementById("SKU").addEventListener("keydown", function (e) {
         return signo * (num[0] + 'e' + (num[1] ? (+num[1] - decimales) : -decimales));
     }
 
+function iniciarScanner(tipo = "barra") {
+
+    if (escaneando) return;
+
+    scanner = new Html5Qrcode("reader");
+
+    escaneando = true;
+
+    scanner.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: tipo === "barra"
+                ? { width: 250, height: 150 }
+                : 250
+        },
+
+        (codigo) => {
+
+            console.log("Código ver:", codigo);
+
+            StopScanner();
+
+                    Swal.fire({
+    icon: 'warning',
+    title: 'Se ha seleccionado un producto',
+    text: 'Codigo: ' + codigo,
+
+});
+
+            if (tipo === "barra") {
+                agregarProductoScanner(codigo);
+            } else {
+                agregarProductoScanner(codigo);
+            }
+
+
+            // 🔥 si quieres escaneo continuo → NO detener aquí
+            // scanner.stop();
+        },
+
+        (error) => {
+            // ignorar errores
+        }
+    );
+}
+
+function StopScanner() {
+
+    if (!scanner || !escaneando) return;
+
+    scanner.stop()
+    .then(() => {
+        console.log("Scanner detenido");
+        escaneando = false;
+        scanner = null;
+    })
+    .catch(err => {
+        console.error("Error al detener:", err);
+    });
+}
+
+
+let scanner = null;
+let escaneando = false;
 </script>
 @endpush
