@@ -292,6 +292,8 @@ Route::post('/clientes/existente', [clienteController::class, 'exist'])
 
 Route::get('/compras/detalles/{idComprobante}', [compraController::class, 'mostrarDetalles']);
 Route::get('/compras/detallesSCAN/{SKU}', [compraController::class, 'mostrarDetallesScanner']);
+
+Route::get('/comprar/SCANdetalles/{SKU}', [compraController::class, 'mostrarDetallesCompraScanner']);
 Route::post('/compras/store', [compraController::class, 'store'])->middleware('web')->name('compras.store');
 
 Route::get('/metodopago/detalle/{id}', [MetodoPagoController::class, 'detalle']);

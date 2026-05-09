@@ -8,6 +8,8 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="{{ asset('js/math.js') }}"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/css/bootstrap-select.min.css">
+
+<script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
 @endpush
 
 @section('content')
@@ -19,6 +21,43 @@
         <li class="breadcrumb-item active">Crear Compra</li>
     </ol>
 </div>
+
+<div class="container">
+    <div class="card-bt">
+        <button onclick="iniciarScanner('qr')" class="btn btn-success">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <rect x="1" y="1" width="4" height="4"/>
+            <rect x="11" y="1" width="4" height="4"/>
+            <rect x="1" y="11" width="4" height="4"/>
+            <rect x="6" y="6" width="1" height="1"/>
+            <rect x="8" y="6" width="1" height="1"/>
+            <rect x="6" y="8" width="1" height="1"/>
+            <rect x="8" y="8" width="1" height="1"/>
+            <rect x="10" y="10" width="1" height="1"/>
+            <rect x="12" y="8" width="1" height="1"/>
+            </svg>
+        </button>
+        <button onclick="iniciarScanner('barra')" class="btn btn-secundary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <rect x="1" y="2" width="1" height="12"/>
+            <rect x="3" y="2" width="2" height="12"/>
+            <rect x="6" y="2" width="1" height="12"/>
+            <rect x="8" y="2" width="2" height="12"/>
+            <rect x="11" y="2" width="1" height="12"/>
+            <rect x="13" y="2" width="2" height="12"/>
+            </svg>
+        </button>
+
+        <button onclick="StopScanner()" class="btn btn-danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <rect x="2" y="2" width="12" height="12" rx="2"/>
+            <rect x="5" y="5" width="6" height="6" fill="white"/>
+            </svg>
+        </button>
+    </div>
+        <div id="reader" style="width:100%"></div>
+    <div id="readerbarra" style="width:100%"></div>
+
 
 <form id="formCompra" action="{{ route('compras.store') }}" method="post">
     @csrf
@@ -695,6 +734,59 @@ document.getElementById("detalleProducto").textContent = detalle;
 
 
         }
+function agregarProductoScanner(sku) {
+    var comprobante = document.getElementById('comprobante_id').value;
+    if (comprobante === "") {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Seleccione un comprobante primero.' });
+        return false;
+    }
+
+    $.ajax({
+        url: '/comprar/SCANdetalles/' + sku,
+        type: 'GET',
+        success: function(response) {
+            // Log para ver qué llega exactamente del servidor
+            console.log("Respuesta del servidor:", response);
+
+            let detalle = Array.isArray(response) ? response[0] : response;
+
+            if (!detalle || !detalle.producto_id) {
+                Swal.fire({ icon: 'warning', title: 'No encontrado', text: 'Código: ' + sku });
+                return;
+            }
+
+            let idABuscar = detalle.producto_id;
+            console.log("Intentando seleccionar ID:", idABuscar);
+
+            // 1. Forzar el valor en el select nativo
+            $('#producto_id').val(idABuscar);
+
+            // 2. Refrescar el selectpicker para que se vea el cambio
+            $('#producto_id').selectpicker('refresh');
+
+            // 3. Disparar el evento change
+            $('#producto_id').change();
+
+            // VERIFICACIÓN: ¿Realmente se seleccionó algo?
+            if ($('#producto_id').val() == idABuscar) {
+                console.log("¡Éxito! Producto seleccionado en el DOM.");
+                if ($('#cantidad').length) {
+                    $('#cantidad').focus().select();
+                }
+            } else {
+                console.error("Error: El ID " + idABuscar + " no existe como value en las opciones del select.");
+                // Intentar buscar por texto si el ID falla (opcional)
+            }
+                                $('#cantidad').focus().select();
+
+        },
+        error: function(xhr) {
+            console.error("Error AJAX:", xhr.responseText);
+            Swal.fire('Error', 'No se pudo obtener la información del producto.', 'error');
+        }
+    });
+}
+
 
         function eliminarProducto(indice) {
             //Calcular valores
@@ -1217,6 +1309,73 @@ error: function(xhr) {
     }
 });
 
+
+
+
+function iniciarScanner(tipo = "barra") {
+
+    if (escaneando) return;
+
+    scanner = new Html5Qrcode("reader");
+
+    escaneando = true;
+
+    scanner.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: tipo === "barra"
+                ? { width: 250, height: 150 }
+                : 250
+        },
+
+        (codigo) => {
+
+            console.log("Código ver:", codigo);
+
+            StopScanner();
+            if (tipo === "barra") {
+                agregarProductoScanner(codigo);
+            } else {
+                agregarProductoScanner(codigo);
+            }
+                                Swal.fire({
+    icon: 'warning',
+    title: 'Se ha seleccionado un producto',
+    text: 'Codigo: ' + codigo,
+
+});
+
+
+
+            // 🔥 si quieres escaneo continuo → NO detener aquí
+            // scanner.stop();
+        },
+
+        (error) => {
+            // ignorar errores
+        }
+    );
+}
+
+function StopScanner() {
+
+    if (!scanner || !escaneando) return;
+
+    scanner.stop()
+    .then(() => {
+        console.log("Scanner detenido");
+        escaneando = false;
+        scanner = null;
+    })
+    .catch(err => {
+        console.error("Error al detener:", err);
+    });
+}
+
+
+let scanner = null;
+let escaneando = false;
 
     </script>
 @endpush

@@ -799,7 +799,34 @@ $productos = Producto::select('id', 'nombre')
         ]);
     }
 
-        public function mostrarDetallesScanner($SKU)
+public function mostrarDetallesCompraScanner($SKU)
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'No autenticado'], 401);
+    }
+
+    $fkTienda = session('user_fkTienda');
+
+    // Usamos DB::table para evitar errores de PDO manual
+    $producto = DB::table('productos')
+        ->select(
+            'nombre AS producto_nombre',
+            'codigo AS producto_codigo',
+            'stock AS existencia',
+            'descripcion',
+            'img_path AS imagen_producto',
+            'id AS producto_id'
+        )
+        ->where('codigo', '=', $SKU)
+        ->where('fkTienda', '=', $fkTienda)
+        ->where('estado', '=', 1)
+        ->get(); // Retorna una colección
+
+    return response()->json($producto);
+}
+
+
+            public function mostrarDetallesScanner($SKU)
     {
                         if(!Auth::check()){
             return redirect()->route('login');
@@ -836,6 +863,7 @@ $stmt->execute(['id' => $SKU]);
 
 return response()->json($producto);
     }
+
 
 
     public function destroy(string $id)
