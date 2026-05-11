@@ -900,7 +900,7 @@ private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidadA
             'referencia' => "Vent ID: ||{$ventaId}||(No perecedero)||",
             'fecha_contabilizacion' => now(),
             'centro' => session('centro') ?? $centro->codigo,
-            'almacen' => session('centro') ?? $centro->codigo,
+            'almacen' => session('centro') ?? centroController::obtenerAlmacenPrincipal($fkTienda),
             'origen_uso' => 'otros',
             'unidad_medida_base' => 'PZA',
             'posicion_documento' => 1
@@ -1093,282 +1093,148 @@ private function devolverLotesTrazabilidad($ventaId, $productoId, $cantidadDevue
 
            public function storeCC(UpdateVentaRequest $request)
 {
-    try {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+    // 1. PREVENCIÓN DE DOBLE CLIC (Bloqueo por 10 segundos)
+    $lockKey = 'update_venta_' . auth()->id();
+    if (!Cache::add($lockKey, true, 10)) {
+        return redirect()->back()->with('error', 'La venta ya se está procesando. Por favor, espera.');
+    }
 
-        $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
+    try {
+        if (!Auth::check()) return redirect()->route('login');
 
         DB::beginTransaction();
 
         $fkTienda = session('user_fkTienda');
-
-        $cliente_id = $request->cliente_id;
         $idventa = $request->idventa;
-        $comprobante_id = $request->comprobante_id;
-        $numero_comprobante = $request->numero_comprobante;
-        $impuestotal = $request->impuesto;
-        $fecha = $request->fecha;
-        $fecha_hora = $request->fecha_hora;
-        $total = $request->total;
-        $user_id = $request->user_id;
+        $user_id = auth()->id();
         $tipofolio = $request->input('TipoFolio');
 
-        // Recuperar arrays
+        // Obtener Almacén Principal (Centro)
+        $centroCodigo = centroController::obtenerAlmacenPrincipal($fkTienda);
+
+        // 2. RECUPERAR O CREAR VENTA
+        if ($idventa == null or $idventa==0) {
+            // Generar número de comprobante (Lógica de tu PDF página 2)
+            $comprobante_id = $request->comprobante_id;
+            $comprobantenomenclatura = Comprobante::findOrFail($comprobante_id);
+            $ultimoNumero = Venta::where('fkTienda', $fkTienda)->lockForUpdate()->count();
+            $numero_comprobante = ($ultimoNumero + 1) . $tipofolio . $comprobantenomenclatura->ClaveVista . $comprobantenomenclatura->id;
+
+            $venta = Venta::create([
+                'fecha_hora' => $request->fecha_hora,
+                'impuesto' => $request->impuesto,
+                'numero_comprobante' => $numero_comprobante,
+                'total' => $request->total,
+                'estado' => 1,
+                'comprobante_id' => $comprobante_id,
+                'cliente_id' => $request->cliente_id,
+                'user_id' => $user_id,
+                'fkTienda' => $fkTienda,
+                'TipoFolio' => $tipofolio,
+                'fkfactura'=> '',
+                'fkFolio' => 0,
+                'fkUserCC' => $user_id,
+                'created_at' => now(),
+                'fkUserCreate' => $user_id,
+            ]);
+        } else {
+            $venta = Venta::findOrFail($idventa);
+        }
+
+        // 3. GENERAR FOLIO CONTABLE (Página 3-4 PDF)
+        $folio = Folio::create([
+            'descripcion' => "Venta n.{$venta->id}, comprobante: {$venta->numero_comprobante}",
+            'cabecera' => 'Venta cerrada por caja.',
+            'EstatusContable' => 'C',
+            'TipoFolio' => $tipofolio,
+            'FechaContabilizacion' => now(),
+            'fkComprobante' => $venta->comprobante_id,
+            'fkUsuario' => $user_id,
+            'fkTienda' => $fkTienda,
+            'idOrigen' => $venta->id,
+            'TipoMovimiento' => 'V'
+        ]);
+
+        // 4. ACTUALIZAR PRODUCTOS Y STOCK (Lógica de comparación Página 7)
         $arrayProducto_id = $request->get('arrayidproducto');
-        $idventa = $request->get('idventa');
         $arrayCantidad = $request->get('arraycantidad');
         $arrayPrecioVenta = $request->get('arrayprecioventa');
         $arrayDescuento = $request->get('arraydescuento');
-        $arrayidcuenta = $request->get('arrayidcuenta');
-        $arraymonto = $request->get('arraymonto');
-        $arraytipomovimiento = $request->get('arraytipomovimiento');
 
-            $cuentaArray = count($arrayidcuenta);
-            $cont = 0;
+        $productosOriginales = DB::table('producto_venta')->where('venta_id', $venta->id)->get()->keyBy('producto_id');
+        $productosProcesados = [];
 
-                        $comprobantenomenclatura=Comprobante::where('id',$comprobante_id)->first();
+        // --- INSERTAR ESTO DESPUÉS DE CREAR $folio ---
 
-                    $ultimoNumero = Venta::where('fkTienda', $fkTienda)
-                            ->lockForUpdate()
-                            ->count('numero_comprobante');
+$arrayidcuenta = $request->get('arrayidcuenta');
+$arraymonto = $request->get('arraymonto');
+$arraytipomovimiento = $request->get('arraytipomovimiento');
 
-        $numero_comprobante = $ultimoNumero ? $ultimoNumero + 1 : 1;
-        $numero_comprobante=$numero_comprobante.$tipofolio.$comprobantenomenclatura->ClaveVista.$comprobantenomenclatura->id;
-
-
-        if($idventa==null){
-            $venta = Venta::create([
-                'fecha_hora'=>$fecha_hora,
-                'impuesto'=>$impuestotal,
-                'numero_comprobante'=>$numero_comprobante,
-                'total'=>$total,
-                'estado'=>1,
-                'comprobante_id'=>$comprobante_id,
-                'cliente_id'=>$cliente_id,
-                'fkUserCreate' => $user_id,
-                'fkUserCC' => $user_id,
-                'create_at'=>now(),
-                'update_at'=>now(),
-                'user_id'=>$user_id,
-                'fkTienda'=>$fkTienda,
-                'TipoFolio'=>$tipofolio,
-                'fkFolio' => 0,
-                'fkfactura' => '',
-            ]);
-}else{
-            $venta = Venta::findOrFail($idventa);
-            $detalleVenta = DB::table('producto_venta')
-            ->where('venta_id', $idventa)
-            ->get();
-}
-
-
-
-                $folio = Folio::create([
-                'descripcion'=>'Venta n.'.$idventa.', por un total de Q. '.$total.', numero de comprobante: '.$numero_comprobante.'.',
-                'cabecera'=>'Venta cerrada por caja.',
-                'EstatusContable'=>'C',
-                'TipoFolio'=>$tipofolio,
-                'FechaContabilizacion'=>now(),
-                'fkComprobante'=>$comprobante_id,
-                'created_at'=>now(),
-                'updated_at'=>now(),
-                'fkUsuario'=>$user_id,
-                'fkTienda'=>$fkTienda,
-                'idOrigen'=>$venta->id,
-                'TipoMovimiento'=>'V'
-            ]);
-
-                        // Extraer todos los números de la cadena
-            preg_match_all('/\d+/', $numero_comprobante, $coincidencias);
-
-            // Obtener primer y último número si existen
-            if (!empty($coincidencias[0])) {
-                $primerNumero = $coincidencias[0][0];
-                $ultimoNumero = $coincidencias[0][count($coincidencias[0]) - 1];
-
-            }else {
-                $primerNumero = '';
-                $ultimoNumero = '';
-            };
-
-        if($tipofolio=="F"){
-        $numero_comprobante2=$primerNumero.$tipofolio.$folio->idFolio.$folio->TipoMovimiento;
-
-    }else{
-        $comprobantenomenclatura=Comprobante::where('id',$comprobante_id)->first();
-        $numero_comprobante2=$primerNumero.$tipofolio.$folio->idFolio.$comprobantenomenclatura->ClaveVista.$comprobantenomenclatura->id;
-
-        };
-
-
-
-while($cont < $cuentaArray) {
-
-
-    DetalleFolio::create([
-        'Monto' => $arraymonto[$cont],
-        'Naturaleza' => $arraytipomovimiento[$cont],
-        'fkCuenetaContable' => $arrayidcuenta[$cont],
-        'fkUsuario' => $user_id,
-        'fkTienda' => $fkTienda,
-        'fkFolio' => $folio->idFolio,
-        'created_at' => now(),
-        'updated_at' => now()
-    ]);
-    $cont++;
-}
-
-
-        // Actualizar datos de la venta
-        DB::table('ventas')->where('id', $venta->id)->update([
-            'fecha_hora' => $fecha_hora,
-            'impuesto' => $impuestotal,
-            'numero_comprobante' => $numero_comprobante2,
-            'total' => $total,
-            'estado' => 2,
-            'comprobante_id' => $comprobante_id,
-            'cliente_id' => $cliente_id,
-            'fkUserEdit' => $user_id,
-            'fkUserCC' => $user_id,
-            'created_at' => now(),
-            'updated_at' => now(),
-            'fkTienda' => $fkTienda,
-            'TipoFolio' => $tipofolio,
-            'fkFolio' => $folio->idFolio
+if (!empty($arrayidcuenta)) {
+    foreach ($arrayidcuenta as $cont => $cuentaId) {
+        DetalleFolio::create([
+            'Monto'             => $arraymonto[$cont],
+            'Naturaleza'        => $arraytipomovimiento[$cont],
+            'fkCuenetaContable' => $cuentaId,
+            'fkUsuario'         => $user_id,
+            'fkTienda'          => $fkTienda,
+            'fkFolio'           => $folio->idFolio, // Asegúrate que el campo sea idFolio o id
+            'created_at'        => now(),
+            'updated_at'        => now()
         ]);
+    }
+}
 
-        $venta = Venta::findOrFail($venta->id);
 
+        foreach ($arrayProducto_id as $cont => $productoId) {
+            $cantidadNueva = intval($arrayCantidad[$cont]);
+            $productosProcesados[] = $productoId;
 
-$sizeArray = count($arrayProducto_id);
+            if (isset($productosOriginales[$productoId])) {
+                $cantidadOriginal = intval($productosOriginales[$productoId]->cantidad);
+                
+                // DIFERENCIA DE STOCK
+                if ($cantidadNueva < $cantidadOriginal) {
+                    $diff = $cantidadOriginal - $cantidadNueva;
+                    $this->devolverLotesTrazabilidad($venta->id, $productoId, $diff, $fkTienda);
+                    // El Trigger o decrement manual aquí según tu preferencia
+                } elseif ($cantidadNueva > $cantidadOriginal) {
+                    $diff = $cantidadNueva - $cantidadOriginal;
+                    $this->descontarLotesConTrazabilidad($venta->id, $productoId, $diff, $fkTienda);
+                }
 
-$productosOriginales = DB::table('producto_venta')
-    ->where('venta_id', $venta->id)
-    ->get()
-    ->keyBy('producto_id');
-
-$productosProcesados = [];
-
-for ($cont = 0; $cont < $sizeArray; $cont++) {
-    $productoId = $arrayProducto_id[$cont];
-    $cantidadNueva = intval($arrayCantidad[$cont]);
-    $precioVenta = $arrayPrecioVenta[$cont]; // Asegúrate de capturar esto del array
-    $descuento = $arrayDescuento[$cont];     // Asegúrate de capturar esto del array
-
-    $productosProcesados[] = $productoId;
-
-    if(isset($productosOriginales[$productoId])){
-        $cantidadOriginal = intval($productosOriginales[$productoId]->cantidad);
-
-        if($cantidadNueva < $cantidadOriginal){
-            $diff = $cantidadOriginal - $cantidadNueva;
-            $this->devolverLotesTrazabilidad($venta->id, $productoId, $diff, $fkTienda);
-            DB::table('productos')->where('id', $productoId)->increment('stock', $diff);
-        }
-        elseif ($cantidadNueva > $cantidadOriginal) {
-            $diff = $cantidadNueva - $cantidadOriginal;
-            $this->descontarLotesTrazabilidad($venta->id, $productoId, $diff, $fkTienda);
-            DB::table('productos')->where('id', $productoId)->decrement('stock', $diff);
+                // Actualizar Pivote
+                DB::table('producto_venta')->where('venta_id', $venta->id)->where('producto_id', $productoId)->update([
+                    'cantidad' => $cantidadNueva,
+                    'precio_venta' => $arrayPrecioVenta[$cont],
+                    'descuento' => $arrayDescuento[$cont]
+                ]);
+            } else {
+                // Producto Nuevo: Attach y Descontar
+                $venta->productos()->attach([$productoId => [
+                    'cantidad' => $cantidadNueva,
+                    'precio_venta' => $arrayPrecioVenta[$cont],
+                    'fkTienda' => $fkTienda,
+                    'descuento' => $arrayDescuento[$cont]
+                ]]);
+                $this->descontarLotesConTrazabilidad($venta->id, $productoId, $cantidadNueva, $fkTienda);
+            }
         }
 
-        DB::table('movimiento_materiales')
-        ->join('lote_ventas', 'movimiento_materiales.fkLotes', '=', 'lote_ventas.lote_id')
-            ->where('lote_ventas.venta_id', $venta->id)
-            ->where('movimiento_materiales.fkMateriales', $productoId)
-            ->update([
-                'documento_material' => $venta->numero_comprobante,
-                'fecha_contabilizacion' => now()
-            ]);
-
-        // 🔥 ESTA ES LA PARTE QUE TE FALTABA: ACTUALIZAR EL PIVOTE FÍSICAMENTE
-        DB::table('producto_venta')
-            ->where('venta_id', $venta->id)
-            ->where('producto_id', $productoId)
-            ->update([
-                'cantidad' => $cantidadNueva,
-                'precio_venta' => $precioVenta,
-                'descuento' => $descuento,
-                'fkTienda' => $fkTienda,
-                'updated_at' => now()
-            ]);
-
-            
-
-    } else {
-        // ... (Tu código de attach para productos nuevos está bien)
-    }
-}
-
-
-// PRODUCTOS ELIMINADOS COMPLETAMENTE
-foreach($productosOriginales as $productoId => $productoOriginal){
-    if(!in_array($productoId, $productosProcesados)){
-        $this->devolverLotesTrazabilidad($venta->id, $productoId, $productoOriginal->cantidad, $fkTienda);
-        DB::table('productos')->where('id', $productoId)->increment('stock', $productoOriginal->cantidad);
-        // ... (Tu código de delete pivote y devoluciones_venta se mantiene)
-    }
-}
-
-
-# detectar productos eliminados completamente de la venta
-
-foreach($productosOriginales as $productoId => $productoOriginal){
-
-    if(!in_array($productoId,$productosProcesados)){
-
-        $cantidadDevuelta = $productoOriginal->cantidad;
-
-        DB::table('devoluciones_venta')->insert([
-            'venta_id' => $venta->id,
-            'producto_id' => $productoId,
-            'cantidad_devuelta' => $cantidadDevuelta,
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
-
-        // devolver todo al stock
-        DB::table('productos')
-            ->where('id',$productoId)
-            ->increment('stock',$cantidadDevuelta);
-
-        // eliminar del pivote
-        DB::table('producto_venta')
-            ->where('venta_id',$venta->id)
-            ->where('producto_id',$productoId)
-            ->delete();
-    }
-}
+        // 5. FINALIZAR VENTA
+        $venta->update(['estado' => 2, 'fkFolio' => $folio->idFolio]);
 
         DB::commit();
+        Cache::forget($lockKey);
+        return redirect()->route('ventas.show', $venta->id)->with('success', 'Cierre de caja exitoso');
 
-      $rutaPdf =  $this->generarRecibo($venta->id);
-      $rutaPdfPublica = asset('storage/recibos/recibo_'.$venta->id.'.pdf');
-
-
-
-
-return redirect()->route('ventas.show', ['venta' => $venta->id])
-                 ->with('success', 'Venta exitosa')
-                 ->with('pdf', $rutaPdfPublica);
-
-
-//return response()->file($rutaPdf);
-
-
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
         DB::rollBack();
-        Log::error('Error en storeCC: ' . $e->getMessage());
-
-        return response()->json(['error' => 'Error al guardar la venta: ' . $e->getMessage()], 500);
-            
-
-
+        Cache::forget($lockKey);
+        return response()->json(['error' => $e->getMessage()], 500);
     }
 }
+
 
 public function buscar(Request $request)
 {

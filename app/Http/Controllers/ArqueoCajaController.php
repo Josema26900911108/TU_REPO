@@ -377,119 +377,95 @@ class ArqueoCajaController extends Controller
     }
     }
 
-     public function cobrarventasdir()
+    public function cobrarventasdir()
 {
+    // 1. Verificación de Autenticación
     if (!Auth::check()) {
         return redirect()->route('login');
     }
 
-    $fkTienda = session('user_fkTienda');
-    $Estatus  = session('user_estatus');
+    try {
+        $fkTienda = session('user_fkTienda');
 
-    // CUENTAS CONTABLES
-    $cuentasContables = CuentaContable::where('fkTienda', $fkTienda)->get();
+        // 2. PRODUCTOS: Usando la Vista Contable para Stock Real + Último Precio + Lote FIFO
+        $productos = Producto::select(
+                'productos.nombre',
+                'productos.img_path',
+                'productos.descripcion',
+                'productos.id',
+                'vsc.stock_contable as stock', // Stock real (Compras - Ventas)
+                'cpr.precio_venta',
+                'productos.perecedero',
+                'l.fecha_vencimiento',
+                'l.numero_lote',
+                'l.cantidad as cantidad_lote'
+            )
+            // Join a la Vista de Stock Contable
+            ->join('vista_stock_contable as vsc', function ($join) use ($fkTienda) {
+                $join->on('vsc.producto_id', '=', 'productos.id')
+                     ->where('vsc.fkTienda', '=', $fkTienda);
+            })
+            // Join para obtener el precio de venta de la última compra
+            ->join('compra_producto as cpr', function ($join) use ($fkTienda) {
+                $join->on('cpr.id', '=', DB::raw("(SELECT id FROM compra_producto 
+                    WHERE producto_id = productos.id 
+                    AND fkTienda = $fkTienda 
+                    ORDER BY created_at DESC, id DESC LIMIT 1)"));
+            })
+            // Join para obtener el lote más próximo a vencer (FIFO)
+            ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
+                $join->on('l.id', '=', DB::raw("(SELECT id FROM lotesalarma 
+                    WHERE producto_id = productos.id 
+                    AND cantidad > 0 
+                    AND fkTienda = $fkTienda 
+                    ORDER BY fecha_vencimiento ASC, id ASC LIMIT 1)"));
+            })
+            ->with(['reglasPrecios', 'modificadores'])
+            ->where('productos.fkTienda', $fkTienda)
+            ->where('productos.estado', 1)
+            ->where('vsc.stock_contable', '>', 0)
+            ->get();
 
-    // SUBQUERY PARA ULTIMO PRECIO
-    $subquery = DB::table('compra_producto')
-        ->select('producto_id', DB::raw('MAX(created_at) as max_created_at'))
-        ->where('fkTienda', $fkTienda)
-        ->groupBy('producto_id');
+        // 3. CLIENTES ACTIVOS
+        $clientes = Cliente::whereHas('persona', function ($query) {
+            $query->where('estado', 1);
+        })->get();
 
-    // PRODUCTOS
-    $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
+        // 4. COMPROBANTES: Venta Directa (DV)
+        $comprobantes = Comprobante::where('fkTienda', $fkTienda)
+            ->where('ClaveVista', 'DV')
+            ->get();
 
-        $join->on('cpr.producto_id', '=', 'productos.id')
-        ->whereIn('cpr.created_at', function ($query) use ($subquery) {
+        // 5. CUENTAS CONTABLES PARA EL MODAL DE COBRO
+        $cuentasContables = CuentaContable::where('fkTienda', $fkTienda)->get();
 
-            $query->select('max_created_at')
-                ->fromSub($subquery, 'subquery')
-                ->whereRaw('subquery.producto_id = cpr.producto_id');
+        // 6. INICIALIZACIÓN DE VARIABLES (Evita el error de "Model Not Found 0")
+        // Al cargar la vista por primera vez, no hay venta, por eso usamos valores vacíos.
+        $ventacabecera = collect(); 
+        $idventa = 0; // Se envía 0 a la vista para indicar que es una venta NUEVA
+        $selectedItemId = null;
+        $selectedItemIdcomp = null;
+        $comprobantenumero = '';
 
-        });
+        // Si tuvieras una venta pendiente podrías cargarla aquí, pero para venta directa nueva:
+        return view('arqueocaja.ventas', compact(
+            'productos',
+            'clientes',
+            'comprobantes',
+            'ventacabecera',
+            'selectedItemId',
+            'selectedItemIdcomp',
+            'comprobantenumero',
+            'cuentasContables',
+            'idventa'
+        ));
 
-    })
-    ->select(
-        'productos.nombre',
-        'productos.img_path',
-        'productos.descripcion',
-        'productos.id',
-        'productos.stock',
-        'cpr.precio_venta'
-    )
-    ->where('productos.fkTienda', $fkTienda)
-    ->where('productos.estado', 1)
-    ->where('productos.stock', '>', 0)
-    ->get();
-
-    // CLIENTES
-    $clientes = Cliente::whereHas('persona', function ($query) {
-        $query->where('estado', 1);
-    })->get();
-
-    // COMPROBANTES
-    $comprobantes = Comprobante::with('tienda')
-        ->where('fkTienda', $fkTienda)
-        ->where('ClaveVista', 'DV')
-        ->get();
-
-    // VENTAS
-    $ventacabecera = DB::table('ventas as v')
-        ->join('producto_venta as pv', 'pv.venta_id', '=', 'v.id')
-        ->join('clientes as cl', 'cl.id', '=', 'v.cliente_id')
-        ->join('personas as pr', 'pr.id', '=', 'cl.persona_id')
-        ->join('tienda as t', 't.idTienda', '=', 'v.fkTienda')
-        ->join('comprobantes as cm', 'cm.id', '=', 'v.comprobante_id')
-        ->join('users as u', 'u.id', '=', 'v.user_id')
-        ->join('productos as pro', 'pro.id', '=', 'pv.producto_id')
-        ->select(
-            'v.id as idventa',
-            'pro.nombre as nameProducto',
-            'pv.precio_venta',
-            'pro.stock',
-            'pv.producto_id',
-            'pv.cantidad',
-            'pv.descuento',
-            'cm.formula',
-            'v.cliente_id',
-            'v.comprobante_id',
-            't.idTienda',
-            'v.id',
-            'v.fecha_hora',
-            'v.numero_comprobante',
-            'v.total',
-            'pr.razon_social',
-            'pr.numero_documento',
-            't.Nombre',
-            'u.name',
-            'v.estado',
-            'cm.tipo_comprobante',
-            'pr.tipo_persona'
-        )
-        ->where('v.fkTienda', $fkTienda)
-        ->where('v.estado', 1)
-        ->distinct()
-        ->get();
-
-    // PRIMERA VENTA (si existe)
-    $venta = $ventacabecera->first();
-
-    $selectedItemId     = $venta?->cliente_id;
-    $selectedItemIdcomp = $venta?->comprobante_id;
-    $comprobantenumero  = $venta?->numero_comprobante;
-    $idventa            = $venta?->idventa;
-
-    return view('arqueocaja.ventas', compact(
-        'productos',
-        'clientes',
-        'comprobantes',
-        'ventacabecera',
-        'selectedItemId',
-        'selectedItemIdcomp',
-        'comprobantenumero',
-        'cuentasContables',
-        'idventa'
-    ));
+    } catch (\Exception $e) {
+        return redirect()->back()->with('error', 'Error técnico: ' . $e->getMessage());
+    }
 }
+
+
 
     public function generarRecibo($arqueocaja)
 {

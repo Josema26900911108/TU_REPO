@@ -92,8 +92,11 @@
                         @can('ver-venta')
                         <a class="nav-link" href="{{ route('ventas.index') }}">Ver</a>
                         @endcan
-                        @can('crear-compra')
+                        @can('crear-venta')
                         <a class="nav-link" href="{{ route('ventas.create') }}">Crear</a>
+                        @endcan
+                        @can('cobrar-ventadirecta')
+                        <a class="nav-link" href="{{ route('arqueocaja.cobventasdir') }}">Cobrar Venta Directa</a>
                         @endcan
 
                         @can('reporte-venta')

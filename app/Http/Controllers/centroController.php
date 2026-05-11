@@ -57,6 +57,20 @@ $centros = $query->with('tienda')->get();
         return view('centro.create');
     }
 
+
+        public static function obtenerAlmacenPrincipal($fkTienda)
+    {
+        // Buscamos la tienda y cargamos su relación con centro
+                $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+    ->where('tienda.idTienda', $fkTienda) // Filtro importante
+    ->select('centro.*', 'tienda.nombre as nombre_tienda')
+    ->first();
+
+            return $centro ? $centro->codigo : 'ConfCentro'; 
+
+        
+    }
+
     public function store(Request $request){
         if(!Auth::check()){
             return redirect()->route('login');

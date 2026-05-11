@@ -106,12 +106,26 @@ public function buscarProducto(HttpRequest $request)
     inner join categorias cat on cp.categoria_id = cat.id
     inner join caracteristicas c on cat.caracteristica_id = c.id
     where c.descripcion like ? and p.fkTienda = ?
+        union all
+        select p.id, p.codigo, p.nombre, p.stock, p.descripcion, c.nombre as cat
+    from productos p
+    inner join categoria_producto cp on cp.producto_id = p.id
+    inner join categorias cat on cp.categoria_id = cat.id
+    inner join caracteristicas c on cat.caracteristica_id = c.id
+    where p.nombre like ? and p.fkTienda = ?
+            union all
+        select p.id, p.codigo, p.nombre, p.stock, p.descripcion, c.nombre as cat
+    from productos p
+    inner join categoria_producto cp on cp.producto_id = p.id
+    inner join categorias cat on cp.categoria_id = cat.id
+    inner join caracteristicas c on cat.caracteristica_id = c.id
+    where p.codigo like ? and p.fkTienda = ?
 )
 select distinct id, codigo, nombre, stock, descripcion from productosearch;
 
 ";
 
-$productos = DB::select($sql, [$search, $fkTienda, $search, $fkTienda, $search, $fkTienda]);
+$productos = DB::select($sql, [$search, $fkTienda, $search, $fkTienda, $search, $fkTienda, $search, $fkTienda, $search, $fkTienda]);
 
 return $productos;
 
