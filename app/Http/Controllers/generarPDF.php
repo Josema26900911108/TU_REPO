@@ -824,9 +824,6 @@ $fechalabel="";
     $tokenss = $this->ejecutarconsulta($cons);
     //$tokenss['filas'][0]['FechaReporte']=$fechafiltro;
 
-    foreach ($tokenss['filas'] as $index => $item) {
-    $tokenss['filas'][$index]['FechaReporte'] = $fechalabel;
-}
 
     $detalle=$this->renderDetalleOptimizado($detalle, $tokenss, $detalleHijo, $detalleNieto );
 
@@ -885,7 +882,6 @@ $fechalabel="";
     $totalPaginas = $pdfTemp->getDomPDF()->getCanvas()->get_page_count();
 
 $htmlFinal = str_replace("{{TOTAL_PAGINAS}}", $totalPaginas, $htmlFinal);
-$htmlFinal = str_replace("{{FechaReporte}}", now(), $htmlFinal);
 $htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
 $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEnLetras(), $htmlFinal);
 
@@ -1255,107 +1251,91 @@ function agruparDetalle(array $filas): array
 
 public function KardexInvenarioindex(Request $request)
 {
-    try{
-                        if(!Auth::check()){
+    try {
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
-        
-    $fkTienda = session('user_fkTienda');
-    $cuentasSeleccionadas = (array) $request->input('producto', []);
 
-    $productos = Producto::select('id', 'nombre')
-    ->where('fkTienda', $fkTienda)
-    ->whereIn('estado', [1, 2, 3])
-    ->get();
+        $fkTienda = session('user_fkTienda');
+        $cuentasSeleccionadas = (array) $request->input('producto', []);
 
-   $producto = DB::table('productos as p')
-    ->select([
-        DB::raw('IFNULL(l.codigo, 0) AS codlote'),
-        DB::raw('IFNULL(l.stock, 0) AS cantidadlote'),
-        DB::raw("IFNULL(l.fecha_vencimiento, '') AS fecha_vencimiento"),
+        $productos = Producto::select('id', 'nombre')
+            ->where('fkTienda', $fkTienda)
+            ->whereIn('estado', [1, 2, 3])
+            ->get();
 
-        'p.id',
-        'p.nombre',
-        'p.codigo',
-        'p.stock as stock_actual',
-        'p.img_path',
-        'p.estado',
-        'p.perecedero',
-        'p.fkTienda',
+        $query = DB::table('productos as p')
+            ->select([
+                // Cambiado de 'lotes' a 'lotesalarma' y corregido campos
+                DB::raw('IFNULL(l.numero_lote, "N/A") AS codlote'),
+                DB::raw('IFNULL(l.cantidad, 0) AS cantidadlote'),
+                DB::raw("IFNULL(l.fecha_vencimiento, '') AS fecha_vencimiento"),
 
-        'carMarca.nombre as Marca',
+                'p.id',
+                'p.nombre',
+                'p.codigo',
+                'p.stock as stock_actual',
+                'p.img_path',
+                'p.estado',
+                'p.perecedero',
+                'p.fkTienda',
+                'carMarca.nombre as Marca',
 
-        DB::raw("GROUP_CONCAT(DISTINCT car.nombre ORDER BY car.nombre SEPARATOR ', ') AS Categoria"),
+                DB::raw("GROUP_CONCAT(DISTINCT car.nombre ORDER BY car.nombre SEPARATOR ', ') AS Categoria"),
 
-        // Costo promedio ponderado
-        DB::raw("SUM(comp.precio_compra * comp.cantidad) / SUM(comp.cantidad) AS costo_promedio"),
+                // Usamos promedios simples para evitar el "Lost connection" por cálculos pesados
+                DB::raw("ROUND(AVG(comp.precio_compra), 2) AS costo_promedio"),
+                DB::raw("ROUND(p.stock * AVG(comp.precio_compra), 2) AS costo_total_actual"),
+                DB::raw("ROUND(p.stock * AVG(comp.precio_venta), 2) AS venta_total_actual")
+            ])
+            ->join('marcas as m', 'p.marca_id', '=', 'm.id')
+            ->join('caracteristicas as carMarca', 'm.caracteristica_id', '=', 'carMarca.id')
+            ->join('presentaciones as pres', 'p.presentacione_id', '=', 'pres.id')
+            ->leftJoin('categoria_producto as cp', 'p.id', '=', 'cp.producto_id')
+            ->leftJoin('categorias as cat', 'cp.categoria_id', '=', 'cat.id')
+            ->leftJoin('caracteristicas as carCat', 'cat.caracteristica_id', '=', 'carCat.id')
+            ->leftJoin('caracteristicas as car', 'car.id', '=', 'carCat.id')
+            // CAMBIO CLAVE: Usar lotesalarma y fkProductos o producto_id
+            ->leftJoin('lotesalarma as l', function($join) {
+                $join->on('p.id', '=', 'l.producto_id')
+                     ->where('l.cantidad', '>', 0);
+            })
+            ->leftJoin('compra_producto as comp', 'p.id', '=', 'comp.producto_id')
+            ->where('p.fkTienda', $fkTienda);
 
-        // Costo del stock actual
-        DB::raw("p.stock * (SUM(comp.precio_compra * comp.cantidad) / SUM(comp.cantidad)) AS costo_total_actual"),
-        DB::raw("p.stock * (SUM(comp.precio_venta * comp.cantidad) / SUM(comp.cantidad)) AS venta_total_actual")
-    ])
-    ->join('marcas as m', 'p.marca_id', '=', 'm.id')
-    ->join('caracteristicas as carMarca', 'm.caracteristica_id', '=', 'carMarca.id')
-    ->join('presentaciones as pres', 'p.presentacione_id', '=', 'pres.id')
-    ->join('caracteristicas as carPres', 'pres.caracteristica_id', '=', 'carPres.id')
-    ->leftJoin('categoria_producto as cp', 'p.id', '=', 'cp.producto_id')
-    ->leftJoin('categorias as cat', 'cp.categoria_id', '=', 'cat.id')
-    ->leftJoin('caracteristicas as carCat', 'cat.caracteristica_id', '=', 'carCat.id')
-    ->leftJoin('caracteristicas as car', 'car.id', '=', 'carCat.id')
-    ->leftJoin('lotes as l', 'p.id', '=', 'l.fkProductos')
-    ->leftJoin('compra_producto as comp', 'p.id', '=', 'comp.producto_id')
-    ->where('p.fkTienda', $fkTienda);
+        if (!empty($cuentasSeleccionadas) && !in_array(0, $cuentasSeleccionadas)) {
+            $query->whereIn('p.id', $cuentasSeleccionadas);
+        }
 
+        $asientos = $query->groupBy(
+            'p.id', 'p.nombre', 'p.codigo', 'p.stock', 'p.img_path', 
+            'p.estado', 'p.perecedero', 'p.fkTienda', 'carMarca.nombre',
+            'l.id', 'l.numero_lote', 'l.cantidad', 'l.fecha_vencimiento'
+        )->get();
 
-    // FILTRO: Cuenta contable específica
-    if (!empty($cuentasSeleccionadas) && !in_array(0, $cuentasSeleccionadas)) {
-        $producto->whereIn('p.id', $cuentasSeleccionadas);
-    }
+        $totalHaber = $asientos->sum('costo_total_actual');
+        $labels = $asientos->pluck('nombre');
+        $debe = $asientos->pluck('stock_actual');
+        $haber = $asientos->pluck('costo_total_actual');
+        $venta = $asientos->pluck('venta_total_actual');
 
-    // Obtener resultados
-    $asientos = $producto->groupBy(
-        'p.id',
-        'p.nombre',
-        'p.codigo',
-        'p.stock',
-        'p.img_path',
-        'p.estado',
-        'p.perecedero',
-        'p.fkTienda',
-        'carMarca.nombre',
-        'l.id',
-        'l.codigo',
-        'l.stock',
-        'l.fecha_vencimiento'
-    )
-    ->get();
+        return view('PDF.reportekardexinventario', [
+            'productos' => $productos,
+            'labels' => $labels,
+            'debe' => $debe,
+            'asientos' => $asientos,
+            'haber' => $haber,
+            'venta' => $venta,
+            'values' => $debe,
+            'totalHaber' => $totalHaber
+        ]);
 
-    // Calcular totales
-
-    $totalHaber = $asientos->sum('costo_total_actual');
-
-    // Gráfica
-    $labels = $asientos->pluck('nombre');
-    $debe = $asientos->pluck('stock_actual');
-
-    $haber = $asientos->pluck('costo_total_actual');
-    $venta = $asientos->pluck('venta_total_actual');
-$values = $debe;
-
-    return view('PDF.reportekardexinventario', compact(
-        'productos',
-        'labels',
-        'debe',
-        'asientos',
-        'haber',
-        'venta',
-        'values',
-        'totalHaber'
-    ));
-    }catch (\Exception $e) {
-     return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        // Esto te dirá exactamente qué tabla o columna falla ahora
+        return redirect()->back()->with('error', 'Error en consulta: ' . $e->getMessage());
     }
 }
+
 
 function renderDetalleOptimizado(
     string $template,

@@ -29,7 +29,7 @@ class DatosestaticosSeeder extends Seeder
             'CT' => 'Cuentas por Pagar',
             'DT' => 'Pagos a tecnicos',
             'KI' => 'Kardex Inventario',
-            'KF' => 'Kardex Resumnen',
+            'KF' => 'Kardex Resumen',
             'PC' => 'Pedidos de Compra',
             'PV' => 'Pedidos de Venta',
             'NC' => 'Notas de Crédito',
