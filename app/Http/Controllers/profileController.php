@@ -32,6 +32,7 @@ class profileController extends Controller
         $user = User::find(Auth::user()->id);
         $fkTienda = session('user_fkTienda');
         $tienda=Tienda::find($fkTienda);
+        
 $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
     ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
     ->select('centro.*', 'tienda.nombre as nombre_tienda')
