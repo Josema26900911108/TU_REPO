@@ -44,6 +44,16 @@ return [
             'throw' => false,
         ],
 
+        'gcs' => [
+        'driver' => 'gcs',
+        'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
+        'key_file' => env('GOOGLE_CLOUD_KEY_FILE'), // Archivo JSON de credenciales
+        'bucket' => env('GOOGLE_CLOUD_STORAGE_BUCKET'),
+        'storage_api_uri' => null, 
+        'visibility' => 'public',
+    ],
+
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

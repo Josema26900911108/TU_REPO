@@ -10,6 +10,7 @@
         "barryvdh/laravel-dompdf": "^3.1",
         "doctrine/dbal": "^3.9",
         "efureev/laravel-trees": "^3.8",
+        "google/cloud-storage": "^2.0",
         "guzzlehttp/guzzle": "^7.7",
         "illuminate/view": "^10.0",
         "intervention/image": "^3.11",
