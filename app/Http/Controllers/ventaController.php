@@ -17,6 +17,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use App\Exports\UniversalExport;
 use App\Models\Lotesalarma;
 use App\Models\User;
@@ -242,28 +243,32 @@ public function exportVentas()
         $fkTienda = session('user_fkTienda');
         $Estatus = session('user_estatus');
 
-     $fkTienda = 4; // O la variable que estés usando
 
 $productos = Producto::select(
         'productos.nombre',
         'productos.img_path',
         'productos.descripcion',
         'productos.id',
-        'productos.stock',
+        'vsc.stock_contable as stock', // Usamos el cálculo de la vista
         'cpr.precio_venta',
         'productos.perecedero',
         'l.fecha_vencimiento',
-        'l.numero_lote', // Corregido: numero_lote (sin la S al final)
+        'l.numero_lote',
         'l.cantidad as cantidad_lote'
     )
-    // Join para el precio: Buscamos el ID de la última compra para evitar duplicados
+    // JOIN a la vista de stock contable
+    ->join('vista_stock_contable as vsc', function ($join) use ($fkTienda) {
+        $join->on('vsc.producto_id', '=', 'productos.id')
+             ->where('vsc.fkTienda', '=', $fkTienda);
+    })
+    // Join para el último precio de compra
     ->join('compra_producto as cpr', function ($join) use ($fkTienda) {
         $join->on('cpr.id', '=', DB::raw("(SELECT id FROM compra_producto 
             WHERE producto_id = productos.id 
             AND fkTienda = $fkTienda 
             ORDER BY created_at DESC, id DESC LIMIT 1)"));
     })
-    // Join para el lote: Buscamos el lote más próximo a vencer
+    // Join para el lote más próximo a vencer
     ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
         $join->on('l.id', '=', DB::raw("(SELECT id FROM lotesalarma 
             WHERE producto_id = productos.id 
@@ -274,7 +279,7 @@ $productos = Producto::select(
     ->with(['reglasPrecios', 'modificadores'])
     ->where('productos.fkTienda', $fkTienda)
     ->where('productos.estado', 1)
-    ->where('productos.stock', '>', 0)
+    ->where('vsc.stock_contable', '>', 0) // Filtramos por el stock real calculado
     ->get();
 
 
@@ -525,6 +530,8 @@ public function CCstoremobile(Request $request)
         if (!Auth::check()) {
             return redirect()->route('login');
         }
+            $lockKey = 'submit_venta_' . auth()->id();
+
 
             $request->validate([
         'comprobante_id' => 'required'
@@ -761,7 +768,7 @@ public function CCstoremobile(Request $request)
         }
 
         DB::commit();
-
+        Cache::forget($lockKey); 
         // 🔥 GENERAR PDF
         $rutaPdfPublica = asset('storage/recibos/recibo_' . $venta->id . '.pdf');
 
@@ -772,143 +779,130 @@ public function CCstoremobile(Request $request)
     } catch (\Exception $e) {
 
         DB::rollBack();
-
+        Cache::forget($lockKey); 
         return response()->json(['error' => 'Error al al realizar la venta.'.$e->getMessage()], 500);
 
 
     }
 }
-        public function store(StoreVentaRequest $request)
-    {
-        try{
-            DB::beginTransaction();
-            $fkTienda = session('user_fkTienda');
-            $Estatus = session('user_estatus');
 
-            //Llenar mi tabla venta
-            //$venta = Venta::create($request->validated());
-
-            $cliente_id=$request->cliente_id;
-            $comprobante_id=$request->comprobante_id;
-            $impuestotal=$request->impuesto;
-            $fecha=$request->fecha;
-            $fecha_hora=$request->fecha_hora;
-            $total=$request->total;
-            $user_id=$request->user_id;
-            $tipofolio = $request->TipoFolio;
-
-            $comprobantenomenclatura=Comprobante::where('id',$comprobante_id)->first();
-
-                    $ultimoNumero = Venta::where('fkTienda', $fkTienda)
-                            ->lockForUpdate()
-                            ->count('numero_comprobante');
-
-        $numero_comprobante = $ultimoNumero ? $ultimoNumero + 1 : 1;
-        $numero_comprobante=$numero_comprobante.$tipofolio.$comprobantenomenclatura->ClaveVista.$comprobantenomenclatura->id;
-
-
-            $venta = Venta::create([
-                'fecha_hora'=>$fecha_hora,
-                'impuesto'=>$impuestotal,
-                'numero_comprobante'=>$numero_comprobante,
-                'total'=>$total,
-                'estado'=>1,
-                'comprobante_id'=>$comprobante_id,
-                'cliente_id'=>$cliente_id,
-                'create_at'=>now(),
-                'update_at'=>now(),
-                'user_id'=>$user_id,
-                'fkTienda'=>$fkTienda,
-                'TipoFolio'=>$tipofolio,
-                'fkFolio' => 0,
-                'fkfactura' => '',
-            ]);
-
-
-
-
-            //Llenar mi tabla venta_producto
-            //1. Recuperar los arrays
-            $arrayProducto_id = $request->get('arrayidproducto');
-            $arrayCantidad = $request->get('arraycantidad');
-            $arrayPrecioVenta = $request->get('arrayprecioventa');
-            $arrayDescuento = $request->get('arraydescuento');
-
-
-            //2.Realizar el llenado
-            $siseArray = count($arrayProducto_id);
-            $cont = 0;
-
-            while($cont < $siseArray){
-
-                $venta->productos()->attach([
-                    $arrayProducto_id[$cont] => [
-                        'cantidad' => $arrayCantidad[$cont],
-                        'precio_venta' => $arrayPrecioVenta[$cont],
-                        'fkTienda'=>$fkTienda,
-                        'descuento' => $arrayDescuento[$cont],
-                    ]
-                ]);
-
-                $this->descontarLotesConTrazabilidad($venta->id, $arrayProducto_id[$cont], $arrayCantidad[$cont], $fkTienda);
-
-                //Actualizar stock
-                $producto = Producto::find($arrayProducto_id[$cont]);
-                $stockActual = $producto->stock;
-                $cantidad = intval($arrayCantidad[$cont]);
-
-                DB::table('productos')
-                ->where('id',$producto->id)
-                ->update([
-                    'stock' => $stockActual - $cantidad
-                ]);
-
-                $cont++;
-            }
-
-            DB::commit();
-
-            return redirect()->route('ventas.index')->with('success','Venta exitosa');
-        }catch(Exception $e){
-            DB::rollBack();
-                    return response()->json([
-            'error' => 'Error técnico: ' . $e->getMessage()
-        ], 500); 
-        }
-       
+public function store(StoreVentaRequest $request)
+{
+    // 1. PREVENCIÓN DE DOBLE CLIC (Bloqueo por 10 segundos)
+    $lockKey = 'submit_venta_' . auth()->id();
+    if (!Cache::add($lockKey, true, 10)) {
+        return redirect()->back()->with('error', 'La venta ya se está procesando. Por favor, espera.');
     }
 
-private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidad, $fkTienda)
+    try {
+        DB::beginTransaction();
+
+        $fkTienda = session('user_fkTienda');
+        $centro = session('centro'); // Asegúrate de que esto exista en sesión
+
+        // Validar que el centro no sea nulo antes de empezar
+        if (!$centro) {
+            throw new Exception("El centro no está definido en la sesión.");
+        }
+
+        // Generar número de comprobante con bloqueo de tabla
+        $comprobante_id = $request->comprobante_id;
+        $tipofolio = $request->TipoFolio;
+        $comprobantenomenclatura = Comprobante::findOrFail($comprobante_id);
+
+        $ultimoNumero = Venta::where('fkTienda', $fkTienda)
+            ->lockForUpdate()
+            ->count('numero_comprobante');
+
+        $numero_comprobante = ($ultimoNumero ? $ultimoNumero + 1 : 1);
+        $numero_comprobante = $numero_comprobante . $tipofolio . $comprobantenomenclatura->ClaveVista . $comprobantenomenclatura->id;
+
+        // Crear Venta
+        $venta = Venta::create([
+            'fecha_hora' => $request->fecha_hora,
+            'impuesto' => $request->impuesto,
+            'numero_comprobante' => $numero_comprobante,
+            'total' => $request->total,
+            'estado' => 1,
+            'comprobante_id' => $comprobante_id,
+            'cliente_id' => $request->cliente_id,
+            'user_id' => $request->user_id,
+            'fkTienda' => $fkTienda,
+            'TipoFolio' => $tipofolio,
+            'fkFolio' => 0,
+            'fkfactura' => '',
+        ]);
+
+        // Recuperar arrays de productos
+        $arrayProducto_id = $request->get('arrayidproducto');
+        $arrayCantidad = $request->get('arraycantidad');
+        $arrayPrecioVenta = $request->get('arrayprecioventa');
+        $arrayDescuento = $request->get('arraydescuento');
+
+        // Procesar cada producto
+        foreach ($arrayProducto_id as $cont => $productoId) {
+            $cantidad = $arrayCantidad[$cont];
+
+            // Registro en tabla pivote
+            $venta->productos()->attach([
+                $productoId => [
+                    'cantidad' => $cantidad,
+                    'precio_venta' => $arrayPrecioVenta[$cont],
+                    'fkTienda' => $fkTienda,
+                    'descuento' => $arrayDescuento[$cont],
+                ]
+            ]);
+
+            // Lógica de inventario (Stock General y Lotes)
+            $this->descontarLotesConTrazabilidad($venta->id, $productoId, $cantidad, $fkTienda);
+        }
+
+        DB::commit();
+        Cache::forget($lockKey); // Liberar bloqueo
+        return redirect()->route('ventas.index')->with('success', 'Venta exitosa');
+
+    } catch (Exception $e) {
+        DB::rollBack();
+        Cache::forget($lockKey); // Liberar bloqueo ante error
+        return response()->json([
+            'error' => 'Error técnico: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidadAMover, $fkTienda)
 {
-    // 1. Obtener datos de la venta y el producto
     $venta = Venta::findOrFail($ventaId);
     $producto = Producto::findOrFail($productoId);
+    $centro = session('centro');
+    $cantidadOriginal = (int)$cantidadAMover;
 
-    // CASO A: PRODUCTO NO PERECEDERO (Descuento directo de stock general)
-    if ($producto->perecedero == 0) { // O la lógica que uses: 'N', false, etc.
-        $producto->decrement('stock', $cantidad);
-        
-        // Registrar movimiento general (sin lote específico)
+    // --- CORRECCIÓN: Descuento atómico directo en la base de datos ---
+    // Usamos el Query Builder para asegurar que el cambio impacte de inmediato
+    DB::table('productos')->where('id', $productoId)->decrement('stock', $cantidadOriginal);
+
+    // CASO A: NO PERECEDERO (perecedero puede venir como string '0', 0 o false)
+    if ($producto->perecedero == 0 || $producto->perecedero == '0') {
         MovimientoMateriales::create([
             'fkTienda' => $fkTienda,
             'fkMateriales' => $productoId,
-            'fkLotes' => null, // No aplica lote
+            'fkLotes' => null,
             'clase_movimiento' => '601',
             'tipo_movimiento' => 'VENTA',
-            'cantidad' => $cantidad,
+            'cantidad' => $cantidadOriginal * -1, 
             'documento_material' => $venta->numero_comprobante,
             'referencia' => "Vent ID: ||{$ventaId}||(No perecedero)||",
             'fecha_contabilizacion' => now(),
-            'centro' => session('centro'),
-            'almacen' => session('centro'),
+            'centro' => $centro,
+            'almacen' => $centro,
             'origen_uso' => 'otros',
             'unidad_medida_base' => 'PZA',
             'posicion_documento' => 1
         ]);
-        return; // Terminamos aquí para productos no perecederos
+        return; 
     }
 
-    // CASO B: PRODUCTO PERECEDERO (Lógica de Lotes / FIFO)
+    // CASO B: PERECEDERO (Lotes FIFO)
     $lotes = DB::table('lotesalarma')
         ->where('producto_id', $productoId)
         ->where('fkTienda', $fkTienda)
@@ -916,16 +910,16 @@ private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidad,
         ->orderBy('fecha_vencimiento', 'asc')
         ->get();
 
-    $cont = 0;
+    $posicion = 1;
+    $restante = $cantidadOriginal;
+
     foreach ($lotes as $lote) {
-        if ($cantidad <= 0) break;
+        if ($restante <= 0) break;
 
-        $cantidadTomada = min($lote->cantidad, $cantidad);
+        $cantidadTomada = min($lote->cantidad, $restante);
 
-        // Descontar del lote
         DB::table('lotesalarma')->where('id', $lote->id)->decrement('cantidad', $cantidadTomada);
 
-        // Registrar trazabilidad de lote
         DB::table('lote_ventas')->insert([
             'venta_id'    => $ventaId,
             'lote_id'     => $lote->id,
@@ -935,34 +929,32 @@ private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidad,
             'created_at'  => now(),
             'updated_at'  => now()
         ]);
-        
-        // Movimiento por cada lote tomado
+
         MovimientoMateriales::create([
             'fkTienda' => $fkTienda,
             'fkMateriales' => $productoId,
-            'fkLotes' => $lote->id, 
-            'clase_movimiento' => '601',    
+            'fkLotes' => $lote->id,
+            'clase_movimiento' => '601',
             'tipo_movimiento' => 'VENTA',
             'cantidad' => $cantidadTomada * -1,
             'documento_material' => $venta->numero_comprobante,
             'referencia' => "Vent ID: ||{$ventaId}|| : (Lote: ||{$lote->id}||)",
             'fecha_contabilizacion' => now(),
-            'centro' => session('centro'),
-            'almacen' => session('centro'),
+            'centro' => $centro,
+            'almacen' => $centro,
             'origen_uso' => 'venta_directa',
             'unidad_medida_base' => 'PZA',
-            'posicion_documento' => $cont + 1
+            'posicion_documento' => $posicion
         ]);
 
-        $cont++;
-        $cantidad -= $cantidadTomada;
+        $restante -= $cantidadTomada;
+        $posicion++;
     }
 
-    if ($cantidad > 0) {
-        throw new \Exception("Stock insuficiente en lotes para el producto perecedero: {$producto->nombre}");
+    if ($restante > 0) {
+        throw new \Exception("Stock insuficiente en lotes para: {$producto->nombre}. Faltan: {$restante}");
     }
 }
-
 
 
     private function descontarDeLotes($ventaId, $productoId, $cantidad, $fkTienda) {

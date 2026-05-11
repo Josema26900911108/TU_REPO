@@ -11,9 +11,14 @@ class Centro extends Model
         protected $fillable = ['codigo', 'nombre', 'fkTienda'];
         protected $table = 'centro';
 
-    public function tienda() {
-        return $this->hasMany(Tienda::class);
-    }
+// En app/Models/Centro.php
+public function tienda()
+{
+    // foreign_key = la columna en la tabla 'centros' (ej. fkTienda)
+    // local_key = la columna en la tabla 'tiendas' (ej. idTienda)
+    return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda');
+}
+
 
     public function movimientos() {
         return $this->hasMany(MovimientoMaterial::class);

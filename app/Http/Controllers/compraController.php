@@ -15,6 +15,7 @@ use App\Models\Tienda;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
 use ZipArchive;
 use Maatwebsite\Excel\Facades\Excel;
@@ -62,7 +63,7 @@ class compraController extends Controller
         // Si el estatus es 'ER', cargar todas las compras
         if ($Estatus == 'ER') {
             $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
-                ->where('estado', 1)
+                ->where('estado', 2)
                 ->where('ClaveVista','DC')
                 ->whereNotNull('proveedore_id')
                 ->latest()
@@ -77,7 +78,7 @@ class compraController extends Controller
             ->get();
         } else {
             $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
-            ->where('estado', 1)
+            ->where('estado', 2)
             ->where('fkTienda', $fkTienda)
             ->whereNotNull('proveedore_id')
             ->latest()
@@ -129,6 +130,7 @@ public function store(StoreCompraRequest $request)
         if (!Auth::check()) {
             return redirect()->route('login');
         }
+        $lockKey = 'submit_venta_' . auth()->id();
 
         DB::beginTransaction();
         $fkTienda = session('user_fkTienda');
@@ -171,7 +173,7 @@ public function store(StoreCompraRequest $request)
             'impuesto' => $impuestotal,
             'numero_comprobante' => $numero_comprobante,
             'total' => $total + $impuestotal,
-            'estado' => 'I',
+            'estado' => 2   ,
             'fkUserCreate' => $id,
             'fkUserCC' => $id,
             'comprobante_id' => $comprobante_id,
@@ -309,10 +311,11 @@ foreach ($productosConsolidados as $item) {
 
 
         DB::commit();
-
+        Cache::forget($lockKey); 
         return redirect()->route('compras.index')->with('success', 'compra exitosa');
     } catch (Exception $e) {
         DB::rollBack();
+        Cache::forget($lockKey); 
         return response()->json([
             'error' => $e->getMessage()
         ], 500);
@@ -460,7 +463,7 @@ foreach ($productosConsolidados as $item) {
                 'fecha' => now(),
                 'total' => ($pcompra * $stock) + ($piva * $stock),
                 'impuesto' => $piva * $stock,
-                'estado' => '1',
+                'estado' => '2',
                 'fkUserCC' => auth()->id(),
                 'fkUserCreate' => auth()->id(),
                 'fkTienda' => $fkTienda
@@ -852,7 +855,7 @@ public function mostrarDetallesCompraScanner($SKU)
     INNER JOIN
         productos as p ON cp.producto_id = p.id
     WHERE
-        p.codigo = :id and c.fkTienda = $fkTienda AND c.estado = 1
+        p.codigo = :id and c.fkTienda = $fkTienda AND c.estado = 2
 ");
 
 $stmt->execute(['id' => $SKU]);

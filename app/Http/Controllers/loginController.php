@@ -21,13 +21,16 @@ class loginController extends Controller
         if (!Auth::validate($request->only('email', 'password'))) {
             return redirect()->to('login')->withErrors('Credenciales incorrectas');
         }
+        if($request->idTienda == null){
+            return redirect()->to('login')->withErrors('Debe seleccionar una tienda');
+        }
 
         // Crear una sesión
         $user = Auth::getProvider()->retrieveByCredentials($request->only('email', 'password'));
         Auth::login($user);
         $user->idtienda=$request->idTienda;
 
-        $centro = Tienda::join('centro', 'tienda.idTienda', '=', 'centro.fkTienda')
+        $centro = Tienda::join('centro', 'tienda.fkCentro', '=', 'centro.id')
             ->where('tienda.idTienda', $request->idTienda)
             ->select('centro.codigo')
             ->first();

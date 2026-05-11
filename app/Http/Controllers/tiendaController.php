@@ -41,16 +41,37 @@ public function index()
 
     $idusuario = auth()->user()->id;
 
-    // Ejecuta la consulta y guarda el resultado en $tiendas
-    $tiendas = Tienda::join('usuario_tienda', 'tienda.idTienda', '=', 'usuario_tienda.fkTienda')
-        ->join('centro', 'tienda.idTienda', '=', 'centro.fkTienda')
-        ->select(
-            'centro.codigo as centro_codigo',
-            'centro.nombre as centro_nombre',   
-            'tienda.*'
-        )
-        ->where('usuario_tienda.fkUsuario', $idusuario)
-        ->get(); // <--- Aquí es donde realmente se obtienen los registros
+// 1. Buscamos los IDs de las tiendas a las que el usuario tiene acceso directo
+$tiendasDirectasIds = DB::table('usuario_tienda')
+    ->where('fkUsuario', $idusuario)
+    ->pluck('fkTienda');
+
+// 2. Usamos la lógica de UNION para encontrar todas las tiendas relacionadas (Principales o Dependientes)
+$tiendasRelacionadasIds = DB::table('centros_organizacion')
+    ->whereIn('fkTiendaPrincipal', $tiendasDirectasIds)
+    ->select('fkTiendaDependiente as tienda_id')
+    ->union(
+        DB::table('centros_organizacion')
+            ->whereIn('fkTiendaDependiente', $tiendasDirectasIds)
+            ->select('fkTiendaPrincipal as tienda_id')
+    )
+    ->union(
+        DB::table('tienda')
+            ->whereIn('idTienda', $tiendasDirectasIds)
+            ->select('idTienda as tienda_id')
+    )
+    ->pluck('tienda_id');
+
+// 3. Ejecutamos la consulta final sobre el modelo Tienda con los nombres de Centro
+$tiendas = Tienda::join('centro', 'tienda.fkCentro', '=', 'centro.id')
+    ->select(
+        'centro.codigo as centro_codigo',
+        'centro.nombre as centro_nombre',   
+        'tienda.*'
+    )
+    ->whereIn('tienda.idTienda', $tiendasRelacionadasIds)
+    ->distinct()
+    ->get();
 
     return view('tienda.index', compact('tiendas'));
 }
@@ -62,7 +83,10 @@ public function index()
     public function create()
     {
         $fkTienda=session('user_fkTienda');
-        $centros=Centro::all()->where('fkTienda',$fkTienda);
+        $centros=Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+            ->where('tienda.fkTienda', $fkTienda)
+            ->select('centro.*')
+            ->get();
 
         return view('tienda.create',compact('centros'));
     }
@@ -124,9 +148,30 @@ Tienda::create(array_merge(
     public function edit(Tienda $tienda)
     {
         $tiendas = Tienda::all();
-        $fkTienda=session('user_fkTienda');
-        $centros=Centro::all()->where('fkTienda',$fkTienda);
-        return view('tienda.edit', compact('tienda', 'tienda', 'centros'));
+$fkTienda = $tienda->idTienda;
+
+// 1. Definimos la subconsulta para obtener los IDs de los centros relacionados
+$subqueryIds = DB::table('centros_organizacion')
+    ->select('fkCentro')
+    ->where('fkTiendaDependiente', $fkTienda)
+    ->union(
+        DB::table('centros_organizacion')
+            ->select('fkCentro')
+            ->where('fkTiendaPrincipal', $fkTienda)
+    )
+    ->union(
+        DB::table('centro')
+            ->select('id')
+            ->where('fkTienda', $fkTienda)
+    );
+
+// 2. Consultamos el modelo Centro usando esos IDs
+$centros = Centro::whereIn('id', $subqueryIds)
+    ->with('tienda') // Carga la relación si la tienes definida
+    ->get();
+
+
+        return view('tienda.edit', compact('tienda', 'centros'));
     }
 
         public function editfactura($idTienda)

@@ -6,6 +6,7 @@ use App\Models\Centro;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class centroController extends Controller
@@ -15,18 +16,35 @@ public function index() {
         return redirect()->route('login');
     }
 
-    $fkTienda = session('user_fkTienda');
+   $fkTienda = session('user_fkTienda');
 
-    // Creamos la consulta
-    $query = Centro::query();
+// 1. Iniciamos la consulta sobre el modelo Centro
+$query = Centro::query();
 
-    // Filtramos solo si NO es administrador (ER)
-    if(session('user_estatus') != 'ER'){
-        $query->where('fkTienda', $fkTienda);
-    }
+// 2. Aplicamos la lógica compleja de filtrado (el CTE convertido a subquery)
+if(session('user_estatus') != 'ER') {
+    $query->whereIn('id', function($subquery) use ($fkTienda) {
+        $subquery->select('id')
+            ->from('centro')
+            ->where('fkTienda', $fkTienda)
+            ->union(
+                DB::table('centro as c')
+                    ->select('c.id')
+                    ->join('centros_organizacion as co', 'c.id', '=', 'co.fkCentro')
+                    ->where('co.fkTiendaDependiente', $fkTienda)
+            )
+            ->union(
+                DB::table('centro as c')
+                    ->select('c.id')
+                    ->join('centros_organizacion as co', 'c.id', '=', 'co.fkCentro')
+                    ->where('co.fkTiendaPrincipal', $fkTienda)
+            );
+    });
+}
 
-    // Ejecutamos y guardamos el resultado
-    $centros = $query->get();
+// 3. Traemos la relación con tienda y ejecutamos
+$centros = $query->with('tienda')->get();
+
 
     return view('centro.index', compact('centros'));
 }

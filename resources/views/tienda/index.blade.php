@@ -43,6 +43,7 @@
                         <th>Telefono</th>
                         <th>Direccion</th>
                         <th>Descripción</th>
+                        <th>Centro</th>
                         <th>Estatus</th>
                         <th>Opciones</th>
                     </tr>
@@ -61,6 +62,9 @@
                         </td>
                         <td>
                             {{$item->descripcion}}
+                        </td>
+                        <td>
+                            {{$item->centro_codigo.' - '.$item->centro_nombre}}
                         </td>
                         <td>
                             {{$item->EstatusContable}}

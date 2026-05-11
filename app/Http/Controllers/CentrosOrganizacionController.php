@@ -21,32 +21,47 @@ class CentrosOrganizacionController extends Controller
 
 $fkTienda = session('user_fkTienda');
 
-// 1. Iniciamos el Query Builder desde la tabla pivote para mayor claridad
-$query = DB::table('centros_organizacion as co')
-    ->join('tienda as t', 't.idTienda', '=', 'co.fkTiendaDependiente') // Join con la dependiente
-    ->join('centro as c', 'c.id', '=', 'co.fkCentro'); // Join con el centro
+// 1. Definimos la primera parte: Donde la tienda es DEPENDIENTE
+$unionDependiente = DB::table('centros_organizacion as co')
+    ->select('co.*')
+    ->join('centro as c', 'c.id', '=', 'co.fkCentro')
+    ->where('co.fkTiendaDependiente', $fkTienda);
 
-// 2. Aplicamos filtro de seguridad por Tienda Principal
-if(session('user_estatus') != 'ER'){
-    $query->where('co.fkTiendaPrincipal', $fkTienda);
+// 2. Definimos la segunda parte: Donde la tienda es PRINCIPAL
+$queryBase = DB::table('centros_organizacion as co')
+    ->select('co.*')
+    ->join('centro as c', 'c.id', '=', 'co.fkCentro')
+    ->where('co.fkTiendaPrincipal', $fkTienda)
+    ->unionAll($unionDependiente); // Unimos ambas condiciones
+
+// 3. Ahora usamos esa unión como una subconsulta para poder hacer los JOINS finales de nombres
+$queryFinal = DB::table(DB::raw("({$queryBase->toSql()}) as sub"))
+    ->mergeBindings($queryBase) // Importante para que los IDs no se pierdan
+    ->join('tienda as t', 't.idTienda', '=', 'sub.fkTiendaDependiente')
+    ->join('centro as c', 'c.id', '=', 'sub.fkCentro')
+    ->select(
+        'sub.id',
+        't.Nombre as Tienda',
+        't.EstatusContable',
+        'sub.status',
+        'c.codigo',
+        'c.nombre as Centro'
+    );
+
+// 4. Aplicamos el filtro de administrador si es necesario
+// (Si no es ER, la subconsulta ya filtró por $fkTienda arriba)
+if(session('user_estatus') == 'ER') {
+    // Si es ER, quizás quieras ver todo sin el filtro de la subconsulta
+    // En ese caso, podrías saltarte la subconsulta y usar tu query original
 }
 
-// 3. Ejecutar con la selección de campos exacta de tu SQL
-$CentroOrganizacion = $query->select(
-    'co.id',
-    't.Nombre as Tienda',
-    't.EstatusContable',
-    'co.status',
-    'c.codigo',
-    'c.nombre as Centro'
-)->get();
+$CentroOrganizacion = $queryFinal->distinct()->get();
 
-// Opcional: Si necesitas las tiendas para otro select en la vista
 $Tiendas = Tienda::where('EstatusContable', 'A')->get();
-
 
     return view('centroorganizacion.index', compact('CentroOrganizacion', 'Tiendas'));
 }
+
 
 
     public function create(){

@@ -16,7 +16,8 @@ class Compra extends Model
         'total',
         'comprobante_id',
         'proveedore_id',
-        'fkTienda'
+        'fkTienda',
+        'estado'
     ];
 
     public function proveedore(){

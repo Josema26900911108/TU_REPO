@@ -65,6 +65,19 @@
                                         <small class="text-danger">{{ '*' . $message }}</small>
                                         @enderror
                                     </div>
+                        <div class="form-check form-switch mt-4">
+                            <!-- 1. El hidden envía 0 por defecto (si el checkbox no se marca) -->
+                            <input type="hidden" name="compdefault" value="0">
+
+                            <!-- 2. El checkbox envía 1 si se marca (sobrescribe al 0) -->
+                            <input class="form-check-input" type="checkbox"
+                                name="compdefault"
+                                id="compdefault"
+                                value="1"
+                                {{ old('compdefault', $producto->compdefault ?? 0) == 1 ? 'checked' : '' }}>
+
+                            <label class="form-check-label" for="compdefault">¿Documento Default?</label>
+                        </div>
                                 </div>
 
                     <!---Vista---->

@@ -27,6 +27,8 @@ class UserStoreMiddleware
             $userId = Auth::id();
             $tiendaId = session('user_fkTienda');
 
+            $centro = session('centro');
+
             // Obtener los datos necesarios (puedes ajustar la consulta según tu estructura)
             $userStoreData = DB::table('users as u')
                 ->join('usuario_tienda as ut', 'u.id', '=', 'ut.fkUsuario')
@@ -43,7 +45,8 @@ class UserStoreMiddleware
                     'user_email' => $userStoreData->email,
                     'user_fkUsuario' => $userStoreData->fkUsuario,
                     'user_estatus' => $userStoreData->Estatus,
-                    'user_fkTienda' => $userStoreData->fkTienda,
+                    'user_fkTienda' => $tiendaId,
+                    'centro' => $centro,
                 ]);
             }
         }
