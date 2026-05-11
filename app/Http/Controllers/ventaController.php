@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use App\Exports\UniversalExport;
+use App\Models\Centro;
 use App\Models\Lotesalarma;
 use App\Models\User;
 use App\Models\MovimientoMateriales;
@@ -874,7 +875,7 @@ private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidadA
 {
     $venta = Venta::findOrFail($ventaId);
     $producto = Producto::findOrFail($productoId);
-    $centro = session('centro');
+    
     $cantidadOriginal = (int)$cantidadAMover;
 
     // --- CORRECCIÓN: Descuento atómico directo en la base de datos ---
@@ -882,6 +883,11 @@ private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidadA
     DB::table('productos')->where('id', $productoId)->decrement('stock', $cantidadOriginal);
 
     // CASO A: NO PERECEDERO (perecedero puede venir como string '0', 0 o false)
+        $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+    ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
+    ->select('centro.*', 'tienda.nombre as nombre_tienda')
+    ->first();
+
     if ($producto->perecedero == 0 || $producto->perecedero == '0') {
         MovimientoMateriales::create([
             'fkTienda' => $fkTienda,
@@ -893,8 +899,8 @@ private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidadA
             'documento_material' => $venta->numero_comprobante,
             'referencia' => "Vent ID: ||{$ventaId}||(No perecedero)||",
             'fecha_contabilizacion' => now(),
-            'centro' => $centro,
-            'almacen' => $centro,
+            'centro' => session('centro') ?? $centro->codigo,
+            'almacen' => session('centro') ?? $centro->codigo,
             'origen_uso' => 'otros',
             'unidad_medida_base' => 'PZA',
             'posicion_documento' => 1
@@ -940,8 +946,8 @@ private function descontarLotesConTrazabilidad($ventaId, $productoId, $cantidadA
             'documento_material' => $venta->numero_comprobante,
             'referencia' => "Vent ID: ||{$ventaId}|| : (Lote: ||{$lote->id}||)",
             'fecha_contabilizacion' => now(),
-            'centro' => $centro,
-            'almacen' => $centro,
+            'centro' => session('centro') ?? $centro->codigo,
+            'almacen' => session('centro') ?? $centro->codigo,
             'origen_uso' => 'venta_directa',
             'unidad_medida_base' => 'PZA',
             'posicion_documento' => $posicion
@@ -1051,6 +1057,11 @@ private function devolverLotesTrazabilidad($ventaId, $productoId, $cantidadDevue
         if ($cantidadDevuelta <= 0) break;
         $regresar = min($reg->cantidad, $cantidadDevuelta);
 
+                $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+    ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
+    ->select('centro.*', 'tienda.nombre as nombre_tienda')
+    ->first();
+
         // 1. REGISTRAR EL MOVIMIENTO (Esto disparará el Observer para subir el stock)
         MovimientoMateriales::create([
             'fkTienda' => $fkTienda,
@@ -1061,7 +1072,7 @@ private function devolverLotesTrazabilidad($ventaId, $productoId, $cantidadDevue
             'cantidad' => $regresar,
             'referencia' => "||Dev Vent#||$ventaId||",
             'fecha_contabilizacion' => now(),
-            'centro' => session('centro'),
+            'centro' => session('centro') ?? $centro->codigo,
             'almacen' => session('centro'),
             'origen_uso' => 'otros',
             'unidad_medida_base' => 'PZA',

@@ -21,6 +21,7 @@ use ZipArchive;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Categoria;
+use App\Models\Centro;
 use App\Models\Marca;
 use App\Models\Presentacione;
 use App\Models\Lote;
@@ -289,10 +290,15 @@ foreach ($productosConsolidados as $item) {
     // Actualizar Stock global
     $producto->increment('stock', $item['cantidad']);
 
+    $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+    ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
+    ->select('centro.*', 'tienda.nombre as nombre_tienda')
+    ->first();
+
     // Registro en Kardex (Movimientos)
     MovimientoMateriales::create([
         'fkTienda'              => $fkTienda,
-        'fkMaterialess'          => $item['id'],
+        'fkMateriales'          => $item['id'],
         'fkLotes'               => $idLoteGenerado,
         'clase_movimiento'      => '101',
         'tipo_movimiento'       => 'COMPRA',
@@ -300,8 +306,8 @@ foreach ($productosConsolidados as $item) {
         'documento_material'    => $compra->numero_comprobante,
         'referencia'            => "Comp ID: ||{$compra->id}||",
         'fecha_contabilizacion' => now(),
-        'centro'                => session('centro') ?? 'C1',
-        'almacen'               => session('centro') ?? 'A1',
+        'centro'                => session('centro') ?? $centro->codigo, // Obtener centro de la sesión o asignar uno por defecto
+        'almacen'               => session('centro') ?? $centro->codigo, // Obtener centro de la sesión o asignar uno por defecto
         'origen_uso'            => 'compra_nacional',
         'unidad_medida_base'    => 'PZA',
         'posicion_documento'    => $posicion++
