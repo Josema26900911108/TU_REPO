@@ -65,7 +65,7 @@ $tiendasRelacionadasIds = DB::table('centros_organizacion')
 // 3. Ejecutamos la consulta final sobre el modelo Tienda con los nombres de Centro
 $tiendas = Tienda::join('centro', 'tienda.fkCentro', '=', 'centro.id')
     ->select(
-        'centro.codigos as centro_codigo',
+        'centro.codigo as centro_codigo',
         'centro.nombre as centro_nombre',   
         'tienda.*'
     )
