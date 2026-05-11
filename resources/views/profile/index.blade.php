@@ -84,6 +84,20 @@
                     </div>
                 </div>
 
+                
+                                                <!----Tienda---->
+                <div class="row mb-4">
+                    <div class="col-sm-4">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fa-solid fa-lock"></i></span>
+                            <input disabled type="text" class="form-control" value="Centro Organización">
+                        </div>
+                    </div>
+                    <div class="col-sm-8">
+                        <input type="text" readonly name="centro" id="centro" class="form-control" value="{{ $centro->codigo }}">
+                    </div>
+                </div>
+
                 <div class="col text-center">
                     <input class="btn btn-success" type="submit" value="Guardar cambios">
                 </div>

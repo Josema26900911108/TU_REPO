@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Centro;
 use App\Models\Tienda;
 use App\Models\User;
 use Exception;
@@ -31,7 +32,12 @@ class profileController extends Controller
         $user = User::find(Auth::user()->id);
         $fkTienda = session('user_fkTienda');
         $tienda=Tienda::find($fkTienda);
-        return view('profile.index', compact('user', 'tienda'));
+$centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+    ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
+    ->select('centro.*', 'tienda.nombre as nombre_tienda')
+    ->first();
+
+        return view('profile.index', compact('user', 'tienda','centro'));
     }
 
     /**
