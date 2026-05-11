@@ -48,7 +48,7 @@ $tiendasDirectasIds = DB::table('usuario_tienda')
 
 // 2. Usamos la lógica de UNION para encontrar todas las tiendas relacionadas (Principales o Dependientes)
 $tiendasRelacionadasIds = DB::table('centros_organizacion')
-    ->whereIn('fkTiendaPrincipal', $tiendasDirectasIds)
+    ->whereIn('fkTiendaPrincipals', $tiendasDirectasIds)
     ->select('fkTiendaDependiente as tienda_id')
     ->union(
         DB::table('centros_organizacion')
