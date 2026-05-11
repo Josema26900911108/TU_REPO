@@ -292,7 +292,7 @@ foreach ($productosConsolidados as $item) {
     // Registro en Kardex (Movimientos)
     MovimientoMateriales::create([
         'fkTienda'              => $fkTienda,
-        'fkMateriales'          => $item['id'],
+        'fkMaterialess'          => $item['id'],
         'fkLotes'               => $idLoteGenerado,
         'clase_movimiento'      => '101',
         'tipo_movimiento'       => 'COMPRA',
