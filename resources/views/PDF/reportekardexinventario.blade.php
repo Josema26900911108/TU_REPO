@@ -97,6 +97,16 @@
 
 </form>
 
+<form method="GET" action="{{ route('kardexresumen.export.pdf') }}" class="d-inline">
+
+    <div>
+        <button type="submit" class="btn btn-outline-danger">
+            <i class="fa fa-file-pdf"></i> Exportar a PDF
+        </button>
+    </div>
+
+</form>
+
 <hr>
         <div class="row mb-4">
         <div class="col-md-12">

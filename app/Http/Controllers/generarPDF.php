@@ -801,19 +801,6 @@ $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEn
 $fechafiltro="";
 $fechalabel="";
 
-    // FILTRO: Fecha inicial
-    if ($request->inicio) {
-        $fechafiltro="'".$request->inicio."'";
-        $fechalabel=" Desde ".$request->inicio;
-    }
-
-    // FILTRO: Fecha final
-    if ($request->fin) {
-
-        $fechafiltro=$fechafiltro." AND "."'".$request->fin."'";
-        $fechalabel=$fechalabel." Hasta ".$request->fin;
-    }
-
 
         $plantilla = $query->orderBy('ph.updated_at')->first();
 
@@ -898,7 +885,7 @@ $fechalabel="";
     $totalPaginas = $pdfTemp->getDomPDF()->getCanvas()->get_page_count();
 
 $htmlFinal = str_replace("{{TOTAL_PAGINAS}}", $totalPaginas, $htmlFinal);
-$htmlFinal = str_replace("{{FechaReporte}}", $fechalabel, $htmlFinal);
+$htmlFinal = str_replace("{{FechaReporte}}", now(), $htmlFinal);
 $htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
 $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEnLetras(), $htmlFinal);
 
@@ -912,7 +899,7 @@ $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEn
     }
 
     // Guardar PDF
-    $rutaArchivo = $rutaCarpeta.'/recibocompra_'.$fechafiltro.'.pdf';
+    $rutaArchivo = $rutaCarpeta.'/kardex_'.$fechafiltro.'.pdf';
     $pdf->save($rutaArchivo);
 
     // Finalmente, abrir en el navegador

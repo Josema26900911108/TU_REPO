@@ -248,6 +248,9 @@ Route::get('productos/importar/plantilla', [compraController::class, 'descargarP
         Route::get('/reporte/kardexinventario-pdf', [generarPDF::class, 'generarKardex'])
     ->name('kardexinv.export.pdf');
 
+            Route::get('/reporte/kardexresumenpdf', [generarPDF::class, 'generarKardexResumen'])
+    ->name('kardexresumen.export.pdf');
+
 
 Route::get('/php-gd-check', function () {
     return extension_loaded('gd') ? 'GD cargado' : 'GD no está cargado';
