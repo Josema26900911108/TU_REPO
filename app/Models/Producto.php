@@ -98,29 +98,36 @@ public function handleUploadImage($image)
 {
     $file = $image;
     $name = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
-    
+    $path = 'productos/' . $name;
+
     try {
-        // Forzamos la subida e intentamos capturar la respuesta del driver
-        $resultado = Storage::disk('gcs_images')->putFileAs('productos', $file, $name);
+        // CORREGIDO: Leemos el archivo como un stream de datos binarios limpios
+        $stream = fopen($file->getRealPath(), 'r');
         
-        // 🚨 ESTO DETENDRÁ EL SISTEMA Y NOS MOSTRARÁ SI GOOGLE DEVOLVIÓ LA RUTA O FALSO
+        // Usamos el método put que es universal y altamente compatible
+        $resultado = Storage::disk('gcs_images')->put($path, $stream);
+        
+        if (is_resource($stream)) {
+            fclose($stream);
+        }
+
+        // Dejamos el DD de diagnóstico por última vez para verificar el cambio de estado
         dd([
-            'Mensaje' => 'Si ves esto, Laravel cree que se subió',
-            'Resultado de Google' => $resultado,
-            'Ruta Completa Esperada' => 'productos/' . $name
+            'Mensaje' => 'Verificando con método stream',
+            'Resultado de Google' => $resultado, // Ahora debería devolver TRUE o un string de ruta
+            'Ruta Completa' => $path
         ]);
 
     } catch (\Exception $e) {
-        // 🚨 SI GOOGLE RECHAZA LA NUEVA LLAVE JSON O EL BUCKET, AQUÍ VEREMOS EL ERROR REAL
         dd([
-            'Mensaje' => 'Google Cloud rechazó la subida',
-            'Error Real de la API' => $e->getMessage(),
-            'Archivo de Llave Buscado' => config('filesystems.disks.gcs_images.key_file')
+            'Mensaje' => 'Error crítico en stream',
+            'Error' => $e->getMessage()
         ]);
     }
 
-    return 'productos/' . $name;
+    return $path;
 }
+
 
 
 
