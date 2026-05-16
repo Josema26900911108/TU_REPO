@@ -280,62 +280,43 @@ public function update(UpdateProductoRequest $request, Producto $producto)
     try {
         DB::beginTransaction();
 
-if ($request->hasFile('img_path')) {
-    $archivo = $request->file('img_path');
-    dd([
-        '¿Es un archivo válido?' => $archivo->isValid(),
-        'Nombre original' => $archivo->getClientOriginalName(),
-        'Mime Type' => $archivo->getMimeType(),
-        'Tamaño (KB)' => $archivo->getSize() / 1024,
-        'Disco por defecto de Laravel' => config('filesystems.default'),
-        'Ruta del JSON configurada' => config('filesystems.disks.gcs_images.key_file'),
-        'Bucket configurado' => config('filesystems.disks.gcs_images.bucket'),
-    ]);
-} else {
-    dd('Laravel NO detecta ningún archivo en el request. Revisa el enctype del formulario.');
-}
-
+        // 1. Inicializamos el nombre con lo que ya tiene el producto
         $name = $producto->img_path;
 
         // 2. Procesamos la imagen únicamente si el usuario subió una nueva
         if ($request->hasFile('img_path')) {
             $imagenVieja = $producto->img_path;
 
-            // Sube la nueva imagen al bucket ('productos/nombre.jpg')
+            // Sube la nueva imagen al bucket y nos devuelve 'productos/nombre.jpg'
             $name = $producto->handleUploadImage($request->file('img_path'));
 
-            // 3. Eliminamos la imagen anterior si existiese
+            // 3. Eliminamos la imagen anterior de forma segura
             if (!empty($imagenVieja)) {
-                // Forzamos que la ruta apunte siempre a la carpeta productos si no la tiene
                 $rutaBorrado = str_contains($imagenVieja, 'productos/') 
                     ? $imagenVieja 
                     : 'productos/' . $imagenVieja;
 
                 try {
-                    // Verificamos y eliminamos de forma segura sin romper el sistema
                     if (Storage::disk('gcs_images')->exists($rutaBorrado)) {
                         Storage::disk('gcs_images')->delete($rutaBorrado);
                     }
                 } catch (\Exception $e) {
-                    // Si el archivo antiguo no se puede borrar o no existe, registramos el evento 
-                    // pero DEJAMOS CONTINUAR el flujo para que el producto SI se actualice
                     \Log::warning("No se pudo borrar la imagen vieja del bucket: " . $e->getMessage());
-
                 }
             }
         }
 
-
-        // 3. Llenamos el modelo con los datos del formulario (incluyendo el nuevo $name)
+        // 4. Llenamos el modelo (aquí se inyecta el $name definitivo)
         $producto->fill([
             'codigo' => $request->codigo,
             'nombre' => $request->nombre,
             'descripcion' => $request->descripcion,
-            'img_path' => $name, // Aquí se asigna correctamente a la base de datos
+            'img_path' => $name, // 👈 Se guarda en la BD 'productos/nombre.png'
             'marca_id' => $request->marca_id,
             'presentacione_id' => $request->presentacione_id,
             'perecedero' => $request->perecedero ? 1 : 0
         ]);
+
 
         // 4. Guardamos los cambios en la base de datos
         $producto->save();
