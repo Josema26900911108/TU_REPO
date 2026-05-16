@@ -421,69 +421,76 @@ DB::table('treematerialescategoria')->updateOrInsert(
     public function importarmasivohijospadres(Request $request)
 {
     $request->validate([
-        'archivohijospadres' => 'required|file|mimes:csv,txt',
+        'archivohijospadres' => 'required|file|mimes:csv,txt,xls,xlsx', // Agregamos soporte genérico de texto/csv
     ]);
 
-    $idTienda=session('user_fkTienda');
+    $idTienda = session('user_fkTienda');
     $file = fopen($request->file('archivohijospadres')->getRealPath(), 'r');
-    $encabezado = fgetcsv($file); // leer encabezados
-
-
+    $encabezado = fgetcsv($file); 
 
     DB::beginTransaction();
 
     try {
         while (($linea = fgetcsv($file)) !== false) {
+            // Evita desfases si hay líneas en blanco
+            if (count($encabezado) !== count($linea)) continue;
+            
             $data = array_combine($encabezado, $linea);
 
+            // Validar campos mínimos obligatorios
+            if (!isset($data['SKU']) || !isset($data['nombre'])) continue;
+
+            // Convertir codificación para evitar caracteres rotos (¿¿ o )
+            $nombre = mb_convert_encoding($data['nombre'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $SKU = str_replace("'", "", trim($data['SKU'] ?? ''));
+            $obs    = mb_convert_encoding($data['obs'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $skuPadre = str_replace("'", "", trim($data['SKUPADRE'] ?? ''));
+            $limite = is_numeric($data['limite']) ? $data['limite'] : 0;
+            $minimo = is_numeric($data['minimo']) ? $data['minimo'] : 0;
+
+            // VALIDACIÓN CRÍTICA: Buscar el ID del padre de forma segura
+            $padreId = null;
+            if (!empty($skuPadre) && strtoupper($skuPadre) !== 'NULL') {
+                $padreNode = Treematerialescategoria::where('SKU', $skuPadre)
+                    ->where('fkTienda', $idTienda)
+                    ->first();
+
+                if ($padreNode) {
+                    $padreId = $padreNode->id;
+                }
+            }
 
 
-            // Validar campos mínimos
-            if (!isset($data['SKU']) || !isset($data['minimo']) || !isset($data['limite']) || !isset($data['obs']) || !isset($data['nombre'])) continue;
-
-// Convertir campos potencialmente con caracteres especiales a UTF-8
-
-$nombre       = mb_convert_encoding($data['nombre'] ?? '', 'UTF-8', 'ISO-8859-1');
-$SKU        = mb_convert_encoding($data['SKU'] ?? '', 'UTF-8', 'ISO-8859-1');
-$obs        = mb_convert_encoding($data['obs'] ?? '', 'UTF-8', 'ISO-8859-1');
-$limite =$data['limite'] ?? 0;
-$minimo =$data['minimo'] ?? 0;
-$idmasivohijos=Treematerialescategoria::where('SKU',$data['SKUPADRE'])->where('fkTienda',$idTienda)->first();
-
-// Insertar o actualizar
-DB::table('treematerialescategoria')->updateOrInsert(
-    [
-        'fkTienda' => $idTienda,
-        'nombre'=> $nombre,
-        'SKU' => $SKU,
-        'obs' => $obs,
-        'limite' => $limite,
-        'minimo'=>$minimo,
-        'padre_id'=>$idmasivohijos->id,
-    ],
-    [
-        'fkTienda' => $idTienda,
-        'nombre'=> $nombre,
-        'SKU' => $SKU,
-        'obs' => $obs,
-        'limite' => $limite,
-        'minimo'=>$minimo,
-        'padre_id'=>$idmasivohijos->id,
-        'updated_at'=> now(),
-        'created_at' => now(),
-    ]
-);
-
+            // CORRECCIÓN DE UPDATEORINSERT: 
+            // El primer array debe contener ÚNICAMENTE las llaves únicas para identificar el registro.
+            DB::table('treematerialescategoria')->updateOrInsert(
+                [
+                    'fkTienda' => $idTienda,
+                    'SKU'      => $SKU, // Llave única de búsqueda
+                ],
+                [
+                    'nombre'     => $nombre,
+                    'obs'        => $obs,
+                    'limite'     => $limite,
+                    'minimo'     => $minimo,
+                    'padre_id'   => $padreId, // Soporta NULL si es un nodo raíz
+                    'updated_at' => now(),
+                    'created_at' => now(), // Laravel lo ignorará automáticamente si es una actualización
+                ]
+            );
         }
 
+        fclose($file);
         DB::commit();
-        return back()->with('success', 'Se han importados lso datos para el arbol de validacion de forma exitosa.');
+        return back()->with('success', 'Se han importado los datos para el árbol de validación de forma exitosa.');
 
     } catch (\Exception $e) {
+        if ($file) fclose($file);
         DB::rollBack();
         return back()->with('error', 'Error al importar: ' . $e->getMessage());
     }
 }
+
 
 public function obtenerpadre(string $SKUPADRE, string $SKU)
     {

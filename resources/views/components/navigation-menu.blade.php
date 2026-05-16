@@ -202,6 +202,13 @@
                 </a>
                 @endcan
 
+                @can('ver-producto')
+                <a class="nav-link" href="{{ route('reglas.index') }}">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-tag"></i></div>
+                    Reglas de Precio
+                </a>
+                @endcan
+
                 @can('ver-caja')
                 <a class="nav-link" href="{{ route('cash.index') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-cash-register">

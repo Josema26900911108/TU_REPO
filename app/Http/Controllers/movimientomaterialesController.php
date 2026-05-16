@@ -26,10 +26,10 @@ class movimientomaterialesController extends Controller
     public function __construct()
     {
         // Aplicar middleware de permisos
-        $this->middleware('permission:ver-cliente', ['only' => ['index']]);
-        $this->middleware('permission:crear-cliente', ['only' => ['create', 'store', 'exist']]);
-        $this->middleware('permission:editar-cliente', ['only' => ['edit', 'update']]);
-        $this->middleware('permission:eliminar-cliente', ['only' => ['destroy']]);
+        $this->middleware('permission:ver-movimientomateriales', ['only' => ['index']]);
+        $this->middleware('permission:crear-movimientomateriales', ['only' => ['create', 'store', 'exist']]);
+        $this->middleware('permission:editar-movimientomateriales', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:eliminar-movimientomateriales', ['only' => ['destroy']]);
 
     }
 

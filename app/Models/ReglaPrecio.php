@@ -39,9 +39,12 @@ class ReglaPrecio extends Model
         return $this->belongsToMany(Producto::class, 'producto_regla_precio');
     }
 
-    /**
-     * Scope para filtrar solo reglas que están en fecha vigente.
-     */
+    public function aplicaciones()
+    {
+        // Usamos hasMany hacia la tabla pivote que creamos en la migración
+        return $this->hasMany(ReglaPrecioAplicacion::class, 'regla_id');
+    }
+
     public function scopeVigentes($query)
     {
         return $query->where('activo', true)

@@ -84,9 +84,20 @@ $tiendas = Tienda::join('centro', 'tienda.fkCentro', '=', 'centro.id')
     {
         $fkTienda=session('user_fkTienda');
         $centros=Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
-            ->where('tienda.fkTienda', $fkTienda)
+            ->where('tienda.idTienda', $fkTienda)
             ->select('centro.*')
             ->get();
+
+            $Estatus = session('user_estatus');
+
+if (blank($centros)) {
+    if($Estatus=='ER'){
+        $centros = Centro::all();
+    }else{
+        $centros = Centro::where('fkTienda', $fkTienda)->get();
+    }
+}
+
 
         return view('tienda.create',compact('centros'));
     }

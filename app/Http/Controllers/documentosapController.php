@@ -24,10 +24,10 @@ class documentosapController extends Controller
     public function __construct()
     {
         // Aplicar middleware de permisos
-        $this->middleware('permission:ver-cliente', ['only' => ['index']]);
-        $this->middleware('permission:crear-cliente', ['only' => ['create', 'store', 'exist']]);
-        $this->middleware('permission:editar-cliente', ['only' => ['edit', 'update']]);
-        $this->middleware('permission:eliminar-cliente', ['only' => ['destroy']]);
+        $this->middleware('permission:ver-documentosap', ['only' => ['index']]);
+        $this->middleware('permission:crear-documentosap', ['only' => ['create', 'store', 'exist']]);
+        $this->middleware('permission:editar-documentosap', ['only' => ['edit', 'update']]);
+        $this->middleware('permission:eliminar-documentosap', ['only' => ['destroy']]);
 
     }
 

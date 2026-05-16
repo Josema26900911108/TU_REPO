@@ -31,6 +31,7 @@ use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\WebpEncoder;
 use App\Models\Tecnico;
 use App\Models\usuariotienda;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Pagination\Paginator;
 use PhpParser\Node\Expr\BinaryOp\Mod;
 use Yajra\DataTables\DataTables;
@@ -186,7 +187,10 @@ if ($tienda->isEmpty()) {
 
     public function store(Request $request)
     {
-
+$lockKey = 'tecnico_create' . auth()->id();
+    if (!Cache::add($lockKey, true, 10)) {
+        return redirect()->back()->with('error', 'La venta ya se está procesando. Por favor, espera.');
+    }
 
         try {
 
@@ -254,10 +258,11 @@ if ($tienda->isEmpty()) {
             ]));
 
             DB::commit();
-            
+            Cache::forget($lockKey);
             return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado');
 
         } catch (Exception $e) {
+            Cache::forget($lockKey);
             DB::rollBack();
             Log::error('Error al registrar cliente: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Error al registrar el cliente.');
@@ -273,61 +278,66 @@ if ($tienda->isEmpty()) {
         return response()->json(['error' => 'Sesión expirada.'], 401);
     }
 
+    // 1. Validación correcta de Laravel antes de abrir transacciones
+    $request->validate([
+        'idtecnico' => 'required',
+        'tienda'    => 'required',
+        'email'     => 'nullable|email|unique:users,email,' . $request->user, // Evita colisiones de correo
+    ], [
+        'email.unique' => 'El correo electrónico ya existe en el sistema, por favor elige uno nuevo.'
+    ]);
+
     try {
         DB::beginTransaction();
 
-        // 1. Procesar imagen (solo si existe)
-    $file = $request->file('image');
-    $manager = new ImageManager(new Driver());
-
-
-// Luego manipulas la imagen
-    $image = $manager->read($file->getPathname())
-        ->resize(300, 300, function ($constraint) {
-            $constraint->aspectRatio();
-            $constraint->upsize();
-        })
-        ->toWebp(50); // calidad 50%
-
-        $imageBase64 = (string) $image;
-
-        $idpersona=Tecnico::where('id',$request->idtecnico)->value('fkpersona');
         // 2. Buscar la Persona (esta sí debe existir obligatoriamente)
+        $idpersona = Tecnico::where('id', $request->idtecnico)->value('fkpersona');
         $persona = Persona::findOrFail($idpersona);
 
-        $request->validate([
-                'email.unique' => 'El correo electrónico ya existe en el sistema, por favor elige uno nuevo.'
-            ]);
-
-            $fieldHash = Hash::make($request->password);
-
         // 3. BUSCAR O CREAR el técnico vinculado a esa persona
-        // Usamos updateOrCreate para que si no existe, lo inserte
         $tecnico = Tecnico::updateOrCreate(
-            ['fkpersona' => $persona->id], // Condición para buscar
+            ['fkpersona' => $persona->id], 
             [
-                'nombre'       => $persona->razon_social, // Datos para actualizar/crear
+                'nombre'       => $persona->razon_social, 
                 'fkTienda'     => $request->tienda,
                 'codigo'       => $request->numero_eta,
                 'especialidad' => $request->especialidad,
-                'fkuser'=>$request->user,
+                'fkuser'       => $request->user,
                 'updated_at'   => now()
             ]
         );
 
-        // 4. Actualizar logo si se subió uno
-        if ($imageBase64) {
+        // 4. PROCESAR IMAGEN: Únicamente si el archivo fue enviado y es válido
+        if ($request->hasFile('image') && $request->file('image')->isValid()) {
+            
+            $file = $request->file('image');
+            $manager = new ImageManager(new Driver());
+
+            // Lectura mediante RealPath e Intervention Image V3 API
+            $image = $manager->read($file->getRealPath());
+            
+            // Redimensionar proporcionalmente a 300x300 (Reemplaza de forma nativa a upsize y aspectRatio)
+            $image->resizeDown(300, 300);
+
+            // Codificación a WebP con calidad al 50%
+            $encoded = $image->toWebp(50);
+
+            // Convertimos el buffer codificado de Intervention V3 a Base64 para guardarlo en la columna 'logo'
+            $imageBase64 = 'data:image/webp;base64,' . base64_encode((string)$encoded);
+
+            // Actualizamos el campo logo con el nuevo WebP Base64 optimizado
             $tecnico->update(['logo' => $imageBase64]);
         }
+        // 💡 ELSE SILENCIOSO: Si no se envía imagen, el campo 'logo' conserva intacto su valor previo en la DB.
 
         DB::commit();
 
-        return redirect()->route('tecnico.lista')->with('success', 'Tecnico registrado');
+        return redirect()->route('tecnico.lista')->with('success', 'Técnico registrado correctamente.');
 
     } catch (\Exception $e) {
         DB::rollBack();
         Log::error('Error en Exist: ' . $e->getMessage());
-        return response()->json(['error' => 'Error: ' . $e->getMessage()], 500);
+        return response()->json(['error' => 'Error interno en el servidor: ' . $e->getMessage()], 500);
     }
 }
 
@@ -348,7 +358,8 @@ if ($tienda->isEmpty()) {
             ->join('expedientetecnico as et', 'et.id', '=', 'movimientomateriales.fkExpediente')
             ->where('et.id', $param)
             ->select(
-                'movimientomateriales.id',
+                'movimientomateriales.*',  
+                'movimientomateriales.id',  
                 'movimientomateriales.serie',
                 'tmc.nombre as Descripcion',
                 'tmc.sku as sku',
@@ -362,6 +373,85 @@ if ($tienda->isEmpty()) {
         }
     }
 
+    public function AutomataValidarMamoOrdenTecnico(Request $request)
+{
+    if(!Auth::check()) return response()->json(['error' => 'No autorizado'], 401);
+    $procesados = []; 
+    $rastro = [];
+    $orden = $request->input('Orden');
+    
+    // Captura de datos virtuales del frontend
+    $skuNuevo = trim($request->input('SKU_Nuevo'));
+    $cantidadNueva = (float)$request->input('Cantidad_Nueva');
+
+    // Carga de ítems consolidados actuales en base de datos
+    $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+             ->where('Orden', $orden)->groupBy('SKU', 'CENTRO')->get();
+
+    $itemsSimulados = $items->toArray();
+    $skuEncontradoEnOrden = false;
+
+    // Si el SKU ya está reportado en la orden, sumamos la cantidad temporalmente
+    foreach ($itemsSimulados as $key => $item) {
+        if (trim($item->SKU) == $skuNuevo) {
+            $itemsSimulados[$key]->Cantidad += $cantidadNueva;
+            $skuEncontradoEnOrden = true;
+        }
+    }
+
+    // Si es un material nuevo que no se ha guardado en DB, simulamos su fila con el centro de la orden
+    if (!$skuEncontradoEnOrden) {
+        $centroBase = DB::table('eta')->where('Orden', $orden)->value('CENTRO') ?? "'G888";
+        $itemsSimulados[] = (object)[
+            'CENTRO' => $centroBase,
+            'SKU' => $skuNuevo,
+            'Cantidad' => $cantidadNueva
+        ];
+    }
+
+    // Ejecución del autómata con la lista combinada (DB + Simulado)
+    foreach ($itemsSimulados as $item) {
+        $this->ejecutarLogicaInterna($orden, $item, $procesados, $rastro);
+    }
+
+    $validaciones = $this->quitarDuplicadosPorOrdenYSKU($procesados);
+    
+    // Evaluamos el resultado del autómata únicamente para el SKU que se está interactuando
+    foreach ($validaciones as $val) {
+        if (trim($val->SKU) == $skuNuevo) {
+            
+            $calculado = (float)($val->valor_calculado ?? 0);
+            $minimo = (float)($val->minimo_calculado ?? 0);
+            $maximo = (float)($val->maximo_calculado ?? 0);
+            $nombreMaterial = $val->nombre_material ?? "Material técnico";
+
+            // Validación de Exceso
+            if ($maximo > 0 && $calculado > $maximo) {
+                $diff = $calculado - $maximo;
+                return response()->json([
+                    'sugerencia' => [
+                        'status' => 'exceso',
+                        'mensaje' => "El sistema detectó que estás reportando de más para '{$nombreMaterial}'. El tope máximo según la norma del centro es de {$maximo} unidades. Estás excedido por {$diff}."
+                    ]
+                ], 200);
+            }
+
+            // Validación de Faltante
+            if ($minimo > 0 && $calculado < $minimo) {
+                $diff = $minimo - $calculado;
+                return response()->json([
+                    'sugerencia' => [
+                        'status' => 'falta',
+                        'mensaje' => "Atención: Según las reglas de cubicación para '{$nombreMaterial}', faltan insumos obligatorios para cerrar la instalación. El mínimo técnico es de {$minimo} unidades (te hacen falta {$diff})."
+                    ]
+                ], 200);
+            }
+        }
+    }
+
+    // Si pasa todas las reglas del árbol jerárquico de validación
+    return response()->json(['sugerencia' => null], 200);
+}
     public function validarMaterialesTecnicos(Request $request) {
     $materialesInput = $request->input('materiales', []);
     $procesados = [];
@@ -492,70 +582,103 @@ try {
 
     }
 
-  public function InventarioLista(request $request)
+public function InventarioLista(request $request)
 {
     try {
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
+        $idPadre = $request->input('id1'); 
+        $idtecnico = $request->input('id2');
         
         $sqlll = "
-        WITH RECURSIVE nodo_padre AS (
-            SELECT id, padre_id, nombre, sku, aplicafotografia as apf, Tipo_servicio as TP
-            FROM arbolmanoobra
-            WHERE id = ? and fkTienda= ?
-            UNION ALL
-            SELECT a.id, a.padre_id, a.nombre, a.sku, aplicafotografia as apf, Tipo_servicio as TP
-            FROM arbolmanoobra a
-            INNER JOIN nodo_padre np ON a.padre_id = np.id
-            WHERE a.fkTienda= ?
-        ),
-        cte_raiz AS ( SELECT * FROM nodo_padre )
-        SELECT DISTINCT
-            ams.nombre, ams.sku, ams.limite, ams.minimo, ams.fkTienda, ams.padre_id, 
-            r.apf, r.TP, am.nombre as categoria_nombre
-        FROM cte_raiz as r
-        JOIN treematerialescategoria AS am ON am.nombre COLLATE utf8mb4_unicode_ci = r.nombre
-        JOIN treematerialescategoria AS ams ON ams.padre_id = am.id";
+            WITH RECURSIVE nodo_padre AS (
+                SELECT id, padre_id, nombre, sku, aplicafotografia as apf, Tipo_servicio as TP
+                FROM arbolmanoobra
+                WHERE id = ? AND fkTienda = ?    
+                UNION ALL    
+                SELECT a.id, a.padre_id, a.nombre, a.sku, a.aplicafotografia as apf, a.Tipo_servicio as TP
+                FROM arbolmanoobra a
+                INNER JOIN nodo_padre np ON a.padre_id = np.id
+                WHERE a.fkTienda = ?
+            ),
+            cte_hijos AS ( 
+                SELECT id, padre_id, TRIM(nombre) as nombre, TRIM(sku) as sku_hijo, apf, TP 
+                FROM nodo_padre 
+                WHERE id <> ?
+            )
+            SELECT DISTINCT
+                am.nombre, 
+                am.sku, 
+                am.limite, 
+                am.minimo, 
+                am.fkTienda, 
+                am.padre_id, 
+                r.apf, 
+                r.TP, 
+                am_padre.nombre AS categoria_nombre
+            FROM cte_hijos AS r
+            JOIN treematerialescategoria AS am 
+                ON TRIM(am.sku) = r.sku_hijo
+                AND am.fkTienda = ?
+            LEFT JOIN treematerialescategoria AS am_padre 
+                ON am.padre_id = am_padre.id;";
 
         $stmt = $pdo->prepare($sqlll);
-        $stmt->execute([$request->id1, $fkTienda, $fkTienda]);
+        $stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
         $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         // Detectar si hay algún registro de tipo MO
         $contieneMO = collect($detallecomprobante)->contains('TP', 'MO');
 
         if ($contieneMO) {
-            // Caso MO: Construimos el array manualmente
+            // Caso MO: Evitamos duplicados limpiando combinaciones idénticas de SKU
             $final = [];
+            $skusProcesadosMO = [];
+
             foreach ($detallecomprobante as $value) {
+                if (in_array($value['sku'], $skusProcesadosMO)) {
+                    continue; // Saltar si ya agregamos este SKU de Mano de Obra
+                }
+                $skusProcesadosMO[] = $value['sku'];
+
                 $final[] = [
                     'id'               => 0,
                     'serie'            => '',
-                    'categoria_nombre' => $value['nombre'], // 'nombre' de ams
+                    'categoria_nombre' => $value['nombre'], 
                     'sku'              => $value['sku'],
                     'cantidad'         => $value['limite']
                 ];
             }
         } else {
-            // Caso Materiales: Buscamos en MovimientoMaterial
+            // Caso Materiales: Buscamos en MovimientoMaterial agrupando por Serie y SKU
             $skus = collect($detallecomprobante)->pluck('sku')->toArray();
             
             $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sku', '=', 'movimientomateriales.SKU')
                 ->where('movimientomateriales.fkTienda', $fkTienda)
-                ->where('fkTecnico', $request->id2)
+                ->where('fkTecnico', $idtecnico)
                 ->whereIn('movimientomateriales.SKU', $skus)
                 ->where('movimientomateriales.STATUS', 'A')
                 ->select(
-                    'movimientomateriales.id',
+                    DB::raw('MAX(movimientomateriales.id) as id'), 
                     'movimientomateriales.serie',
+                    'movimientomateriales.CENTRO',
                     'tmc.nombre as categoria_nombre',
-                    'tmc.sku as sku',
-                    DB::raw('IFNULL(movimientomateriales.cantidad, 1) as cantidad')
+                    'tmc.SKU as sku',
+                    
+                    // 📊 Suma directa de la cantidad física de los movimientos
+                    DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 1)) as cantidad')
                 )
+                ->groupBy(
+                    'movimientomateriales.serie', 
+                    'movimientomateriales.CENTRO', 
+                    'tmc.nombre', 
+                    'tmc.sku'
+                )
+                // ⚠️ IMPORTANTE: Se cambió a 'cantidad' > 0 ya que hereda el alias simple anterior
+                ->having('cantidad', '>', 0) 
                 ->get();
         }
 
-        // Si es colección de Laravel usamos toArray(), si es array lo dejamos tal cual
         return response()->json(is_array($final) ? $final : $final->toArray());
 
     } catch (Exception $e) {
@@ -567,22 +690,21 @@ try {
     public function update(UpdateTecnicoRequest $request, Tecnico $tecnico)
     {
         try {
-                            if(!Auth::check()){
-            return redirect()->route('login');
-        }
+            if (!Auth::check()) {
+                return redirect()->route('login');
+            }
 
             DB::beginTransaction();
             $tecnico->load('persona');
 
-            $id=$tecnico->fkpersona;
+            $id = $tecnico->fkpersona;
             Persona::where('id', $id)
                 ->update([
-                   'razon_social'=>$request->name
+                    'razon_social' => $request->name
                 ]);
 
-            Tecnico::where('id',$tecnico->id)
-            ->update(array_merge($request->validated(),['nombre'=>$request->name]));
-
+            Tecnico::where('id', $tecnico->id)
+                ->update(array_merge($request->validated(), ['nombre' => $request->name]));
 
             DB::commit();
         } catch (Exception $e) {
@@ -594,177 +716,283 @@ try {
         return redirect()->route('tecnico.lista')->with('success', 'Tecnico editado');
     }
 
-        public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecnico $expediente)
+    public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecnico $expediente)
 {
     try {
         if (!Auth::check()) return redirect()->route('login');
 
         DB::beginTransaction();
 
-        $iditems = $request->input('arrayiditem', []);
-        
-        foreach ($iditems as $contar => $iditem) {
-            
-            // 1. Si el item es 0, es Mano de Obra nueva. Si no, es un material de inventario.
-            if ($iditem == 0) {
-// 1. CRITERIOS DE BÚSQUEDA: Solo lo mínimo para identificar el registro
-// Si ya existe un registro con este SKU para este Expediente y Técnico, que lo ACTUALICE.
-$nuevoMovimiento = MovimientoMaterial::updateOrCreate(
-    // 1. Criterios de búsqueda
-    [
-        'fkExpediente' => $expediente->id,
-        'fkTecnico'    => $expediente->fkTecnico,
-        'SKU'          => $request->input('arraysku')[$contar] ?? '-',
-        'TIPO'         => 'MO',
-    ],
-    // 2. Datos a actualizar o insertar
-    [
-        'fkTienda'       => $expediente->fkTienda,
-        'serie'          => ($request->input('arrayserie')[$contar] ?? null) ?: '-',
-        'cantidad'       => $request->input('arraycantidad')[$contar] ?? 1,
-        'CENTRO'         => 'CF',
-        'ESTATUS'        => 'INSTALADO',
-        'almacen'        => 'ALMA',
-        'TIPOMOVIMIENTO' => 'INSTALADO',
-        'Naturaleza'     => 'H',
-        'Status'         => 'S',
-        'Lote'           => 'A000',
-        'MAC1'           => '-',
-        'MAC2'           => '-',
-        'MAC3'           => '-',
-        'COSTO'          => 0,
-        'unidadmedida'   => 'UNIDAD',
-        'Modificado_el'  => now(),
-        'Modificado_por' => Auth::user()->name,
-    ]
-);
+        $iditemsInput = $request->input('arrayiditem', []);
+        $skusInput = $request->input('arraysku', []);
+        $cantidadesInput = $request->input('arraycantidad', []);
+        $seriesInput = $request->input('arrayserie', []);
+        $nombresInput = $request->input('arraynameProducto', []);
 
-// 3. SOLO SI ES UN REGISTRO NUEVO, asignamos los campos de creación
-if ($nuevoMovimiento->wasRecentlyCreated) {
-    $nuevoMovimiento->update([
-        'Creado_el'  => now(),
-        'Creado_por' => Auth::user()->name,
-    ]);
-}
+        // =================================================================
+        // 1. DETECTAR ELIMINADOS (DEVOLUCIÓN FIFO AL ORIGEN Y BAJA "B")
+        // =================================================================
+        $salidasPrevias = MovimientoMaterial::where('fkExpediente', $expediente->id)
+            ->where('TIPOMOVIMIENTO', 'INSTALADO')
+            ->where('TIPO', '!=', 'MO')
+            ->get();
 
-$iditem = $nuevoMovimiento->id;
-            } else {
-                // Actualizar estatus del item de inventario existente
-                MovimientoMaterial::where('id', $iditem)->update([
-                    'Estatus' => 'INSTALADO',
-                    'Status' => 'S',
-                    'updated_at' => now(),
-                ]);
-            }
-
-            // 2. Obtener los datos del movimiento (sea el nuevo o el existente)
-            $mat = MovimientoMaterial::find($iditem);
-
-            // 3. Lógica de Inventario (Solo para materiales, no para Mano de Obra)
-            if ($mat->TIPO !== 'MO') {
-                $nuevaCantidad = $mat->cantidad - ($request->input('arraycantidad')[$contar] ?? 0);
+        foreach ($salidasPrevias as $salida) {
+            if (!in_array($salida->SKU, $skusInput)) {
                 
-                if ($mat->serie == '-') {
-                    $mat->update(['cantidad' => max(0, $nuevaCantidad), 'Estatus' => 'INSTALADO']);
-                } else {
-                    $mat->update(['Status' => 'S', 'Estatus' => 'INSTALADO']);
+                $origen = MovimientoMaterial::where('fkTecnico', $expediente->fkTecnico)
+                    ->where('SKU', $salida->SKU)
+                    ->where('serie', $salida->serie)
+                    ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                if ($origen) {
+                    // Forzar incremento atómico directo en la BD
+                    $origen->increment('cantidad', floatval($salida->cantidad), [
+                        'Status' => 'A',
+                        'ESTATUS' => 'DISPONIBLE',
+                        'Modificado_el' => now(),
+                        'Modificado_por' => Auth::user()->name
+                    ]);
                 }
+
+                $salida->update([
+                    'Status' => 'B',
+                    'ESTATUS' => 'DEVOLUCION',
+                    'Modificado_el' => now(),
+                    'Modificado_por' => Auth::user()->name
+                ]);
+
+                Pagotecnico::where('Orden', $expediente->Orden)
+                    ->where('fkTecnico', $expediente->fkTecnico)
+                    ->where('SKU', $salida->SKU)
+                    ->delete();
+            }
+        }
+
+        // =================================================================
+        // 2. PROCESAR ITEMS ACTUALES CON ALGORITMO FIFO (CON DECREMENTO)
+        // =================================================================
+        foreach ($skusInput as $contar => $sku) {
+            $cantidadRequerida = floatval($cantidadesInput[$contar] ?? 1);
+            $serie = ($seriesInput[$contar] ?? null) ?: '-';
+            $nombreProducto = $nombresInput[$contar] ?? 'Item';
+            $iditem = $iditemsInput[$contar] ?? 0;
+
+            if ($iditem == 0 || $sku === 'MO') {
+                // MANO DE OBRA NUEVA
+                $mat = MovimientoMaterial::create([
+                    'fkExpediente'   => $expediente->id,
+                    'fkTecnico'      => $expediente->fkTecnico,
+                    'fkTienda'       => $expediente->fkTienda,
+                    'SKU'            => $sku,
+                    'TIPO'           => 'MO',
+                    'serie'          => $serie,
+                    'cantidad'       => $cantidadRequerida,
+                    'CENTRO'         => 'CF',
+                    'ESTATUS'        => 'INSTALADO',
+                    'almacen'        => 'ALMA',
+                    'TIPOMOVIMIENTO' => 'INSTALADO',
+                    'Naturaleza'     => 'H',
+                    'Status'         => 'S', 
+                    'Lote'           => 'A000',
+                    'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-', 'COSTO' => 0,
+                    'unidadmedida'   => 'UNIDAD',
+                    'Creado_el'      => now(),
+                    'Creado_por'     => Auth::user()->name,
+                    'Modificado_el'  => now(),
+                    'Modificado_por' => Auth::user()->name,
+                ]);
+            } else {
+
+
+// 1. Definir la regla para identificar si el material es misceláneo o seriado
+            $esSeriado = !in_array(strtoupper(trim($serie)), ['-', '0', 'N/A', 'NA', '']);
+
+            $salidasExistentes = MovimientoMaterial::where('fkExpediente', $expediente->id)
+    ->where('SKU', $sku)
+    ->where('TIPOMOVIMIENTO', 'INSTALADO')
+    // 🔍 Si el producto ES seriado, aplica el filtro estricto de la serie.
+    // 🔍 Si NO es seriado (misceláneo), ignora por completo lo que haya en la variable $serie.
+    ->when($esSeriado, function ($query) use ($serie) {
+        return $query->where('movimientomateriales.serie', $serie);
+
+
+    })
+    ->get();
+
+            foreach ($salidasExistentes as $salidaEx) {
+                // 🔍 Buscar el origen a revertir aplicando la serie SOLO si es seriado
+                $origenRevertir = MovimientoMaterial::where('fkTecnico', $expediente->fkTecnico)
+                    ->where('SKU', $sku)
+                    ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
+                    ->when($esSeriado, function ($query) use ($serie) {
+                        return $query->where('serie', $serie);
+                    })
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                if ($origenRevertir) {
+                    $origenRevertir->increment('cantidad', floatval($salidaEx->cantidad), [
+                        'Status' => 'A',
+                        'ESTATUS' => 'DISPONIBLE',
+                        'Modificado_el' => now(),
+                        'Modificado_por' => Auth::user()->name
+                    ]);
+                }
+                $salidaEx->delete();
             }
 
-// 1. Usar updateOrCreate (modelo) para obtener un objeto, no un booleano
-$nuevoMovimientoPago = Pagotecnico::updateOrCreate([
-    'Orden'       => $expediente->Orden,
-    'SKU'         => $request->input('arraysku')[$contar],
-    'fkTienda'    => $expediente->fkTienda,
-    'fkTecnico'   => $expediente->fkTecnico,
-], [
-    'Descripcion' => $request->input('arraynameProducto')[$contar],
-    'OBS'         => 'Pago por servicio tecnico',
-    'Cantidad'    => $request->input('arraycantidad')[$contar],
-    'COSTOPAGO'   => ($request->input('arraycantidad')[$contar] ?? 1) * ($mat->COSTO ?? 0),
-    'Naturaleza'  => 'D',
-    'Status'      => 'S',
-    // updated_at se gestiona solo si el modelo tiene timestamps
-]);
+            // 2. EJECUCIÓN FIFO Y DESCUENTO ATÓMICO EN CASCADA
+            // 🔍 Obtener entradas disponibles aplicando la serie SOLO si es seriado
+            $entradasDisponibles = MovimientoMaterial::where('fkTecnico', $expediente->fkTecnico)
+                ->where('SKU', $sku)
+                ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
+                ->where('cantidad', '>', 0)
+                // 1. Asegurar el nombre correcto de la columna Status tal como está en tu BD
+                ->where('Status', 'A') 
+                // 2. Si el FIFO debe considerar tanto 'MA' como 'MO', añade un whereIn o remueve el filtro de TIPO
+                ->whereIn('TIPO', ['MA', 'MO']) 
+                // 3. Limpiar los espacios en blanco al evaluar la serie
+                ->when($esSeriado, function ($query) use ($serie) {
+                    return $query->where('serie', trim($serie));
+                })
+                ->orderBy('created_at', 'asc')
+                ->get();
 
-// 2. Ahora sí puedes usar wasRecentlyCreated
-if ($nuevoMovimientoPago->wasRecentlyCreated) {
-    // Nota: Verifica si es 'created_at' (estándar) o 'create_at' como pusiste
-    $nuevoMovimientoPago->update([
-        'created_at'  => now() 
-    ]);
-}
 
-            // 5. Procesamiento de Fotos (Mantenemos tu lógica de base64)
+
+                $porDescontar = $cantidadRequerida;
+
+                foreach ($entradasDisponibles as $entrada) {
+                    if ($porDescontar <= 0) break;
+
+                    $cantidadAExtraer = min($entrada->cantidad, $porDescontar);
+
+                    // REEMPLAZO CLAVE: Forzar a la BD a ejecutar la sentencia de decremento directa
+                    $entrada->decrement('cantidad', $cantidadAExtraer);
+                    
+                    // Refrescar los datos del registro tras la operación para actualizar el estado complementario
+                    $entrada->refresh();
+                    $entrada->update([
+                        'Status' => ($entrada->cantidad <= 0) ? 'S' : 'A',
+                        'ESTATUS' => ($entrada->cantidad <= 0) ? 'AGOTADO' : 'DISPONIBLE',
+                        'Modificado_el' => now(),
+                        'Modificado_por' => Auth::user()->name
+                    ]);
+
+                    $mat = MovimientoMaterial::create([
+                        'fkExpediente'   => $expediente->id,
+                        'fkTecnico'      => $expediente->fkTecnico,
+                        'fkTienda'       => $expediente->fkTienda,
+                        'SKU'            => $sku,
+                        'TIPO'           => $entrada->TIPO,
+                        'serie'          => $serie,
+                        'cantidad'       => $cantidadAExtraer,
+                        'CENTRO'         => 'CF',
+                        'ESTATUS'        => 'INSTALADO',
+                        'almacen'        => 'ALMA',
+                        'TIPOMOVIMIENTO' => 'INSTALADO',
+                        'Naturaleza'     => 'H',
+                        'Status'         => 'S',
+                        'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-',
+                        'Lote'           => $entrada->Lote,
+                        'COSTO'          => $entrada->COSTO,
+                        'unidadmedida'   => $entrada->unidadmedida,
+                        'Creado_el'      => now(),
+                        'Creado_por'     => Auth::user()->name,
+                        'Modificado_el'  => now(),
+                        'Modificado_por' => Auth::user()->name,
+                    ]);
+
+                    $porDescontar -= $cantidadAExtraer;
+                }
+
+            }
+
+            // ==========================================
+            // 3. REGISTRO / ACTUALIZACIÓN DE PAGOS
+            // ==========================================
+            $costoUnidad = ($sku === 'MO') ? ($request->input('arrayprecio')[$contar] ?? 0) : ($mat->COSTO ?? 0);
+
+            Pagotecnico::updateOrCreate(
+                [
+                    'Orden'       => $expediente->Orden,
+                    'SKU'         => $sku,
+                    'fkTienda'    => $expediente->fkTienda,
+                    'fkTecnico'   => $expediente->fkTecnico,
+                ], 
+                [
+                    'Descripcion' => $nombreProducto,
+                    'OBS'         => 'Pago por servicio tecnico',
+                    'Cantidad'    => $cantidadRequerida,
+                    'COSTOPAGO'   => $cantidadRequerida * $costoUnidad,
+                    'Naturaleza'  => 'D',
+                    'Status'      => 'S',
+                ]
+            );
+
+            // ==========================================
+            // 4. PROCESAMIENTO DE FOTOS
+            // ==========================================
             $itemInput = $request->input('items', [])[$contar] ?? [];
             $photos = $itemInput['photos'] ?? [];
             $names = $itemInput['names'] ?? [];
 
             foreach ($photos as $i => $photoBase64) {
-                // 1. Separar metadata del base64
-                @list($type, $fileData) = explode(';', $photoBase64);
-                @list(, $fileData) = explode(',', $fileData);
+                if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
+                    $extension = strtolower($typeMatch[1]); 
+                    $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
 
-                if ($fileData) {
-                    $fileData = base64_decode($fileData);
+                    if ($fileData) {
+                        $nombreLimpio = preg_replace('/[^A-Za-z0-9_\-]/', '_', $names[$i] ?? 'foto');
+                        $productoNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $nombreProducto);
+                        $fileName = "{$nombreLimpio}_{$productoNombre}_" . uniqid() . ".{$extension}";
 
-                    // 2. Obtener extensión
-                    $extension = str_contains($type, 'png') ? 'png' : 'jpg';
+                        $directory = "public/fotos/ordenes/{$expediente->Orden}";
+                        if (!Storage::exists($directory)) {
+                            Storage::makeDirectory($directory);
+                        }
 
-                    // 3. Definir nombre único (usando el nombre del producto para identificar qué se instaló)
-                    $nombreLimpio = preg_replace('/[^A-Za-z0-9_\-]/', '_', $names[$i] ?? 'foto');
-                    $productoNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $request->input('arraynameProducto')[$contar] ?? 'item');
-                    
-                    $fileName = "{$nombreLimpio}_{$productoNombre}_" . uniqid() . ".{$extension}";
+                        Storage::put("{$directory}/{$fileName}", $fileData);
 
-                    // 4. Definir ruta y guardar en storage
-                    // La ruta física: storage/app/public/fotos/ordenes/{orden}
-                    $directory = "public/fotos/ordenes/{$expediente->Orden}";
-                    $path = "{$directory}/{$fileName}";
-
-                    if (!Storage::exists($directory)) {
-                        Storage::makeDirectory($directory);
+                        Expedientefotograficotecnico::create([
+                            'fkTienda'   => $expediente->fkTienda,
+                            'Orden'      => $expediente->Orden,
+                            'fotografia' => "storage/fotos/ordenes/{$expediente->Orden}/{$fileName}",
+                        ]);
                     }
-
-                    Storage::put($path, $fileData);
-
-                    // 5. Crear el registro en la base de datos
-                    Expedientefotograficotecnico::create([
-                        'fkTienda'   => $expediente->fkTienda,
-                        'Orden'      => $expediente->Orden,
-                        // Guardamos la ruta que será accesible desde el navegador (usando el symlink)
-                        'fotografia' => "storage/fotos/ordenes/{$expediente->Orden}/{$fileName}",
-                    ]);
                 }
             }
-
         }
 
-        if($expediente->OBS==''){
-        $expediente->update([
+        // ==========================================
+        // 5. FINALIZAR EXPEDIENTE
+        // ==========================================
+        $updateData = [
             'Status' => 'S',
             'FECHAINSTALACION' => now(),
-        ]);
-        }else{
-        // 6. Finalizar Expediente
-        $expediente->update([
-            'Status' => 'S',
-            'FECHAINSTALACION' => now(),
-            'OBS' => $expediente->OBS . ' ||OBS TECNICO: ' . $request->input('obs'),
-        ]);
+        ];
+
+        if (!empty($expediente->OBS) && $request->filled('obs')) {
+            $updateData['OBS'] = $expediente->OBS . ' ||OBS TECNICO: ' . $request->input('obs');
+        } elseif ($request->filled('obs')) {
+            $updateData['OBS'] = 'OBS TECNICO: ' . $request->input('obs');
         }
 
-
+        $expediente->update($updateData);
 
         DB::commit();
-return redirect()->route('tecnico.buckettecnico')->with('success', 'Orden actualizada');
+        return redirect()->route('tecnico.buckettecnico')->with('success', 'Orden actualizada con éxito vía FIFO.');
         
-
     } catch (\Exception $e) {
         DB::rollBack();
         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
     }
 }
+
+
 
         public function bucket($id)
     {

@@ -10,7 +10,6 @@
         "barryvdh/laravel-dompdf": "^3.1",
         "doctrine/dbal": "^3.9",
         "efureev/laravel-trees": "^3.8",
-        "google/cloud-storage": "^2.0",
         "guzzlehttp/guzzle": "^7.7",
         "illuminate/view": "^10.0",
         "intervention/image": "^3.11",
@@ -20,11 +19,13 @@
         "maatwebsite/excel": "3.1.63",
         "milon/barcode": "^11.0",
         "mossadal/math-parser": "^1.3",
+        "spatie/laravel-google-cloud-storage": "2.3",
         "spatie/laravel-permission": "^6.0",
         "symfony/expression-language": "^7.4",
         "yajra/laravel-datatables-oracle": "^10.11"
     },
     "require-dev": {
+        "barryvdh/laravel-debugbar": "^3.16",
         "fakerphp/faker": "^1.9.1",
         "laravel/pint": "^1.0",
         "laravel/sail": "^1.0.1",

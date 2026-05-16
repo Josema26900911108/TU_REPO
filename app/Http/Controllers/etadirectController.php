@@ -360,6 +360,442 @@ if ($relaciones->isEmpty()) {
     }
 }
 
+private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastro, array $itemsSimulados)
+{
+    $centrosEspeciales = ["'G845", "'G830", "'G888", "'G840"];
+    $patronG8 = "'G8";
+
+    // 💡 CORRECCIÓN DE SINTAXIS: Accedemos como array usando las llaves del Front-end
+    $centroLimpio = $item['centro'] ?? $item['CENTRO'] ?? "'G888";
+    $itemSKU      = trim($item['sku'] ?? $item['SKU'] ?? '');
+    $itemCantidad = (float)($item['cantidad'] ?? $item['Cantidad'] ?? 0);
+
+    // Forzamos la detección de centros especiales
+    $esEspecial = false;
+    if (strpos($centroLimpio, $patronG8) !== false) {
+        $esEspecial = true;
+    }
+
+    if ($esEspecial) {
+        // CONSULTA ESPECÍFICA (Prioridad 1)
+        $especifica = Material_relaciones::selectRaw("*, 1 as prioridad")
+            ->where('skufinal', 'like', '%' . trim($centroLimpio) . $itemSKU . '%')
+            ->where('minimo', '>=', 1);
+
+        // CONSULTA GENERAL (Prioridad 2)
+        $general = Material_relaciones::selectRaw("*, 2 as prioridad")
+            ->where('depende_SKU', $itemSKU)
+            ->where('minimo', '>=', 1)
+            ->where(function($q) use ($centrosEspeciales, $patronG8) {
+                $q->where('skufinal', 'like', '%' . $patronG8 . '%');
+                foreach ($centrosEspeciales as $ce) {
+                    $q->orWhere('skufinal', 'like', '%' . $ce . '%');
+                }
+            });
+
+        $generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
+            ->where('depende_SKU', $itemSKU)
+            ->where('minimo', '>=', 1)
+            ->where(function($q) use ($patronG8, $itemSKU) {
+                $q->where('skufinal', 'not like', $patronG8 . '%');
+                $q->where('skufinal', 'not like', $itemSKU . '%');
+            });
+
+        $relaciones = $especifica->unionAll($general)->unionAll($generalTOTAL)
+            ->orderBy('prioridad', 'ASC')
+            ->orderBy('id', 'ASC')
+            ->get();
+
+    } else {
+        // Centros normales
+        $relaciones = Material_relaciones::where('depende_SKU', $itemSKU)
+            ->where('minimo', '>=', 1)
+            ->where(function($q) use ($centrosEspeciales, $patronG8) {
+                foreach ($centrosEspeciales as $ce) {
+                    $q->where('skufinal', 'not like', '%' . $ce . '%');
+                }
+                $q->where('skufinal', 'not like', '%' . $patronG8 . '%');
+            })
+            ->orderBy('id', 'ASC')
+            ->get();
+    }
+
+    if ($relaciones->isEmpty()) {
+        return;
+    }
+
+    // Normalización de la colección virtual
+    $coleccionVirtual = collect($itemsSimulados)->map(function($i) {
+        $obj = (array)$i;
+        return (object)[
+            'SKU'      => trim($obj['SKU'] ?? $obj['sku'] ?? $obj['arraysku'] ?? ''),
+            'Cantidad' => (float)($obj['Cantidad'] ?? $obj['cantidad'] ?? $obj['arraycantidad'] ?? 0),
+            'CENTRO'   => $obj['CENTRO'] ?? $obj['centro'] ?? "'G888"
+        ];
+    });
+
+    foreach ($relaciones as $relacion) {
+        
+        $conteo = $coleccionVirtual->where('SKU', $relacion->SKU)->count();
+
+        // Acumulado de categoría (Máximo 10000)
+        // CORRECCIÓN 4: Acumulado de categoría (Máximo 10000) resuelto con el envío real de la vista
+        if ($relacion->maximo == 10000) {
+            // 1. Buscamos los SKUs que pertenecen al mismo nodo jerárquico (Categoría común)
+            $skusEnMismaCategoria = DB::table('treematerialescategoria as tm')
+                ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+                ->whereIn('tmc.SKU', function($q) use ($itemSKU) {
+                    $q->select('tmc2.SKU')
+                      ->from('treematerialescategoria as tm2')
+                      ->join('treematerialescategoria as tmc2', 'tm2.padre_id', '=', 'tmc2.id')
+                      ->where('tm2.SKU', $itemSKU);
+                })->pluck('tm.SKU')->toArray();
+
+            // 2. 🎯 SUMA REAL DE LA VISTA: 
+            // Sumamos lo que ya estaba en la memoria virtual para esa categoría, asegurando
+            // que incluya el valor del nuevo ítem que el técnico está intentando agregar
+            $itemCantidad = $coleccionVirtual->whereIn('SKU', $skusEnMismaCategoria)->sum('Cantidad');
+            
+            // Si por alguna razón la colección virtual aún no tenía el ítem integrado en el conteo,
+            // garantizamos que el objeto del bucle mantenga el peso de la cantidad enviada:
+            if ($itemCantidad == 0) {
+                $itemCantidad = (float)($item['cantidad'] ?? $item['Cantidad'] ?? 0);
+            }
+
+        }
+
+        $padre = DB::table('treematerialescategoria as tm')
+            ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+            ->where('tm.SKU', $relacion->SKU)
+            ->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')
+            ->first();
+
+        if ($padre) {
+            // Creamos un objeto limpio para pasar a la recursión y que no rompa la firma técnica
+            $itemObjeto = (object)[
+                'CENTRO'   => $centroLimpio,
+                'SKU'      => $itemSKU,
+                'Cantidad' => $itemCantidad
+            ];
+
+            $this->AutomataRecursivoVista(
+                $relacion->SKU, $orden, $conteo, $itemCantidad, $relacion->maximo ?? 0, $relacion->minimo ?? 0, $relacion->formula ?? '',
+                $procesados, $relacion->tipo_relacion, $itemCantidad, $rastro, $itemSKU, $relacion->SKU, 0, $relacion->skufinal, $padre, $centroLimpio, $relacion->nombre,
+                $coleccionVirtual->toArray(),
+                $itemObjeto // ← Enviamos el ítem actual normalizado como objeto
+            );
+        }
+    }
+}
+
+
+
+public function AutomataRecursivoVista(
+    string $skuActual,
+    int $orden,
+    int $recuento,
+    float $valor,
+    float $maximo,
+    float $minimo,
+    string $formula,
+    array &$procesados,
+    string $tipoRelacion,
+    float $val,
+    array &$rastro,
+    string $skuOrigen,
+    string $skuOrigenraiz,
+    int $nivel = 0,
+    string $skufinal,
+    ?object &$padre,
+    string $Centro,
+    string $mensaj = '',
+    array $itemsSimulados = [],
+    object $itemActual = null
+) {
+    try {
+       $clave = $orden . '_' . $skuActual . '_' . $skuOrigen . '_' . $skufinal . '_' . $tipoRelacion;
+
+        if (isset($procesados[$clave])) {
+            return; 
+        }
+
+        if (in_array($clave, $rastro)) {
+            return; 
+        }
+
+        $rastro[] = $clave;
+
+        if ($nivel > ($recuento + 1) && $tipoRelacion == 'calculo') {
+            return;
+        }
+        // Convertimos el arreglo dinámico de la vista en una colección de Laravel
+        // Agrupamos por SKU para emular el "SELECT DISTINCT e.id, e.Cantidad" de tu query original
+        $colVirtual = collect($itemsSimulados)->groupBy(function($item) {
+            $obj = (array)$item;
+            return trim($obj['SKU'] ?? $obj['sku'] ?? $obj['arraysku'] ?? '');
+        })->map(function($grupo) {
+            // Tomamos el primer registro de cada SKU o sumamos según la lógica de tu negocio
+            return (object)[
+                'SKU'      => trim($grupo->first()->SKU ?? $grupo->first()->sku ?? $grupo->first()->arraysku ?? ''),
+                'Cantidad' => (float)($grupo->first()->Cantidad ?? $grupo->first()->cantidad ?? $grupo->first()->arraycantidad ?? 0)
+            ];
+        });
+
+        // =========================================================================
+        // 🔄 TRADUCCIÓN EXACTA DE $valor (COPIA FIEL DE TU QUERY ORIGINAL)
+        // =========================================================================
+        $cantidadOrigen = substr_count($skuOrigen, ".");
+
+        if ($cantidadOrigen >= 1) {
+            // Tu query original pasaba obligatoriamente [$skuActual, $orden]
+            $skusJerarquiaValor = DB::table('treematerialescategoria as tm')
+                ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+                ->whereIn('tmc.SKU', function($q) use ($skuActual) {
+                    $q->select('tmc2.SKU')
+                      ->from('treematerialescategoria as tm2')
+                      ->join('treematerialescategoria as tmc2', 'tm2.padre_id', '=', 'tmc2.id')
+                      ->where('tmc2.SKU', trim($skuActual)); // Mantiene tmc2.SKU original
+                })->pluck('tm.SKU')->map(function($sku) {
+                    return trim($sku);
+                })->toArray();
+
+            $valor = $colVirtual->filter(function($item) use ($skusJerarquiaValor) {
+                return in_array($item->SKU, $skusJerarquiaValor);
+            })->sum('Cantidad');
+        } else {
+            // Tu query original filtraba estrictamente por [$orden, $skuOrigen]
+            $valor = $colVirtual->filter(function($item) use ($skuOrigen) {
+                return $item->SKU === trim($skuOrigen);
+            })->sum('Cantidad');
+        }
+
+        // =========================================================================
+        // 🔄 TRADUCCIÓN EXACTA DE $usado (COPIA FIEL Y CORREGIDA DE TU QUERY ORIGINAL)
+        // =========================================================================
+        $cantidadActual = substr_count($skuActual, ".");
+
+        if ($cantidadActual >= 1) {
+            // Tu query original pasaba obligatoriamente [$skuActual, $orden]
+            $skusJerarquiaUsado = DB::table('treematerialescategoria as tm')
+                ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+                ->whereIn('tmc.SKU', function($q) use ($skuActual) {
+                    $q->select('tmc2.SKU')
+                      ->from('treematerialescategoria as tm2')
+                      ->join('treematerialescategoria as tmc2', 'tm2.padre_id', '=', 'tmc2.id')
+                      // 💡 CORRECCIÓN CRÍTICA: Cambiado de tmc2.SKU a tm2.SKU para calzar con tu query
+                      ->where('tmc2.SKU', trim($skuActual)); 
+                })->pluck('tm.SKU')->map(function($sku) {
+                    return trim($sku);
+                })->toArray();
+
+            $usado = $colVirtual->filter(function($item) use ($skusJerarquiaUsado) {
+                return in_array($item->SKU, $skusJerarquiaUsado);
+            })->sum('Cantidad');
+        } else {
+            // Tu query original filtraba estrictamente por [$orden, $skuActual]
+            $usado = $colVirtual->filter(function($item) use ($skuActual) {
+                return $item->SKU === trim($skuActual);
+            })->sum('Cantidad');
+        }
+if($skuActual=="34006334")  {
+    logger()->info("SKU Actual: $skuActual, SKU Origen: $skuOrigen, Valor Calculado: $valor, Usado Calculado: $usado");
+}
+        // Inyección de variables intacta al motor de Symfony ExpressionLanguage
+        $variables = [
+            'minimo' => $minimo ?? 0,
+            'maximo' => $maximo ?? 0,
+            'valor'  => $valor ?? 0,
+            'usado'  => $usado ?? 0,
+            'total'  => $nivel ?? 0,
+            'valant' => $val ?? 0,
+        ];
+
+
+        $resultado = $this->evaluarFormulaexp($formula, $variables);
+        $resultadoMostrar = $resultado;
+        $resultado = $resultado == 20000 ? 0 : $resultado;
+
+        if ($resultado > 0 || $resultado < 0) {
+            if ($tipoRelacion == 'requiere' || $tipoRelacion == 'incompatible') {
+                $existePadreRelacion = $colVirtual->filter(function($item) use ($skuActual) {
+                    return trim($item->SKU ?? $item->sku ?? '') === trim($skuActual);
+                })->isNotEmpty();
+                
+                if ($resultado <> 0 || $existePadreRelacion) {
+                    $procesados[$clave] = (object)[
+                        'Orden'          => $orden,
+                        'SKU_Origen'     => $skuActual,
+                        'SKU_Destino'    => $skuOrigen,
+                        'msj'            => $mensaj,
+                        'ValorEntrada'   => $valor,
+                        'Resultado'      => $resultado == 10000 ? $val : $resultado,
+                        'TipoRelacion'   => $resultado < 0 ? $tipoRelacion . " - Exceso" : $tipoRelacion,
+                        'formula'        => $formula,
+                        'Nivel'          => $nivel,
+                        'children'       => [],
+                        'skuOrigenraiz'  => $skufinal,
+                        'CENTRO'         => $Centro,
+                        'claveunica'     => $clave,
+                        'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado " . $tipoRelacion . " " . $skuActual,
+                    ];
+                }
+            }
+        }
+
+        $relaciones = Material_relaciones::where('skufinal', $skufinal)->orderBy('id', 'ASC')->get();
+        foreach ($relaciones as $relacion) {
+            if (in_array($orden . '_' . $relacion->SKU . '_' . $relacion->depende_SKU . '_' . $relacion->skufinal . '_' . $relacion->tipo_relacion, $rastro)) { 
+                continue; 
+            }
+
+            if ($relacion->tipo_relacion == "calculo") {
+                $existePadreCalculo = $colVirtual->filter(function($item) use ($relacion) {
+                    return trim($item->SKU ?? $item->sku ?? '') === trim($relacion->SKU);
+                })->isNotEmpty();
+
+                if (!$existePadreCalculo && substr_count($relacion->depende_SKU, ".") == 0 && substr_count($relacion->SKU, ".") == 0) { 
+                    continue; 
+                }
+            }
+
+            $padreCat = DB::table('treematerialescategoria as tm')->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+                ->where('tm.SKU', $relacion->SKU)->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')->first();
+            
+            if (!$padreCat) { 
+                continue; 
+            }
+
+            // 🔁 RECURSIÓN CASCADA: Mantenemos las referencias dinámicas de memoria puras
+            $this->AutomataRecursivoVista(
+                $relacion->SKU, $orden, $recuento, $resultadoMostrar == 20000 ? $val : $resultadoMostrar, $relacion->maximo ?? 0, $relacion->minimo ?? 0, $relacion->formula ?? '',
+                $procesados, $relacion->tipo_relacion, $resultadoMostrar == 20000 ? $val : $resultadoMostrar, $rastro, $skuOrigen, $skuOrigen, $nivel + 1, $relacion->skufinal, $padreCat, $Centro, $relacion->nombre, 
+                $itemsSimulados,
+                $relacion // ← Inyectamos el objeto actual de la relación de forma segura
+            );
+        }
+    } catch (\Exception $e) { 
+        logger()->error('Error en Autómata Recursivo Vista Puro: ' . $e->getMessage()); 
+    }
+}
+
+public function AutomataValidarMamoOrdenTecnico(Request $request)
+{
+    try {
+    if(!Auth::check()) return response()->json(['error' => 'No autorizado'], 401);
+    $procesados = []; 
+    $rastro = [];
+    $orden = $request->input('Orden');
+    $skuNuevo = trim($request->input('SKU_Nuevo', ''));
+    $cantidadNueva = (float)$request->input('Cantidad_Nueva', 0);
+    $idTienda = session('user_fkTienda');
+
+    $itemsMemoria = collect($request->input('Items_Memoria', []))
+    ->groupBy('sku')
+    ->map(function ($group) {
+        // Mantiene los datos del primer item y actualiza la cantidad total
+        $firstItem = $group->first();
+        $firstItem['cantidad'] = $group->sum('cantidad'); 
+        return $firstItem;
+    })
+    ->values()
+    ->all();
+
+
+    $itemnuevo = $request->input('ItemVirtual');
+    
+    if (!is_array($itemsMemoria)) { 
+        $itemsMemoria = []; 
+    }
+
+    // 💡 TU LÓGICA PRINCIPAL: Si ya existen elementos en la lista de memoria (allItems)
+    if ($itemsMemoria) {
+        foreach ($itemsMemoria as $item) {
+            $this->ejecutarLogicaInternaVista($orden, $item, $procesados, $rastro, $itemsMemoria);
+        }
+    } else {
+        // 🎯 TU LÓGICA DEL PRIMER REGISTRO: Cuando Items_Memoria está vacío
+        if (!is_array($itemnuevo)) {
+            $itemsMemoria = [];
+        }
+
+        // Estructuramos el arreglo plano tal como lo definiste
+        $itemFormateado = [
+            'index'    => trim($itemnuevo['index'] ?? '1'),
+            'sku'      => trim($itemnuevo['sku'] ?? $skuNuevo),
+            'cantidad' => (float)($itemnuevo['cantidad'] ?? $cantidadNueva),
+            'centro'   => trim($itemnuevo['CENTRO'] ?? $itemnuevo['centro'] ?? "'G888")
+        ];
+        
+        // 💡 CORRECCIÓN DE MATRIZ: Envolvemos el ítem para que finja ser una tabla de 1 fila
+        // Esto evita que las funciones ->where() y ->sum() devuelvan cero o lancen errores
+        $tablaVirtual = [$itemFormateado];
+        
+        // Ejecutamos pasando el registro individual y la lista simulada de una fila
+        $this->ejecutarLogicaInternaVista($orden, $itemFormateado, $procesados, $rastro, $tablaVirtual);
+    }
+
+    // Consolidación de mermas e incompatibles procesados en la memoria RAM
+ $validaciones = $this->quitarDuplicadosPorOrdenYSKU($procesados);
+
+// 1. Arreglo para acumular todos los problemas detectados
+$alertasDetectadas = [];
+$tieneExceso = false;
+$tieneFalta = false;
+
+foreach ($validaciones as $val) {
+    if ($val) {
+        $skuNodo = trim($val->SKU_Origen ?? $val->SKU ?? $skuNuevo);
+
+        $categoriaData = DB::table('treematerialescategoria')
+            ->where('SKU', $skuNodo)
+            ->where('fkTienda', $idTienda)
+            ->select('limite', 'minimo', 'nombre')
+            ->first();
+
+        $calculado = (float)($val->valor_calculado ?? $val->Resultado ?? $val->cantidad ?? 0);
+        
+        $maximo = $categoriaData ? (float)$categoriaData->limite : (float)($val->maximo_calculado ?? $val->maximo ?? 0);
+        $minimo = $categoriaData ? (float)$categoriaData->minimo : (float)($val->minimo_calculado ?? $val->minimo ?? 0);
+        
+        $nombreBase = $categoriaData ? $categoriaData->nombre : ($val->NOMBRE_Destino ?? $val->nombre_material ?? "Material técnico");
+        $nombreMaterial = $nombreBase . ' - ' . ($val->msj ?? '');
+
+        // 🚫 Evaluación de Exceso: Acumulamos en lugar de retornar inmediatamente
+        if ($calculado > 0) {
+            $diffExceso = $calculado - $maximo;
+            $tieneExceso = true;
+            $alertasDetectadas[] = "Regla ('{$val->skuOrigenraiz}')⚠️ LÍMITE SUPERADO: Requerimiento insatisfecho para '{$nombreMaterial}'. Tipo: {$val->TipoRelacion} - Resultado: {$val->Resultado}";
+        }
+
+        // 💡 Evaluación de Faltante: Acumulamos en lugar de retornar inmediatamente
+        if ($calculado < 0) {
+            $diffFalta = $minimo - $calculado;
+            $tieneFalta = true;
+            $alertasDetectadas[] = "Regla ('{$val->skuOrigenraiz}')💡 FALTA MATERIAL: Requerimiento insatisfecho para '{$nombreMaterial}'. Tipo: {$val->TipoRelacion} - Resultado: {$val->Resultado}";
+        }
+    }
+}
+
+// 2. Evaluamos los resultados una vez terminado el bucle foreach
+if (!empty($alertasDetectadas)) {
+    // Definimos un estado jerárquico (si hay excesos, priorizamos mandar 'exceso')
+    $statusFinal = $tieneExceso ? 'exceso' : 'falta';
+
+    return response()->json([
+        'status' => $statusFinal,
+        'mensajes' => $alertasDetectadas // Enviamos el arreglo completo de alertas
+    ], 200);
+}
+
+
+    return response()->json(['status' => 'ok', 'mensaje' => 'Validación correcta.'], 200);
+
+    }catch (\Exception $e) {
+        logger()->error('Error en AutomataValidarMamoOrdenTecnico: ' . $e->getMessage());
+        return response()->json(['error' => 'Error en la validación: ' . $e->getMessage()], 500);
+    }
+}
+
 
 
 public function AutomataValidarMamo(Request $request)
@@ -428,7 +864,7 @@ private function quitarDuplicadosPorOrdenYSKU(array $items): array
 
     foreach ($items as $item) {
         // Creamos la clave combinando el Nombre y la Orden como solicitaste
-        $clave = $item->NOMBRE_Destino . '_' . $item->Orden;
+        $clave = $item->NOMBRE_Destino . '_' . $item->Orden. '_' . $item->msj;
 
         // Si la clave no existe, guardamos el item actual
         if (!isset($unicos[$clave])) {
@@ -751,6 +1187,8 @@ $SKUSSS=$relacion->SKU;
         }
 
 }
+
+
 
 
 private function evaluarFormulaexp(string $formula, array $variables)

@@ -1,0 +1,60 @@
+@extends('layouts.app')
+
+@section('title','Editar Centro')
+
+@push('css')
+<style>
+    #descripcion {
+        resize: none;
+    }
+</style>
+@endpush
+
+@section('content')
+<div class="container-fluid px-4">
+    <h1 class="mt-4 text-center">Editar Centro</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
+        <li class="breadcrumb-item"><a href="{{ route('centro.index')}}">Centros</a></li>
+        <li class="breadcrumb-item active">Editar centro</li>
+    </ol>
+
+    <div class="card text-bg-light">
+        <form action="{{ route('centros.update',['centro'=>$centro]) }}" method="post">
+            @method('PATCH')
+            @csrf
+            <div class="card-body">
+                <div class="row g-4">
+
+                    <div class="col-md-6">
+                        <label for="nombre" class="form-label">Nombre:</label>
+                        <input type="text" name="nombre" id="nombre" class="form-control" value="{{old('nombre',$centro->nombre)}}">
+                        @error('nombre')
+                        <small class="text-danger">{{'*'.$message}}</small>
+                        @enderror
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="codigo" class="form-label">Código:</label>
+                        <input type="text" name="codigo" id="codigo" class="form-control" value="{{old('codigo',$centro->codigo)}}">
+                        @error('codigo')
+                        <small class="text-danger">{{'*'.$message}}</small>
+                        @enderror
+                    </div>
+
+                </div>
+
+            </div>
+            <div class="card-footer text-center">
+                <button type="submit" class="btn btn-primary">Actualizar</button>
+                <button type="reset" class="btn btn-secondary">Reiniciar</button>
+            </div>
+        </form>
+    </div>
+
+</div>
+@endsection
+
+@push('js')
+
+@endpush

@@ -79,6 +79,8 @@ class materialmanoobraController extends Controller
         "Expires"             => "0"
     ];
 
+    $idTienda= session('user_fkTienda');
+
     $columnas = ['SKU','Descripcion','TIPO','unidadmedida','CATEGORIA','COSTOPAGO','CATEGORIACOBRO','fkTienda'];
 
     $callback = function () use ($columnas) {
@@ -86,7 +88,7 @@ class materialmanoobraController extends Controller
         fputcsv($file, $columnas); // encabezado
 
         // Línea de ejemplo opcional:
-        fputcsv($file, ['663483', 'Ejemplo mano de obra material', 'TE04', 'PZA','MATERIAL',1525.89306122449,1525.89306122449,3]);
+        fputcsv($file, ['663483', 'Ejemplo mano de obra material', 'TE04', 'PZA','MATERIAL',1525.89306122449,1525.89306122449,session('user_fkTienda')]);
 
         fclose($file);
     };
@@ -103,7 +105,7 @@ public function importarMAMO(Request $request)
 
     $file = fopen($request->file('archivo')->getRealPath(), 'r');
     $encabezado = fgetcsv($file); // leer encabezados
-
+$idTienda= session('user_fkTienda');
     DB::beginTransaction();
 
     try {

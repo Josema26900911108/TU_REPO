@@ -218,18 +218,19 @@
                     <td>
                         <input type="hidden" name="nodoSeleccionado" id="nodoSeleccionado">
                                         <!-- Select Mano de Obra -->
-                <div class="row mb-4">
-                    <label for="itemmanoobraamterial" class="col-lg-2 col-form-label">Seleccione Item:</label>
-                    <div class="col-lg-6">
+<div class="row mb-4">
+    <label for="itemmanoobraamterial" class="col-lg-2 col-form-label">Seleccione Item:</label>
+    <div class="col-lg-6">
+        <!-- 🌟 SE CAMBIÓ LA CLASE 'selectpicker' POR 'select-buscador' -->
+        <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control select-buscador"
+                data-live-search="true" data-size="10">
+        </select>
+        @error('itemmanoobraamterial')
+        <small class="text-danger">{{ '*'.$message }}</small>
+        @enderror
+    </div>
+</div>
 
-                        <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control selectpicker"
-                                data-live-search="true" data-size="10">
-                        </select>
-                        @error('itemmanoobraamterial')
-                        <small class="text-danger">{{ '*'.$message }}</small>
-                        @enderror
-                    </div>
-                </div>
 
                 <!-- Cámara -->
                 <h5>Tomar Foto con la Cámara</h5>
@@ -460,15 +461,18 @@ function prepareForm() {
 }
 
 
-    function eliminarProducto(indice) {
+function eliminarProducto(indice) {
+    // 1. Eliminar el elemento del arreglo global en memoria usando el índice correlativo
+    // Esto garantiza que el autómata reciba la lista limpia sin el ítem borrado
+    allItems = allItems.filter(function(item) {
+        return item.index != indice;
+    });
 
-            //Eliminar el fila de la tabla
-            $('#fila' + indice).remove();
-            $(`input[name^='arrayfotos[${indice}]']`).remove();
-
-        };
-
-function llenaritems() {
+    // 2. Eliminar la fila de la tabla visual en el HTML
+    $('#fila' + indice).remove();
+    $(`input[name^='arrayfotos[${indice}]']`).remove();
+}
+        function llenaritems() {
     let id = "{{ $id3 ?? 0 }}";
 
     $.ajax({
@@ -476,42 +480,124 @@ function llenaritems() {
         method: 'GET',
         data: { parametros: id },
         success: function(response) {
-            // Limpiamos el cuerpo de la tabla antes de llenar
-            $('#detalle_tbody').empty();
-
-            response.forEach(function(material) {
-                let fila = '<tr>' +
-                    '<td>' + material.id + '</td>' +
-                    '<td>' + material.cantidad + '</td>' +
-                    '<td>' + material.Descripcion + '</td>' +
-                    '<td>' + material.sku + '</td>' +
-                    '<td>' + material.serie + '</td>' +
-                    '<td><span class="badge badge-secondary">Cargado</span></td>' + // Para diferenciar de los nuevos
+            // El segundo parámetro (index) sirve como el contador "cont"
+            response.forEach(function(material, index) {
+                let fila = '<tr id="fila' + index + '" data-index="' + index + '">' +
+                    '<td><input type="hidden" name="arrayiditem[]" value="' + material.id + '">' + material.id + '</td>' +
+                    '<td><input type="hidden" name="arraycantidad[]" value="' + material.cantidad + '">' + material.cantidad + '</td>' +
+                    '<td><input type="hidden" name="arraynameProducto[]" value="' + material.Descripcion + '">' + material.Descripcion + '</td>' +
+                    '<td><input type="hidden" name="arraysku[]" value="' + material.sku + '">' + material.sku + '</td>' +
+                    '<td><input type="hidden" name="arrayserie[]" value="' + material.serie + '">' + material.serie + '</td>' +
+                    '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
                     '</tr>';
+                
                 $('#detalle_tbody').append(fila);
+                allItems.push(material);
+                
             });
-
-            // Sincronizamos allItems con los datos del servidor
-            // Usamos .map para crear el array de objetos correctamente
-            allItems = response.map(function(material) {
-                return {
-                    idItem: material.id, // Usamos idItem para ser consistentes con agregarItem()
-                    nameProducto: material.Descripcion,
-                    cantidad: material.cantidad,
-                    nameserie: material.serie,
-                    sku: material.sku,
-                    photos: [] 
-                };
-            });
-
-            // Una vez cargados los items, ejecutamos el autómata para validar el presupuesto inicial
-            validarExcesosAutomata();
         },
         error: function(xhr) {
             Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
         }
     });
 }
+
+
+llenaritems();
+
+
+function agregarItem() {
+    let idItem = $('#itemmanoobraamterial').val();
+    let optionText = $('#itemmanoobraamterial option:selected').text();
+    let optionSelected = $('#itemmanoobraamterial option:selected');
+    
+    if (idItem == '' || optionText == '') return;
+
+    let nameProducto = optionText.split('||')[0].split(': ')[1];
+    let nameserie = optionText.split('||')[1].split(': ')[1];
+    
+    let CENTRO = optionSelected.data('centro');
+    let sku = (optionSelected.data('sku') || '').toString().trim();
+    let cantidad = $('#cantidad').val();
+    let ordenActual = "{{ $orden->Orden }}"; 
+
+    if (idItem != '' && nameProducto != undefined && cantidad != '' ) {
+        if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
+
+            // 1. CREAMOS EL OBJETO EXACTO DE CONTROL
+            let nuevoItemVirtual = {
+                index: cont, 
+                idItem: idItem,
+                nameProducto: nameProducto,
+                cantidad: parseFloat(cantidad),
+                nameserie: nameserie,
+                sku: sku.trim(),
+                CENTRO: CENTRO,
+                photos: [...photosForItem]
+            };
+            
+            // Enviamos únicamente los ítems que ya fueron aprobados formalmente en la tabla
+            let listaSimulada = [...allItems, nuevoItemVirtual]; 
+
+            // 3. LLAMADA AJAX PASANDO LA LISTA INTEGRADA
+            $.ajax({
+                url: "{{ route('tecnico.validar.materiales') }}",
+                type: 'POST',
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    Orden: ordenActual,
+                    SKU_Nuevo: sku.trim(),
+                    Cantidad_Nueva: cantidad,
+                    Items_Memoria: listaSimulada,
+                    ItemVirtual: nuevoItemVirtual
+                },
+success: function(response) {
+    
+    // Si el backend detectó problemas en uno o varios registros
+    if (response.status === 'exceso' || response.status === 'falta') {
+        
+        // Unimos todas las líneas de alerta en un solo texto legible
+        let textoAlertas = response.mensajes.join("\n\n");
+        let tituloAlerta = response.status === 'exceso' ? "⚠️ ALERTAS DE EXCESO DETECTADAS:\n\n" : "💡 SUGERENCIAS DE MATERIAL DETECTADAS:\n\n";
+
+        // Lanzamos un único confirm con toda la información consolidada
+        if (!confirm(tituloAlerta + textoAlertas + "\n\n¿Deseas agregar el ítem de todas formas?")) {
+            return; // Si el usuario presiona "Cancelar", se detiene el proceso
+        }
+    }
+
+    // 4. SI EL AUTOMATA APRUEBA O EL USUARIO DA CLICK EN ACEPTAR: Guardamos en memoria real
+    allItems.push(nuevoItemVirtual);
+
+    // 5. SE PINTA EL REGISTRO
+    let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
+        '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
+        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
+        '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
+        '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
+        '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
+        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+        '</tr>';
+
+    $('#detalle_tbody').append(fila);
+
+    // Limpieza
+    photosForItem = [];
+    $('#preview').html('');
+    cont++;
+}
+
+            });
+
+        } else {
+            showModal('Valores incorrectos');
+        }
+    }
+}
+
+
+
+
 
 function validarRelacionMateriales() {
     // Extraemos solo SKU y Cantidad de tu array allItems (el que mostraste en la imagen)
@@ -564,49 +650,30 @@ function validarRelacionMateriales() {
 
 
 
+// Función aislada para realizar la inserción visual y limpieza de interfaz
+function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
+    let item = {
+        idItem,
+        nameProducto,
+        cantidad,
+        nameserie,
+        photos: [...photosForItem]
+    };
 
-        function agregarItem() {
-            //Obtener valores de los campos
-            let idItem = $('#itemmanoobraamterial').val();
-            let nameProductoTXT = ($('#itemmanoobraamterial option:selected').text()).split('||')[0];
-            let nameProducto = nameProductoTXT.split(': ')[1];
-            let nameserieTXT = ($('#itemmanoobraamterial option:selected').text()).split('||')[1];
-            let nameserie = nameserieTXT.split(': ')[1];
-            let skutxt = ($('#itemmanoobraamterial option:selected').text()).split('||')[3];
-            let sku = skutxt.split(': ')[1];
-            let cantidad = $('#cantidad').val();
+    allItems.push(item); // Sincroniza el listado en memoria
 
-            //1.Para que los campos no esten vacíos
-            if (idItem != '' && nameProducto != undefined && cantidad != '' ) {
+    let fila = '<tr id="fila' + cont + '">' +
+        '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
+        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
+        '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
+        '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
+        '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
+        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+        '</tr>';
 
-                //2. Para que los valores ingresados sean los correctos
-                if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
+    $('#detalle_tbody').append(fila);
 
-                            let item = {
-            idItem,
-            nameProducto,
-            cantidad,
-            nameserie,
-            photos: [...photosForItem] // guardamos fotos del item
-        };
-
-        allItems.push(item);
-
-
-                        //Crear la fila
-                        let fila = '<tr id="fila' + cont + '">' +
-                            '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
-                            '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-                            '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
-                            '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
-                            '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
-                            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                            '</tr>';
-
-                        //Acciones después de añadir la fila
-                        $('#detalle_tbody').append(fila);
-
-                            // Limpiar fotos y cámara para siguiente ítem
+    // Limpiar fotos y cámara para siguiente ítem
     photosForItem = [];
     $('#preview').html('');
     $('#video').show();
@@ -615,14 +682,8 @@ function validarRelacionMateriales() {
     $('#btnRetry').hide();
 
     cont++;
+}
 
-                } else {
-                    showModal('Valores incorrectos');
-                        }
-
-        }
-
-        }
 
 $(document).ready(function () {
 
@@ -652,7 +713,6 @@ fill_estructura();
         }
     });
 
-llenaritems();
     // Función que llena el árbol y configura el evento de selección de nodo
     function fill_treeview(id) {
         $.ajax({
@@ -710,36 +770,71 @@ llenaritems();
     }
 
     // Función para listar materiales según categoría (idNodo)
-    function listar_materiales_por_categoria(idNodo) {
-        // Aquí haces tu llamada AJAX o lógica para cargar la lista de materiales
-        console.log('Listar materiales para categoría con Cid:', idNodo);
+   function listar_materiales_por_categoria(idNodo) {
+    console.log('Listar materiales para categoría con Cid:', idNodo);
     let id2 = {{ $tecnico->id }};
-        // Ejemplo básico de llamada AJAX (ajusta la URL y manejo según tu backend)
-        $.ajax({
-            url: "{{ route('inventariolista')}}",
-            data: { id1: idNodo, id2: id2 },
-            method: 'GET',
-            success: function(materiales) {
+    
+    $.ajax({
+        url: "{{ route('inventariolista')}}",
+        data: { id1: idNodo, id2: id2 },
+        method: 'GET',
+success: function(materiales) {
+    console.log('Materiales cargados:', materiales);
+    
+    let materialesArray = Object.values(materiales);
+    
+    // 1. Destruimos cualquier residuo del plugin usando nuestro nuevo identificador
+    $('#itemmanoobraamterial').selectpicker('destroy');
+    
+    // 2. Limpieza radical del contenedor nativo y reseteo del valor seleccionado
+    $('#itemmanoobraamterial').empty().val('');
 
-                // Aquí puedes manejar la respuesta y actualizar tu UI
-                console.log('Materiales cargados:', materiales);
-                console.log(materiales);
-                console.log(Array.isArray(materiales));
-                let materialesArray = Object.values(materiales);
-                $('#itemmanoobraamterial').selectpicker('destroy');
-                    let optionss = '<option value="">Seleccione un material</option>';
-                    materialesArray.forEach(function(material) {
-                        optionss += `<option value="${material.id}">DESCRIP: ${material.categoria_nombre} || SERIE: ${material.serie} || CANTIDAD: ${material.cantidad} || SKU: ${material.sku}</option>`;
-                    });
+    // 3. Insertamos el marcador inicial por defecto
+    let optionss = '<option value="" selected>Seleccione un material</option>';
+    
+    // 4. Set de control absoluto en JavaScript para blindar duplicados físicos
+    let seriesFiltroUnico = new Set();
 
-                    document.getElementById("itemmanoobraamterial").innerHTML = optionss;
+    materialesArray.forEach(function(material) {
+        let serieLimpia = material.serie ? material.serie.toString().trim() : '';
 
-            },
-            error: function(xhr) {
-                Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
-            }
-        });
-    }
+        // Si la serie ya fue procesada, la ignoramos de inmediato
+        if (serieLimpia !== '' && seriesFiltroUnico.has(serieLimpia)) {
+            return; 
+        }
+        if (serieLimpia !== '') {
+            seriesFiltroUnico.add(serieLimpia);
+        }
+
+        optionss += `<option value="${material.id}" 
+                     data-centro="${material.CENTRO}"
+                     data-sku="${material.sku}"
+                     data-stock="${material.cantidad}"
+                     data-img="${material.img_path || ''}"
+                     data-precio="${material.precio_venta || 0}"
+                     data-detalle="${material.descripcion || ''}">DESCRIP: ${material.categoria_nombre} || SERIE: ${serieLimpia || 'S/N'} || CANTIDAD: ${material.cantidad} || SKU: ${material.sku}</option>`;
+    });
+
+    // 5. Inyectamos la estructura HTML limpia de opciones únicas
+    $('#itemmanoobraamterial').html(optionss);
+
+    // 6. Volvemos a inicializar manualmente la interfaz gráfica de búsqueda desde cero
+    $('#itemmanoobraamterial').selectpicker({
+        liveSearch: true,
+        size: 10
+    });
+    
+    // 7. Renderizado final sin usar 'refresh' (evita bucles de duplicación en eventos)
+    $('#itemmanoobraamterial').selectpicker('render');
+},
+
+
+
+        error: function(xhr) {
+            Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
+        }
+    });
+}
 
     function fill_estructura() {
     $.ajax({

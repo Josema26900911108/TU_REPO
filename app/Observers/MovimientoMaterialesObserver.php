@@ -13,28 +13,47 @@ use Illuminate\Support\Facades\Log;
 
 class MovimientoMaterialesObserver
 {
-    protected $clasesEntrada = ['101', '501', '561', '653', '642', '252'];
+    protected $clasesEntrada = ['101', '501', '561', '653', '642', '252','602'];
     protected $clasesSalida  = ['601', '201', '301', '641', '221', '251'];
 
-    public function creating(MovimientoMateriales $movimiento)
-    {
-        $producto = Producto::find($movimiento->fkMateriales);
-        if (!$producto) throw new \Exception("Error SAP: Material no existe.");
+public function creating(MovimientoMateriales $movimiento)
+{
+    $producto = Producto::find($movimiento->fkMateriales);
+    if (!$producto) throw new \Exception("Error: Material no existe.");
 
-        // VALIDACIÓN DE STOCK PARA SALIDAS
-        if (in_array($movimiento->clase_movimiento, $this->clasesSalida)) {
-            if ($producto->perecedero == 1) {
-                $lote = Lotesalarma::find($movimiento->fkLotes);
-                if (!$lote || $lote->cantidad < $movimiento->cantidad) {
-                    throw new \Exception("Error SAP: Stock insuficiente en Lote.");
-                }
-            } else {
-                if ($producto->stock < $movimiento->cantidad) {
-                    throw new \Exception("Error SAP: Stock insuficiente general para {$producto->nombre}.");
-                }
+    if (in_array($movimiento->clase_movimiento, $this->clasesSalida)) {
+        
+        // 1. LÓGICA PARA MATERIAL SERIADO (Equipos/Instalaciones)
+        if ($producto->es_seriado) { 
+            // Aquí validarías que el movimiento traiga el número de serie
+            // usualmente en una tabla pivote o campo 'referencia_seriado'
+            if (!$movimiento->referencia_sap) throw new \Exception("Material seriado requiere Serie.");
+        }
+
+        // 2. LÓGICA PARA PERECEDEROS / LOTES (Alimentos/Químicos)
+        elseif ($producto->perecedero == 1) {
+            if (is_null($movimiento->fkLotes)) {
+                // Selección automática FIFO si el descuento/venta no especificó uno
+                $lote = Lotesalarma::where('producto_id', $producto->id)
+                    ->where('cantidad', '>=', $movimiento->cantidad)
+                    ->where('estado', 'disponible')
+                    ->orderBy('fecha_vencimiento', 'asc')
+                    ->first();
+
+                if (!$lote) throw new \Exception("No hay lote disponible para: {$producto->nombre}");
+                $movimiento->fkLotes = $lote->id;
             }
         }
+
+        // 3. LÓGICA PARA MISCELÁNEOS (Stock General)
+        // Se valida contra el stock general del producto sin importar lotes o series
+        if ($producto->stock < $movimiento->cantidad) {
+            throw new \Exception("Stock insuficiente general para {$producto->nombre}.");
+        }
     }
+}
+
+
 
     public function created(MovimientoMateriales $movimiento)
     {
@@ -63,19 +82,52 @@ class MovimientoMaterialesObserver
     /**
      * Lógica para descontar ingredientes automáticamente
      */
-    private function procesarConsumoReceta(Producto $producto, MovimientoMateriales $movimientoPadre)
-    {
-        // Buscamos si el producto vendido tiene una receta (ingredientes)
-        $ingredientes = Receta::where('producto_padre_id', $producto->id)->get();
+private function procesarConsumoReceta(Producto $producto, MovimientoMateriales $movimientoPadre)
+{
+    $ingredientes = Receta::where('producto_padre_id', $producto->id)->get();
 
-        foreach ($ingredientes as $item) {
-            $cantidadTotalADescontar = $item->cantidad * $movimientoPadre->cantidad;
+    foreach ($ingredientes as $item) {
+        $cantidadTotalADescontar = $item->cantidad * $movimientoPadre->cantidad;
+        $insumo = Producto::find($item->ingrediente_id);
 
-            // Creamos un movimiento 261 (Consumo de producción) por cada ingrediente
-            // Esto disparará este mismo Observer para descontar el stock de los insumos
+        if (!$insumo) continue;
+
+        if ($insumo->perecedero == 1) {
+            // Lógica de Lotes (FIFO)
+            $lotes = Lotesalarma::where('producto_id', $insumo->id)
+                ->where('cantidad', '>', 0)
+                ->where('estado', 'disponible')
+                ->orderBy('fecha_vencimiento', 'asc')
+                ->get();
+
+            foreach ($lotes as $lote) {
+                if ($cantidadTotalADescontar <= 0) break;
+
+                $cantidadATomar = min($lote->cantidad, $cantidadTotalADescontar);
+
+                MovimientoMateriales::create([
+                    'fkTienda' => $movimientoPadre->fkTienda,
+                    'fkMateriales' => $insumo->id,
+                    'fkLotes' => $lote->id,
+                    'clase_movimiento' => '261', 
+                    'tipo_movimiento' => 'SALIDA_RECETA',
+                    'origen_uso' => 'consumo_produccion',
+                    'cantidad' => $cantidadATomar,
+                    'documento_material' => $movimientoPadre->documento_material,
+                    'referencia' => "Insumo (Lote) de: ||{$producto->nombre}||",
+                    'fecha_contabilizacion' => now(),
+                    'centro' => $movimientoPadre->centro,
+                    'almacen' => $movimientoPadre->almacen,
+                    'unidad_medida_base' => $insumo->unidad_medida ?? 'PZA'
+                ]);
+
+                $cantidadTotalADescontar -= $cantidadATomar;
+            }
+        } else {
+            // Movimiento simple (Misceláneos o Seriados sin lote)
             MovimientoMateriales::create([
                 'fkTienda' => $movimientoPadre->fkTienda,
-                'fkMateriales' => $item->ingrediente_id,
+                'fkMateriales' => $insumo->id,
                 'clase_movimiento' => '261', 
                 'tipo_movimiento' => 'SALIDA_RECETA',
                 'origen_uso' => 'consumo_produccion',
@@ -85,10 +137,12 @@ class MovimientoMaterialesObserver
                 'fecha_contabilizacion' => now(),
                 'centro' => $movimientoPadre->centro,
                 'almacen' => $movimientoPadre->almacen,
-                'unidad_medida_base' => $item->unidad_medida ?? 'PZA'
+                'unidad_medida_base' => $insumo->unidad_medida ?? 'PZA'
             ]);
         }
     }
+}
+
 
     public function deleted(MovimientoMateriales $movimiento)
     {

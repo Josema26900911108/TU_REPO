@@ -42,6 +42,7 @@ use App\Http\Controllers\permisoController;
 use App\Http\Controllers\tiendaController;
 use App\Http\Controllers\treematerialescategoriaController;
 use App\Http\Controllers\usuariotiendaController;
+use App\Http\Controllers\ReglaPrecioController;
 use App\Models\ArqueoCaja;
 use App\Models\CentrosOrganizacion;
 use App\Models\Compra;
@@ -56,6 +57,7 @@ use App\Models\Tienda;
 use App\Models\User;
 use App\Notifications\LoteVencimientoNotification;
 use Barryvdh\DomPDF\Facade as PDF;
+use App\Models\ReglaPrecio;
 
 
 /*
@@ -132,6 +134,17 @@ Route::get('/arqueocaja/ventas/{ventas}', [ArqueoCajaController::class, 'ventas'
 
 Route::get('/arqueocaja/cobrarventas/{ventas}', [ArqueoCajaController::class, 'cobrarventas'])->name('arqueocaja.cobrarventas');
 Route::get('/arqueoc/cobventasdirecta/', [ArqueoCajaController::class, 'cobrarventasdir'])->name('arqueocaja.cobventasdir');
+
+Route::middleware(['auth'])->group(function () {
+    
+    // Rutas estándar para el CRUD de Reglas de Precios
+    Route::resource('reglas', ReglaPrecioController::class);
+
+    // Ruta adicional para ver o actualizar productos vinculados a una regla (Opcional/Útil)
+    Route::get('reglas/{regla}/productos', [ReglaPrecioController::class, 'getProductos'])
+         ->name('reglas.productos');
+         
+});
 
 Route::get('/login',[loginController::class,'index'])->name('login');
 Route::post('/login',[loginController::class,'login']);
@@ -428,7 +441,7 @@ Route::get('/inventariolista', [TecnicoController::class, 'InventarioLista'])->n
 
 Route::get('/inventariolistadetalle', [TecnicoController::class, 'obtenerdetalless'])->name('inventariolistadetalles');
 
-    Route::post('/tecnico/validar-materiales', [TecnicoController::class, 'validarMaterialesTecnicos'])
+    Route::post('/tecnico/validar-materiales', [etadirectController::class, 'AutomataValidarMamoOrdenTecnico'])
         ->name('tecnico.validar.materiales');
 
 
