@@ -280,17 +280,32 @@ if ($request->hasFile('img_path')) {
             DB::beginTransaction();
 
 if ($request->hasFile('img_path')) {
-    // 1. Sube la nueva imagen al bucket de Google Cloud Storage
-    $name = $producto->handleUploadImage($request->file('img_path'));
+    try {
+        // 1. Respaldamos el nombre de la imagen vieja antes de cambiarlo
+        $imagenVieja = $producto->img_path;
 
-    // 2. Elimina la imagen anterior del bucket si existiese una
-    if (!empty($producto->img_path) && Storage::disk('gcs_images')->exists($producto->img_path)) {
-        Storage::disk('gcs_images')->delete($producto->img_path);
+        // 2. Sube la nueva imagen al bucket y el método te devolverá 'productos/nombre.jpg'
+        $name = $producto->handleUploadImage($request->file('img_path'));
+
+        // 3. OBLIGATORIO: Asignamos el nuevo camino al objeto para que se guarde en la BD
+        $producto->img_path = $name;
+
+        // 4. Si la subida fue exitosa, eliminamos la imagen anterior del bucket
+        if (!empty($imagenVieja) && Storage::disk('gcs_images')->exists($imagenVieja)) {
+            Storage::disk('gcs_images')->delete($imagenVieja);
+        }
+
+    } catch (\Exception $e) {
+        return redirect()->back()->with('error', 'Error al procesar la imagen en la nube: ' . $e->getMessage());
     }
-
 } else {
+    // Si no hay foto nueva, se mantiene el valor que ya tenía el objeto
     $name = $producto->img_path;
 }
+
+// 5. ¡No olvides guardar el producto si estás usando Eloquent después de este bloque!
+// $producto->save(); 
+
 
 
             $producto->fill([
