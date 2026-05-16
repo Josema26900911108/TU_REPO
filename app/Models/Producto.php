@@ -96,15 +96,17 @@ public function lotes() {
     }
 public function handleUploadImage($image)
 {
+    // 1. Obtén el archivo binario
     $file = $image;
-    // Creamos un nombre único para evitar que se sobrescriban archivos con el mismo nombre
-    $name = time() . '_' . $file->getClientOriginalName();
     
-    // 1. Subimos el archivo directamente a tu bucket de Google Cloud Storage
-    // Nota: Eliminamos '/public/' para que se guarde en la raíz del bucket
+    // 2. Genera el nombre único del archivo limpando espacios
+    $name = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+    
+    // 3. FORCE: Forzamos la subida apuntando directo al disco de Google Cloud
+    // Guardará el archivo físicamente en: gs://sistema-pv-imagenes-tienda/productos/nombre.jpg
     Storage::disk('gcs_images')->putFileAs('productos', $file, $name);
 
-    // 2. Retornamos la ruta relativa exacta con la carpeta incluida
+    // 4. Retornamos la ruta exacta que se va a guardar en el campo 'img_path' de la BD
     return 'productos/' . $name;
 }
 
