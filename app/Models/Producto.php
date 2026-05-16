@@ -111,13 +111,6 @@ public function handleUploadImage($image)
             fclose($stream);
         }
 
-        // Dejamos el DD de diagnóstico por última vez para verificar el cambio de estado
-        dd([
-            'Mensaje' => 'Verificando con método stream',
-            'Resultado de Google' => $resultado, // Ahora debería devolver TRUE o un string de ruta
-            'Ruta Completa' => $path
-        ]);
-
     } catch (\Exception $e) {
         dd([
             'Mensaje' => 'Error crítico en stream',
