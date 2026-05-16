@@ -9,9 +9,11 @@ use App\Models\Marca;
 use App\Models\Presentacione;
 use App\Models\Producto;
 use Exception;
+use GPBMetadata\Google\Api\Log;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log as FacadesLog;
 use Illuminate\Support\Facades\Storage;
 use PhpParser\Node\Stmt\TryCatch;
 
@@ -280,6 +282,7 @@ public function update(UpdateProductoRequest $request, Producto $producto)
         DB::beginTransaction();
 
         // 1. Inicializamos el nombre con lo que ya tiene el producto
+        // 1. Inicializamos el nombre con lo que ya tiene el producto
         $name = $producto->img_path;
 
         // 2. Procesamos la imagen únicamente si el usuario subió una nueva
@@ -289,11 +292,26 @@ public function update(UpdateProductoRequest $request, Producto $producto)
             // Sube la nueva imagen al bucket ('productos/nombre.jpg')
             $name = $producto->handleUploadImage($request->file('img_path'));
 
-            // Si la subida fue exitosa, eliminamos la imagen anterior del bucket
-            if (!empty($imagenVieja) && Storage::disk('gcs_images')->exists($imagenVieja)) {
-                Storage::disk('gcs_images')->delete($imagenVieja);
+            // 3. Eliminamos la imagen anterior si existiese
+            if (!empty($imagenVieja)) {
+                // Forzamos que la ruta apunte siempre a la carpeta productos si no la tiene
+                $rutaBorrado = str_contains($imagenVieja, 'productos/') 
+                    ? $imagenVieja 
+                    : 'productos/' . $imagenVieja;
+
+                try {
+                    // Verificamos y eliminamos de forma segura sin romper el sistema
+                    if (Storage::disk('gcs_images')->exists($rutaBorrado)) {
+                        Storage::disk('gcs_images')->delete($rutaBorrado);
+                    }
+                } catch (\Exception $e) {
+                    // Si el archivo antiguo no se puede borrar o no existe, registramos el evento 
+                    // pero DEJAMOS CONTINUAR el flujo para que el producto SI se actualice
+                    Log::warning("No se pudo borrar la imagen vieja del bucket: " . $e->getMessage());
+                }
             }
         }
+
 
         // 3. Llenamos el modelo con los datos del formulario (incluyendo el nuevo $name)
         $producto->fill([
