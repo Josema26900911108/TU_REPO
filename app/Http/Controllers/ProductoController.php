@@ -270,67 +270,59 @@ if ($request->hasFile('img_path')) {
     /**
      * Update the specified resource in storage.
      */
-    public function update(UpdateProductoRequest $request, Producto $producto)
-    {
-        try{
-                            if(!Auth::check()){
-            return redirect()->route('login');
-        }
+public function update(UpdateProductoRequest $request, Producto $producto)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
 
-            DB::beginTransaction();
-
-if ($request->hasFile('img_path')) {
     try {
-        // 1. Respaldamos el nombre de la imagen vieja antes de cambiarlo
-        $imagenVieja = $producto->img_path;
+        DB::beginTransaction();
 
-        // 2. Sube la nueva imagen al bucket y el método te devolverá 'productos/nombre.jpg'
-        $name = $producto->handleUploadImage($request->file('img_path'));
+        // 1. Inicializamos el nombre con lo que ya tiene el producto
+        $name = $producto->img_path;
 
-        // 3. OBLIGATORIO: Asignamos el nuevo camino al objeto para que se guarde en la BD
-        $producto->img_path = $name;
+        // 2. Procesamos la imagen únicamente si el usuario subió una nueva
+        if ($request->hasFile('img_path')) {
+            $imagenVieja = $producto->img_path;
 
-        // 4. Si la subida fue exitosa, eliminamos la imagen anterior del bucket
-        if (!empty($imagenVieja) && Storage::disk('gcs_images')->exists($imagenVieja)) {
-            Storage::disk('gcs_images')->delete($imagenVieja);
+            // Sube la nueva imagen al bucket ('productos/nombre.jpg')
+            $name = $producto->handleUploadImage($request->file('img_path'));
+
+            // Si la subida fue exitosa, eliminamos la imagen anterior del bucket
+            if (!empty($imagenVieja) && Storage::disk('gcs_images')->exists($imagenVieja)) {
+                Storage::disk('gcs_images')->delete($imagenVieja);
+            }
         }
+
+        // 3. Llenamos el modelo con los datos del formulario (incluyendo el nuevo $name)
+        $producto->fill([
+            'codigo' => $request->codigo,
+            'nombre' => $request->nombre,
+            'descripcion' => $request->descripcion,
+            'img_path' => $name, // Aquí se asigna correctamente a la base de datos
+            'marca_id' => $request->marca_id,
+            'presentacione_id' => $request->presentacione_id,
+            'perecedero' => $request->perecedero ? 1 : 0
+        ]);
+
+        // 4. Guardamos los cambios en la base de datos
+        $producto->save();
+
+        // Tabla categoría producto
+        $categorias = $request->get('categorias');
+        $producto->categorias()->sync($categorias);
+
+        DB::commit();
+
+        return redirect()->route('productos.index')->with('success', 'Producto editado correctamente.');
 
     } catch (\Exception $e) {
-        return redirect()->back()->with('error', 'Error al procesar la imagen en la nube: ' . $e->getMessage());
+        DB::rollBack();
+        // Cambiado para que en caso de error te diga exactamente qué falló en la pantalla
+        return redirect()->back()->with('error', 'Error al actualizar el producto: ' . $e->getMessage());
     }
-} else {
-    // Si no hay foto nueva, se mantiene el valor que ya tenía el objeto
-    $name = $producto->img_path;
 }
-
-// 5. ¡No olvides guardar el producto si estás usando Eloquent después de este bloque!
-// $producto->save(); 
-
-
-
-            $producto->fill([
-                'codigo' => $request->codigo,
-                'nombre' => $request->nombre,
-                'descripcion' => $request->descripcion,
-                'img_path' => $name,
-                'marca_id' => $request->marca_id,
-                'presentacione_id' => $request->presentacione_id,
-                'perecedero' => $request->perecedero ? 1 : 0
-            ]);
-
-            $producto->save();
-
-            //Tabla categoría producto
-            $categorias = $request->get('categorias');
-            $producto->categorias()->sync($categorias);
-
-            DB::commit();
-        }catch(Exception $e){
-            DB::rollBack();
-        }
-
-        return redirect()->route('productos.index')->with('success','Producto editado');
-    }
 
     /**
      * Remove the specified resource from storage.
