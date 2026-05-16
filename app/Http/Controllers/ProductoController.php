@@ -297,7 +297,7 @@ public function update(UpdateProductoRequest $request, Producto $producto)
             if (!empty($imagenVieja)) {
                 $rutaBorrado = str_contains($imagenVieja, 'productos/') 
                     ? $imagenVieja 
-                    : $imagenVieja;
+                    : 'productos/' . $imagenVieja;
 
                 try {
                     if (Storage::disk('gcs_images')->exists($rutaBorrado)) {

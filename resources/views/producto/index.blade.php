@@ -182,7 +182,7 @@
                                             <p class="fw-bolder">Imagen:</p>
                                             <div>
                                                 @if ($item->img_path != null)
-                                                <img src="{{ Storage::disk('gcs_images')->url('productos/'.$item->img_path) }}" alt="{{$item->nombre}}" class="img-fluid img-thumbnail border border-4 rounded">
+                                                <img src="{{ Storage::disk('gcs_images')->url($item->img_path) }}" alt="{{$item->nombre}}" class="img-fluid img-thumbnail border border-4 rounded">
                                                 @else
                                                 <img src="" alt="{{$item->nombre}}">
                                                 @endif
