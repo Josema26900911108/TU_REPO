@@ -317,11 +317,12 @@ public function update(UpdateProductoRequest $request, Producto $producto)
 
         return redirect()->route('productos.index')->with('success', 'Producto editado correctamente.');
 
-    } catch (\Exception $e) {
+        } catch (\Exception $e) {
         DB::rollBack();
-        // Cambiado para que en caso de error te diga exactamente qué falló en la pantalla
-        return redirect()->back()->with('error', 'Error al actualizar el producto: ' . $e->getMessage());
+        // 🚨 CAMBIA ESTO TEMPORALMENTE PARA VER EL ERROR REAL:
+        dd($e->getMessage(), $e->getTraceAsString()); 
     }
+
 }
 
     /**
