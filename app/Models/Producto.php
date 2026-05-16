@@ -96,19 +96,32 @@ public function lotes() {
     }
 public function handleUploadImage($image)
 {
-    // 1. Obtén el archivo binario
     $file = $image;
-    
-    // 2. Genera el nombre único del archivo limpando espacios
     $name = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
     
-    // 3. FORCE: Forzamos la subida apuntando directo al disco de Google Cloud
-    // Guardará el archivo físicamente en: gs://sistema-pv-imagenes-tienda/productos/nombre.jpg
-    Storage::disk('gcs_images')->putFileAs('productos', $file, $name);
+    try {
+        // Forzamos la subida e intentamos capturar la respuesta del driver
+        $resultado = Storage::disk('gcs_images')->putFileAs('productos', $file, $name);
+        
+        // 🚨 ESTO DETENDRÁ EL SISTEMA Y NOS MOSTRARÁ SI GOOGLE DEVOLVIÓ LA RUTA O FALSO
+        dd([
+            'Mensaje' => 'Si ves esto, Laravel cree que se subió',
+            'Resultado de Google' => $resultado,
+            'Ruta Completa Esperada' => 'productos/' . $name
+        ]);
 
-    // 4. Retornamos la ruta exacta que se va a guardar en el campo 'img_path' de la BD
+    } catch (\Exception $e) {
+        // 🚨 SI GOOGLE RECHAZA LA NUEVA LLAVE JSON O EL BUCKET, AQUÍ VEREMOS EL ERROR REAL
+        dd([
+            'Mensaje' => 'Google Cloud rechazó la subida',
+            'Error Real de la API' => $e->getMessage(),
+            'Archivo de Llave Buscado' => config('filesystems.disks.gcs_images.key_file')
+        ]);
+    }
+
     return 'productos/' . $name;
 }
+
 
 
   public function reglasPrecios()
