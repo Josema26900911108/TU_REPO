@@ -108,51 +108,61 @@ if (blank($centros)) {
      */
 public function store(StoreTiendaRequest $request)
 {
-    try {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
 
+    try {
         DB::beginTransaction();
 
-$imageBase64 = null;
+        $rutaLogo = null; // Inicializamos vacío
 
-if ($request->hasFile('image')) {
-    $image = $request->file('image');
-    $imageBase64 = base64_encode(file_get_contents($image->path()));
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            
+            // 1. Inicializa el manager con el driver de GD para optimizar
+            $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
 
-    // OPCIONAL: Si deseas guardar este archivo Base64 directamente en tu Bucket
-    $nombreArchivo = 'archivo_' . time() . '.' . $image->getClientOriginalExtension();
-    $rutaDestino = 'documentos/' . $nombreArchivo;
+            // 2. Lee, redimensiona y convierte el logotipo a WebP ligero
+            $processedImage = $manager->read($file->getPathname())
+                ->resize(300, 300, function ($constraint) {
+                    $constraint->aspectRatio();
+                    $constraint->upsize();
+                })
+                ->toWebp(60); // Compresión eficiente al 60%
 
-    // Guardamos el archivo original en Google Cloud Storage (no es necesario reconvertir de Base64)
-    Storage::disk('gcs_images')->put($rutaDestino, file_get_contents($image->getRealPath()));
-}
+            // 3. Definimos el nombre único y la ruta virtual del bucket
+            $nombreArchivo = 'logo_' . time() . '.webp';
+            $rutaLogo = 'documentos/' . $nombreArchivo;
 
-        $tel=$request->telefono;
+            // 4. Subimos el archivo optimizado directamente a Google Cloud Storage usando streams
+            Storage::disk('gcs_images')->put($rutaLogo, (string) $processedImage);
+        }
 
-Tienda::create(array_merge(
-    $request->validated(),
-    [
-        'EstatusContable' => 'A',
-        'logo' => $imageBase64 ?? null,
-        'departamento' => $request->departamento,
-        'Telefono' => $request->telefono,
-        'Direccion' => $request->Direccion,
-        'municipio' => $request->municipio,
-        'descripcion' => $request->descripcion,
-        'representante' => $request->representante,
-        'fkCentro'=>$request->centro,
-        'nit' => $request->nit,
-    ]
-));
-
+        // 5. Registramos la Tienda guardando la RUTA de Google Cloud en el campo 'logo'
+        Tienda::create(array_merge(
+            $request->validated(),
+            [
+                'EstatusContable' => 'A',
+                'logo' => $rutaLogo, // 👈 CORREGIDO: Guardamos 'documentos/logo_174000.webp' en vez de Base64
+                'departamento' => $request->departamento,
+                'Telefono' => $request->telefono,
+                'Direccion' => $request->Direccion,
+                'municipio' => $request->municipio,
+                'descripcion' => $request->descripcion,
+                'representante' => $request->representante,
+                'fkCentro' => $request->centro,
+                'nit' => $request->nit,
+            ]
+        ));
 
         DB::commit();
-        return redirect()->route('tienda.index')->with('success', 'Tienda registrado correctamente.');
-    } catch (Exception $e) {
+        return redirect()->route('tienda.index')->with('success', 'Tienda registrada correctamente.');
+
+    } catch (\Exception $e) {
         DB::rollBack();
-        return redirect()->route('tienda.create')->with('error', 'Hubo un error al registrar el tienda.');
+        // Cambiado para que en desarrollo te informe el error real si algo falla
+        return redirect()->route('tienda.create')->with('error', 'Hubo un error al registrar la tienda: ' . $e->getMessage());
     }
 }
 
