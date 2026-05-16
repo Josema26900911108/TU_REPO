@@ -280,8 +280,21 @@ public function update(UpdateProductoRequest $request, Producto $producto)
     try {
         DB::beginTransaction();
 
-        // 1. Inicializamos el nombre con lo que ya tiene el producto
-        // 1. Inicializamos el nombre con lo que ya tiene el producto
+if ($request->hasFile('img_path')) {
+    $archivo = $request->file('img_path');
+    dd([
+        '¿Es un archivo válido?' => $archivo->isValid(),
+        'Nombre original' => $archivo->getClientOriginalName(),
+        'Mime Type' => $archivo->getMimeType(),
+        'Tamaño (KB)' => $archivo->getSize() / 1024,
+        'Disco por defecto de Laravel' => config('filesystems.default'),
+        'Ruta del JSON configurada' => config('filesystems.disks.gcs_images.key_file'),
+        'Bucket configurado' => config('filesystems.disks.gcs_images.bucket'),
+    ]);
+} else {
+    dd('Laravel NO detecta ningún archivo en el request. Revisa el enctype del formulario.');
+}
+
         $name = $producto->img_path;
 
         // 2. Procesamos la imagen únicamente si el usuario subió una nueva
