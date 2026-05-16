@@ -40,7 +40,7 @@ use App\Http\Controllers\movimientomaterialesController;
 use App\Http\Controllers\pagotecnicoController;
 use App\Http\Controllers\permisoController;
 use App\Http\Controllers\tiendaController;
-use App\Http\Controllers\treematerialescategoriaController;
+use App\Http\Controllers\TreematerialescategoriaController;
 use App\Http\Controllers\usuariotiendaController;
 use App\Http\Controllers\ReglaPrecioController;
 use App\Models\ArqueoCaja;
