@@ -9,11 +9,10 @@ use App\Models\Marca;
 use App\Models\Presentacione;
 use App\Models\Producto;
 use Exception;
-use GPBMetadata\Google\Api\Log;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log as FacadesLog;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PhpParser\Node\Stmt\TryCatch;
 
@@ -307,7 +306,8 @@ public function update(UpdateProductoRequest $request, Producto $producto)
                 } catch (\Exception $e) {
                     // Si el archivo antiguo no se puede borrar o no existe, registramos el evento 
                     // pero DEJAMOS CONTINUAR el flujo para que el producto SI se actualice
-                    Log::warning("No se pudo borrar la imagen vieja del bucket: " . $e->getMessage());
+                    \Log::warning("No se pudo borrar la imagen vieja del bucket: " . $e->getMessage());
+
                 }
             }
         }
