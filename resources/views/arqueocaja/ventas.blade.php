@@ -431,26 +431,29 @@ const contenedor = document.getElementById('contenedor-dinamico');
             $('#producto_id').selectpicker();
 
 
-    document.getElementById("btnVerProducto").addEventListener("click", function() {
+document.getElementById("btnVerProducto").addEventListener("click", function() {
 
-        let select = document.getElementById("producto_id");
-        let selected = select.selectedOptions[0];
+    let select = document.getElementById("producto_id");
+    let selected = select.selectedOptions[0];
 
-        if (!selected) {
-            alert("Seleccione un producto primero");
-            return;
-        }
+    if (!selected) {
+        alert("Seleccione un producto primero");
+        return;
+    }
 
-        let imagen = selected.dataset.img; // ya no será undefined
-        let detalle = selected.dataset.detalle;
-        let ruta = "/storage/productos/" + imagen;
+    let imagen = selected.dataset.img; // Contiene el nombre del archivo (ej: "foto.jpg")
+    let detalle = selected.dataset.detalle;
+    
+    // CORREGIDO: Apunta directamente al bucket público de Google Cloud
+    let ruta = "https://googleapis.com" + imagen;
 
-        document.getElementById("imgProducto").src = ruta;
-        document.getElementById("detalleProducto").textContent = detalle;
+    document.getElementById("imgProducto").src = ruta;
+    document.getElementById("detalleProducto").textContent = detalle;
 
-        let modal = new bootstrap.Modal(document.getElementById("modalProducto"));
-        modal.show();
-    });
+    let modal = new bootstrap.Modal(document.getElementById("modalProducto"));
+    modal.show();
+});
+
 
         document.getElementById("btnBuscarProducto").addEventListener("click", function() {
 

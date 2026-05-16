@@ -12,6 +12,8 @@ use App\Models\treematerialescategoria;
 use SebastianBergmann\LinesOfCode\Counter;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+
 
 
 use function Laravel\Prompts\text;
@@ -837,31 +839,35 @@ public function add(Request $request)
         'cuenta_id_new' => 'required',
     ]);
 
-if ($request->hasFile('foto_new')) {
-    $imagen = $request->file('foto_new');
-    $nombreImagen = time() . '.' . $imagen->getClientOriginalExtension();
-    $ruta = $imagen->storeAs('public/treematerialesmo', $nombreImagen);
-    $fotografia = $nombreImagen; // o $ruta según necesites
-} else {
-    $fotografia = ""; // String vacío
-}
+    if ($request->hasFile('foto_new')) {
+        $imagen = $request->file('foto_new');
+        $nombreImagen = time() . '.' . $imagen->getClientOriginalExtension();
+        
+        // 1. Sube el archivo directo a la carpeta 'treematerialesmo' en tu bucket de Google Cloud
+        $imagen->storeAs('treematerialesmo', $nombreImagen, 'gcs_images');
 
-    $cuenta=DB::table('treematerialescategoria')->insert([
-        'nombre' => $request->input('nombre_new'),
-        'padre_id' => $request->input('padre_id'), // Puede ser null
-        'SKU' => $request->input('cuenta_id_new'),
-        'minimo' => $request->input('mi_new') ?? NULL,
-        'limite' => $request->input('lm_new') ?? NULL,
-        'fotografia' => $ruta ?? '',
-        'obs' => $request->input('obs_new') ?? NULL,
-        'fkTienda' => session('user_fkTienda'), // Puede ser null
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
-
-    if($fotografia<>""){
-        $imagen->move(public_path('treematerialesmo'), $nombreImagen);
+        // 2. Definimos la ruta que se guardará en la base de datos (con el prefijo de la carpeta)
+        $fotografia = 'treematerialesmo/' . $nombreImagen; 
+    } else {
+        $fotografia = ""; // Mantiene el string vacío si no hay archivo
     }
+
+// 3. Insertamos en la base de datos usando la variable correcta ($fotografia)
+$cuenta = DB::table('treematerialescategoria')->insert([
+    'nombre' => $request->input('nombre_new'),
+    'padre_id' => $request->input('padre_id'), // Puede ser null
+    'SKU' => $request->input('cuenta_id_new'),
+    'minimo' => $request->input('mi_new') ?? NULL,
+    'limite' => $request->input('lm_new') ?? NULL,
+    'fotografia' => $fotografia, // CORREGIDO: Cambiado $ruta por $fotografia
+    'obs' => $request->input('obs_new') ?? NULL,
+    'fkTienda' => session('user_fkTienda'), // Puede ser null
+    'created_at' => now(),
+    'updated_at' => now(),
+]);
+
+// El bloque del ->move() local se elimina por completo de aquí para liberar espacio en el servidor.
+
 
 
 
@@ -892,25 +898,42 @@ public function update(Request $request, Treematerialescategoria $cuentaContable
             'obs' => $request->obs_edit ?? ''
         ];
 
+        DB::beginTransaction();
+
+        // 1. Procesamos la imagen si el usuario subió una nueva
         if ($request->hasFile('foto_edit')) {
             $imagen = $request->file('foto_edit');
             $nombreImagen = time() . '.' . $imagen->getClientOriginalExtension();
-            $ruta = $imagen->storeAs('public/treematerialesmo', $nombreImagen);
-            $datos['fotografia'] = $ruta;
+            
+            // Sube el nuevo archivo a la carpeta 'treematerialesmo' en tu bucket
+            $imagen->storeAs('treematerialesmo', $nombreImagen, 'gcs_images');
+
+            // CORREGIDO: Usamos la variable inyectada $cuentaContable para obtener la foto vieja
+            $fotografiaVieja = $cuentaContable->fotografia; 
+
+            // Definimos la ruta exacta para la base de datos
+            $datos['fotografia'] = 'treematerialesmo/' . $nombreImagen;
+
+            // Si la subida fue exitosa, eliminamos el archivo viejo del bucket
+            if (!empty($fotografiaVieja) && Storage::disk('gcs_images')->exists($fotografiaVieja)) {
+                Storage::disk('gcs_images')->delete($fotografiaVieja);
+            }
         }
 
-        DB::beginTransaction();
-
+        // 2. Actualizamos los datos en la base de datos
         Treematerialescategoria::where('id', $request->id_edit)->update($datos);
 
         DB::commit();
+
     } catch (Exception $e) {
         DB::rollBack();
-        dd($e); // O usar Log::error para producción
+        // Es mejor regresar un mensaje amigable al usuario en lugar de romper con dd()
+        return redirect()->back()->with('error', 'Error al actualizar el registro: ' . $e->getMessage());
     }
 
-    return redirect()->route('treematerialescategoria.index')->with('success', 'treematerialescategoria editado');
+    return redirect()->route('treematerialescategoria.index')->with('success', 'Categoría editada correctamente.');
 }
+
 
 
 }

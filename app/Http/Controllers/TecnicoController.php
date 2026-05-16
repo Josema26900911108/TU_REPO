@@ -163,27 +163,32 @@ if ($tienda->isEmpty()) {
         return view('tecnico.create', compact('tecnico','rol','documentos','users'));
     }
 
-    public function prepararimagen($request){
-            $request->validate([
+public function prepararimagen($request){
+    $request->validate([
         'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
     ]);
-                $file = $request->file('image');
-        $manager = new ImageManager(new Driver()); // Fixed driver initialization
+    
+    $file = $request->file('image');
+    $manager = new ImageManager(new Driver());
 
-        $image = $manager->read($file->getPathname())
-                         ->resize(800, 800, function ($constraint) {
-                             $constraint->aspectRatio();
-                             $constraint->upsize();
-                         });
+    $image = $manager->read($file->getPathname())
+                     ->resize(800, 800, function ($constraint) {
+                         $constraint->aspectRatio();
+                         $constraint->upsize();
+                     });
 
-        // Convert to WebP
-        $filename = 'tecnico_' . time() . '.webp';
-        $path = 'tecnicos/' . $filename;
-        $webpEncoder = new WebpEncoder(quality: 80);
+    // Convert to WebP y definir la ruta virtual del bucket
+    $filename = 'tecnico_' . time() . '.webp';
+    $path = 'tecnicos/' . $filename; // Se guardará en gs://sistema-pv-imagenes-tienda/tecnicos/
+    $webpEncoder = new WebpEncoder(quality: 80);
 
-        // Store image
-        Storage::disk('public')->put($path, (string) $image->encode($webpEncoder));
-    }
+    // 1. Guardar la imagen procesada directamente en Google Cloud Storage
+    Storage::disk('gcs_images')->put($path, (string) $image->encode($webpEncoder));
+
+    // 2. OBLIGATORIO: Retornamos la ruta para que tu controlador la guarde en la BD
+    return $path;
+}
+
 
     public function store(Request $request)
     {

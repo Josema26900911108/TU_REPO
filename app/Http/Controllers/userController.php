@@ -93,24 +93,26 @@ class userController extends Controller
             $fkTienda = session('user_fkTienda');
             DB::beginTransaction();
 
-             // Opción 1: Convertir imagen a Base64 desde el archivo subido
-            if ($request->hasFile('image')) {
-                $image = $request->file('image');
-                $imageBase64 = base64_encode(file_get_contents($image->path()));
-            }
-                 $file = $request->file('image');
+ $imageBase64 = null; // Inicializamos vacío
+
+if ($request->hasFile('image')) {
+    $file = $request->file('image');
+    
+    // 1. Inicializa el manager con el driver de GD correctamente
     $manager = new ImageManager(new GdDriver());
 
-
-// Luego manipulas la imagen
-    $image = $manager->read($file->getPathname())
+    // 2. Lee, procesa y convierte la imagen a formato WebP
+    $processedImage = $manager->read($file->getPathname())
         ->resize(300, 300, function ($constraint) {
             $constraint->aspectRatio();
             $constraint->upsize();
         })
-        ->toWebp(50); // calidad 50%
+        ->toWebp(50); // Compresión al 50% de calidad
 
-        $imageBase64 = (string) $image;
+    // 3. CORREGIDO: Convierte el resultado final a una cadena Data URI / Base64 limpia
+    $imageBase64 = $processedImage->toDataUri(); 
+    // Esto genera una estructura válida: "data:image/webp;base64,iVBORw0KG..."
+}
 
             //Encriptar contraseña
             $fieldHash = Hash::make($request->password);
@@ -173,12 +175,29 @@ class userController extends Controller
             unset($data['password']);
         }
 
-        // --- Actualizar imagen si viene ---
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $data['image'] = base64_encode(file_get_contents($image->path()));
-            $data['logo']=$data['image'];
-        }
+// --- Actualizar imagen si viene ---
+if ($request->hasFile('image')) {
+    $file = $request->file('image');
+    
+    // 1. Inicializa el manager con el driver de GD
+    $manager = new ImageManager(new GdDriver());
+
+    // 2. Lee, redimensiona y convierte la foto a WebP ligera
+    $processedImage = $manager->read($file->getPathname())
+        ->resize(300, 300, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        })
+        ->toWebp(50); // Compresión eficiente al 50%
+
+    // 3. Generamos el Base64 limpio (Data URI completo)
+    $base64String = $processedImage->toDataUri();
+
+    // 4. Asignamos el mismo Base64 optimizado a ambos campos del arreglo
+    $data['image'] = $base64String;
+    $data['logo'] = $base64String;
+}
+
 
         // --- Actualizar usuario ---
         $user->update($data);

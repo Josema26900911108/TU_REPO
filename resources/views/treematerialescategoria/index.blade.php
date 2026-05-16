@@ -1231,9 +1231,10 @@ $('#treeview_form_delete ').on('submit', function(e) {
             $('#obs_edit').val(obs);
             $('#cuenta_id_edit').val(cuenta);
                 // RUTA de la imagen (debes traerla desde tu objeto)
-    let urlFoto = fotografia
-        ? '/storage/' + fotografia.replace('public/', '')
-        : ''; // Ajusta esto si ya estás enviando la ruta completa
+let urlFoto = fotografia
+    ? 'https://googleapis.com' + fotografia.replace('public/', '')
+    : '';
+
 
     $('#foto_edit').on('change', function(e) {
     let reader = new FileReader();
@@ -1278,9 +1279,10 @@ $('#treeview_form_delete ').on('submit', function(e) {
             $('#lm_delete').val(limite);
             $('#obs_delete').val(obs);
                 // RUTA de la imagen (debes traerla desde tu objeto)
-    let urlFoto = fotografia
-        ? '/storage/' + fotografia.replace('public/', '')
-        : ''; // Ajusta esto si ya estás enviando la ruta completa
+let urlFoto = fotografia
+    ? 'https://googleapis.com' + fotografia.replace('public/', '')
+    : '';
+
 
     $('#preview_foto_delete').attr('src', urlFoto || '/img/sin-imagen.png');
 

@@ -94,15 +94,20 @@ public function lotes() {
     {
         return $this->hasMany(MovimientoMaterial::class);
     }
-    public function handleUploadImage($image)
-    {
-        $file = $image;
-        $name = time() . $file->getClientOriginalName();
-        //$file->move(public_path() . '/img/productos/', $name);
-        Storage::putFileAs('/public/productos/',$file,$name,'public');
+public function handleUploadImage($image)
+{
+    $file = $image;
+    // Creamos un nombre único para evitar que se sobrescriban archivos con el mismo nombre
+    $name = time() . '_' . $file->getClientOriginalName();
+    
+    // 1. Subimos el archivo directamente a tu bucket de Google Cloud Storage
+    // Nota: Eliminamos '/public/' para que se guarde en la raíz del bucket
+    Storage::disk('gcs_images')->putFileAs('productos', $file, $name);
 
-        return $name;
-    }
+    // 2. Retornamos la ruta relativa exacta con la carpeta incluida
+    return 'productos/' . $name;
+}
+
 
   public function reglasPrecios()
     {

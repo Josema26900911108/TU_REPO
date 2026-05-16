@@ -177,15 +177,27 @@ return $productos;
         $producto = new Producto();
 
         // Manejar la carga de la imagen
-        if ($request->hasFile('img_path')) {
-            try {
-                $name = $producto->handleUploadImage($request->file('img_path'));
-            } catch (Exception $e) {
-                return redirect()->back()->with('error', 'Error al cargar la imagen: ' . $e->getMessage());
-            }
-        } else {
-            $name = null;
+if ($request->hasFile('img_path')) {
+    try {
+        // 1. Guarda el nombre de la imagen vieja antes de actualizarla
+        $imagenVieja = $producto->img_path;
+
+        // 2. Sube la nueva imagen al bucket de Google Cloud
+        $name = $producto->handleUploadImage($request->file('img_path'));
+
+        // 3. Si la subida fue exitosa, elimina de inmediato la imagen vieja del bucket
+        if (!empty($imagenVieja) && Storage::disk('gcs_images')->exists($imagenVieja)) {
+            Storage::disk('gcs_images')->delete($imagenVieja);
         }
+
+    } catch (Exception $e) {
+        return redirect()->back()->with('error', 'Error al cargar la imagen en la nube: ' . $e->getMessage());
+    }
+} else {
+    // Si no se sube una nueva imagen, conservamos la que ya tenía el producto
+    $name = $producto->img_path;
+}
+
 
         // Llenar los campos del producto con los datos del formulario
         $producto->fill([
@@ -267,17 +279,19 @@ return $productos;
 
             DB::beginTransaction();
 
-            if ($request->hasFile('img_path')) {
-                $name = $producto->handleUploadImage($request->file('img_path'));
+if ($request->hasFile('img_path')) {
+    // 1. Sube la nueva imagen al bucket de Google Cloud Storage
+    $name = $producto->handleUploadImage($request->file('img_path'));
 
-                //Eliminar si existiese una imagen
-                if(Storage::disk('public')->exists('productos/'.$producto->img_path)){
-                    Storage::disk('public')->delete('productos/'.$producto->img_path);
-                }
+    // 2. Elimina la imagen anterior del bucket si existiese una
+    if (!empty($producto->img_path) && Storage::disk('gcs_images')->exists($producto->img_path)) {
+        Storage::disk('gcs_images')->delete($producto->img_path);
+    }
 
-            } else {
-                $name = $producto->img_path;
-            }
+} else {
+    $name = $producto->img_path;
+}
+
 
             $producto->fill([
                 'codigo' => $request->codigo,

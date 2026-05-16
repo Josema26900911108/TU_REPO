@@ -18,6 +18,7 @@ use Dom\Document;
 use Illuminate\Support\Facades\Auth;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Illuminate\Support\Facades\Storage;
 
 use function Laravel\Prompts\select;
 
@@ -114,12 +115,20 @@ public function store(StoreTiendaRequest $request)
 
         DB::beginTransaction();
 
-        $imageBase64 = null; // Inicializamos vacío
+$imageBase64 = null;
 
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $imageBase64 = base64_encode(file_get_contents($image->path()));
-        }
+if ($request->hasFile('image')) {
+    $image = $request->file('image');
+    $imageBase64 = base64_encode(file_get_contents($image->path()));
+
+    // OPCIONAL: Si deseas guardar este archivo Base64 directamente en tu Bucket
+    $nombreArchivo = 'archivo_' . time() . '.' . $image->getClientOriginalExtension();
+    $rutaDestino = 'documentos/' . $nombreArchivo;
+
+    // Guardamos el archivo original en Google Cloud Storage (no es necesario reconvertir de Base64)
+    Storage::disk('gcs_images')->put($rutaDestino, file_get_contents($image->getRealPath()));
+}
+
         $tel=$request->telefono;
 
 Tienda::create(array_merge(
