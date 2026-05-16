@@ -397,7 +397,7 @@ Route::get('/pagotecnico/lista', [PagotecnicoController::class, 'index'])->name(
 Route::get('/documentosap/lista',[documentosapController::class,'index'])->name('documentosap.lista');
 
 Route::get('/movimientomateriales/lista',[movimientomaterialesController::class,'index'])->name('movimientomateriales.lista');
-
+Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
 
 
 Route::get('/tecnico', [TecnicoController::class, 'index'])->name('tecnico.lista');
