@@ -274,11 +274,8 @@ if ($request->hasFile('img_path')) {
 public function update(UpdateProductoRequest $request, Producto $producto)
 {
 
-    dd([
-        'Todos los campos de texto recibidos' => $request->all(),
-        '¿Llegó algún archivo binario real?' => $request->file()
-    ]);
-    
+
+
     if (!Auth::check()) {
         return redirect()->route('login');
     }

@@ -23,8 +23,8 @@
 
     <div class="card text-bg-light">
         <form action="{{route('productos.update',['producto'=>$producto])}}" method="post" enctype="multipart/form-data">
-            @method('PATCH')
-            @csrf
+    @csrf
+    @method('POST')
             <div class="card-body">
 
                 <div class="row g-4">
