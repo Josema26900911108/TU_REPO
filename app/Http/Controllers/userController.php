@@ -73,7 +73,7 @@ class userController extends Controller
         $fkTienda = session('user_fkTienda');
         $fkusuario = session('user_id');
         $users= User::join('usuario_tienda as ut', 'users.id', '=', 'ut.fkUsuario')
-            ->wherein('ut.fkTienda', function ($query) use ($fkusuario) {
+            ->wherein('ut.fkTiendas', function ($query) use ($fkusuario) {
                 $query->select('fkTienda')
                     ->from('usuario_tienda')
                     ->where('fkUsuario', $fkusuario);
