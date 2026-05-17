@@ -379,7 +379,8 @@
                 </div>
                 <div class="col-9 text-end">
                     <div class="text-white-50 small text-uppercase fw-bold">Personal</div>
-                    @php $users = \App\Models\User::where('fkTienda', session('user_fkTienda'))->count(); @endphp
+                    @php $users = \App\Models\User::join('usuario_tienda', 'users.id', '=', 'usuario_tienda.fkUser')
+                    ->where('usuario_tienda.fkTienda', session('user_fkTienda'))->count(); @endphp
                     <h2 class="fw-bold mb-0">{{ $users }}</h2>
                 </div>
             </div>
