@@ -9,7 +9,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-
+use Illuminate\Database\Eloquent\Casts\Attribute;
 /**
  * @method bool can(string $ability, array|mixed $arguments = [])
  */

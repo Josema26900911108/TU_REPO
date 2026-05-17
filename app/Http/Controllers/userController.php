@@ -61,6 +61,8 @@ class userController extends Controller
 
         return response()->json($tiendas);
     }
+
+
     public function index()
     {
                         if(!Auth::check()){

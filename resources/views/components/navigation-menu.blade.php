@@ -378,14 +378,9 @@
 <style>
 .contenedor-centro {
   display: flex;
-  justify-content: center;  
-  align-items: center;      
-  width: 150px;             /* Define el ancho deseado */
-  height: 150px;            /* Define el alto deseado (igual al ancho) */
-  overflow: hidden;         /* Recorta cualquier parte que se salga */
-  border-radius: 50%;       /* Opcional: hace el contenedor redondo */
+  justify-content: center;  /* Centra horizontalmente */
+  align-items: center;      /* Centra verticalmente */
 }
-
 
 .img-redonda {
   width: 80px;
@@ -404,12 +399,50 @@
             </div>
         </div>
         <div class="sb-sidenav-footer">
-            <div class="small" style="aling:right;">Bienvenido: {{ auth()->user()->name }}</div>
-            <div class="contenedor-centro">
-    <img class="img-redonda" src="data:image/jpeg;base64,{{ trim(str_replace(["\r", "\n", ' '], '', auth()->user()->logo)) }}">
+            <div class="small" style="aling:right;">Bienvenido: {{ auth()->user()->name }}</div><br>
+<div class="contenedor-centro">
+    @if(auth()->user()->logo)
+        @php
+            
+
+// Tomamos los primeros 30 caracteres para asegurar que quepa el prefijo completo si existe
+$inicio = substr(auth()->user()->logo, 0, 30);
+
+// 1. CASO A: Si ya viene con el prefijo completo del navegador de origen
+if (str_starts_with($inicio, 'data:image/')) {
+    $mime = ''; // No agregamos nada porque la cadena ya lo incluye todo
+} 
+// 2. CASO B: Si es Base64 puro (identificamos por su firma mágica)
+elseif (str_starts_with($inicio, 'UklGR')) {
+    $mime = 'data:image/webp;base64,';
+} elseif (str_starts_with($inicio, '/9j/')) {
+    $mime = 'data:image/jpeg;base64,';
+} elseif (str_starts_with($inicio, 'iVBORw')) {
+    $mime = 'data:image/png;base64,';
+} elseif (str_starts_with($inicio, 'R0lG')) {
+    $mime = 'data:image/gif;base64,';
+} 
+// 3. RESPALDO: Por si acaso es un Base64 puro pero de otro formato
+else {
+    $mime = 'data:image/webp;base64,'; 
+}
+
+        @endphp
+        {{ str_starts_with($inicio, 'image/') }}
+        <!-- Renderizado final unificado -->
+        <img class="img-redonda" src="data:{{ $mime.auth()->user()->logo }}" alt="Logo">
+    @else
+        <div style="background: #ccc; width:100%; height:100%; display:flex; align-items:center; justify-content:center;">Sin Logo</div>
+    @endif
 </div>
 
-        </div>
+
+    
+</div>
+
+
+
+
     </nav>
 </div>
 <script>

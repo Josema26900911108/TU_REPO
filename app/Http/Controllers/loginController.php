@@ -32,7 +32,7 @@ class loginController extends Controller
 
         $centro = Tienda::join('centro', 'tienda.fkCentro', '=', 'centro.id')
             ->where('tienda.idTienda', $request->idTienda)
-            ->select('centro.codigo')
+            ->select('centro.codigo','tienda.logo')
             ->first();
         
         // Obtener información adicional, como la tienda a la que está asignado el usuario
@@ -45,7 +45,7 @@ class loginController extends Controller
             'nombreUsuario' => $user->name,
             'user_fkTienda' => $tienda ?? null,
             'idTienda' => $tienda ?? null,
-            'logo' => $tienda ?? null,
+            'logo' => $user->logo ?? $centro->logo ?? null,
             'centro' => ($centro && $centro->codigo) ? $centro->codigo : null,
         ]);
 
