@@ -40,7 +40,7 @@
                         </div>
                         <div class="col-4">
                             @php
-                                $clientes = \App\Models\Cliente::count();
+                                $clientes = \App\Models\Cliente::where('fkTienda', session('user_fkTienda'))->count();
                             @endphp
                             <p class="text-center fw-bold fs-4">{{ $clientes }}</p>
                         </div>
@@ -124,7 +124,7 @@
                         </div>
                         <div class="col-4">
                             @php
-                            $compras = \App\Models\Compra::count();
+                            $compras = \App\Models\Compra::where('fkTienda', session('user_fkTienda'))->count();
                             @endphp
                             <p class="text-center fw-bold fs-4">{{$compras}}</p>
                         </div>
@@ -202,7 +202,7 @@
                         <div class="col-4">
                             @php
 
-                            $productos = \App\Models\Producto::count();
+                            $productos = \App\Models\Producto::where('fkTienda', session('user_fkTienda'))->count();
                             @endphp
                             <p class="text-center fw-bold fs-4">{{$productos}}</p>
                         </div>
@@ -355,7 +355,7 @@
                 </div>
                 <div class="col-9 text-end">
                     <div class="text-white-50 small text-uppercase fw-bold">Proveedores</div>
-                    @php $proveedores = \App\Models\Proveedore::count(); @endphp
+                    @php $proveedores = \App\Models\Proveedore::where('fkTienda', session('user_fkTienda'))->count(); @endphp
                     <h2 class="fw-bold mb-0">{{ $proveedores }}</h2>
                 </div>
             </div>
@@ -379,7 +379,7 @@
                 </div>
                 <div class="col-9 text-end">
                     <div class="text-white-50 small text-uppercase fw-bold">Personal</div>
-                    @php $users = \App\Models\User::count(); @endphp
+                    @php $users = \App\Models\User::where('fkTienda', session('user_fkTienda'))->count(); @endphp
                     <h2 class="fw-bold mb-0">{{ $users }}</h2>
                 </div>
             </div>
