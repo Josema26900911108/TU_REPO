@@ -66,8 +66,24 @@ class userController extends Controller
                         if(!Auth::check()){
             return redirect()->route('login');
         }
-
+    $Estatus = session('user_estatus');
+    if ($Estatus == 'ER') {
         $users = User::all();
+    }else{
+        $fkTienda = session('user_fkTienda');
+        $fkusuario = session('user_id');
+        $users= User::join('usuario_tienda as ut', 'users.id', '=', 'ut.fkUsuario')
+            ->wherein('ut.fkTienda', function ($query) use ($fkusuario) {
+                $query->select('fkTienda')
+                    ->from('usuario_tienda')
+                    ->where('fkUsuario', $fkusuario);
+            })
+            ->select('users.*')
+            ->distinct()
+            ->get();
+    }
+
+
         return view('user.index', compact('users'));
     }
 
