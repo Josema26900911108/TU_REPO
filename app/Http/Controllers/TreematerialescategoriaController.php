@@ -457,7 +457,7 @@ DB::table('treematerialescategoria')->updateOrInsert(
             // VALIDACIÓN CRÍTICA: Buscar el ID del padre de forma segura
             $padreId = null;
             if (!empty($skuPadre) && strtoupper($skuPadre) !== 'NULL') {
-                $padreNode = treematerialescategoria::where('SKU', $skuPadre)
+                $padreNode = Treematerialescategoria::where('SKU', $skuPadre)
                     ->where('fkTienda', $idTienda)
                     ->first();
 
