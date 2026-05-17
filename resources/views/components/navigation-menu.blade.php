@@ -378,9 +378,14 @@
 <style>
 .contenedor-centro {
   display: flex;
-  justify-content: center;  /* Centra horizontalmente */
-  align-items: center;      /* Centra verticalmente */
+  justify-content: center;  
+  align-items: center;      
+  width: 150px;             /* Define el ancho deseado */
+  height: 150px;            /* Define el alto deseado (igual al ancho) */
+  overflow: hidden;         /* Recorta cualquier parte que se salga */
+  border-radius: 50%;       /* Opcional: hace el contenedor redondo */
 }
+
 
 .img-redonda {
   width: 80px;
@@ -399,7 +404,7 @@
             </div>
         </div>
         <div class="sb-sidenav-footer">
-            <div class="small" style="aling:right;">Bienvenido: {{ auth()->user()->name }}</div><br>
+            <div class="small" style="aling:right;">Bienvenido: {{ auth()->user()->name }}</div>
             <div class="contenedor-centro">
     <img class="img-redonda" src="data:image/jpeg;base64,{{ trim(str_replace(["\r", "\n", ' '], '', auth()->user()->logo)) }}">
 </div>
