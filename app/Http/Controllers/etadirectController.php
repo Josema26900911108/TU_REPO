@@ -37,7 +37,7 @@ class etadirectController extends Controller
                 if(!Auth::check()){
             return redirect()->route('login');
         }
-        return view('eta.index');
+        return view('ETA.index');
     }
 
         public function fetchrelacionEta(Request $request)
