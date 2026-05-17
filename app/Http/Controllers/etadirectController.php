@@ -77,7 +77,7 @@ class etadirectController extends Controller
         return view('ETA.tabla.etatable', compact('eta'))->render();
     }
     }catch(Exception $e){
-    return view('eta.index', compact('Error: '.$e->getMessage()));
+    return view('ETA.index', compact('Error: '.$e->getMessage()));
     }
 
 

@@ -12,7 +12,7 @@ class Eta extends Model
 {
     use HasFactory;
 
-    protected $table = 'eta'; // Cambia 'tienda' por el nombre correcto de tu tabla
+    protected $table = 'ETA'; // Cambia 'tienda' por el nombre correcto de tu tabla
     protected $primaryKey = 'id'; // Especifica la clave primaria
 
     public $incrementing = true; // Si es autoincremental
