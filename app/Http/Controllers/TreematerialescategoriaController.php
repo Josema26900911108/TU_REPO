@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use App\Models\CuentaContable;
 use App\Models\Material_relaciones;
 use App\Models\treematerialescategoria;
+use App\Models\Treematerialescategoria as ModelsTreematerialescategoria;
 use SebastianBergmann\LinesOfCode\Counter;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -456,7 +457,7 @@ DB::table('treematerialescategoria')->updateOrInsert(
             // VALIDACIÓN CRÍTICA: Buscar el ID del padre de forma segura
             $padreId = null;
             if (!empty($skuPadre) && strtoupper($skuPadre) !== 'NULL') {
-                $padreNode = Treematerialescategoria::where('SKU', $skuPadre)
+                $padreNode = treematerialescategoria::where('SKU', $skuPadre)
                     ->where('fkTienda', $idTienda)
                     ->first();
 
