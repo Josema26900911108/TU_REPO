@@ -18,9 +18,27 @@
     .pagination-container .pagination {
     justify-content: center;
 }
+.form-control {
+    display: block;
+    width: 100%;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #212529;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    transition: border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+}
+.gap-2 {
+    gap: 0.5rem !important;
+}
 
 
   </style>
+  
 
 @endpush
 
@@ -51,87 +69,93 @@
     <div class="tab-pane fade show active" id="datos" role="tabpanel" aria-labelledby="datos-tab">
         <div class="card">
             <div class="card-header">
-                        <div>
-                            <table><tr>
-
-                                @can('crear-eta')
-                            <td>
-  <form action="{{ route('etadirect.importar') }}" method="POST" enctype="multipart/form-data">
-    @csrf
-    <button type="submit" class="btn btn-success">Subir</button>
-    <label for="archivo" class="btn btn-primary custom-upload-btn">
-      <i class="fa fa-upload"></i>
-    </label>
-
-    <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
-    <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
 
 
-  </form>
-                            </td>
-                            <td>
-                                <a href="{{route('etadirect.formeta')}}">
-                                    <button type="button" class="fa fa-download">descargar formato</button>
-                                </a>
-                            </td>
-</tr>
-<tr>
-
-                            <td>
-                        <form action="{{ route('tecnico.exportar') }}" method="POST" enctype="multipart/form-data">
-                            @csrf
-
-                            <label for="fechaincio">Fecha Inicio:</label>
-                            <input type="date" name="fechaincio" id="fechaincio" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
-
-                            <label for="fechafin">Fecha Fin:</label>
-                            <input type="date" name="fechafin" id="fechafin" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
-
-
-
-                        </form>
-
-                            </td>
-
-                                 <td>
-                        <form action="{{ route('etadirect.AutomataValidarMamo') }}" method="POST" enctype="multipart/form-data">
-                            @csrf
-
-
-                            Orden
-                            <input type="text" id="Orden" name="Orden">
-                            <label for="fechaincio">Fecha Inicio:</label>
-                            <input type="date" name="fechaincio" id="fechaincio" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
-
-                            <label for="fechafin">Fecha Fin:</label>
-                            <input type="date" name="fechafin" id="fechafin" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
-
-<button type="submit" class="btn btn-success">Trabajar Lotes</button>
-
-                        </form>
-
-                            </td>
-                                                             <td>
-                        <form action="{{ route('etadirect.AutomataValidarMamoOrden') }}" method="POST" enctype="multipart/form-data">
-                            @csrf
-                            Orden
-                            <input type="text" id="Orden" name="Orden">
-                            <button type="submit" class="btn btn-success">Revisar orden</button>
-
-                        </form>
-
-                            </td>
-                        </tr></table>
-                    </div>
+         @can('crear-eta')
+<div class="card shadow-sm border-0 bg-light p-3">
+    <div class="card-body">
+        
+        <!-- SECCIÓN 1: ACCIONES DE ARCHIVOS (SUBIR / DESCARGAR) -->
+        <div class="row align-items-center g-3 pb-3 mb-3 border-bottom">
+            <div class="col-12 col-md-8">
+                <form action="{{ route('etadirect.importar') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center gap-2 flex-wrap">
+                    @csrf
+                    <button type="submit" class="btn btn-success px-4">Subir</button>
+                    
+                    <label for="archivo" class="btn btn-primary mb-0 custom-upload-btn">
+                        <i class="fa fa-upload"></i> Seleccionar Archivo
+                    </label>
+                    <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
+                    
+                    <span id="nombre-archivo" class="text-muted small ms-2">Ningún archivo seleccionado</span>
+                </form>
+            </div>
+            
+            <div class="col-12 col-md-4 text-md-end">
+                <a href="{{route('etadirect.formeta')}}" class="btn btn-outline-secondary w-100 w-md-auto">
+                    <i class="fa fa-download me-1"></i> Descargar Formato
+                </a>
             </div>
         </div>
+
+        <!-- SECCIÓN 2: FORMULARIOS DE PROCESAMIENTO -->
+        <div class="row g-4">
+            
+            <!-- Formulario A: Trabajar Lotes -->
+            <div class="col-12 col-lg-8 border-end">
+                <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-tasks me-1"></i> Procesar por Lotes Semanales</h6>
+                <form action="{{ route('etadirect.AutomataValidarMamo') }}" method="POST" enctype="multipart/form-data">
+                    @csrf
+                    <div class="row g-3">
+                        <div class="col-12 col-sm-4">
+                            <label class="form-label small fw-bold text-muted mb-1">Cantidad de órdenes:</label>
+                            <input type="text" id="Orden" name="Orden" class="form-control" placeholder="Ej: 10">
+                        </div>
+                        <div class="col-12 col-sm-4">
+                            <label for="fechaincio" class="form-label small fw-bold text-muted mb-1">Fecha Inicio:</label>
+                            <input type="date" name="fechaincio" id="fechaincio" class="form-control" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
+                        </div>
+                        <div class="col-12 col-sm-4">
+                            <label for="fechafin" class="form-label small fw-bold text-muted mb-1">Fecha Fin:</label>
+                            <input type="date" name="fechafin" id="fechafin" class="form-control" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
+                        </div>
+                        <div class="col-12 text-end mt-2">
+                            <button type="submit" class="btn btn-success px-4">Trabajar Lotes</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Formulario B: Revisar Orden Individual -->
+            <div class="col-12 col-lg-4 d-flex flex-column justify-content-between">
+                <div>
+                    <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-search me-1"></i> Validación Express</h6>
+                    <form action="{{ route('etadirect.AutomataValidarMamoOrden') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold text-muted mb-1">Orden de Trabajo:</label>
+                            <input type="text" id="OrdenIndividual" name="Orden" class="form-control" placeholder="Número de orden">
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Revisar orden</button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+
+
         <div id="tabla_materiales_container">
+            </div>
         </div>
     </div>
-
+</div>
 
         @endcan
-    </div>
+    
 
 @endsection
 

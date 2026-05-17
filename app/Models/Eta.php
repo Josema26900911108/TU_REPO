@@ -18,7 +18,7 @@ class Eta extends Model
     public $incrementing = true; // Si es autoincremental
 
 
-    protected $fillable = ['id','Orden','SKU','Descripcion','Cantidad','Serie','MAC1','MAC2','MAC3','TIPO_DE_SERVICIO','TIPO_DE_ORDEN','CENTRO','EMPLEADO','created_at','updated_at','fkTienda'];
+    protected $fillable = ['id','Orden','SKU','Descripcion','Cantidad','Serie','MAC1','MAC2','MAC3','TIPO_DE_SERVICIO','TIPO_DE_ORDEN','CENTRO','EMPLEADO','created_at','updated_at','fkTienda','Naturaleza','Status'];
 
     public $timestamps = true;
 

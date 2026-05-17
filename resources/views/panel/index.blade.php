@@ -40,7 +40,7 @@
                         </div>
                         <div class="col-4">
                             @php
-                                $clientes = \App\Models\Cliente::where('fkTienda', session('user_fkTienda'))->count();
+                                $clientes = \App\Models\Cliente::count();
                             @endphp
                             <p class="text-center fw-bold fs-4">{{ $clientes }}</p>
                         </div>
