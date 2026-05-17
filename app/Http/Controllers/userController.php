@@ -224,6 +224,28 @@ public function destroy(string $id)
     try {
         $user = User::findOrFail($id);
 
+                
+        if ($user->status == 1) {
+            User::where('id', $user->id)
+                ->update([
+                    'status' => 0
+                ]);
+            $message = 'Usuario eliminado';
+
+                    // Opcional: Quitarle los permisos de técnico si existe
+        $tecnico = Tecnico::where('fkuser', $user->id)->first();
+        if ($tecnico) {
+            $tecnico->update(['especialidad' => 'INACTIVO']); // O lo que prefieras
+        }
+        } else {
+            User::where('id', $user->id)
+                ->update([
+                    'status' => 1
+                ]);
+            $message = 'Usuario restaurado';
+        }
+
+
         // En lugar de borrar, desactivamos
         $user->status = 0; 
         $user->save();
@@ -231,11 +253,7 @@ public function destroy(string $id)
         $rolUser = $user->getRoleNames()->first();
         $user->removeRole($rolUser);
 
-        // Opcional: Quitarle los permisos de técnico si existe
-        $tecnico = Tecnico::where('fkuser', $user->id)->first();
-        if ($tecnico) {
-            $tecnico->update(['especialidad' => 'INACTIVO']); // O lo que prefieras
-        }
+
 
         return redirect()->route('users.index')->with('success', 'Usuario desactivado correctamente.');
     } catch (\Exception $e) {

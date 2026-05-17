@@ -43,6 +43,7 @@ use App\Http\Controllers\tiendaController;
 use App\Http\Controllers\TreematerialescategoriaController;
 use App\Http\Controllers\usuariotiendaController;
 use App\Http\Controllers\ReglaPrecioController;
+use App\Models\Arbmanoobra;
 use App\Models\ArqueoCaja;
 use App\Models\CentrosOrganizacion;
 use App\Models\Compra;
@@ -364,6 +365,8 @@ Route::post('/arbmanoobramatmo/add', [AbrmanoobraController::class, 'add'])->nam
 Route::post('/arbmanoobramatmoupdate', [AbrmanoobraController::class, 'update'])->name('abrmanoobra.update');
 Route::post('/arbamtmo/generarabrmatmo', [AbrmanoobraController::class, 'generarNumeroCuenta'])->name('abrmanoobra.generarNumeroCuenta');
 Route::post('/arbmatmo/delete', [AbrmanoobraController::class, 'delete'])->name('abrmanoobra.delete');
+Route::post('/abr/importarpadreshijos',[AbrmanoobraController::class,'importarmasivohijospadresMAMO'])->name('arbolmamo.importarhijospadres');
+Route::get('/abr-formatoHijoPadres',[AbrmanoobraController::class,'descargarFormHijosPadresMAMO'])->name('arbolmamo.formetahijospadres');
 
 Route::get('/tree', [TreematerialescategoriaController::class, 'fetch2'])->name('fetchtree');
 Route::post('/treerelacion', [TreematerialescategoriaController::class, 'fetchrelacion'])->name('treerelacion');
@@ -380,12 +383,14 @@ Route::post('/tree/delete', [TreematerialescategoriaController::class, 'delete']
 Route::post('/tree/importar',[TreematerialescategoriaController::class,'importarMAMO'])->name('treematerialescategoria.importar');
 Route::post('/tree/importarhijos',[TreematerialescategoriaController::class,'importarmasivohijos'])->name('treematerialescategoria.importarhijos');
 Route::post('/tree/importarpadreshijos',[TreematerialescategoriaController::class,'importarmasivohijospadres'])->name('treematerialescategoria.importarhijospadres');
+
 Route::post('/tree/importargeneral',[TreematerialescategoriaController::class,'importarmasivorelaciones'])->name('treematerialescategoria.importargeneralrealciones');
 Route::post('/treematerialescategoria/move', [TreematerialescategoriaController::class, 'moveNode'])->name('treematerialescategoria.move');
 
 Route::get('/tree-formatoEta',[TreematerialescategoriaController::class,'descargarFormeta'])->name('treematerialescategoria.formeta');
 Route::get('/tree-formatoHijo',[TreematerialescategoriaController::class,'descargarFormHijos'])->name('treematerialescategoria.formetahijos');
 Route::get('/tree-formatoHijoPadres',[TreematerialescategoriaController::class,'descargarFormHijosPadres'])->name('treematerialescategoria.formetahijospadres');
+
 Route::get('/tree-formatoRelaciones',[TreematerialescategoriaController::class,'descargarFormMasivoRelaciones'])->name('treematerialescategoria.formetarelaciones');
 
 route::get('/materialmanoobra/lista',[materialmanoobraController::class,'index'])->name('manoobramaterial.lista');
@@ -415,7 +420,7 @@ Route::delete('/eliminartecnico/{id}', [TecnicoController::class, 'destroy'])->n
 
 Route::get('/verbtecnico/{usbucket}/ver-bucket',[TecnicoController::class,'bucket'])->name('tecnico.bucket');
 Route::get('/buckettecnicos',[TecnicoController::class,'bucketlista'])->name('tecnico.buckettecnico');
-Route::patch('tecnico/{tecnico}/operartrabajo/{expediente}', [TecnicoController::class, 'operarTrabajo'])
+Route::post('tecnico/{tecnico}/operartrabajo/{expediente}', [TecnicoController::class, 'operarTrabajo'])
     ->name('tecnico.operartrabajo');
 Route::get('/pctecnico/{user}/pago-cobro',[TecnicoController::class,'pagocobro'])->name('tecnico.pagocobro');
 Route::get('/vptecnico/{user}/ver-produccion',[TecnicoController::class,'produccion'])->name('tecnico.produccion');

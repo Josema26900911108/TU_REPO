@@ -445,10 +445,13 @@ DB::table('treematerialescategoria')->updateOrInsert(
             // Convertir codificación para evitar caracteres rotos (¿¿ o )
             $nombre = mb_convert_encoding($data['nombre'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
             $SKU = str_replace("'", "", trim($data['SKU'] ?? ''));
+            $operacion    = mb_convert_encoding($data['operacion'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
             $obs    = mb_convert_encoding($data['obs'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
             $skuPadre = str_replace("'", "", trim($data['SKUPADRE'] ?? ''));
             $limite = is_numeric($data['limite']) ? $data['limite'] : 0;
             $minimo = is_numeric($data['minimo']) ? $data['minimo'] : 0;
+            $tipo    = mb_convert_encoding($data['tipo'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $valor = is_numeric($data['valor']) ? $data['valor'] : 0;
 
             // VALIDACIÓN CRÍTICA: Buscar el ID del padre de forma segura
             $padreId = null;
@@ -472,10 +475,13 @@ DB::table('treematerialescategoria')->updateOrInsert(
                 ],
                 [
                     'nombre'     => $nombre,
+                    'operacion' => $operacion,
                     'obs'        => $obs,
                     'limite'     => $limite,
+                    'tipo'       => $tipo,
+                    'valor'      => $valor,
                     'minimo'     => $minimo,
-                    'padre_id'   => $padreId, // Soporta NULL si es un nodo raíz
+                    'padre_id'   => $padreId,
                     'updated_at' => now(),
                     'created_at' => now(), // Laravel lo ignorará automáticamente si es una actualización
                 ]
@@ -734,7 +740,7 @@ private function isDescendant($possibleParentId, $nodeId)
         "Expires"             => "0"
     ];
 
-    $columnas = ['nombre','SKU','limite','minimo','obs','SKUPADRE'];
+    $columnas = ['nombre',	'SKU',	'limite',	'minimo',	'tipo',	'operacion',	'valor',	'fotografia',	'obs',	'SKUPADRE'];
 
     $callback = function () use ($columnas) {
         $file = fopen('php://output', 'w');
@@ -742,12 +748,14 @@ private function isDescendant($possibleParentId, $nodeId)
 
         $fkTienda = session('user_fkTienda') ?? 0;
         // Línea de ejemplo opcional:
-        fputcsv($file, ['CPE ZTE MF266 BL BLANCO','4013453',0,0,'ejemplo bos',"'01"]);
+        fputcsv($file, ['ROSETA',	'04.01',	1,	0,	'MA',	'MULTIPLO',	1,	'',	'',	'04','OBS DE EJEMPLO']);
         fclose($file);
     };
 
     return response()->stream($callback, 200, $headers);
 }
+
+
 
     public function descargarFormMasivoRelaciones()
 {

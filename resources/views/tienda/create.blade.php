@@ -21,6 +21,7 @@
 
     <div class="card">
         <form action="{{ route('tienda.store') }}" method="post" enctype="multipart/form-data">
+                        @method('POST')
             @csrf
             <div class="card-body text-bg-light">
 

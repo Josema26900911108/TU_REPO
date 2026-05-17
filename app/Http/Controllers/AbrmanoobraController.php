@@ -150,6 +150,105 @@ class AbrmanoobraController extends Controller
     }
 
 
+        public function importarmasivohijospadresMAMO(Request $request)
+{
+    $request->validate([
+        'archivohijospadres' => 'required|file|mimes:csv,txt,xls,xlsx', // Agregamos soporte genérico de texto/csv
+    ]);
+
+    $idTienda = session('user_fkTienda');
+    $file = fopen($request->file('archivohijospadres')->getRealPath(), 'r');
+    $encabezado = fgetcsv($file); 
+
+    DB::beginTransaction();
+
+    try {
+        while (($linea = fgetcsv($file)) !== false) {
+            // Evita desfases si hay líneas en blanco
+            if (count($encabezado) !== count($linea)) continue;
+            
+            $data = array_combine($encabezado, $linea);
+
+            // Validar campos mínimos obligatorios
+            if (!isset($data['SKU']) || !isset($data['nombre'])) continue;
+
+            // Convertir codificación para evitar caracteres rotos (¿¿ o )
+            $nombre = mb_convert_encoding($data['nombre'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $SKU = str_replace("'", "", trim($data['SKU'] ?? ''));
+            $Tipo_servicio    = mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $Tipo_orden    = mb_convert_encoding($data['Tipo_orden'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $aplicafotografia    = mb_convert_encoding($data['aplicafotografia'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $obs    = mb_convert_encoding($data['obs'] ?? '', 'UTF-8', 'UTF-8, ISO-8859-1');
+            $skuPadre = str_replace("'", "", trim($data['SKUPADRE'] ?? ''));
+
+            // VALIDACIÓN CRÍTICA: Buscar el ID del padre de forma segura
+            $padreId = null;
+            if (!empty($skuPadre) && strtoupper($skuPadre) !== 'NULL') {
+                $padreNode = Arbmanoobra::where('SKU', $skuPadre)
+                    ->where('fkTienda', $idTienda)
+                    ->first();
+
+                if ($padreNode) {
+                    $padreId = $padreNode->id;
+                }
+            }
+
+            DB::table('arbolmanoobra')->updateOrInsert(
+                [
+                    'fkTienda' => $idTienda,
+                    'SKU'      => $SKU,
+                    'created_at' => now(), 
+                ],
+                [
+                    'nombre'     => $nombre,
+                    'SKU' => $SKU,
+                    'obs'        => $obs,
+                    'Tipo_servicio'     => $Tipo_servicio,
+                    'Tipo_orden'     => $Tipo_orden,
+                    'aplicafotografia'     => $aplicafotografia,
+                    'padre_id'   => $padreId,
+                    'updated_at' => now(),
+                ]
+            );
+        }
+
+        fclose($file);
+        DB::commit();
+        return back()->with('success', 'Se han importado los datos para el árbol de validación de forma exitosa.');
+
+    } catch (\Exception $e) {
+        if ($file) fclose($file);
+        DB::rollBack();
+        return back()->with('error', 'Error al importar: ' . $e->getMessage());
+    }
+}
+
+    public function descargarFormHijosPadresMAMO()
+{
+    $headers = [
+        "Content-type"        => "text/csv",
+        "Content-Disposition" => "attachment; filename=Formato Catalogo MA/MO Masivo.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    $columnas = ['nombre',	'SKU',	'Tipo_servicio',	'Tipo_orden',	'aplicafotografia',	'obs',	'SKUPADRE'];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        fputcsv($file, $columnas); // encabezado
+
+        $fkTienda = session('user_fkTienda') ?? 0;
+        // Línea de ejemplo opcional:
+        fputcsv($file, ['ROSETA POUYET',	'01.01',	'MA',	'',	'SI',	'',	'01']);
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+
     private function buildTreeNode($cuenta)
     {
         // Obtener los hijos de la cuenta actual

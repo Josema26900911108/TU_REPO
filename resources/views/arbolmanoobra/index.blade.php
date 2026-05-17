@@ -29,6 +29,14 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <link href="https://unpkg.com/gijgo@1.9.14/css/gijgo.min.css" rel="stylesheet" type="text/css" />
+  <style>
+    .custom-file-input {
+      display: none;
+    }
+    .custom-upload-btn {
+      cursor: pointer;
+    }
+  </style>
 <style>
     .treeview {
     min-height:20px;
@@ -134,6 +142,10 @@
     <h2 align="center">Árbol de Materiales y Manos de obra</h2>
     <h4 align="center">arbol mano obra</h4>
     <br /><br />
+
+        <ul  id="context">
+        <li><a href="#" id="createChildMasivaHijosPadres">Cargar Masivo General</a></li>
+    </ul>
     <div class="row justify-content-center ">
 
 
@@ -145,6 +157,7 @@
             </div>
         </div>
     </div>
+    
 
     <!-- Menú Contextual -->
     <ul id="contextMenu" class="dropdown-menu">
@@ -262,6 +275,39 @@
         </div>
     </div>
 
+               <!-- Modal Masivo Hijos POR PADRE-->
+    <div class="modal fade" id="modalMasivopadre" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalLabel">Subir Masivo Hijos por Padres</h5>
+
+                </div>
+                <div class="modal-body">
+
+  <form action="{{ route('arbolmamo.importarhijospadres') }}" method="POST" enctype="multipart/form-data">
+    @csrf
+    <button type="submit" class="btn btn-success">Subir</button>
+    <label for="archivohijospadres" class="btn btn-primary custom-upload-btn">
+      <i class="fa fa-upload"></i>
+    </label>
+        <a href="{{route('arbolmamo.formetahijospadres')}}">
+            <button type="button" class="fa fa-download">descargar formato</button>
+        </a>
+
+    <input type="file" id="archivohijospadres" name="archivohijospadres" class="custom-file-input" onchange="mostrarNombrehijoPadre(this)">
+    <span id="nombre-archivohijospadres" class="ml-2 text-muted">Ningún archivo seleccionado</span>
+
+
+  </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="cerrardel" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>    
+
 <!-- Modal -->
 <div class="modal fade" id="modalnew" tabindex="-1" role="dialog" aria-labelledby="modalLabel" aria-hidden="true">
     <div class="modal-dialog" role="document">
@@ -327,6 +373,10 @@
     <!-- Bootstrap Select JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.18/dist/js/bootstrap-select.min.js"></script>
 <script>
+        function mostrarNombrehijoPadre(input) {
+    const nombre = input.files.length > 0 ? input.files[0].name : "Ningún archivo seleccionado";
+    document.getElementById('nombre-archivohijospadres').textContent = nombre;
+  }
 $(document).ready(function() {
 
 
@@ -377,6 +427,15 @@ $(document).ready(function() {
         }
         });
     }
+        $('#context').on('click','a',function(){
+        const action = $(this).attr('id');
+        if (action === 'createChildMasivaHijosPadres') {
+            $('#modalMasivopadre').modal('show');
+        }else if(action==='createChildMasivaRelaciones'){
+        $('#modalMasivoRelacion').modal('show');
+        }
+
+    });
 
     // Lógica para enviar el formulario de agregar cuenta
     $('#treeview_form').on('submit', function(event) {
@@ -506,6 +565,8 @@ $('#treeview_form_delete ').on('submit', function(e) {
             $('#padre_id').val(cid).trigger('change');
 
             $('#modalnew').modal('show');
+        }else if (action === 'createChildMasivaHijosPadres') {
+            $('#modalMasivopadre').modal('show');
         }else if (action === 'deleteNode') {
             $('#padre_id').val(cid);
             $('#cidValue').text('nodo a Eliminar Cid: ' + cid);

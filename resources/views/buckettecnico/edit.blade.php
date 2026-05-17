@@ -142,7 +142,7 @@
     <div class="card text-bg-light">
         <form id="formulario" action="{{ route('tecnico.operartrabajo', ['tecnico' => $tecnico, 'expediente' => $orden]) }}"
       method="POST" enctype="multipart/form-data">
-            @method('PATCH')
+            @method('POST')
             @csrf
             <div class="card-header">
                 <p class="mb-0">Nota: Los usuarios son los que pueden ingresar al sistema</p>
