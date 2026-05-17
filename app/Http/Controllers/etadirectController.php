@@ -93,6 +93,7 @@ public function reporteTecnicos()
             DB::raw('MIN(created_at) as fecha_entrega_mas_antigua')
         )
         ->whereIn('clase_movimiento', ['251', '252', '221']) // Salida, Devolución, Consumo
+        ->where('fkTienda', session('user_fkTienda'))
         ->groupBy('contrata', 'fkMateriales')
         ->having('saldo_pendiente', '>', 0)
         ->get();
@@ -253,12 +254,14 @@ if ($esEspecial) {
     // Usamos selectRaw para añadir una columna 'prioridad'
     $especifica = Material_relaciones::selectRaw("*, 1 as prioridad")
         ->where('skufinal', 'like','%'.trim($centroLimpio) . trim($item->SKU).'%')
+        ->where('fkTienda', session('user_fkTienda'))
         ->where('minimo', '>=', 1);
 
     // CONSULTA GENERAL (Prioridad 2)
     $general = Material_relaciones::selectRaw("*, 2 as prioridad")
         ->where('depende_SKU', $item->SKU)
         ->where('minimo', '>=', 1)
+        ->where('fkTienda', session('user_fkTienda'))
         ->where(function($q) use ($centrosEspeciales, $patronG8) {
             foreach ($centrosEspeciales as $ce) {
                 $q->where('skufinal', 'like', '%' . $ce . '%');
@@ -268,6 +271,7 @@ if ($esEspecial) {
 
 $generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
     ->where('depende_SKU', $item->SKU)
+    ->where('fkTienda', session('user_fkTienda'))
     ->where('minimo', '>=', 1)
     ->where(function($q) use ($patronG8, $item) {
         $q->where('skufinal', 'not like', $patronG8 . '%');
@@ -284,6 +288,7 @@ $generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
     // Centros normales
     $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
         ->where('minimo', '>=', 1)
+        ->where('fkTienda', session('user_fkTienda'))
         ->where(function($q) use ($centrosEspeciales, $patronG8) {
             foreach ($centrosEspeciales as $ce) {
                 $q->where('skufinal', 'not like', '%' . $ce . '%');
@@ -331,6 +336,7 @@ if ($relaciones->isEmpty()) {
         $padre = DB::table('treematerialescategoria as tm')
             ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
             ->where('tm.SKU', $relacion->SKU)
+            ->where('tmc.fkTienda', session('user_fkTienda'))
             ->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')
             ->first();
 
@@ -380,11 +386,13 @@ private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastr
         // CONSULTA ESPECÍFICA (Prioridad 1)
         $especifica = Material_relaciones::selectRaw("*, 1 as prioridad")
             ->where('skufinal', 'like', '%' . trim($centroLimpio) . $itemSKU . '%')
+            ->where('fkTienda', session('user_fkTienda'))
             ->where('minimo', '>=', 1);
 
         // CONSULTA GENERAL (Prioridad 2)
         $general = Material_relaciones::selectRaw("*, 2 as prioridad")
             ->where('depende_SKU', $itemSKU)
+            ->where('fkTienda', session('user_fkTienda'))
             ->where('minimo', '>=', 1)
             ->where(function($q) use ($centrosEspeciales, $patronG8) {
                 $q->where('skufinal', 'like', '%' . $patronG8 . '%');
@@ -395,6 +403,7 @@ private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastr
 
         $generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
             ->where('depende_SKU', $itemSKU)
+            ->where('fkTienda', session('user_fkTienda'))
             ->where('minimo', '>=', 1)
             ->where(function($q) use ($patronG8, $itemSKU) {
                 $q->where('skufinal', 'not like', $patronG8 . '%');
@@ -409,6 +418,7 @@ private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastr
     } else {
         // Centros normales
         $relaciones = Material_relaciones::where('depende_SKU', $itemSKU)
+            ->where('fkTienda', session('user_fkTienda'))
             ->where('minimo', '>=', 1)
             ->where(function($q) use ($centrosEspeciales, $patronG8) {
                 foreach ($centrosEspeciales as $ce) {
@@ -444,11 +454,13 @@ private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastr
             // 1. Buscamos los SKUs que pertenecen al mismo nodo jerárquico (Categoría común)
             $skusEnMismaCategoria = DB::table('treematerialescategoria as tm')
                 ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+                ->where('tmc.fkTienda', session('user_fkTienda'))
                 ->whereIn('tmc.SKU', function($q) use ($itemSKU) {
                     $q->select('tmc2.SKU')
                       ->from('treematerialescategoria as tm2')
                       ->join('treematerialescategoria as tmc2', 'tm2.padre_id', '=', 'tmc2.id')
-                      ->where('tm2.SKU', $itemSKU);
+                      ->where('tm2.SKU', $itemSKU)
+                      ->where('tmc2.fkTienda', session('user_fkTienda'));
                 })->pluck('tm.SKU')->toArray();
 
             // 2. 🎯 SUMA REAL DE LA VISTA: 
@@ -467,6 +479,7 @@ private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastr
         $padre = DB::table('treematerialescategoria as tm')
             ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
             ->where('tm.SKU', $relacion->SKU)
+            ->where('tmc.fkTienda', session('user_fkTienda'))
             ->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')
             ->first();
 
@@ -550,11 +563,13 @@ public function AutomataRecursivoVista(
             // Tu query original pasaba obligatoriamente [$skuActual, $orden]
             $skusJerarquiaValor = DB::table('treematerialescategoria as tm')
                 ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+                ->where('tmc.fkTienda', session('user_fkTienda'))
                 ->whereIn('tmc.SKU', function($q) use ($skuActual) {
                     $q->select('tmc2.SKU')
                       ->from('treematerialescategoria as tm2')
                       ->join('treematerialescategoria as tmc2', 'tm2.padre_id', '=', 'tmc2.id')
-                      ->where('tmc2.SKU', trim($skuActual)); // Mantiene tmc2.SKU original
+                      ->where('tmc2.SKU', trim($skuActual)) // Mantiene tmc2.SKU original
+                      ->where('tmc2.fkTienda', session('user_fkTienda'));   
                 })->pluck('tm.SKU')->map(function($sku) {
                     return trim($sku);
                 })->toArray();
@@ -578,12 +593,15 @@ public function AutomataRecursivoVista(
             // Tu query original pasaba obligatoriamente [$skuActual, $orden]
             $skusJerarquiaUsado = DB::table('treematerialescategoria as tm')
                 ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+                ->where('tmc.fkTienda', session('user_fkTienda'))
                 ->whereIn('tmc.SKU', function($q) use ($skuActual) {
                     $q->select('tmc2.SKU')
                       ->from('treematerialescategoria as tm2')
                       ->join('treematerialescategoria as tmc2', 'tm2.padre_id', '=', 'tmc2.id')
+                      ->where('tmc2.fkTienda', session('user_fkTienda'))
                       // 💡 CORRECCIÓN CRÍTICA: Cambiado de tmc2.SKU a tm2.SKU para calzar con tu query
-                      ->where('tmc2.SKU', trim($skuActual)); 
+                      ->where('tmc2.SKU', trim($skuActual))
+                      ->where('tmc2.fkTienda', session('user_fkTienda'));
                 })->pluck('tm.SKU')->map(function($sku) {
                     return trim($sku);
                 })->toArray();
@@ -642,7 +660,9 @@ if($skuActual=="34006334")  {
             }
         }
 
-        $relaciones = Material_relaciones::where('skufinal', $skufinal)->orderBy('id', 'ASC')->get();
+        $relaciones = Material_relaciones::where('skufinal', $skufinal)
+        ->where('fkTienda', session('user_fkTienda'))
+        ->orderBy('id', 'ASC')->get();
         foreach ($relaciones as $relacion) {
             if (in_array($orden . '_' . $relacion->SKU . '_' . $relacion->depende_SKU . '_' . $relacion->skufinal . '_' . $relacion->tipo_relacion, $rastro)) { 
                 continue; 
@@ -659,7 +679,9 @@ if($skuActual=="34006334")  {
             }
 
             $padreCat = DB::table('treematerialescategoria as tm')->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
-                ->where('tm.SKU', $relacion->SKU)->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')->first();
+                ->where('tm.SKU', $relacion->SKU)
+                ->where('tmc.fkTienda', session('user_fkTienda'))
+                ->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')->first();
             
             if (!$padreCat) { 
                 continue; 
@@ -807,10 +829,12 @@ public function AutomataValidarMamo(Request $request)
     $mamoorden = Eta::whereBetween('created_at', [
             Carbon::parse($request->fechaincio)->startOfDay(),
             Carbon::parse($request->fechafin)->endOfDay()
-        ])->select('Orden')->groupBy('Orden')->limit($limite)->get();
+        ])
+        ->where('fkTienda', session('user_fkTienda'))->select('Orden')->groupBy('Orden')->limit($limite)->get();
 
     foreach($mamoorden as $ordenitem) {
         $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+                 ->where('fkTienda', session('user_fkTienda'))
                  ->where('Orden', $ordenitem->Orden)->groupBy('SKU', 'CENTRO')->get();
 
         foreach ($items as $item) {
@@ -828,7 +852,9 @@ public function AutomataValidarMamoOrden(Request $request)
     $orden = $request->input('Orden');
 
     $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
-             ->where('Orden', $orden)->groupBy('SKU', 'CENTRO')->get();
+             ->where('Orden', $orden)
+             ->where('fkTienda', session('user_fkTienda'))
+             ->groupBy('SKU', 'CENTRO')->get();
 
     foreach ($items as $item) {
         if($item->SKU=="1021571"){
@@ -953,9 +979,9 @@ FROM (
         INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
         WHERE tmc.SKU = ?
     ) AS tmcp ON tmc.SKU = tmcp.SKU
-    WHERE e.Orden = ?
+    WHERE e.Orden = ? and tmc.fkTienda = ?
 ) AS subconsulta
-", [$skuActual,$orden]);
+", [$skuActual,$orden, session('user_fkTienda')]);
 } else{
     $total = DB::selectOne("
 SELECT SUM(total_cantidad) AS total
@@ -965,8 +991,9 @@ FROM (
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     WHERE e.Orden = ? 
       AND tm.SKU = ?
+      AND tm.fkTienda = ?
 ) AS subconsulta
-", [$orden, $skuOrigen]);
+", [$orden, $skuOrigen, session('user_fkTienda')]);
 }
 
     $valor = $total->total ?? 0;
@@ -991,9 +1018,9 @@ FROM (
         INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
         WHERE tmc.SKU = ?
     ) AS tmcp ON tmc.SKU = tmcp.SKU
-    WHERE e.Orden = ?
+    WHERE e.Orden = ? and tmc.fkTienda = ?
 ) AS subconsulta
-", [$skuActual,$orden]);
+", [$skuActual,$orden, session('user_fkTienda')]);
 } else{
     $total = DB::selectOne("
 SELECT SUM(total_cantidad) AS total
@@ -1003,8 +1030,9 @@ FROM (
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     WHERE e.Orden = ? 
       AND tm.SKU = ?
+      AND tm.fkTienda = ?
 ) AS subconsulta
-", [$orden, $skuActual]);
+", [$orden, $skuActual, session('user_fkTienda')]);
 }
 
 
@@ -1035,8 +1063,8 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
 
                 $padrerel = DB::selectOne("
             SELECT distinct e.SKU FROM Eta e
-            inner join material_relaciones mr on e.SKU=mr.SKU where e.Orden=? and e.SKU=?;
-    ", [$orden, $skuActual]);
+            inner join material_relaciones mr on e.SKU=mr.SKU where e.Orden=? and e.SKU=? and mr.fkTienda=? ;
+    ", [$orden, $skuActual, session('user_fkTienda')]);
 
         if($resultado <> 0){
             $nodo = (object)[
@@ -1118,8 +1146,8 @@ $SKUSSS=$relacion->SKU;
     if($tipoRelacion=="calculo" ){
           $padre = DB::selectOne("
             SELECT distinct e.SKU FROM Eta e
-            inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=?;
-    ", [$orden, $relacion->SKU]);
+            inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=? and mr.fkTienda=?;
+    ", [$orden, $relacion->SKU, session('user_fkTienda')]);
 
         if (!$padre) {
              $cantidad = substr_count($relacion->depende_SKU, ".");
@@ -1146,9 +1174,9 @@ $SKUSSS=$relacion->SKU;
         FROM treematerialescategoria tm
         INNER JOIN treematerialescategoria tmc
             ON tm.padre_id = tmc.id
-        WHERE tm.SKU = ?
+        WHERE tm.SKU = ? AND tmc.fkTienda = ?
         LIMIT 1
-    ", [$relacion->SKU]);
+    ", [$relacion->SKU, session('user_fkTienda')]);
 
     // 🛑 CASO BASE 2
     if (!$padre) {
@@ -1294,7 +1322,7 @@ function evaluarFormula(string $formula, array $variables)
 
 function JoboCommand(){
     try {
-        Eta::orderBy('Orden')->where('Status', 'Pe')
+        Eta::orderBy('Orden')->where('fkTienda', session('user_fkTienda'))->where('Status', 'Pe')
 
    ->chunk(500, function ($rows) {
 
@@ -1310,6 +1338,7 @@ function JoboCommand(){
          $familias = $items->map(function ($item) {
             return DB::table('treematerialescategoria')
                      ->where('SKU', $item->SKU)
+                     ->where('fkTienda', session('user_fkTienda'))
                      ->value('padre_id');
          })->filter()->unique()->values();
 
@@ -1317,7 +1346,7 @@ function JoboCommand(){
          foreach ($familias as $familia) {
             DB::table('aprendizaje_familia')->updateOrInsert(
                ['tipo_servicio' => $tipo, 'familia_id' => $familia],
-               ['veces_usado' => DB::raw('veces_usado + 1')]
+               ['fkTienda' => session('user_fkTienda'), 'veces_usado' => DB::raw('veces_usado + 1')]
             );
          }
 
@@ -1331,7 +1360,7 @@ function JoboCommand(){
                     'familia_a' => $familias[$i],
                     'familia_b' => $familias[$j]
                   ],
-                  ['veces_juntos' => DB::raw('veces_juntos + 1')]
+                  ['fkTienda' => session('user_fkTienda'), 'veces_juntos' => DB::raw('veces_juntos + 1')]
                );
             }
          }
@@ -1341,7 +1370,7 @@ DB::table('eta')
     ->update(['Status' => 'Ok']);
 
          DB::table('aprendizaje_ordenes')->updateOrInsert(
-   ['tipo_servicio' => $tipo],
+   ['tipo_servicio' => $tipo, 'fkTienda' => session('user_fkTienda')],
    ['total_ordenes' => DB::raw('total_ordenes + 1')]
 );
 

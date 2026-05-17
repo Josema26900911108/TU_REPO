@@ -391,7 +391,8 @@ $lockKey = 'tecnico_create' . auth()->id();
 
     // Carga de ítems consolidados actuales en base de datos
     $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
-             ->where('Orden', $orden)->groupBy('SKU', 'CENTRO')->get();
+                             ->where('fkTienda', session('user_fkTienda'))         
+                             ->where('Orden', $orden)->groupBy('SKU', 'CENTRO')->get();
 
     $itemsSimulados = $items->toArray();
     $skuEncontradoEnOrden = false;
@@ -406,7 +407,9 @@ $lockKey = 'tecnico_create' . auth()->id();
 
     // Si es un material nuevo que no se ha guardado en DB, simulamos su fila con el centro de la orden
     if (!$skuEncontradoEnOrden) {
-        $centroBase = DB::table('eta')->where('Orden', $orden)->value('CENTRO') ?? "'G888";
+        $centroBase = DB::table('eta')
+        ->where('fkTienda', session('user_fkTienda'))
+        ->where('Orden', $orden)->value('CENTRO') ?? "'G888";
         $itemsSimulados[] = (object)[
             'CENTRO' => $centroBase,
             'SKU' => $skuNuevo,
@@ -568,11 +571,11 @@ try {
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
         $sqlll='
-        SELECT DISTINCT am.nombre, am.id, am.SKU FROM arbolmaterial as am where am.padre_id=:id
+        SELECT DISTINCT am.nombre, am.id, am.SKU FROM arbolmaterial as am where am.padre_id=:id and am.fkTienda=:id2
         ';
         $stmt = $pdo->prepare($sqlll);
 
-        $stmt->execute(['id' => $id]);
+        $stmt->execute(['id' => $id, 'id2' => $fkTienda]);
 
 
         $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);

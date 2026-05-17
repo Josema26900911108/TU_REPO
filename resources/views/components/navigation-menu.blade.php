@@ -400,7 +400,10 @@
         </div>
         <div class="sb-sidenav-footer">
             <div class="small" style="aling:right;">Bienvenido: {{ auth()->user()->name }}</div><br>
-            <div class="contenedor-centro"><img class="img-redonda"  src="data:image/jpeg;base64,{{ auth()->user()->logo }}"></div>
+            <div class="contenedor-centro">
+    <img class="img-redonda" src="data:image/jpeg;base64,{{ trim(str_replace(["\r", "\n", ' '], '', auth()->user()->logo)) }}">
+</div>
+
         </div>
     </nav>
 </div>
