@@ -116,16 +116,20 @@ public function show(){
 
     $materialmanoobra = Materialmanoobra::all();
 }
-
 public function importarMAMO(Request $request)
 {
-                    if(!Auth::check()){
-            return redirect()->route('login');
-        }
+    if(!Auth::check()){
+        return redirect()->route('login');
+    }
 
     $fkTienda = session('user_fkTienda');
-    set_time_limit(300); // 5 minutos
-    ini_set('memory_limit', '512M'); // Aumentar memoria
+    
+    // Configuraciones de límite
+    set_time_limit(0); // Intentar remover límite de PHP
+    ini_set('memory_limit', '512M');
+    
+    // Desactivar logs de consultas (Crucial en Laravel para no agotar la RAM)
+    DB::connection()->disableQueryLog();
 
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
@@ -134,98 +138,84 @@ public function importarMAMO(Request $request)
     $file = fopen($request->file('archivo')->getRealPath(), 'r');
     $encabezado = fgetcsv($file);
 
-    // Contadores para estadísticas
     $insertados = 0;
-    $actualizados = 0;
     $omitidos = 0;
-
-    DB::beginTransaction();
+    
+    $batchSize = 500; // Reducido a 500 para evitar payloads gigantes en Cloud SQL
+    $batchData = [];
+    $now = now();
 
     try {
-        $batchSize = 1000; // Insertar en lotes de 1000
-        $batchData = [];
-
         while (($linea = fgetcsv($file)) !== false) {
-            // Combinar encabezados con datos
+            // Validar que la línea coincida con el número de columnas del encabezado
+            if (count($encabezado) !== count($linea)) {
+                $omitidos++;
+                continue;
+            }
+
             $data = array_combine($encabezado, $linea);
 
-            // Validar campos mínimos
             if (empty($data['Cantidad']) || empty($data['Orden']) || empty($data['SKU'])) {
                 $omitidos++;
                 continue;
             }
 
-            // Convertir campos a UTF-8
-            $descripcion = mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $serie = mb_convert_encoding($data['Serie'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $mac1 = mb_convert_encoding($data['MAC1'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $mac2 = mb_convert_encoding($data['MAC2'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $mac3 = mb_convert_encoding($data['MAC3'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $tipo_serv = mb_convert_encoding($data['TIPO_DE_SERVICIO'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $tipo_orden = mb_convert_encoding($data['TIPO_DE_ORDEN'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $centro = mb_convert_encoding($data['CENTRO'] ?? '', 'UTF-8', 'ISO-8859-1');
-            $empleado = mb_convert_encoding($data['EMPLEADO'] ?? '', 'UTF-8', 'ISO-8859-1');
+            // Validación de fecha optimizada sin capturar excepciones pesadas
+            $fechaRaw = $data['created_at'] ?? null;
+            $fecha = ($fechaRaw && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $fechaRaw)) 
+                ? Carbon::createFromFormat('d/m/Y', $fechaRaw)->format('Y-m-d') 
+                : $now->format('Y-m-d');
 
-            // Manejar fecha (con validación)
-            try {
-                $fecha = Carbon::createFromFormat('d/m/Y', $data['created_at'] ?? now()->format('d/m/Y'))->format('Y-m-d');
-            } catch (\Exception $e) {
-                $fecha = now()->format('Y-m-d');
-            }
-
-            // Preparar datos para inserción masiva
             $batchData[] = [
-                'Orden' => $data['Orden'],
-                'SKU' => $data['SKU'],
-                'Descripcion' => $descripcion,
-                'Cantidad' => $data['Cantidad'],
-                'Serie' => $serie,
-                'MAC1' => $mac1,
-                'MAC2' => $mac2,
-                'MAC3' => $mac3,
-                'TIPO_DE_SERVICIO' => $tipo_serv,
-                'TIPO_DE_ORDEN' => $tipo_orden,
-                'CENTRO' => $centro,
-                'EMPLEADO' => $empleado,
-                'Naturaleza'=>'S',
-                'Status'=>'Pe',
-                'fkTienda' => $fkTienda,
-                'created_at' => $fecha,
-                'updated_at' => now(),
+                'Orden'            => $data['Orden'],
+                'SKU'              => $data['SKU'],
+                'Descripcion'      => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'Cantidad'         => $data['Cantidad'],
+                'Serie'            => mb_convert_encoding($data['Serie'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'MAC1'             => mb_convert_encoding($data['MAC1'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'MAC2'             => mb_convert_encoding($data['MAC2'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'MAC3'             => mb_convert_encoding($data['MAC3'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'TIPO_DE_SERVICIO' => mb_convert_encoding($data['TIPO_DE_SERVICIO'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'TIPO_DE_ORDEN'    => mb_convert_encoding($data['TIPO_DE_ORDEN'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'CENTRO'           => mb_convert_encoding($data['CENTRO'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'EMPLEADO'         => mb_convert_encoding($data['EMPLEADO'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'Naturaleza'       => 'S',
+                'Status'           => 'Pe',
+                'fkTienda'         => $fkTienda,
+                'created_at'       => $fecha,
+                'updated_at'       => $now,
             ];
 
             $insertados++;
 
-            // Insertar por lotes cuando alcance el tamaño
             if (count($batchData) >= $batchSize) {
-                $this->insertOrUpdateBatch($batchData);
-                $batchData = []; // Limpiar lote
-
-                // Liberar memoria periódicamente
-                if ($insertados % 5000 == 0) {
-                    gc_collect_cycles();
-                }
+                // Transacciones atómicas SOLO por lote, no globales
+                DB::transaction(function () use ($batchData) {
+                    $this->insertOrUpdateBatch($batchData);
+                });
+                $batchData = [];
+                gc_collect_cycles(); // Forzar limpieza de basura de PHP inmediatamente
             }
         }
 
-        // Insertar último lote si queda
         if (!empty($batchData)) {
-            $this->insertOrUpdateBatch($batchData);
+            DB::transaction(function () use ($batchData) {
+                $this->insertOrUpdateBatch($batchData);
+            });
         }
 
         fclose($file);
-        DB::commit();
 
-        return back()->with('success',
-            "Importación completada: {$insertados} insertados, {$actualizados} actualizados, {$omitidos} omitidos."
-        );
+        return back()->with('success', "Importación completada: {$insertados} filas procesadas, {$omitidos} omitidas.");
 
     } catch (\Exception $e) {
-        DB::rollBack();
-        fclose($file);
-        return back()->with('error', 'Error al importar: ' . $e->getMessage());
+        if (is_resource($file)) {
+            fclose($file);
+        }
+        return back()->with('error', 'Error crítico en Cloud: ' . $e->getMessage());
     }
 }
+
 
 private function ejecutarLogicaInterna($orden, $item, &$procesados, &$rastro)
 {
