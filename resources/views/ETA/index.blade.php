@@ -751,6 +751,33 @@ $(document).ready(function(){
         }, 500);
     }
 
+    // Definición de la función que faltaba
+function setupSearchInput(inputElement) {
+    console.log('Configurando buscador global...');
+    
+    // Escucha cada vez que el usuario escribe en el buscador
+    inputElement.addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        
+        // 1. Si usas DataTables nativo (Simple-DataTables / Vanilla DataTables)
+        if (window.simpleDatatables || $.fn.DataTable) {
+            // El MutationObserver ya maneja la inicialización, DataTables suele vincularse solo
+            return; 
+        }
+
+        // 2. Solución universal por software: Filtrado manual de filas por si falla lo anterior
+        const activeTable = document.querySelector('.tab-pane.show.active table');
+        if (activeTable) {
+            const rows = activeTable.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+    });
+}
+
+
     // Event handlers para fechas
     $('#fechaincio').change(function(){
         var fechain = $(this).val();
