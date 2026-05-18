@@ -300,9 +300,9 @@ if ($relaciones->isEmpty()) {
         $conteo = Material_relaciones::where('depende_SKU', $relacion->SKU)
             ->whereExists(function ($q) use ($orden) {
                 $q->select(DB::raw(1))
-                  ->from('eta')
-                  ->whereColumn('eta.SKU', 'material_relaciones.SKU')
-                  ->where('eta.Orden', $orden);
+                  ->from('ETA')
+                  ->whereColumn('ETA.SKU', 'material_relaciones.SKU')
+                  ->where('ETA.Orden', $orden);
             })->count();
 
         // 4. Caso especial: Acumulado de categoría (Máximo 10000)
@@ -823,7 +823,7 @@ public function AutomataValidarMamo(Request $request)
         ->where('fkTienda', session('user_fkTienda'))->select('Orden')->groupBy('Orden')->limit($limite)->get();
 
     foreach($mamoorden as $ordenitem) {
-        $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+        $items = DB::table('ETA')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
                  ->where('fkTienda', session('user_fkTienda'))
                  ->where('Orden', $ordenitem->Orden)->groupBy('SKU', 'CENTRO')->get();
 
@@ -841,7 +841,7 @@ public function AutomataValidarMamoOrden(Request $request)
     $procesados = []; $rastro = [];
     $orden = $request->input('Orden');
 
-    $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+    $items = DB::table('ETA')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
              ->where('Orden', $orden)
              ->where('fkTienda', session('user_fkTienda'))
              ->groupBy('SKU', 'CENTRO')->get();
@@ -1355,7 +1355,7 @@ function JoboCommand(){
             }
          }
 
-DB::table('eta')
+DB::table('ETA')
     ->where('Orden', $orden)
     ->update(['Status' => 'Ok']);
 
@@ -1379,10 +1379,10 @@ DB::table('eta')
 private function insertOrUpdateBatch(array $batchData)
 {
     // Opción 1: INSERT IGNORE (si no necesitas actualizar)
-    // DB::table('eta')->insertOrIgnore($batchData);
+    // DB::table('ETA')->insertOrIgnore($batchData);
 
     // Opción 2: UPSERT (Laravel 8.10+)
-    DB::table('eta')->upsert(
+    DB::table('ETA')->upsert(
         $batchData,
         ['Orden', 'SKU', 'Cantidad', 'Serie'], // Claves únicas
         ['Descripcion', 'MAC1', 'MAC2', 'MAC3', 'TIPO_DE_SERVICIO',
