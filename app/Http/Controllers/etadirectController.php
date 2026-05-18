@@ -395,7 +395,7 @@ if ($relaciones->isEmpty()) {
         if ($relacion->maximo == 10000) {
             $monto = DB::selectOne("
                 SELECT SUM(e.Cantidad) AS total 
-                FROM Eta e 
+                FROM ETA e 
                 INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU 
                 INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id 
                 INNER JOIN (
@@ -1046,7 +1046,7 @@ $rastro[] = $clave;
 SELECT SUM(total_cantidad) AS total
 FROM (
     SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
-    FROM Eta e
+    FROM ETA e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
     INNER JOIN (
@@ -1063,7 +1063,7 @@ FROM (
 SELECT SUM(total_cantidad) AS total
 FROM (
     SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
-    FROM Eta e
+    FROM ETA e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     WHERE e.Orden = ? 
       AND tm.SKU = ?
@@ -1085,7 +1085,7 @@ FROM (
 SELECT SUM(total_cantidad) AS total
 FROM (
     SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
-    FROM Eta e
+    FROM ETA e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
     INNER JOIN (
@@ -1102,7 +1102,7 @@ FROM (
 SELECT SUM(total_cantidad) AS total
 FROM (
     SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
-    FROM Eta e
+    FROM ETA e
     INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
     WHERE e.Orden = ? 
       AND tm.SKU = ?
@@ -1138,7 +1138,7 @@ $resultado= $resultado == 20000 ? 0 : $resultado;
         if ($tipoRelacion == 'requiere'  || $tipoRelacion == 'incompatible' ) {
 
                 $padrerel = DB::selectOne("
-            SELECT distinct e.SKU FROM Eta e
+            SELECT distinct e.SKU FROM ETA e
             inner join material_relaciones mr on e.SKU=mr.SKU where e.Orden=? and e.SKU=? and mr.fkTienda=? ;
     ", [$orden, $skuActual, session('user_fkTienda')]);
 
@@ -1221,7 +1221,7 @@ $a=$orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.
 $SKUSSS=$relacion->SKU;
     if($tipoRelacion=="calculo" ){
           $padre = DB::selectOne("
-            SELECT distinct e.SKU FROM Eta e
+            SELECT distinct e.SKU FROM ETA e
             inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=? and mr.fkTienda=?;
     ", [$orden, $relacion->SKU, session('user_fkTienda')]);
 
