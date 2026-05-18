@@ -179,118 +179,125 @@
 let dataTableInstance = null;
 let currentSearchValue = '';
 
-// Función global
-function initDataTable(tablasss,search) {
-    console.log('initDataTable llamado');
+
+function initDataTable(tablasss, search) {
+    console.log('initDataTable llamado de forma local controlada');
+    
     if ($(tablasss).length && !$.fn.DataTable.isDataTable(tablasss)) {
-        // Destruir instancia anterior
         if (dataTableInstance) {
-            try {
-                dataTableInstance.destroy();
-                dataTableInstance = null;
-                console.log('DataTable anterior destruida');
-            } catch(e) {
-                console.log('Error al destruir DataTable:', e);
-            }
+            try { dataTableInstance.destroy(); dataTableInstance = null; } catch(e) {}
         }
 
-        // Inicializar DataTable CON configuración específica para búsqueda
-        console.log('Inicializando nueva DataTable');
-        dataTableInstance = $(tablasss).DataTable({
-  paging: true,
-            info: true,
-            ordering: true,
-            responsive: false,
-            pageLength: 10,
-            searching: true,
-            dom: 'Bfrtip', // Agregar B para botones
-            buttons: [
-                {
-                    extend: 'excelHtml5',
-                    text: '<i class="fas fa-file-excel"></i> Excel',
-                    title: 'Inventario Filtrado',
-                    exportOptions: {
-                        // Exportar solo datos filtrados
-                        modifier: {
-                            search: 'applied',
-                            order: 'applied',
-                            page: 'all' // Exportar TODAS las páginas filtradas
-                        },
-                        columns: ':visible' // Solo columnas visibles
-                    }
-                },
-                {
-                    extend: 'pdfHtml5',
-                    text: '<i class="fas fa-file-pdf"></i> PDF',
-                    title: 'Inventario Filtrado',
-                    exportOptions: {
-                        modifier: {
-                            search: 'applied',
-                            order: 'applied',
-                            page: 'all'
-                        },
-                        columns: ':visible'
-                    },
-                    customize: function(doc) {
-                        doc.defaultStyle.fontSize = 10;
-                        doc.styles.tableHeader.fontSize = 11;
-                        doc.pageMargins = [10, 10, 10, 10];
-                    }
-                },
-                {
-                    extend: 'print',
-                    text: '<i class="fas fa-print"></i> Imprimir',
-                    title: 'Inventario Filtrado',
-                    exportOptions: {
-                        modifier: {
-                            search: 'applied',
-                            order: 'applied',
-                            page: 'all'
-                        },
-                        columns: ':visible'
-                    },
-                    customize: function(win) {
-                        $(win.document.body).find('table').addClass('display').css('font-size', '10px');
-                        $(win.document.body).find('h1').css('text-align','center');
-                    }
-                },
-                {
-                    extend: 'copy',
-                    text: '<i class="fas fa-copy"></i> Copiar',
-                    title: 'Inventario Filtrado',
-                    exportOptions: {
-                        modifier: {
-                            search: 'applied',
-                            order: 'applied'
-                        }
-                    }
-                }
-            ],
-            language: {
-                search: "Buscar:",
-                lengthMenu: "Mostrar _MENU_ registros",
-                info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
-                paginate: {
-                    next: "›",
-                    previous: "‹"
-                },
-                zeroRecords: "No se encontraron resultados"
+        // Inicializamos DataTables de forma normal pero sin paginar lo que ya viene paginado
+dataTableInstance = $(tablasss).DataTable({
+    paging: false,
+    info: false,
+    ordering: true,
+    searching: true,
+    responsive: false,
+    dom: 'Bfrtip',
+    buttons: [
+        {
+            text: '<i class="fas fa-file-excel"></i> Exportar todo a Excel',
+            className: 'btn btn-success btn-sm custom-excel-btn',
+            action: function (e, dt, node, config) {
+                // Capturamos todos los filtros activos en pantalla
+                var select = document.getElementById("tecnicoid");
+                var id = select !== null ? select.options[select.selectedIndex].value : "{{ $tecnico->id ?? '' }}";
+                var fechain = $('#fechaincio').val();
+                var fechafin = $('#fechafin').val();
+                var search = $('#globalSearch').val() || '';
+
+                // Construimos la URL de descarga enviando los parámetros por GET
+                var exportUrl = "{{ route('exportar.eta.excel') }}?" + $.param({
+                    id: id,
+                    fechain: fechain,
+                    fechafin: fechafin,
+                    search: search
+                });
+
+                // Abrimos la descarga en una pestaña nueva o ventana de descarga
+                window.location.href = exportUrl;
             }
-        });
+        },
+        'pdfHtml5', 'print', 'copy' // Mantenemos los demás si los requieres
+    ],
+    // ... tu configuración de lenguaje sigue igual
+});
 
-        console.log('DataTable inicializada con ID:', dataTableInstance.table().node().id);
-
-        // Conectar tu input personalizado con DataTable - VERSIÓN MEJORADA
-        connectSearchInput(search);
-    } else {
-        console.log('Tabla no encontrada o ya inicializada');
-        if ($.fn.DataTable.isDataTable(tablasss)) {
-            console.log('DataTable ya existe, reconectando buscador...');
-            dataTableInstance = $(tablasss).DataTable();
-            connectSearchInput(search);
+        // Conectar tu input globalSearch si existe
+        if (search) {
+            $(search).off('keyup').on('keyup', function() {
+                dataTableInstance.search($(this).val()).draw();
+            });
         }
     }
 }
+
+// Tu función AJAX recuperada se encarga de inyectar el HTML limpio
+function fillRelacionAsignada(page = 1) {
+    console.log('fillRelacionAsignada buscando de forma global...');
+    var select = document.getElementById("tecnicoid");
+    var fechain = $('#fechaincio').val();
+    var fechafin = $('#fechafin').val();
+    
+    // NUEVO: Capturar el texto que el usuario escribió en el buscador
+    var search = $('#globalSearch').val() || ''; 
+
+    let id = select !== null ? select.options[select.selectedIndex].value : "{{ $tecnico->id ?? '' }}";
+
+    $.ajax({
+        url: "{{ route('fetchrelacionEta') }}",
+        method: 'GET',
+        // NUEVO: Agregamos el parámetro 'search' a la petición AJAX
+        data: { id : id, fechain : fechain, fechafin : fechafin, page: page, search: search },
+        success: function(data) {
+            $('#tabla_materiales_container').html(data);
+            
+            setTimeout(function() {
+                initDataTable('#datatablesSimple', '#globalSearch');
+                
+                // NUEVO: Mantener el foco y el texto en el buscador después de recargar el HTML
+                if(search !== '') {
+                    $('#globalSearch').val(search).focus();
+                }
+            }, 300);
+        },
+        error: function(xhr) {
+            Swal.fire('Error', 'Hubo un problema al filtrar: ' + xhr.responseText, 'error');
+        }
+    });
+}
+
+
+// Mantener alias globales
+window.fillRelacion = fillRelacionAsignada;
+window.fillRelacionAsig = fillRelacionAsignada;
+window.fillRelacionAsignada = fillRelacionAsignada;
+
+// Capturar los clics de la nueva paginación de Laravel para recargar mediante AJAX
+$(document).on('click', '#laravel-pagination a', function (e) {
+    e.preventDefault();
+    // Extrae de forma automática el número de página del enlace (ej: page=2)
+    let url = $(this).attr('href');
+    let page = new URL(url, window.location.origin).searchParams.get('page') || 1;
+    fillRelacionAsignada(page);
+});
+
+
+function fillRelacion(page = 1) {
+    console.log('fillRelacionAsignada refrescando DataTable...');
+    
+    if (dataTableInstance) {
+        // En modo Server-Side no reescribimos el HTML, solo refrescamos los datos
+        dataTableInstance.ajax.reload(); 
+    } else {
+        // Si no se ha creado la tabla, la inicializamos por primera vez
+        initDataTable('#datatablesSimple', '#globalSearch');
+    }
+}
+
+
 
 function connectSearchInput(search) {
     if ($().length && dataTableInstance) {
@@ -404,6 +411,12 @@ window.fillRelacionAsig = function(page = 1) {
         }
     });
 };
+// ==========================================
+// FUNCIÓN PRINCIPAL DE ETA RECUPERADA Y PROTEGIDA
+// ==========================================
+
+
+
 
 // Función para exportar datos filtrados a CSV
 function exportFilteredToCSV() {
@@ -621,14 +634,17 @@ $(document).ready(function(){
         dropdown.toggle();
     });
 
+let searchTimer;
+
+
     // Event delegation para el input de búsqueda (por si se carga dinámicamente)
-    $(document).on('keyup', '#globalSearch', function() {
-        console.log('Evento keyup en globalSearch');
-        currentSearchValue = $(this).val();
-        if (dataTableInstance && $.fn.DataTable.isDataTable('#datatablesSimpleInv')) {
-            dataTableInstance.search(currentSearchValue).draw();
-        }
-    });
+$(document).on('keyup', '#globalSearch', function() {
+    clearTimeout(searchTimer);
+    // Espera 500 milisegundos después de que el usuario deja de escribir para lanzar la búsqueda
+    searchTimer = setTimeout(function() {
+        fillRelacionAsignada(1); 
+    }, 500);
+});
 
         // Event delegation para el input de búsqueda (por si se carga dinámicamente)
     $(document).on('keyup', '#globalSearchExp', function() {
@@ -933,34 +949,7 @@ function mostrarNombreINVENTARIO(input) {
     document.getElementById('nombre-archivoinv').textContent = nombre;
 }
 
-// Otras funciones AJAX (NO duplicadas)
-function fillRelacionAsignada(page) {
-    var select = document.getElementById("tecnicoid");
-    var fechain = $('#fechaincio').val();
-    var fechafin = $('#fechafin').val();
 
-    let id = null;
-    if (select !== null) {
-        id = select.options[select.selectedIndex].value;
-    } else {
-        id = "{{ $tecnico->id ?? '' }}";
-    }
-
-    $.ajax({
-        url: "{{ route('fetchrelacionEta') }}",
-        method: 'GET',
-        data: { id : id, fechain : fechain, fechafin : fechafin, page: page },
-        success: function(data) {
-            $('#tabla_materiales_container').html(data);
-setTimeout(function() {
-                initDataTable('#datatablesSimple', '#globalSearch');
-            }, 300);
-        },
-        error: function(xhr) {
-            Swal.fire('Error', 'Hubo un problema al actualizar: ' + xhr.responseText, 'error');
-        }
-    });
-}
 
 function fillRelacionP(page) {
     var select = document.getElementById("tecnicoid");

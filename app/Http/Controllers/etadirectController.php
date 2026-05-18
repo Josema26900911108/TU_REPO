@@ -40,48 +40,131 @@ class etadirectController extends Controller
         return view('ETA.index');
     }
 
-        public function fetchrelacionEta(Request $request)
+    public function exportarExcel(Request $request)
 {
-    try{
+    // 1. Capturar exactamente los mismos filtros que tienes en tu consulta de la tabla
+    $fkTienda = session('user_fkTienda');
+    $fechain = $request->input('fechain', now()->subDays(3)->format('Y-m-d'));
+    $fechafin = $request->input('fechafin', now()->addDay()->format('Y-m-d'));
+    $search = $request->input('search');
+    $idTecnico = $request->input('id');
 
-                    if(!Auth::check()){
+    // 2. Consulta idéntica sin paginar (Trae todos los filtrados de golpe)
+    $query = Eta::where('fkTienda', $fkTienda)
+        ->whereBetween('created_at', [$fechain . ' 00:00:00', $fechafin . ' 23:59:59']);
+
+    if ($idTecnico) {
+        $query->where('EMPLEADO', $idTecnico);
+    }
+
+    if (!empty($search)) {
+        $query->where(function($q) use ($search) {
+            $q->where('Orden', 'LIKE', "%{$search}%")
+              ->orWhere('SKU', 'LIKE', "%{$search}%")
+              ->orWhere('Descripcion', 'LIKE', "%{$search}%")
+              ->orWhere('Serie', 'LIKE', "%{$search}%")
+              ->orWhere('EMPLEADO', 'LIKE', "%{$search}%");
+        });
+    }
+
+    // 3. Configurar cabeceras de descarga HTTP para Excel/CSV
+    $fileName = 'Reporte_ETA_' . date('Y-m-d_H-i') . '.csv';
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=$fileName",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // 4. Generar el archivo en streaming línea por línea para cuidar la RAM
+    $callback = function() use($query) {
+        $file = fopen('php://output', 'w');
+        
+        // Agregar BOM UTF-8 para que Excel reconozca correctamente las tildes y caracteres especiales
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        // Cabeceras del Excel columnas
+        fputcsv($file, ['Orden', 'SKU', 'Descripcion', 'Cantidad', 'Serie', 'MAC1', 'MAC2', 'MAC3', 'Centro', 'Empleado', 'Fecha']);
+
+        // Procesar los registros en bloques de 1000 para no agotar memoria (Chunking)
+        $query->chunk(1000, function($registros) use($file) {
+            foreach ($registros as $row) {
+                fputcsv($file, [
+                    $row->Orden,
+                    $row->SKU,
+                    $row->Descripcion,
+                    $row->Cantidad,
+                    $row->Serie,
+                    $row->MAC1,
+                    $row->MAC2,
+                    $row->MAC3,
+                    $row->CENTRO,
+                    $row->EMPLEADO,
+                    date('d-m-Y', strtotime($row->created_at))
+                ]);
+            }
+        });
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+
+public function fetchrelacionEta(Request $request)
+{
+    try {
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
 
-        $Estatus = session('user_estatus');
-                    $fkTienda = session('user_fkTienda');
-                    $fechain=$request->input('fechain');
-                    $fechafin=$request->input('fechafin');
+        $fkTienda = session('user_fkTienda');
+        $fechain = $request->input('fechain', now()->subDays(3)->format('Y-m-d'));
+        $fechafin = $request->input('fechafin', now()->addDay()->format('Y-m-d'));
+        
+        // NUEVO: Capturar el parámetro de búsqueda
+        $search = $request->input('search'); 
 
+        // Consulta base con la relación de la tienda
+        $query = Eta::with('tienda')
+            ->where('fkTienda', $fkTienda)
+            ->whereBetween('created_at', [$fechain . ' 00:00:00', $fechafin . ' 23:59:59']);
 
+        if ($request->has('id') && !empty($request->input('id'))) {
+            $query->where('EMPLEADO', $request->input('id'));
+        }
 
-                    if(isset($fechain) or isset($fechafin)){
-                if ($Estatus == 'ER') {
+        // NUEVO: Si el usuario escribió algo, filtramos de manera global en la Base de Datos
+        if (!empty($search)) {
+            $query->where(function($q) use ($search) {
+                $q->where('Orden', 'LIKE', "%{$search}%")
+                  ->orWhere('SKU', 'LIKE', "%{$search}%")
+                  ->orWhere('Descripcion', 'LIKE', "%{$search}%")
+                  ->orWhere('MAC1', 'LIKE', "%{$search}%")
+                  ->orWhere('MAC2', 'LIKE', "%{$search}%")    
+                ->orWhere('MAC3', 'LIKE', "%{$search}%")    
+                  ->orWhere('Serie', 'LIKE', "%{$search}%")
+                  ->orWhere('EMPLEADO', 'LIKE', "%{$search}%");
+            });
+        }
 
-            $eta=Eta::where('fkTienda',$fkTienda)
-            ->whereBetween('created_at',[$fechain, $fechafin])
-            ->paginate(10000000);
+        // Paginamos los resultados ya filtrados de forma limpia
+        $eta = $query->paginate(15);
 
-                } else {
-            $eta=Eta::where('fkTienda',$fkTienda)
-            ->whereBetween('created_at',[$fechain, $fechafin])
-            ->paginate(10000000);
-                };
-                    }
+        if ($request->ajax()) {
+            return view('ETA.tabla.etatable', compact('eta'))->render();
+        }
 
+        return view('ETA.index', compact('eta'));
 
-
-
-
-    if ($request->ajax()) {
-        return view('ETA.tabla.etatable', compact('eta'))->render();
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Error al filtrar: ' . $e->getMessage()], 500);
     }
-    }catch(Exception $e){
-    return view('ETA.index', compact('Error: '.$e->getMessage()));
-    }
-
-
 }
+
+
 
 public function reporteTecnicos()
 {
@@ -116,6 +199,9 @@ public function show(){
 
     $materialmanoobra = Materialmanoobra::all();
 }
+
+
+
 public function importarMAMO(Request $request)
 {
     if(!Auth::check()){

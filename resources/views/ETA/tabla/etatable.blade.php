@@ -44,7 +44,10 @@
                         <td>{{$item->MAC3}}</td>
                         <td>{{$item->CENTRO}}</td>
                         <td>{{$item->EMPLEADO}}</td>
-                        <td>{{$item->created_at->format('d-m-Y')}}</td>
+                        <!-- Reemplaza tu fila actual por esta que acepta texto puro -->
+                        <td>{{ date('d-m-Y', strtotime($item->created_at)) }}</td>
+
+
                         @can('vertienda-producto')
                         <td>
                             @if($item->fkTienda)
@@ -142,4 +145,8 @@
                     @endforeach
                 </tbody>
             </table>
+            <div class="d-flex justify-content-center mt-3" id="laravel-pagination">
+                {!! $eta->links('pagination::bootstrap-5') !!}
+            </div>
+        
 </div>

@@ -371,6 +371,9 @@ Route::get('/abr-formatoHijoPadres',[AbrmanoobraController::class,'descargarForm
 Route::get('/tree', [TreematerialescategoriaController::class, 'fetch2'])->name('fetchtree');
 Route::post('/treerelacion', [TreematerialescategoriaController::class, 'fetchrelacion'])->name('treerelacion');
 
+Route::get('/exportar-eta-excel', [App\Http\Controllers\etadirectController::class, 'exportarExcel'])
+    ->name('exportar.eta.excel');
+
 
 
 Route::get('/treepadres', [TreematerialescategoriaController::class, 'fillParentCategory'])->name('treepadres');
