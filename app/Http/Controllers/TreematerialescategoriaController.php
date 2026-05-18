@@ -565,7 +565,7 @@ INNER JOIN (
             }
 
             // Validar campos mínimos
-            if (!isset($data['SKUPADRE']) || !isset($data['SKU']) || !isset($data['minimo'])  || !isset($data['maximo'])  || !isset($data['depende_SKU']) || !isset($data['nombre'])) continue;
+            if (!isset($data['SKUPADRE']) || !isset($data['SKU']) || !isset($data['skufinal']) || !isset($data['minimo'])  || !isset($data['maximo'])  || !isset($data['depende_SKU']) || !isset($data['nombre'])) continue;
 
 
             $skupadress=$data['SKUPADRE'] ?? '';
@@ -577,7 +577,7 @@ INNER JOIN (
 $nombre       = mb_convert_encoding($data['nombre'] ?? '', 'UTF-8', 'ISO-8859-1');
 $SKU        = mb_convert_encoding($data['SKU'] ?? '', 'UTF-8', 'ISO-8859-1');
 $depende_SKU        = mb_convert_encoding($data['depende_SKU'] ?? '', 'UTF-8', 'ISO-8859-1');
-$skuFinal        = mb_convert_encoding($data['sku_final'] ?? '', 'UTF-8', 'ISO-8859-1');
+$skuFinal        = mb_convert_encoding($data['skufinal'] ?? '', 'UTF-8', 'ISO-8859-1');
 $formula        = mb_convert_encoding($data['formula'] ?? '', 'UTF-8', 'ISO-8859-1');
 $tipo_relacion        = mb_convert_encoding($data['tipo_relacion'] ?? '', 'UTF-8', 'ISO-8859-1');
 $maximo=$data['maximo'] ?? 1;
