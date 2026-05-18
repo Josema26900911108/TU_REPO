@@ -390,7 +390,7 @@ $lockKey = 'tecnico_create' . auth()->id();
     $cantidadNueva = (float)$request->input('Cantidad_Nueva');
 
     // Carga de ítems consolidados actuales en base de datos
-    $items = DB::table('eta')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+    $items = DB::table('ETA')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
                              ->where('fkTienda', session('user_fkTienda'))         
                              ->where('Orden', $orden)->groupBy('SKU', 'CENTRO')->get();
 
@@ -407,7 +407,7 @@ $lockKey = 'tecnico_create' . auth()->id();
 
     // Si es un material nuevo que no se ha guardado en DB, simulamos su fila con el centro de la orden
     if (!$skuEncontradoEnOrden) {
-        $centroBase = DB::table('eta')
+        $centroBase = DB::table('ETA')
         ->where('fkTienda', session('user_fkTienda'))
         ->where('Orden', $orden)->value('CENTRO') ?? "'G888";
         $itemsSimulados[] = (object)[
