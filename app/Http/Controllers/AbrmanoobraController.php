@@ -59,6 +59,54 @@ class AbrmanoobraController extends Controller
     {
         // Lógica para mostrar la cuenta contable
     }
+    public function moveNode(Request $request)
+{
+    try {
+        $request->validate([
+            'node_id' => 'required|integer',
+            'new_parent_id' => 'nullable|integer'
+        ]);
+$idnodo=$request->node_id;
+$idnodopadre=$request->new_parent_id;
+
+            if ($idnodo==$idnodopadre) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede mover al mismo nodo como padre'
+                ], 400);
+            }
+        $node = Arbmanoobra::findOrFail($request->node_id);
+
+        // Validar que no se esté moviendo a un hijo (evitar ciclos)
+        if ($request->new_parent_id) {
+            $newParent = Arbmanoobra::findOrFail($request->new_parent_id);
+
+                        // Verificar si el nuevo padre es un descendiente del nodo
+            if (is_null($node->padre_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede mover un nodo nodo raiz'
+                ], 400);
+            }
+
+        }
+
+        // Actualizar el padre
+        $node->padre_id = $idnodopadre;
+        $node->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Nodo movido correctamente'
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error: ' . $e->getMessage()
+        ], 500);
+    }
+}
     public function createRootArbmanoobraIfNotExist()
     {
 

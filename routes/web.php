@@ -367,6 +367,7 @@ Route::post('/arbamtmo/generarabrmatmo', [AbrmanoobraController::class, 'generar
 Route::post('/arbmatmo/delete', [AbrmanoobraController::class, 'delete'])->name('abrmanoobra.delete');
 Route::post('/abr/importarpadreshijos',[AbrmanoobraController::class,'importarmasivohijospadresMAMO'])->name('arbolmamo.importarhijospadres');
 Route::get('/abr-formatoHijoPadres',[AbrmanoobraController::class,'descargarFormHijosPadresMAMO'])->name('arbolmamo.formetahijospadres');
+Route::post('/abrmover/move', [AbrmanoobraController::class, 'moveNode'])->name('abrmanoobra.move');
 
 Route::get('/tree', [TreematerialescategoriaController::class, 'fetch2'])->name('fetchtree');
 Route::post('/treerelacion', [TreematerialescategoriaController::class, 'fetchrelacion'])->name('treerelacion');
@@ -405,6 +406,15 @@ Route::get('/pagotecnico/lista', [PagotecnicoController::class, 'index'])->name(
 Route::get('/documentosap/lista',[documentosapController::class,'index'])->name('documentosap.lista');
 
 Route::get('/movimientomateriales/lista',[movimientomaterialesController::class,'index'])->name('movimientomateriales.lista');
+Route::post('/movimientomateriales/importar',[movimientomaterialesController::class,'importarMAMO'])->name('movimientomateriales.importar');
+Route::get('/movimientomateriales-formatoEta',[movimientomaterialesController::class,'descargarFormeta'])->name('movimientomateriales.formeta');
+Route::post('/movimientomateriales-AutomataValidarMamo',[movimientomaterialesController::class,'AutomataValidarMamo'])->name('movimientomateriales.AutomataValidarMamo');
+Route::post('/movimientomateriales-AutomataValidarMamoOrden',[movimientomaterialesController::class,'AutomataValidarMamoOrden'])->name('movimientomateriales.AutomataValidarMamoOrden');
+Route::get('/exportar-movimientomateriales-excel', [App\Http\Controllers\movimientomaterialesController::class, 'exportarExcelMovimientos'])
+    ->name('exportar.movimientomateriales.excel');
+Route::get('/movimientomaterialesTtabla', [movimientomaterialesController::class, 'fetchrelacionmovimientosmat'])->name('fetchrelacionmovimientomateriales');
+
+
 Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
 
 

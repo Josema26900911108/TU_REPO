@@ -16,12 +16,9 @@
 @endif
 
 @push('css')
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/css/bootstrap-select.min.css">
 <link rel="stylesheet" href="{{ asset('css/bootstrap-treeview.css') }}">
 <link rel="stylesheet" href="{{ asset('css/bootstrap-treeview.min.css') }}">
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.18/dist/css/bootstrap-select.min.css">
-<script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.18/dist/js/i18n/defaults-es_ES.min.js"></script>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 
@@ -29,6 +26,9 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <link href="https://unpkg.com/gijgo@1.9.14/css/gijgo.min.css" rel="stylesheet" type="text/css" />
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
   <style>
     .custom-file-input {
       display: none;
@@ -37,6 +37,51 @@
       cursor: pointer;
     }
   </style>
+  <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+
+  
+<style>
+    /* Estilos para el arrastre */
+    .ui-draggable-dragging {
+        z-index: 9999 !important;
+        opacity: 0.7;
+        background-color: #f8f9fa;
+        border: 2px dashed #007bff;
+        padding: 5px;
+        border-radius: 4px;
+    }
+
+    .treeview li.drag-over {
+        background-color: #e9ecef;
+        border: 2px dashed #28a745;
+    }
+
+    .treeview li.drop-allowed::after {
+        content: "✓ Puede soltar aquí";
+        color: #28a745;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+
+    .treeview li.drop-not-allowed::after {
+        content: "✗ No puede soltar aquí";
+        color: #dc3545;
+        font-size: 12px;
+        margin-left: 10px;
+    }
+
+    /* Estilo para el nodo que se está arrastrando */
+    .dragging-node {
+        cursor: move !important;
+        user-select: none;
+    }
+
+    /* Indicador visual de destino válido */
+    .drop-target {
+        background-color: #d1ecf1 !important;
+        border-left: 3px solid #17a2b8 !important;
+    }
+</style>
 <style>
     .treeview {
     min-height:20px;
@@ -133,8 +178,10 @@
 @push('scripts')
 
 
-<script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
 <script src="https://unpkg.com/gijgo@1.9.14/js/gijgo.min.js" type="text/javascript"></script>
+
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
 @endpush
 <div class="container">
 
@@ -367,11 +414,108 @@
 
 </div>
 
-<script src="{{ asset('js/bootstrap-treeview.js') }}"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<!-- PRIMERO jQuery (ya lo tienes) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-    <!-- Bootstrap Select JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.13.18/dist/js/bootstrap-select.min.js"></script>
+<!-- LUEGO jQuery UI -->
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+
+<script src="{{ asset('js/bootstrap-treeview.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
+
+<script>
+            let selectedNode = null;
+            let inNodeId = null;
+    let selectedIdpivote = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const modalHeader = document.querySelector('#modalDelete .modal-header');
+        const modalDialog = document.querySelector('#modalDelete .modal-dialog');
+
+        let isDragging = false, x = 0, y = 0;
+
+        modalHeader.style.cursor = 'move';
+
+        modalHeader.addEventListener('mousedown', function (e) {
+            isDragging = true;
+            x = e.clientX - modalDialog.getBoundingClientRect().left;
+            y = e.clientY - modalDialog.getBoundingClientRect().top;
+            modalDialog.style.position = 'absolute';
+            modalDialog.style.margin = '0';
+        });
+
+        document.addEventListener('mousemove', function (e) {
+            if (isDragging) {
+                modalDialog.style.left = `${e.clientX - x}px`;
+                modalDialog.style.top = `${e.clientY - y}px`;
+            }
+        });
+
+        document.addEventListener('mouseup', function () {
+            isDragging = false;
+        });
+    });
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modalHeader = document.querySelector('#modal .modal-header');
+        const modalDialog = document.querySelector('#modal .modal-dialog');
+
+        let isDragging = false, x = 0, y = 0;
+
+        modalHeader.style.cursor = 'move';
+
+        modalHeader.addEventListener('mousedown', function (e) {
+            isDragging = true;
+            x = e.clientX - modalDialog.getBoundingClientRect().left;
+            y = e.clientY - modalDialog.getBoundingClientRect().top;
+            modalDialog.style.position = 'absolute';
+            modalDialog.style.margin = '0';
+        });
+
+        document.addEventListener('mousemove', function (e) {
+            if (isDragging) {
+                modalDialog.style.left = `${e.clientX - x}px`;
+                modalDialog.style.top = `${e.clientY - y}px`;
+            }
+        });
+
+        document.addEventListener('mouseup', function () {
+            isDragging = false;
+        });
+    });
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modalHeader = document.querySelector('#modalnew .modal-header');
+        const modalDialog = document.querySelector('#modalnew .modal-dialog');
+
+        let isDragging = false, x = 0, y = 0;
+
+        modalHeader.style.cursor = 'move';
+
+        modalHeader.addEventListener('mousedown', function (e) {
+            isDragging = true;
+            x = e.clientX - modalDialog.getBoundingClientRect().left;
+            y = e.clientY - modalDialog.getBoundingClientRect().top;
+            modalDialog.style.position = 'absolute';
+            modalDialog.style.margin = '0';
+        });
+
+        document.addEventListener('mousemove', function (e) {
+            if (isDragging) {
+                modalDialog.style.left = `${e.clientX - x}px`;
+                modalDialog.style.top = `${e.clientY - y}px`;
+            }
+        });
+
+        document.addEventListener('mouseup', function () {
+            isDragging = false;
+        });
+    });
+</script>
+
 <script>
         function mostrarNombrehijoPadre(input) {
     const nombre = input.files.length > 0 ? input.files[0].name : "Ningún archivo seleccionado";
@@ -382,33 +526,181 @@ $(document).ready(function() {
 
     let selectedNode = null;
     // Función para llenar el árbol
-    function fill_treeview() {
-        $.ajax({
-            url: "{{ route('fetchabrmomat') }}",
-            dataType: "json",
-            success: function(data) {
-                $('#treeview').treeview({
-                    data: data,
-                    selectable: true,
-  highlightSelected: true,
-  showBorder: false,
-  levels: 199,
-  expandIcon: 'fa fa-plus',
-  collapseIcon: 'fa fa-minus',
-                    onNodeSelected: function(event, node) {
-                        selectedNode = node;
-                        console.log('Nodo seleccionado:', selectedNode.Cid);
+  function fill_treeview() {
+    $.ajax({
+        url: "{{ route('fetchabrmomat') }}",
+        dataType: "json",
+        success: function(data) {
+            
+            // 1. Inicializamos el árbol y cerramos sus opciones correctamente
+            $('#treeview').treeview({
+                data: data,
+                selectable: true,
+                highlightSelected: true,
+                showBorder: false,
+                levels: 199,
+                expandIcon: 'fa fa-plus',
+                collapseIcon: 'fa fa-minus',
+                onNodeSelected: function(event, node) {
+                    selectedNode = node;
+                    console.log('Nodo seleccionado:', selectedNode.Cid);
+                }
+            }); // <-- ESTE CIERRE ERA EL QUE FALTABA O ESTABA MAL PUESTO
 
+            // 2. El temporizador va aquí afuera, una vez que el árbol ya se creó
+            setTimeout(function() {
+                enableDragAndDrop();
+            }, 500);
 
-
-                    }
-                });
-            },error: function(xhr) {
-            Swal.fire('Error', 'Hubo un problema al actualizar.'+xhr.responseText, 'error');
+        },
+        error: function(xhr) {
+            Swal.fire('Error', 'Hubo un problema al actualizar.' + xhr.responseText, 'error');
             console.error(xhr.responseText);
         }
-        });
+    });
+}
+
+
+
+function enableDragAndDrop() {
+    // Hacer todos los nodos arrastrables
+    $('.node-treeview').draggable({
+        helper: 'clone',
+        cursor: 'move',
+        revert: 'invalid',
+        start: function(event, ui) {
+            $(this).addClass('dragging-node');
+            ui.helper.css({
+                'width': $(this).width(),
+                'opacity': 0.8,
+                'background-color': '#e3f2fd',
+                'border': '2px dashed #2196f3',
+                'border-radius': '4px',
+                'padding': '5px'
+            });
+
+            // Obtener datos del nodo arrastrado
+            let nodeId = $(this).data('nodeid');
+            let nodeText = $(this).find('span').text();
+            ui.helper.data('draggedNode', {
+                id: nodeId,
+                text: nodeText
+            });
+        },
+        stop: function() {
+            $(this).removeClass('dragging-node');
+        }
+    });
+
+    // Hacer todos los nodos receptores (droppable)
+    $('.node-treeview').droppable({
+        accept: '.node-treeview',
+        hoverClass: 'drop-target',
+        tolerance: 'pointer',
+        over: function(event, ui) {
+            let draggedNode = ui.helper.data('draggedNode');
+
+            let targetNodeId = $(this).data('nodeid');
+            inNodeId = selectedNode.Cid;
+
+
+        },
+        out: function() {
+            $(this).removeClass('drop-allowed drop-not-allowed drop-target');
+        },
+        drop: function(event, ui) {
+            let draggedNode = ui.helper.data('draggedNode');
+            let targetNodeId = $(this).data('nodeid');
+
+            let targetNodeText = $(this).find('span').text();
+simulateClickOnNode(targetNodeId)
+            // Confirmar movimiento
+            Swal.fire({
+                title: 'Mover nodo',
+                html: `¿Deseas mover <strong>${draggedNode.text}</strong> como hijo de <strong>${targetNodeText}</strong>?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, mover',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+
+                    moveNode(inNodeId, selectedNode.Cid);
+                }
+            });
+
+            $(this).removeClass('drop-allowed drop-not-allowed drop-target');
+        }
+    });
+
+
+}
+
+// Función para validar si se puede soltar un nodo en otro
+function canDropHere(draggedNodeId, targetNodeId) {
+    // Evitar que un nodo se suelte en sí mismo
+    if (draggedNodeId == targetNodeId) return false;
+
+    // Evitar que un nodo se suelte en sus propios hijos
+    // (necesitarías verificar la jerarquía completa)
+    return true;
+}
+
+function simulateClickOnNode(cid) {
+    // Buscar el elemento del nodo por su data-cid
+    const $nodeElement = $(`.node-treeview[data-nodeid="${cid}"]`);
+
+    if ($nodeElement.length) {
+        console.log('Simulando clic en nodo:', cid);
+
+        // Método 1: Disparar evento click de jQuery
+        $nodeElement.trigger('click');
+
+        // Método 2: Disparar evento nativo
+        $nodeElement[0].click();
+
+        // Método 3: Seleccionar el nodo en el treeview
+        const tree = $('#treeview').treeview('getTree');
+
+
+        return true;
+    } else {
+        console.log('No se encontró el elemento del nodo con Cid:', cid);
+        return false;
     }
+}
+// Función para mover el nodo en el servidor
+function moveNode(nodeId, newParentId) {
+    $.ajax({
+        url: "{{ route('abrmanoobra.move') }}",
+        method: "POST",
+        data: {
+            node_id: nodeId,
+            new_parent_id: newParentId,
+            _token: "{{ csrf_token() }}"
+        },
+        beforeSend: function() {
+            // Mostrar indicador de carga
+            $('#treeview').append('<div class="loading-overlay">Actualizando...</div>');
+        },
+        success: function(response) {
+            if (response.success) {
+                Swal.fire('Éxito', 'Nodo movido correctamente', 'success');
+                // Actualizar el árbol
+                fill_treeview();
+            } else {
+                Swal.fire('Error', response.message || 'Error al mover el nodo', 'error');
+            }
+        },
+        error: function(xhr) {
+            Swal.fire('Error', 'Hubo un problema al mover el nodo: ' + xhr.responseText, 'error');
+        },
+        complete: function() {
+            $('.loading-overlay').remove();
+        }
+    });
+}
+
 
     // Función para llenar el menú desplegable de cuentas padre
     function fill_parent_category() {
@@ -616,7 +908,12 @@ $('#treeview_form_delete ').on('submit', function(e) {
     }
 });
 
+  
 
 });
 </script>
 @endsection
+@push('js')
+<script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
+
+@endpush

@@ -305,8 +305,9 @@ public function importarMAMO(Request $request)
 
 private function ejecutarLogicaInterna($orden, $item, &$procesados, &$rastro)
 {
-$centrosEspeciales = ["'G845", "'G830", "'G888", "'G840"];
-$patronG8 = "'G888";
+
+$centrosEspeciales = ["'MGG845", "'MGG830", "'G888", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
+$patronG8 = "G888";
 
 $esEspecial = false;
 // Verificamos si es especial (por lista o por patrón 'G8)
@@ -315,9 +316,11 @@ if (str_contains($item->CENTRO, $patronG8)) {
 }
 
 // 1. Aseguramos que el centro se limpie o valide bien
-$centroLimpio = $item->CENTRO;
-$centrosEspeciales = ["'G845", "'G830", "'G888", "'G840"];
-$patronG8 = "'G8";
+$centroLimpio = "'".$item->TIPO_DE_SERVICIO . substr($item->CENTRO, 1, 4);
+$centrosEspeciales = ["'MGG845", "'MGG830", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
+$patronG8 = "G8";
+
+
 
 // Forzamos la detección de especial
 $esEspecial = false;
@@ -328,41 +331,74 @@ if (str_contains($centroLimpio, $patronG8)) {
 if ($esEspecial) {
     // CONSULTA ESPECÍFICA (Prioridad 1)
     // Usamos selectRaw para añadir una columna 'prioridad'
-    $especifica = Material_relaciones::selectRaw("*, 1 as prioridad")
-        ->where('skufinal', 'like','%'.trim($centroLimpio) . trim($item->SKU).'%')
-        ->where('fkTienda', session('user_fkTienda'))
-        ->where('minimo', '>=', 1);
+// 1. Construye la cadena completa incluyendo la comilla que viene en el objeto
+$skuConComilla = $item->TIPO_DE_SERVICIO . substr($item->CENTRO, 1, 100) . trim($item->SKU);
 
-    // CONSULTA GENERAL (Prioridad 2)
-    $general = Material_relaciones::selectRaw("*, 2 as prioridad")
-        ->where('depende_SKU', $item->SKU)
-        ->where('minimo', '>=', 1)
-        ->where('fkTienda', session('user_fkTienda'))
-        ->where(function($q) use ($centrosEspeciales, $patronG8) {
-            foreach ($centrosEspeciales as $ce) {
-                $q->where('skufinal', 'like', '%' . $ce . '%');
+if($skuConComilla=="MJG8304018238"){
+    $sk="'".$skuConComilla;
+}
+
+// 1. CONSULTA ESPECÍFICA (Prioridad 1)
+$especifica = Material_relaciones::selectRaw("*, 1 as prioridad")
+    ->where('skufinal', 'like', '%' . $skuConComilla . '%')
+    ->where('fkTienda', session('user_fkTienda'))
+    ->where('minimo', '>=', 1);
+
+    $SKUPAT=trim($item->SKU);
+// 2. CONSULTA GENERAL (Prioridad 2)
+$general = Material_relaciones::selectRaw("*, 2 as prioridad")
+    ->where('depende_SKU', $item->SKU)
+    ->where('minimo', '>=', 1)
+    ->where('fkTienda', session('user_fkTienda'))
+    ->where(function($q) use ($centrosEspeciales, $SKUPAT   ) {
+        $q->where(function($subQuery) use ($centrosEspeciales) {
+            foreach ($centrosEspeciales as $index => $ce) {
+                if ($index === 0) {
+                    $subQuery->where('skufinal', 'like', '%' . $ce . '%');
+                } else {
+                    $subQuery->orWhere('skufinal', 'like', '%' . $ce . '%');
+                }
             }
-            $q->where('skufinal', 'like', '%' . $patronG8 . '%');
         });
+    });
 
+
+    $ignorarpatron = Material_relaciones::selectRaw("*, 3 as prioridad")
+    ->where('skufinal', 'like', '%G888' . trim($item->SKU) . '%')
+    ->where('fkTienda', session('user_fkTienda'))
+    ->where('minimo', '>=', 1);
+
+
+// 3. CONSULTA GENERAL TOTAL (Prioridad 2)
 $generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
     ->where('depende_SKU', $item->SKU)
     ->where('fkTienda', session('user_fkTienda'))
     ->where('minimo', '>=', 1)
     ->where(function($q) use ($patronG8, $item) {
-        $q->where('skufinal', 'not like', $patronG8 . '%');
-        $q->Where('skufinal', 'not like', $item->SKU.'%');
+        $q->where('skufinal', 'not like', $patronG8 . '%')
+          ->where('skufinal', 'not like', $item->SKU . '%')
+          ->where('skufinal', '<>', "'G888" . $item->SKU);
+
     });
 
-    // Unimos y GENERAL FINAL
-    $relaciones = $especifica->unionAll($general)->unionAll($generalTOTAL)
-        ->orderBy('prioridad', 'ASC')
-        ->orderBy('id', 'ASC')
-        ->get();
+// 4. UNIÓN Y ELIMINACIÓN DE DUPLICADOS CON PHP
+$relaciones = $especifica->union($general)->union($generalTOTAL)
+    ->union($ignorarpatron)
+    ->orderBy('prioridad', 'ASC')
+    ->orderBy('id', 'ASC')
+    ->get()             // Obtenemos todos los registros de la BD ordenados
+    ->unique('id');     // Elimina los duplicados conservando siempre la prioridad más alta (1 antes que 2)
+
+// EVALUACIÓN: Si hay prioridad 1, removemos la prioridad 3 de la colección
+$resultadoFinal = $relaciones->when($relaciones->contains('prioridad', 1), function ($coleccion) {
+    return $coleccion->reject(function ($registro) {
+        return $registro->prioridad == 3;
+    });
+});
 
 } else {
     // Centros normales
-    $relaciones = Material_relaciones::where('depende_SKU', $item->SKU)
+    $resultadoFinal = Material_relaciones::where('depende_SKU', $item->SKU)
         ->where('minimo', '>=', 1)
         ->where('fkTienda', session('user_fkTienda'))
         ->where(function($q) use ($centrosEspeciales, $patronG8) {
@@ -376,34 +412,43 @@ $generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
 }
 
 
-if ($relaciones->isEmpty()) {
+if ($resultadoFinal->isEmpty()) {
     return;
 }
 
 
-    foreach ($relaciones as $relacion) {
+    foreach ($resultadoFinal as $relacion) {
         // 3. Conteo de precisión: Solo cuenta lo que existe en la Orden actual
         $conteo = Material_relaciones::where('depende_SKU', $relacion->SKU)
             ->whereExists(function ($q) use ($orden) {
                 $q->select(DB::raw(1))
                   ->from('ETA')
                   ->whereColumn('ETA.SKU', 'material_relaciones.SKU')
-                  ->where('ETA.Orden', $orden);
+                  ->where('ETA.Orden', $orden)
+                  ->where('ETA.fkTienda', session('user_fkTienda'));
             })->count();
 
         // 4. Caso especial: Acumulado de categoría (Máximo 10000)
         if ($relacion->maximo == 10000) {
             $monto = DB::selectOne("
-                SELECT SUM(e.Cantidad) AS total 
-                FROM ETA e 
-                INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU 
-                INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id 
-                INNER JOIN (
-                    SELECT tmc.SKU FROM treematerialescategoria tm 
-                    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id 
-                    WHERE tm.SKU = ?
-                ) as tmcp on tmc.SKU = tmcp.SKU 
-                WHERE e.Orden = ?", [$item->SKU, $orden]);
+SELECT SUM(e.Cantidad) AS total 
+FROM ETA e 
+WHERE e.Orden = ? 
+  AND e.fkTienda = ?
+  -- Filtramos para que el SKU de ETA pertenezca al árbol de categorías correcto
+  AND e.SKU IN (
+      SELECT DISTINCT tm.SKU 
+      FROM treematerialescategoria tm 
+      INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id 
+      WHERE tmc.SKU = (
+          SELECT tmc_sub.SKU 
+          FROM treematerialescategoria tm_sub 
+          INNER JOIN treematerialescategoria tmc_sub ON tm_sub.padre_id = tmc_sub.id 
+          WHERE tm_sub.SKU = ? AND tm_sub.fkTienda = ?
+          LIMIT 1
+      )
+  );
+ ", [$orden, session('user_fkTienda'), $item->SKU, session('user_fkTienda')]);
             
             $item->Cantidad = $monto->total ?? 0;
         }
@@ -442,13 +487,13 @@ if ($relaciones->isEmpty()) {
     }
 }
 
-private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastro, array $itemsSimulados)
+private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastro, array $itemsSimulados, $tipoOrden)
 {
-    $centrosEspeciales = ["'G845", "'G830", "'G888", "'G840"];
+    $centrosEspeciales = ["'MGG845", "'MGG830", "'G888", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
     $patronG8 = "'G8";
 
     // 💡 CORRECCIÓN DE SINTAXIS: Accedemos como array usando las llaves del Front-end
-    $centroLimpio = $item['centro'] ?? $item['CENTRO'] ?? "'G888";
+    $centroLimpio = $tipoOrden . ($item['centro'] ?? $item['CENTRO'] ?? "'G888");
     $itemSKU      = trim($item['sku'] ?? $item['SKU'] ?? '');
     $itemCantidad = (float)($item['cantidad'] ?? $item['Cantidad'] ?? 0);
 
@@ -808,7 +853,7 @@ public function AutomataValidarMamoOrdenTecnico(Request $request)
     // 💡 TU LÓGICA PRINCIPAL: Si ya existen elementos en la lista de memoria (allItems)
     if ($itemsMemoria) {
         foreach ($itemsMemoria as $item) {
-            $this->ejecutarLogicaInternaVista($orden, $item, $procesados, $rastro, $itemsMemoria);
+            $this->ejecutarLogicaInternaVista($orden, $item, $procesados, $rastro, $itemsMemoria, $request->input('Tipo_Orden', ''));
         }
     } else {
         // 🎯 TU LÓGICA DEL PRIMER REGISTRO: Cuando Items_Memoria está vacío
@@ -829,7 +874,7 @@ public function AutomataValidarMamoOrdenTecnico(Request $request)
         $tablaVirtual = [$itemFormateado];
         
         // Ejecutamos pasando el registro individual y la lista simulada de una fila
-        $this->ejecutarLogicaInternaVista($orden, $itemFormateado, $procesados, $rastro, $tablaVirtual);
+        $this->ejecutarLogicaInternaVista($orden, $itemFormateado, $procesados, $rastro, $tablaVirtual, $request->input('Tipo_Orden', ''));
     }
 
     // Consolidación de mermas e incompatibles procesados en la memoria RAM
@@ -909,7 +954,7 @@ public function AutomataValidarMamo(Request $request)
         ->where('fkTienda', session('user_fkTienda'))->select('Orden')->groupBy('Orden')->limit($limite)->get();
 
     foreach($mamoorden as $ordenitem) {
-        $items = DB::table('ETA')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+        $items = DB::table('ETA')->select('TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
                  ->where('fkTienda', session('user_fkTienda'))
                  ->where('Orden', $ordenitem->Orden)->groupBy('SKU', 'CENTRO')->get();
 
@@ -927,10 +972,10 @@ public function AutomataValidarMamoOrden(Request $request)
     $procesados = []; $rastro = [];
     $orden = $request->input('Orden');
 
-    $items = DB::table('ETA')->select('CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+    $items = DB::table('ETA')->select('TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
              ->where('Orden', $orden)
              ->where('fkTienda', session('user_fkTienda'))
-             ->groupBy('SKU', 'CENTRO')->get();
+             ->groupBy('SKU', 'CENTRO','TIPO_DE_SERVICIO')->get();
 
     foreach ($items as $item) {
         if($item->SKU=="1021571"){

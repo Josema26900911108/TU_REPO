@@ -168,6 +168,7 @@
 
                     @php
                     $id3 = $orden->id;
+                    $tipo_orden=$orden->Tipo_servicio;
                     @endphp
                     <div class="col-lg-3 col-form-label mb-2">
                         <div><strong>{{ $label }}:</strong> {{ $value }}</div>
@@ -263,6 +264,7 @@
                         <div class="col-sm-4 mb-2">
                             <label for="cantidad" class="form-label">Cantidad:</label>
                             <input type="number" name="cantidad" id="cantidad" class="form-control" step="1" min="1" value="1">
+                            <input type="hidden" name="Tipo_Orden" id="Tipo_Orden" value="{{ $tipo_orden }}">
                         </div>
 
                         <!-----botón para agregar--->
@@ -520,6 +522,7 @@ function agregarItem() {
     let sku = (optionSelected.data('sku') || '').toString().trim();
     let cantidad = $('#cantidad').val();
     let ordenActual = "{{ $orden->Orden }}"; 
+    let tipoOrden = "{{ $orden->Tipo_servicio }}";  
 
     if (idItem != '' && nameProducto != undefined && cantidad != '' ) {
         if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
@@ -546,6 +549,7 @@ function agregarItem() {
                 data: {
                     _token: $('meta[name="csrf-token"]').attr('content'),
                     Orden: ordenActual,
+                    Tipo_Orden: tipoOrden,
                     SKU_Nuevo: sku.trim(),
                     Cantidad_Nueva: cantidad,
                     Items_Memoria: listaSimulada,

@@ -12,6 +12,7 @@ use App\Http\Requests\StoreClienteExistenteRequest;
 use App\Models\Cliente;
 use App\Models\User;
 use App\Models\Documento;
+use App\Models\MovimientoMaterial;
 use App\Models\MovimientoMateriales;
 use App\Models\Persona;
 use App\Models\Producto;
@@ -45,16 +46,451 @@ class movimientomaterialesController extends Controller
 
                 if ($Estatus == 'ER') {
 
-                    $materialmanoobra = Materialmanoobra::all();
+                    $materialmanoobra = MovimientoMaterial::all();
 
                 } else {
-                    $materialmanoobra = Materialmanoobra::where('fkTienda',$fkTienda)->get();
+                    $materialmanoobra = MovimientoMaterial::where('fkTienda',$fkTienda)->get();
                 }
 
 
 
-        return view('materialmanoobra.index', compact('materialmanoobra'));
+        return view('materialmovorganizaciones.index', compact('materialmanoobra'));
     }
+
+public function importarmamo(Request $request)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+
+    $fkTienda = session('user_fkTienda') ?? session('user_fktienda');
+    $nombreUsuario = session('nombreUsuario') ?? 'Sistema SAP';
+    
+    $request->validate(['archivo' => 'required|file|mimes:csv,txt']);
+    
+    $file = fopen($request->file('archivo')->getRealPath(), 'r');
+    $encabezadoOriginal = fgetcsv($file); 
+    
+    $encabezado = array_map(function($item) {
+        return trim(strtoupper($item));
+    }, $encabezadoOriginal);
+
+    DB::beginTransaction();
+    try {
+        $fila = 1;
+        $instaladosContador = 0;
+        $ahora = now();
+        $hoy = $ahora->format('Y-m-d');
+
+        while (($linea = fgetcsv($file)) !== false) {
+            $fila++;
+            $data = array_combine($encabezado, $linea);
+            
+            $sku = trim($data['SKU'] ?? '');
+            $cantidad = floatval($data['CANTIDAD'] ?? $data['cantidad'] ?? 0);
+            
+            if (empty($sku) || empty($cantidad)) {
+                continue;
+            }
+
+            $serie = trim($data['SERIE'] ?? '');
+            $centroOrigen = trim($data['CENTRO_ORIGEN'] ?? '');
+            $centroDestino = trim($data['CENTRO_DESTINO'] ?? '');
+            
+            // =========================================================================
+            // ESCUDO ANTI-DUPLICADOS INTEGRAL (COMPLETAMENTE LIMPIO)
+            // =========================================================================
+            $yaExisteMovimientoHoy = DB::table('movimientomateriales')
+                ->where('SKU', $sku)
+                ->where('CENTRO', $centroDestino)
+                ->where('cantidad', $cantidad)
+                ->where('serie', $serie)
+                ->where('Creado_el', $hoy)
+                ->exists();
+
+            if (!$yaExisteMovimientoHoy) {
+$yaExisteMovimientoHoy = MovimientoMateriales::where('fkTienda', $fkTienda)
+    ->where('centro', $centroDestino)
+    ->where('fecha_contabilizacion', $hoy)
+    ->where('referencia', 'LIKE', "%" . $serie . "%")
+    ->where('cantidad', $cantidad) // Mantiene la evaluación de la cantidad absoluta
+    ->exists();
+
+            }
+
+            if ($yaExisteMovimientoHoy) {
+                continue; 
+            }
+
+            // =========================================================================
+            // RESOLVER EL ID DEL TÉCNICO SI EL CÓDIGO DEL CENTRO PERTENECE A UNO
+            // =========================================================================
+$idTecnicoOrigen = !empty($centroOrigen) ? DB::table('tecnico')->where('codigo', $centroOrigen)->value('id') : null;
+$idTecnicoDestino = !empty($centroDestino) ? DB::table('tecnico')->where('codigo', $centroDestino)->value('id') : null;
+
+            $docRef = 'ETA-' . $ahora->format('dmY:H:i:s') . '-' . $serie;
+
+            $producto = Producto::firstOrCreate(
+                ['codigo' => $sku],
+                [
+                    'nombre' => mb_convert_encoding($data['DESCRIPCION'] ?? "Producto $sku", 'UTF-8', 'ISO-8859-1'),
+                    'fkTienda' => $fkTienda, 'estado' => 1, 'marca_id' => 1, 'presentacione_id' => 1,
+                    'stock' => 0, 'precio_base' => 0, 'stock_minimo' => 1, 'perecedero' => 0
+                ]
+            );
+
+            if (!empty($serie)) {
+                $stockActual = DB::table('movimientomateriales')
+                    ->where('serie', $serie)
+                    ->where('SKU', $sku)
+                    ->where('fkTienda', $fkTienda)
+                    ->where('Status', 'A') 
+                    ->first();
+
+                if ($stockActual && $stockActual->ESTATUS == 'INSTALADO') {
+                    $instaladosContador++;
+                    continue; 
+                }
+            }
+
+            if ($centroOrigen == $centroDestino && !empty($centroOrigen)) {
+                continue;
+            }
+
+            if (!empty($centroOrigen)) {
+                MovimientoMateriales::create([
+                    'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoOrigen,
+                    'clase_movimiento' => '251', 'cantidad' => $cantidad * -1,
+                    'referencia' => "SALIDA TRASLADO SERIE: " . $serie . " | AL DESTINO " . $centroDestino,
+                    'tipo_movimiento' => 'TRASPASO_SALIDA', 'documento_material' => $docRef,
+                    'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
+                    'almacen' => $data['ALMACEN'] ?? 'ALMA', 'centro' => $centroOrigen,
+                    'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
+                ]);
+
+                DB::table('movimientomateriales')
+                    ->where('SKU', $sku)
+                    ->when(!empty($serie), function($q) use ($serie) {
+                        return $q->where('serie', $serie);
+                    })
+                    ->where('CENTRO', $centroOrigen)
+                    ->where('fkTienda', $fkTienda)
+                    ->update([
+                        'ESTATUS' => 'TRASLADADO',
+                        'Status' => 'T',
+                        'updated_at' => $ahora
+                    ]);
+            }
+
+            MovimientoMateriales::create([
+                'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoDestino,
+                'clase_movimiento' => !empty($centroOrigen) ? '252' : '101', 'cantidad' => $cantidad,
+                'referencia' => "ENTRADA TRASLADO SERIE: " . $serie . " | ORIGEN: " . ($centroOrigen ?? 'BODEGA'),
+                'tipo_movimiento' => 'TRASPASO_ENTRADA', 'documento_material' => $docRef,
+                'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
+                'centro' => $centroDestino, 'almacen' => $data['ALMACEN'] ?? 'ALMA',
+                'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
+            ]);
+
+            $stockDestinoExistente = DB::table('movimientomateriales')
+                ->where('SKU', $sku)
+                ->where('CENTRO', $centroDestino)
+                ->when(!empty($serie), function($q) use ($serie) {
+                    return $q->where('serie', $serie);
+                })
+                ->where('fkTienda', $fkTienda)
+                ->where('Status', 'I') 
+                ->first();
+
+            if ($stockDestinoExistente && empty($serie)) {
+                DB::table('movimientomateriales')
+                    ->where('id', $stockDestinoExistente->id)
+                    ->update([
+                        'cantidad' => $stockDestinoExistente->cantidad + $cantidad,
+                        'Modificado_el' => $ahora->format('Y-m-d'),
+                        'Modificado_por' => $nombreUsuario,
+                        'updated_at' => $ahora
+                    ]);
+            } else {
+                DB::table('movimientomateriales')->insert([
+                    'serie' => $serie,
+                    'SKU' => $sku,
+                    'fkTienda' => $fkTienda,
+                    'fkTecnico' => $idTecnicoDestino, 
+                    'almacen' => $data['ALMACEN'] ?? 'ALMA',
+                    'Lote' => $data['LOTE'] ?? 'A000',
+                    'MAC1' => $data['MAC1'] ?? '', 
+                    'MAC2' => $data['MAC2'] ?? '',
+                    'MAC3' => $data['MAC3'] ?? '',
+                    'COSTO' => doubleval($data['COSTO'] ?? 0),                     
+                    'TIPO' => $data['TIPO'] ?? 'DA',
+                    'ESTATUS' => 'DISPONIBLE',
+                    'Status' => 'I', 
+                    'Naturaleza' => 'E',
+                    'CENTRO' => $centroDestino,
+                    'cantidad' => $cantidad,
+                    'unidadmedida' => $data['UNIDADMEDIDA'] ?? 'PZ',
+                    'TIPOMOVIMIENTO' => $data['TIPOMOVIMIENTO'] ?? 'ENTRADA',
+                    'Modificado_el' => $ahora->format('Y-m-d'),
+                    'Modificado_por' => $nombreUsuario,
+                    'Creado_el' => $ahora->format('Y-m-d'),
+                    'Creado_por' => $nombreUsuario,
+                    'created_at' => $ahora,
+                    'updated_at' => $ahora
+                ]);
+            }
+        }
+
+        fclose($file);
+        DB::commit();
+        
+        $msg = "Traslado masivo de materiales procesado de forma correcta.";
+        if ($instaladosContador > 0) {
+            $msg .= " Se omitieron $instaladosContador equipos ya instalados.";
+        }
+        
+        return back()->with('success', $msg);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        if (isset($file)) {
+            fclose($file);
+        }
+        return back()->with('error', 'Error en fila ' . $fila . ': ' . $e->getMessage());
+    }
+}
+
+
+
+private function procesarLoteConDevolucion($batchData, $nombreUsuario)
+{
+    $erroresBatch = [];
+    $ahora = now();
+
+    foreach ($batchData as $item) {
+        // Clonamos el item para asegurar una iteración limpia sin contaminar el lote
+        $registro = $item;
+        
+        $numFila = $registro['num_fila'] ?? 0;
+        $centroOrigen = $registro['CENTRO_ORIGEN'] ?? $registro['centro_origen'] ?? null;
+        $centroDestino = $registro['CENTRO_DESTINO'] ?? $registro['centro_destino'] ?? null;
+        $esSeriado = !empty($registro['serie']);
+        $fechaCreadoEl = $registro['Creado_el'] ?? $ahora->format('Y-m-d');
+
+        // Limpieza obligatoria de campos virtuales del CSV para evitar errores de columnas en MySQL
+        unset($registro['num_fila']);
+        unset($registro['CENTRO_ORIGEN']);
+        unset($registro['CENTRO_DESTINO']);
+        unset($registro['almacen_destino']);
+
+        if (empty($centroDestino)) {
+            $erroresBatch[] = [
+                'fila' => $numFila, 'sku' => $registro['SKU'], 'serie' => $registro['serie'] ?? 'N/A',
+                'cantidad' => $registro['cantidad'], 'motivo' => 'Rechazado: El CENTRO_DESTINO está vacío en el CSV'
+            ];
+            continue;
+        }
+
+        // =========================================================================
+        // REQUERIMIENTO 1: RESOLVER ID DE TÉCNICO SI EL CENTRO PERTENECE A UNO
+        // =========================================================================
+        $idTecnicoOrigen =  !empty(DB::table('tecnico')->where('codigo', $centroOrigen)->value('id'))  ? $centroOrigen : null;
+        $idTecnicoDestino = !empty(DB::table('tecnico')->where('codigo', $centroDestino)->value('id')) ? $centroDestino : null;
+
+        // ==========================================
+        // ESCENARIO A: EQUIPOS SERIADOS
+        // ==========================================
+        if ($esSeriado) {
+            // CONTROL ANTI-DUPLICADOS ESTRICTO PARA SERIES (Busca si ya existe activo en el destino hoy)
+            $duplicadoSerie = DB::table('movimientomateriales')
+                ->where('SKU', $registro['SKU'])
+                ->where('serie', $registro['serie'])
+                ->where('CENTRO', $centroDestino)
+                ->where('Status', 'A')
+                ->where('Creado_el', $fechaCreadoEl)
+                ->exists();
+
+            if ($duplicadoSerie) {
+                $erroresBatch[] = [
+                    'fila' => $numFila, 'sku' => $registro['SKU'], 'serie' => $registro['serie'],
+                    'cantidad' => $registro['cantidad'], 'motivo' => 'Omitido: El equipo seriado ya se encuentra registrado en el destino para esta fecha'
+                ];
+                continue;
+            }
+
+            // Buscamos el estado activo previo en la tabla técnica para proceder con el traslado
+            $ultimoRegistroSeriado = DB::table('movimientomateriales')
+                ->where('SKU', $registro['SKU'])
+                ->where('serie', $registro['serie'])
+                ->where('fkTienda', $registro['fkTienda'])
+                ->where('Status', 'A')
+                ->orderBy('id', 'desc')
+                ->first();
+
+            if ($ultimoRegistroSeriado && is_null($ultimoRegistroSeriado->fkTecnico)) {
+                $erroresBatch[] = [
+                    'fila' => $numFila, 'sku' => $registro['SKU'], 'serie' => $registro['serie'],
+                    'cantidad' => $registro['cantidad'], 'motivo' => 'Rechazado: El equipo seriado ya se encuentra resguardado en Bodega'
+                ];
+                continue; 
+            }
+
+            if ($ultimoRegistroSeriado) {
+                DB::table('movimientomateriales')
+                    ->where('id', $ultimoRegistroSeriado->id)
+                    ->update(['ESTATUS' => 'DEVUELTO', 'Status' => 'I', 'updated_at' => $ahora]);
+            }
+
+            // Inserción en tabla técnica
+            $registroTecnico = $registro;
+            $registroTecnico['CENTRO'] = $centroDestino;
+            $registroTecnico['fkTecnico'] = $idTecnicoDestino;
+            $registroTecnico['Status'] = 'A';
+            DB::table('movimientomateriales')->insert($registroTecnico);
+
+            // Inserción en tabla global
+            $registroGlobal = $registro;
+            $registroGlobal['CENTRO'] = $centroDestino;
+            $registroGlobal['fkTecnico'] = $idTecnicoDestino;
+            $registroGlobal['TIPOMOVIMIENTO'] = 'TRASLADO_SERIADO';
+            $registroGlobal['Naturaleza'] = 'E';
+            $registroGlobal['Status'] = 'A';
+            DB::table('movimiento_materiales')->insert($registroGlobal);
+        } 
+        // ==========================================
+        // ESCENARIO B: MATERIALES MISCELÁNEOS
+        // ==========================================
+        else {
+            // Asignamos los tipos de movimiento exactos que usará el sistema
+            $movimientoEntradaTipo = 'INGRESO_TRASLADO';
+            $movimientoSalidaTipo = 'SALIDA_TRASLADO';
+
+            // Si el CSV no provee Centro de Origen, se asume movimiento directo (usando el TIPOMOVIMIENTO del CSV)
+            if (empty($centroOrigen)) {
+                $movimientoEntradaTipo = $registro['TIPOMOVIMIENTO'] ?? 'ENTRADA';
+            }
+
+            // 1. VALIDACIÓN ANTI-DUPLICADOS CRÍTICA PARA MISCELÁNEOS (Evita dobles inserts)
+            // Revisa si ya existe un registro idéntico de entrada en el destino el día de hoy
+            $yaExisteIngreso = DB::table('movimiento_materiales')
+                ->where('SKU', $registro['SKU'])
+                ->where('CENTRO', $centroDestino)
+                ->where('cantidad', (double)$registro['cantidad'])
+                ->where('TIPOMOVIMIENTO', $movimientoEntradaTipo)
+                ->where('Creado_el', $fechaCreadoEl)
+                ->exists();
+
+            if ($yaExisteIngreso) {
+                $erroresBatch[] = [
+                    'fila' => $numFila, 'sku' => $registro['SKU'], 'serie' => 'N/A',
+                    'cantidad' => $registro['cantidad'], 'motivo' => 'Omitido: Este movimiento de material ya existe en la base de datos'
+                ];
+                continue; // Detiene la ejecución de esta fila y pasa a la siguiente
+            }
+
+            // --- A. EJECUTAR MOVIMIENTO DE SALIDA (Origen: G817) ---
+            if (!empty($centroOrigen)) {
+                $movimientoSalida = $registro;
+                $movimientoSalida['CENTRO'] = $centroOrigen;
+                $movimientoSalida['fkTecnico'] = $idTecnicoOrigen;
+                $movimientoSalida['cantidad'] = (double)$registro['cantidad']; 
+                $movimientoSalida['TIPOMOVIMIENTO'] = $movimientoSalidaTipo;
+                $movimientoSalida['Naturaleza'] = 'S'; 
+                $movimientoSalida['Status'] = 'A';
+                
+                DB::table('movimientomateriales')->insert($movimientoSalida);
+                DB::table('movimiento_materiales')->insert($movimientoSalida);
+            }
+
+            // --- B. EJECUTAR MOVIMIENTO DE ENTRADA (Destino: 9901) ---
+            $movimientoEntrada = $registro;
+            $movimientoEntrada['CENTRO'] = $centroDestino;
+            $movimientoEntrada['fkTecnico'] = $idTecnicoDestino;
+            $movimientoEntrada['cantidad'] = (double)$registro['cantidad'];
+            $movimientoEntrada['TIPOMOVIMIENTO'] = $movimientoEntradaTipo;
+            $movimientoEntrada['Naturaleza'] = 'E'; 
+            $movimientoEntrada['Status'] = 'A';
+            
+            DB::table('movimientomateriales')->insert($movimientoEntrada);
+            DB::table('movimiento_materiales')->insert($movimientoEntrada);
+        }
+    }
+
+    return $erroresBatch;
+}
+
+
+private function descargarReporteErrores($errores, $correctos)
+{
+    $fileName = 'Errores_Importacion_SAP_' . date('Y-m-d_H-i') . '.csv';
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=$fileName",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    $callback = function() use ($errores) {
+        $file = fopen('php://output', 'w');
+        
+        // BOM UTF-8 para las tildes en Excel
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        // Columnas explicativas del error
+        fputcsv($file, ['Fila CSV Original', 'SKU', 'Serie / Tipo', 'Cantidad Enviada', 'Motivo del Rechazo (SAP Logic)']);
+
+        foreach ($errores as $linea) {
+            fputcsv($file, [
+                $linea['fila'],
+                $linea['sku'],
+                $linea['serie'],
+                $linea['cantidad'],
+                $linea['motivo']
+            ]);
+        }
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+
+public function descargarFormeta()
+{
+    $headers = [
+        "Content-type"        => "text/csv",
+        "Content-Disposition" => "attachment; filename=Formato_Movimiento_Materiales.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+   $columnas = [
+        'SERIE', 'SKU', 'almacen', 'Lote', 'MAC1', 'MAC2', 'MAC3', 
+        'ESTATUS', 'COSTO', 'CENTRO_ORIGEN', 'CENTRO_DESTINO', 
+        'TIPO', 'unidadmedida', 'TIPOMOVIMIENTO', 'cantidad'
+    ];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        
+        fputcsv($file, $columnas);
+
+        fputcsv($file, [
+            '142878214761', '1005749', 'Almacen Principal', 'LOTE-A1', 
+            '00:1A:2B:3C:4D:5E', '', '', 'DF', '150.50', 
+            'CENTRO-NORTE', 'CENTRO-SUR', 'DA', 'PZ', 'SALIDA', '1.00'
+        ]);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+
     public function reporteTransito()
 {
     $fkTienda = session('user_fkTienda');
@@ -291,4 +727,777 @@ function traslados(){
             return redirect()->back()->with('error', 'Error al cambiar el estado del cliente.');
         }
     }
+
+    
+public function fetchrelacionmovimientosmat(Request $request)
+{
+ try {
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+
+        $fkTienda = session('user_fkTienda');
+        $fechain = $request->input('fechain', now()->subDays(3)->format('Y-m-d'));
+        $fechafin = $request->input('fechafin', now()->addDay()->format('Y-m-d'));
+        
+        // Capturar el parámetro de búsqueda general
+        $search = $request->input('search') ? $request->input('search') : '';
+
+        // Consulta base usando Query Builder (o tu Modelo si existe, ej: MovimientoMaterial::query())
+        $query = DB::table('movimientomateriales')
+            ->where('fkTienda', $fkTienda)
+            // Filtro por rango de fechas usando Creado_el
+            ->whereBetween('Creado_el', [$fechain, $fechafin]);
+
+        // Filtrado específico por Técnico si se envía el ID
+        if ($request->has('id') && !empty($request->input('id'))) {
+            $query->where('fkTecnico', $request->input('id'));
+        }
+
+        // Si el usuario escribió en el buscador, aplicamos filtros tipo OR LIKE
+        if (!empty($search) || $search == '') {
+            $query->where(function($q) use ($search) {
+                $q->where('serie', 'LIKE', "%{$search}%")
+                  ->orWhere('SKU', 'LIKE', "%{$search}%")
+                  ->orWhere('almacen', 'LIKE', "%{$search}%")
+                  ->orWhere('Lote', 'LIKE', "%{$search}%")
+                  ->orWhere('MAC1', 'LIKE', "%{$search}%")
+                  ->orWhere('MAC2', 'LIKE', "%{$search}%")    
+                  ->orWhere('MAC3', 'LIKE', "%{$search}%")    
+                  ->orWhere('ESTATUS', 'LIKE', "%{$search}%")
+                  ->orWhere('CENTRO', 'LIKE', "%{$search}%")
+                  ->orWhere('TIPO', 'LIKE', "%{$search}%")
+                  ->orWhere('TIPOMOVIMIENTO', 'LIKE', "%{$search}%")
+                  ->orWhere('Creado_por', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Ordenamos por ID de forma descendente para ver lo más reciente primero
+        $query->orderBy('id', 'DESC');
+
+        // Paginamos los resultados ya filtrados de forma limpia
+        $movimientos = $query->paginate(15);
+
+        // Si la petición es por AJAX, retornamos solo el fragmento de la tabla renderizado
+        if ($request->ajax()) {
+            return view('materialmovorganizaciones.tabla.movimientostable', compact('movimientos'))->render();
+        }
+
+        // Carga inicial completa de la página index
+        return view('movimientos', compact('movimientos'));
+
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Error al filtrar movimientos: ' . $e->getMessage()], 500);
+    }
+
+}
+
+public function exportarExcelMovimientos(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+
+        $fkTienda = session('user_fkTienda') ?? session('user_fktienda');
+        
+        // CORRECCIÓN: Aseguramos el rango de fechas correcto sin desfasar días de forma innecesaria
+        $fechain = $request->input('fechain', now()->subDays(3)->format('Y-m-d'));
+        $fechafin = $request->input('fechafin', now()->format('Y-m-d'));
+        $search = trim($request->input('search', ''));
+
+        // Construcción de la consulta base
+        $query = DB::table('movimientomateriales')
+            ->where('fkTienda', $fkTienda)
+            ->whereBetween('Creado_el', [$fechain, $fechafin]);
+
+        // Buscador general por texto
+        if (!empty($search)) {
+            $query->where(function($q) use ($search) {
+                $q->where('serie', 'LIKE', "%{$search}%")
+                  ->orWhere('SKU', 'LIKE', "%{$search}%")
+                  ->orWhere('almacen', 'LIKE', "%{$search}%")
+                  ->orWhere('Lote', 'LIKE', "%{$search}%")
+                  ->orWhere('ESTATUS', 'LIKE', "%{$search}%")
+                  ->orWhere('CENTRO', 'LIKE', "%{$search}%")
+                  ->orWhere('TIPO', 'LIKE', "%{$search}%")
+                  ->orWhere('TIPOMOVIMIENTO', 'LIKE', "%{$search}%")
+                  ->orWhere('Creado_por', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Configuración de cabeceras HTTP para la descarga limpia del CSV
+        $fileName = 'Reporte_Movimientos_Materiales_' . date('Y-m-d_H-i') . '.csv';
+        $headers = [
+            "Content-type"        => "text/csv; charset=UTF-8",
+            "Content-Disposition" => "attachment; filename=$fileName",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ];
+
+        // Generar el archivo mediante streaming usando un cursor perezoso
+        $callback = function() use ($query) {
+            $file = fopen('php://output', 'w');
+            
+            // Forzar BOM UTF-8 para compatibilidad total de acentos en Excel
+            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+
+            // Cabeceras del CSV
+            fputcsv($file, [
+                'ID', 'Serie', 'SKU', 'Almacén', 'Lote', 'Cantidad', 'Unidad Medida', 
+                'MAC1', 'MAC2', 'MAC3', 'Estatus', 'Costo', 'Centro', 'Tipo', 
+                'Tipo Movimiento', 'Naturaleza', 'Status Registro', 'Creado Por', 'Creado El', 'Técnico ID', 'Expediente ID'
+            ]);
+
+            // SOLUCIÓN: Usamos ->cursor() en lugar de ->chunk(). Procesa millones de filas usando 0% de memoria RAM.
+            foreach ($query->cursor() as $row) {
+                fputcsv($file, [
+                    $row->id,
+                    $row->serie,
+                    $row->SKU,
+                    $row->almacen,
+                    $row->Lote,
+                    $row->cantidad,
+                    $row->unidadmedida,
+                    $row->MAC1,
+                    $row->MAC2,
+                    $row->MAC3,
+                    $row->ESTATUS,
+                    $row->COSTO,
+                    $row->CENTRO,
+                    $row->TIPO,
+                    $row->TIPOMOVIMIENTO,
+                    $row->Naturaleza,
+                    $row->Status,
+                    $row->Creado_por,
+                    $row->Creado_el ? date('d-m-Y', strtotime($row->Creado_el)) : 'N/A',
+                    $row->fkTecnico,
+                    $row->fkExpediente
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+
+    } catch (\Exception $e) {
+        return redirect()->back()->withErrors(['error' => 'Error al exportar: ' . $e->getMessage()]);
+    }
+}
+
+
+    public function AutomataValidarMamo(Request $request)
+{
+    if(!Auth::check()) return redirect()->route('login');
+    $procesados = []; $rastro = [];
+    $limite = $request->input('Orden', 10);
+    
+    $mamoorden = Eta::whereBetween('created_at', [
+            Carbon::parse($request->fechaincio)->startOfDay(),
+            Carbon::parse($request->fechafin)->endOfDay()
+        ])
+        ->where('fkTienda', session('user_fkTienda'))->select('Orden')->groupBy('Orden')->limit($limite)->get();
+
+    foreach($mamoorden as $ordenitem) {
+        $items = DB::table('ETA')->select('TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+                 ->where('fkTienda', session('user_fkTienda'))
+                 ->where('Orden', $ordenitem->Orden)->groupBy('SKU', 'CENTRO')->get();
+
+        foreach ($items as $item) {
+            $this->ejecutarLogicaInterna($ordenitem->Orden, $item, $procesados, $rastro);
+        }
+    }
+
+    return $this->descargarCSV($this->quitarDuplicadosPorOrdenYSKU($procesados), 'validaciones_lote.csv');
+}
+
+private function ejecutarLogicaInterna($orden, $item, &$procesados, &$rastro)
+{
+
+$centrosEspeciales = ["'MGG845", "'MGG830", "'G888", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
+$patronG8 = "G888";
+
+$esEspecial = false;
+// Verificamos si es especial (por lista o por patrón 'G8)
+if (str_contains($item->CENTRO, $patronG8)) {
+    $esEspecial = true;
+}
+
+// 1. Aseguramos que el centro se limpie o valide bien
+$centroLimpio = "'".$item->TIPO_DE_SERVICIO . substr($item->CENTRO, 1, 4);
+$centrosEspeciales = ["'MGG845", "'MGG830", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
+$patronG8 = "G8";
+
+
+
+// Forzamos la detección de especial
+$esEspecial = false;
+if (str_contains($centroLimpio, $patronG8)) {
+    $esEspecial = true;
+}
+
+if ($esEspecial) {
+    // CONSULTA ESPECÍFICA (Prioridad 1)
+    // Usamos selectRaw para añadir una columna 'prioridad'
+// 1. Construye la cadena completa incluyendo la comilla que viene en el objeto
+$skuConComilla = $item->TIPO_DE_SERVICIO . substr($item->CENTRO, 1, 100) . trim($item->SKU);
+
+if($skuConComilla=="MJG8304018238"){
+    $sk="'".$skuConComilla;
+}
+
+// 1. CONSULTA ESPECÍFICA (Prioridad 1)
+$especifica = Material_relaciones::selectRaw("*, 1 as prioridad")
+    ->where('skufinal', 'like', '%' . $skuConComilla . '%')
+    ->where('fkTienda', session('user_fkTienda'))
+    ->where('minimo', '>=', 1);
+
+    $SKUPAT=trim($item->SKU);
+// 2. CONSULTA GENERAL (Prioridad 2)
+$general = Material_relaciones::selectRaw("*, 2 as prioridad")
+    ->where('depende_SKU', $item->SKU)
+    ->where('minimo', '>=', 1)
+    ->where('fkTienda', session('user_fkTienda'))
+    ->where(function($q) use ($centrosEspeciales, $SKUPAT   ) {
+        $q->where(function($subQuery) use ($centrosEspeciales) {
+            foreach ($centrosEspeciales as $index => $ce) {
+                if ($index === 0) {
+                    $subQuery->where('skufinal', 'like', '%' . $ce . '%');
+                } else {
+                    $subQuery->orWhere('skufinal', 'like', '%' . $ce . '%');
+                }
+            }
+        });
+    });
+
+
+    $ignorarpatron = Material_relaciones::selectRaw("*, 3 as prioridad")
+    ->where('skufinal', 'like', '%G888' . trim($item->SKU) . '%')
+    ->where('fkTienda', session('user_fkTienda'))
+    ->where('minimo', '>=', 1);
+
+
+// 3. CONSULTA GENERAL TOTAL (Prioridad 2)
+$generalTOTAL = Material_relaciones::selectRaw("*, 2 as prioridad")
+    ->where('depende_SKU', $item->SKU)
+    ->where('fkTienda', session('user_fkTienda'))
+    ->where('minimo', '>=', 1)
+    ->where(function($q) use ($patronG8, $item) {
+        $q->where('skufinal', 'not like', $patronG8 . '%')
+          ->where('skufinal', 'not like', $item->SKU . '%')
+          ->where('skufinal', '<>', "'G888" . $item->SKU);
+
+    });
+
+// 4. UNIÓN Y ELIMINACIÓN DE DUPLICADOS CON PHP
+$relaciones = $especifica->union($general)->union($generalTOTAL)
+    ->union($ignorarpatron)
+    ->orderBy('prioridad', 'ASC')
+    ->orderBy('id', 'ASC')
+    ->get()             // Obtenemos todos los registros de la BD ordenados
+    ->unique('id');     // Elimina los duplicados conservando siempre la prioridad más alta (1 antes que 2)
+
+// EVALUACIÓN: Si hay prioridad 1, removemos la prioridad 3 de la colección
+$resultadoFinal = $relaciones->when($relaciones->contains('prioridad', 1), function ($coleccion) {
+    return $coleccion->reject(function ($registro) {
+        return $registro->prioridad == 3;
+    });
+});
+
+} else {
+    // Centros normales
+    $resultadoFinal = Material_relaciones::where('depende_SKU', $item->SKU)
+        ->where('minimo', '>=', 1)
+        ->where('fkTienda', session('user_fkTienda'))
+        ->where(function($q) use ($centrosEspeciales, $patronG8) {
+            foreach ($centrosEspeciales as $ce) {
+                $q->where('skufinal', 'not like', '%' . $ce . '%');
+            }
+            $q->where('skufinal', 'not like', '%' . $patronG8 . '%');
+        })
+        ->orderBy('id', 'ASC')
+        ->get();
+}
+
+
+if ($resultadoFinal->isEmpty()) {
+    return;
+}
+
+
+    foreach ($resultadoFinal as $relacion) {
+        // 3. Conteo de precisión: Solo cuenta lo que existe en la Orden actual
+        $conteo = Material_relaciones::where('depende_SKU', $relacion->SKU)
+            ->whereExists(function ($q) use ($orden) {
+                $q->select(DB::raw(1))
+                  ->from('ETA')
+                  ->whereColumn('ETA.SKU', 'material_relaciones.SKU')
+                  ->where('ETA.Orden', $orden)
+                  ->where('ETA.fkTienda', session('user_fkTienda'));
+            })->count();
+
+        // 4. Caso especial: Acumulado de categoría (Máximo 10000)
+        if ($relacion->maximo == 10000) {
+            $monto = DB::selectOne("
+SELECT SUM(e.Cantidad) AS total 
+FROM ETA e 
+WHERE e.Orden = ? 
+  AND e.fkTienda = ?
+  -- Filtramos para que el SKU de ETA pertenezca al árbol de categorías correcto
+  AND e.SKU IN (
+      SELECT DISTINCT tm.SKU 
+      FROM treematerialescategoria tm 
+      INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id 
+      WHERE tmc.SKU = (
+          SELECT tmc_sub.SKU 
+          FROM treematerialescategoria tm_sub 
+          INNER JOIN treematerialescategoria tmc_sub ON tm_sub.padre_id = tmc_sub.id 
+          WHERE tm_sub.SKU = ? AND tm_sub.fkTienda = ?
+          LIMIT 1
+      )
+  );
+ ", [$orden, session('user_fkTienda'), $item->SKU, session('user_fkTienda')]);
+            
+            $item->Cantidad = $monto->total ?? 0;
+        }
+
+        // 5. Obtener información jerárquica del padre (Treematerialescategoria)
+        $padre = DB::table('treematerialescategoria as tm')
+            ->join('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+            ->where('tm.SKU', $relacion->SKU)
+            ->where('tmc.fkTienda', session('user_fkTienda'))
+            ->select('tmc.SKU', 'tmc.nombre', 'tmc.minimo', 'tmc.limite', 'tmc.tipo', 'tmc.valor')
+            ->first();
+
+        // 6. Iniciar Autómata Recursivo si encontramos la información del padre
+        if ($padre) {
+            $this->AutomataRecursivo(
+                $relacion->SKU,      // skuActual
+                $orden,               // orden
+                $conteo,              // recuento
+                $item->Cantidad,      // valor
+                $relacion->maximo ?? 0,
+                $relacion->minimo ?? 0,
+                $relacion->formula ?? '',
+                $procesados,
+                $relacion->tipo_relacion,
+                0,                    // val (inicial)
+                $rastro,
+                $item->SKU,           // skuOrigen
+                $relacion->SKU,       // skuOrigenraiz
+                0,                    // nivel
+                $relacion->skufinal,
+                $padre,
+                $item->CENTRO,
+                $relacion->nombre
+            );
+        }
+    }
+}
+
+private function descargarCSV($validaciones, $nombreArchivo)
+{
+    if (ob_get_level()) ob_end_clean();
+    return response()->streamDownload(function () use ($validaciones) {
+        $handle = fopen('php://output', 'w');
+        fputcsv($handle, ['Orden','SKU_Origen','SKU_Destino','msj','ValorEntrada','Resultado','TipoRelacion','formula','Nivel','skuOrigenraiz','CENTRO','NOMBRE_Destino']);
+        foreach ($validaciones as $f) {
+            fputcsv($handle, [
+                $f->Orden, $f->SKU_Origen, $f->SKU_Destino, $f->msj, 
+                $f->ValorEntrada, $f->Resultado, $f->TipoRelacion, $f->formula, 
+                $f->Nivel, $f->skuOrigenraiz, $f->CENTRO, $f->NOMBRE_Destino
+            ]);
+        }
+        fclose($handle);
+    }, $nombreArchivo);
+}
+
+private function quitarDuplicadosPorOrdenYSKU(array $items): array
+{
+    $unicos = [];
+
+    foreach ($items as $item) {
+        // Creamos la clave combinando el Nombre y la Orden como solicitaste
+        $clave = $item->NOMBRE_Destino . '_' . $item->Orden. '_' . $item->msj;
+
+        // Si la clave no existe, guardamos el item actual
+        if (!isset($unicos[$clave])) {
+            $unicos[$clave] = $item;
+        } else {
+            // LÓGICA DE PRIORIDAD:
+            // Si el que ya tenemos guardado NO cumple (Resultado <= 0)
+            // pero el nuevo SI cumple (Resultado > 0), lo reemplazamos
+            $actualCumple = $unicos[$clave]->Resultado > 0;
+            $nuevoCumple = $item->Resultado > 0;
+
+            if (!$actualCumple && $nuevoCumple) {
+                $unicos[$clave] = $item;
+            }
+        }
+    }
+
+    return array_values($unicos);
+}
+
+
+public function AutomataRecursivo(
+    string $skuActual,
+    int $orden,
+    int $recuento,
+    float $valor,
+    float $maximo,
+    float $minimo,
+    string $formula,
+    array &$procesados,
+    string $tipoRelacion,
+    float $val,
+    array &$rastro,
+    string $skuOrigen,
+    string $skuOrigenraiz,
+    int $nivel = 0,
+    string $skufinal,
+    ?object &$padre,
+    string $Centro,
+    string $mensaj=''
+) {
+    try {
+
+    // 🛑 CASO BASE 1
+    if ($valor <= 0 && $nivel==0) {
+        return;
+    }
+    $cantidad = substr_count($skuOrigen, ".");
+
+  $clave = $orden . '_' . $skuActual. '_' .$skuOrigen . '_' . $skufinal.'_'.$tipoRelacion;
+$CANT = substr_count($clave, "01.011007881TRAMO");
+      if($CANT>0){
+        $a="25188580_34028679_1021133_102113334028679";
+    }
+
+if (isset($procesados[$clave])) {
+    return; // 🚫 Ya fue procesado este Orden + SKU
+}
+
+if (in_array($clave, $rastro)) {
+    return; // 🔁 ciclo detectado
+}
+
+$rastro[] = $clave;
+
+    if($nivel>($recuento+1) && $tipoRelacion=='calculo' ){
+        return;
+    }
+
+        $cantidad=0;
+    $cantidad = substr_count($skuOrigen, ".");
+
+     if($cantidad>=1){
+
+
+    $total = DB::selectOne("
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
+    FROM ETA e
+    INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
+    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+    INNER JOIN (
+        SELECT DISTINCT tmc.SKU
+        FROM treematerialescategoria tm
+        INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+        WHERE tmc.SKU = ?
+    ) AS tmcp ON tmc.SKU = tmcp.SKU
+    WHERE e.Orden = ? and tmc.fkTienda = ?
+) AS subconsulta
+", [$skuActual,$orden, session('user_fkTienda')]);
+} else{
+    $total = DB::selectOne("
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
+    FROM ETA e
+    INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
+    WHERE e.Orden = ? 
+      AND tm.SKU = ?
+      AND tm.fkTienda = ?
+) AS subconsulta
+", [$orden, $skuOrigen, session('user_fkTienda')]);
+}
+
+    $valor = $total->total ?? 0;
+
+    $cantidad=0;
+    $cantidad = substr_count($skuActual, ".");
+
+
+    if($cantidad>=1){
+
+
+    $total = DB::selectOne("
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
+    FROM ETA e
+    INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
+    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+    INNER JOIN (
+        SELECT DISTINCT tmc.SKU
+        FROM treematerialescategoria tm
+        INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
+        WHERE tmc.SKU = ?
+    ) AS tmcp ON tmc.SKU = tmcp.SKU
+    WHERE e.Orden = ? and tmc.fkTienda = ?
+) AS subconsulta
+", [$skuActual,$orden, session('user_fkTienda')]);
+} else{
+    $total = DB::selectOne("
+SELECT SUM(total_cantidad) AS total
+FROM (
+    SELECT DISTINCT e.id, e.Cantidad AS total_cantidad
+    FROM ETA e
+    INNER JOIN treematerialescategoria tm ON e.SKU = tm.SKU
+    WHERE e.Orden = ? 
+      AND tm.SKU = ?
+      AND tm.fkTienda = ?
+) AS subconsulta
+", [$orden, $skuActual, session('user_fkTienda')]);
+}
+
+
+
+    $usado = $total->total ?? 0;
+
+$variables = [
+    'minimo' => $minimo ?? 0,
+    'maximo' => $maximo ?? 0,
+    'valor'  => $valor ?? 0,
+    'usado'  => $usado ?? 0,
+    'total'  => $nivel ?? 0,
+    'valant' => $val ?? 0,
+];
+
+if($clave=="25542286_02.15_34033641_02.1534033641UNIDAD_requiere"){
+    $a="25188580_34028673_34028677_102113334028679";
+}
+
+$resultado=0;
+    $resultado = $this->evaluarFormulaexp($formula, $variables);
+
+$resultadoMostrar = $resultado;
+$resultado= $resultado == 20000 ? 0 : $resultado;
+
+     if($resultado > 0|| $resultado < 0) {
+        if ($tipoRelacion == 'requiere'  || $tipoRelacion == 'incompatible' ) {
+
+                $padrerel = DB::selectOne("
+            SELECT distinct e.SKU FROM ETA e
+            inner join material_relaciones mr on e.SKU=mr.SKU where e.Orden=? and e.SKU=? and mr.fkTienda=? ;
+    ", [$orden, $skuActual, session('user_fkTienda')]);
+
+        if($resultado <> 0){
+            $nodo = (object)[
+                'Orden'         => $orden,
+                'SKU_Origen'    => $skuActual,
+                'SKU_Destino'   => $skuOrigen,
+                'msj'           => $mensaj,
+                'ValorEntrada'  => $valor,
+                'Resultado'     => $resultado == 10000 ? $val : $resultado,
+                'TipoRelacion'  => $resultado < 0 ? $tipoRelacion . " - Exceso" : $tipoRelacion,
+                'formula'       => $formula,
+                'Nivel'         => $nivel,
+                'children'      => [],
+                'skuOrigenraiz' => $skufinal,
+                'CENTRO'        => $Centro,
+                'claveunica'     => $clave,
+                'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
+            ];
+
+            $procesados[$clave] = $nodo;
+        }
+        elseif($padrerel){
+            $nodo = (object)[
+                'Orden'         => $orden,
+                'SKU_Origen'    => $skuActual,
+                'SKU_Destino'   => $skuOrigen,
+                'msj'           => $mensaj,
+                'ValorEntrada'  => $valor,
+                'Resultado'     => $resultado == 10000 ? $val : $resultado,
+                'TipoRelacion'  => $resultado < 0 ? $tipoRelacion . " - Exceso" : $tipoRelacion,
+                'formula'       => $formula,
+                'Nivel'         => $nivel,
+                'children'      => [],
+                'skuOrigenraiz' => $skufinal,
+                'CENTRO'        => $Centro,
+                'claveunica'     => $clave,
+                'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
+            ];
+
+            $procesados[$clave] = $nodo;
+        }
+
+
+        }
+
+
+    }
+
+        $relaciones = Material_relaciones::where('skufinal', $skufinal)
+    ->orderBy('id', 'ASC')
+    ->get();
+
+    $conteo = Material_relaciones::where('skufinal', $skufinal)
+    ->count();
+
+
+    foreach ($relaciones as $relacion) {
+$a=$orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion;
+            if($orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion == "25658138_34028704_34028710_40144661001856_calculo"){
+        $a=$orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion;
+    }
+
+    if (in_array($orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion, $rastro)) {
+    continue; // 🔁 ciclo detectado
+}
+
+
+
+    $aSKUFILTRO=$clave;
+        $tipoRelacion=$relacion->tipo_relacion;
+
+      if($aSKUFILTRO==$orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion){
+        $a="25188580_34028673_34028677_102113334028679";
+  $clave=$orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal;
+  $rastro[] = $clave;
+    continue; // 🚫 Evitar procesar el mismo nodo en esta ram
+    }
+$SKUSSS=$relacion->SKU;
+    if($tipoRelacion=="calculo" ){
+          $padre = DB::selectOne("
+            SELECT distinct e.SKU FROM ETA e
+            inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=? and mr.fkTienda=?;
+    ", [$orden, $relacion->SKU, session('user_fkTienda')]);
+
+        if (!$padre) {
+             $cantidad = substr_count($relacion->depende_SKU, ".");
+        if($cantidad==0){
+            $cantidad = substr_count($relacion->SKU, ".");
+        if($cantidad==0){
+             continue;
+        }
+        }
+    }
+    }
+
+
+
+    // 1️⃣ Obtener SKU padre
+    $padre = DB::selectOne("
+        SELECT
+            tmc.SKU,
+            tmc.nombre,
+            tmc.minimo,
+            tmc.limite,
+            tmc.tipo,
+            tmc.valor
+        FROM treematerialescategoria tm
+        INNER JOIN treematerialescategoria tmc
+            ON tm.padre_id = tmc.id
+        WHERE tm.SKU = ? AND tmc.fkTienda = ?
+        LIMIT 1
+    ", [$relacion->SKU, session('user_fkTienda')]);
+
+    // 🛑 CASO BASE 2
+    if (!$padre) {
+        continue;
+    }
+
+    if($aSKUFILTRO=="25298449_34025712_4018238_401823834028673_calculo"){
+        $a="25188580_34028673_34028677_102113334028679";
+    }
+
+        // 🔁 llamada recursiva
+        $this->AutomataRecursivo(
+            $relacion->SKU,
+            $orden,
+            $conteo,
+            $resultadoMostrar == 20000 ? $val : $resultadoMostrar,
+            $relacion->maximo   ?? 0,
+            $relacion->minimo   ?? 0,
+            $relacion->formula,
+            $procesados,
+            $relacion->tipo_relacion,
+            $resultadoMostrar == 20000 ? $val : $resultadoMostrar,
+    $rastro,
+    $relacion->depende_SKU,
+    $skuOrigenraiz,
+    $nivel + 1,
+    $relacion->skufinal,
+    $padre,
+                     $Centro,
+                     $relacion->nombre
+        );
+    }  } catch (Exception $e) {
+
+            Log::error('Error al registrar cliente: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al registrar el cliente.');
+        }
+
+}
+
+
+
+
+private function evaluarFormula
+(string $formula, array $variables)
+{
+    try {
+
+        $exp = new \Symfony\Component\ExpressionLanguage\ExpressionLanguage();
+
+        // round
+        $exp->register(
+            'round',
+            fn ($value, $precision = 0) => sprintf('round(%s, %s)', $value, $precision),
+            fn ($variables, $value, $precision = 0) => round($value, $precision)
+        );
+
+        // floor (ENTERO en Excel)
+        $exp->register(
+            'floor',
+            fn ($value) => sprintf('floor(%s)', $value),
+            fn ($variables, $value) => floor($value)
+        );
+
+        // ceil
+        $exp->register(
+            'ceil',
+            fn ($value) => sprintf('ceil(%s)', $value),
+            fn ($variables, $value) => ceil($value)
+        );
+
+        // max
+        $exp->register(
+            'max',
+            fn (...$args) => sprintf('max(%s)', implode(',', $args)),
+            fn ($variables, ...$args) => max(...$args)
+        );
+
+        // min
+        $exp->register(
+            'min',
+            fn (...$args) => sprintf('min(%s)', implode(',', $args)),
+            fn ($variables, ...$args) => min(...$args)
+        );
+
+        return $exp->evaluate($formula, $variables);
+
+    } catch (\Throwable $e) {
+        Log::error('Error al evaluar fórmula: ' . $e->getMessage());
+        return 0;
+    }
+}
+
+
 }
