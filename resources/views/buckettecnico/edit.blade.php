@@ -899,6 +899,39 @@ success: function(materiales) {
 });
 
 
+// Removemos el arranque automático de la cámara al iniciar la página
+// El control se activa únicamente al presionar el botón
+
+// Evento 1: El botón bonito activa el input de captura nativa oculto
+$('#btnAbrirCamaraNativa').click(function() {
+    $('#inputCamaraNativa').click();
+});
+
+// Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
+document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const dataUrl = event.target.result; // Imagen en Base64 de alta resolución
+        const timestamp = Date.now();
+        const categoriafoto = $('#categoriafoto').val();
+        
+        // Sincronizamos con tu lógica de guardado de nombres del PDF
+        photosForItem.push({ 
+            name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto, 
+            data: dataUrl 
+        });
+
+        // Mostramos la miniatura en la web
+        mostrarFotos();
+        
+        // Limpiamos el input del archivo para que permita tomar otra foto de la misma categoría
+        document.getElementById('inputCamaraNativa').value = "";
+    };
+    reader.readAsDataURL(file);
+});
 
 
 </script>
