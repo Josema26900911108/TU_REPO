@@ -233,15 +233,16 @@
 </div>
 
 
-                <!-- Cámara -->
-                <h5>Tomar Foto con la Cámara</h5>
-                
-                <video id="video" class="w-100 img-thumbnail" style="max-height: 70vh; object-fit: cover;" autoplay playsinline></video>
+<button id="btnAbrirCamaraNativa" type="button" class="btn btn-primary my-2 w-100">
+    📸 Activar Cámara Nativa
+</button>
+         
+<input type="file" id="inputCamaraNativa" accept="image/*" capture="environment" style="display: none;">
 
                 <br>
                 <button id="btnCapture" type="button" class="btn btn-primary">📸 Tomar Foto</button>
                 <button id="btnOk" type="button" class="btn btn-success" style="display:none;">✅ OK</button>
-                <select name="categoriafoto" id="categoriafoto" class="form-control my-2">
+                <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" style="display:none;">
 
                     <option value="ANTES">ANTES</option>
                     <option value="DESPUES">DESPUES</option>
