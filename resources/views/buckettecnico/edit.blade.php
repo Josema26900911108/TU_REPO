@@ -235,11 +235,14 @@
 
                 <!-- Cámara -->
                 <h5>Tomar Foto con la Cámara</h5>
-                <video id="video" width="300" height="200" autoplay></video>
+                
+                <video id="video" class="w-100 img-thumbnail" style="max-height: 70vh; object-fit: cover;" autoplay playsinline></video>
+
                 <br>
                 <button id="btnCapture" type="button" class="btn btn-primary">📸 Tomar Foto</button>
                 <button id="btnOk" type="button" class="btn btn-success" style="display:none;">✅ OK</button>
-                <select name="categoriafoto" id="categoriafoto">
+                <select name="categoriafoto" id="categoriafoto" class="form-control my-2">
+
                     <option value="ANTES">ANTES</option>
                     <option value="DESPUES">DESPUES</option>
                     <option value="SERIE">SERIE</option>
@@ -354,14 +357,43 @@
 
 
 // Iniciar cámara
+// Iniciar cámara trasera y adaptar visualización
 async function startCamera() {
     try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        document.getElementById('video').srcObject = stream;
+        // Detener streams anteriores si existen para liberar memoria
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+
+        // Forzamos el uso de la cámara trasera con 'environment'
+        const constraints = { 
+            video: { 
+                facingMode: { exact: "environment" } 
+            } 
+        };
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+            // Plan B: Si el dispositivo no tiene cámara trasera con identificador exacto (ej. algunas PCs de prueba)
+            console.warn("No se detectó cámara trasera estricta, intentando modo preferente.");
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" } 
+            });
+        }
+
+        const videoElement = document.getElementById('video');
+        videoElement.srcObject = stream;
+
     } catch (err) {
-        alert("No se pudo acceder a la cámara: " + err);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de Hardware',
+            text: 'No se pudo acceder a la cámara trasera: ' + err.message
+        });
     }
 }
+
 startCamera();
 
  // Tomar foto
