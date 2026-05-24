@@ -240,8 +240,6 @@
 <input type="file" id="inputCamaraNativa" accept="image/*" capture="environment" style="display: none;">
 
                 <br>
-                <button id="btnCapture" type="button" class="btn btn-primary">📸 Tomar Foto</button>
-                <button id="btnOk" type="button" class="btn btn-success" style="display:none;">✅ OK</button>
                 <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" style="display:none;">
 
                     <option value="ANTES">ANTES</option>
@@ -395,11 +393,8 @@ async function startCamera() {
     }
 }
 
-startCamera();
-
  // Tomar foto
 $('#btnCapture').click(function() {
-    const video = document.getElementById('video');
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;

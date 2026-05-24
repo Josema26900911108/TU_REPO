@@ -942,7 +942,7 @@ public function InventarioLista(request $request)
             );
 
             // ==========================================
-            // 4. PROCESAMIENTO DE FOTOS
+            // 4. PROCESAMIENTO DE FOTOS (GOOGLE CLOUD BUCKET)
             // ==========================================
             $itemInput = $request->input('items', [])[$contar] ?? [];
             $photos = $itemInput['photos'] ?? [];
@@ -957,18 +957,16 @@ public function InventarioLista(request $request)
                         $nombreLimpio = preg_replace('/[^A-Za-z0-9_\-]/', '_', $names[$i] ?? 'foto');
                         $productoNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $nombreProducto);
                         $fileName = "{$nombreLimpio}_{$productoNombre}_" . uniqid() . ".{$extension}";
-
-                        $directory = "public/fotos/ordenes/{$expediente->Orden}";
-                        if (!Storage::exists($directory)) {
-                            Storage::makeDirectory($directory);
-                        }
-
-                        Storage::put("{$directory}/{$fileName}", $fileData);
+                        
+                        $gcsPath = "fotos/ordenes/{$expediente->Orden}/{$fileName}";
+            
+                        Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
+                        $urlFotografia = Storage::disk('gcs')->url($gcsPath);
 
                         Expedientefotograficotecnico::create([
                             'fkTienda'   => $expediente->fkTienda,
                             'Orden'      => $expediente->Orden,
-                            'fotografia' => "storage/fotos/ordenes/{$expediente->Orden}/{$fileName}",
+                            'fotografia' => $urlFotografia, 
                         ]);
                     }
                 }
