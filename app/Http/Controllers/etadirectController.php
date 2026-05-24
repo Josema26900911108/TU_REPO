@@ -956,7 +956,7 @@ public function AutomataValidarMamo(Request $request)
     foreach($mamoorden as $ordenitem) {
         $items = DB::table('ETA')->select('TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
                  ->where('fkTienda', session('user_fkTienda'))
-                 ->where('Orden', $ordenitem->Orden)->groupBy('SKU', 'CENTRO')->get();
+                 ->where('Orden', $ordenitem->Orden)->groupBy('TIPO_DE_SERVICIO', 'SKU', 'CENTRO')->get();
 
         foreach ($items as $item) {
             $this->ejecutarLogicaInterna($ordenitem->Orden, $item, $procesados, $rastro);
