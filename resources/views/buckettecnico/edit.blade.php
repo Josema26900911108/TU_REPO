@@ -117,6 +117,90 @@
 .menu .item-node { border-left: 4px solid #65c465; }
 .menu .node-treeview { border-left: 4px solid #98b3fa; }
 .menu .collapse.in { overflow: visible; }
+
+/* Contenedor principal en la esquina superior derecha */
+.floating-window {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    height: 400px;
+    background-color: #ffffff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+    /* Transición solo para maximizar/minimizar, no para arrastrar */
+    transition: height 0.2s ease, width 0.2s ease;
+}
+
+.window-header {
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    cursor: move;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.window-title {
+    font-weight: bold;
+    font-family: sans-serif;
+}
+
+.window-controls {
+    display: flex;
+    gap: 5px;
+}
+
+.win-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    border-radius: 4px;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.win-btn:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.window-content {
+    padding: 15px;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+/* Estado Minimizado por defecto */
+.floating-window.minimized {
+    height: 45px !important; 
+    width: 220px;
+}
+
+.floating-window.minimized .window-content {
+    display: none;
+}
+
+/* Estado Maximizado */
+.floating-window.maximized {
+    top: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    transform: none !important; /* Anula el arrastre al maximizar */
+    border-radius: 0;
+}
+
+
 </style>
 @endpush
 
@@ -232,10 +316,12 @@
     </div>
 </div>
 
-
 <button id="btnAbrirCamaraNativa" type="button" class="btn btn-primary my-2 w-100">
     📸 Activar Cámara Nativa
 </button>
+
+
+
          
 <input type="file" id="inputCamaraNativa" accept="image/*" capture="environment" style="display: none;">
 
@@ -275,9 +361,6 @@
                         </div>
 
                     </td>
-                    <td>
-                        <div id="treeview-seleccionar" class="treeview"></div>
-                    </td>
                 </tr>
                 <tr>
                     <td colspan="2">
@@ -309,6 +392,32 @@
         </table>
     </div>
 </div>
+
+<!-- Ventana Flotante (Inicia minimizada) -->
+<div id="floating-window" class="floating-window minimized">
+    <div id="window-header" class="window-header">
+        <span class="window-title">Mi Árbol</span>
+        <div class="window-controls">
+            <button id="btn-minimize" class="win-btn">+</button>
+            <button id="btn-maximize" class="win-btn">▢</button>
+        </div>
+    </div>
+    <div id="window-content" class="window-content">
+        <div id="treeview-seleccionar" class="treeview">
+            <!-- Tu contenido aquí -->
+            <ul>
+                <li>Nodo Raíz
+                    <ul>
+                        <li>Hijo 1</li>
+                        <li>Hijo 2</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+
 
 
                 <!-- Observaciones -->
@@ -928,6 +1037,61 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
     reader.readAsDataURL(file);
 });
 
+const win = document.getElementById('floating-window');
+const header = document.getElementById('window-header');
+const btnMinimize = document.getElementById('btn-minimize');
+const btnMaximize = document.getElementById('btn-maximize');
 
+// --- 1. Lógica de Minimizar y Maximizar ---
+btnMinimize.addEventListener('click', (e) => {
+    e.stopPropagation();
+    win.classList.remove('maximized');
+    win.classList.toggle('minimized');
+    // Cambia el icono según el estado
+    btnMinimize.textContent = win.classList.contains('minimized') ? '+' : '−';
+});
+
+btnMaximize.addEventListener('click', (e) => {
+    e.stopPropagation();
+    win.classList.remove('minimized');
+    win.classList.toggle('maximized');
+    btnMinimize.textContent = '−'; // Resetea el botón de minimizar
+    btnMaximize.textContent = win.classList.contains('maximized') ? '🗗' : '▢';
+});
+
+// --- 2. Lógica de Arrastre Fluido (Drag and Drop) ---
+let isDragging = false;
+let offsetX, offsetY;
+
+header.addEventListener('mousedown', (e) => {
+    // No permitir arrastre si está maximizado
+    if (win.classList.contains('maximized')) return;
+
+    isDragging = true;
+    
+    // Calcular la distancia entre el cursor y el borde de la ventana
+    offsetX = e.clientX - win.getBoundingClientRect().left;
+    offsetY = e.clientY - win.getBoundingClientRect().top;
+    
+    header.style.cursor = 'grabbing';
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    // Calculamos la nueva posición en la pantalla
+    let newX = e.clientX - offsetX;
+    let newY = e.clientY - offsetY;
+
+    // Quitamos temporalmente 'right' para que responda a 'left' al arrastrar
+    win.style.right = 'auto';
+    win.style.left = `${newX}px`;
+    win.style.top = `${newY}px`;
+});
+
+document.addEventListener('mouseup', () => {
+    isDragging = false;
+    header.style.cursor = 'move';
+});
 </script>
 @endpush

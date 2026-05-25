@@ -944,9 +944,9 @@ public function InventarioLista(request $request)
             // ==========================================
             // 4. PROCESAMIENTO DE FOTOS (GOOGLE CLOUD BUCKET)
             // ==========================================
-            $itemInput = $request->input('items', [])[$contar] ?? [];
-            $photos = $itemInput['photos'] ?? [];
-            $names = $itemInput['names'] ?? [];
+                $itemInput = $request->input('items', [])[$contar] ?? [];
+                $photos = $itemInput['photos'] ?? [];
+                $names = $itemInput['names'] ?? [];
 
             foreach ($photos as $i => $photoBase64) {
                 if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
@@ -959,6 +959,8 @@ public function InventarioLista(request $request)
                         $fileName = "{$nombreLimpio}_{$productoNombre}_" . uniqid() . ".{$extension}";
                         
                         $gcsPath = "fotos/ordenes/{$expediente->Orden}/{$fileName}";
+
+                        
             
                         Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
                         $urlFotografia = Storage::disk('gcs')->url($gcsPath);
