@@ -733,8 +733,7 @@ try {
     // Si Google rechaza la conexión local, esto detendrá el depurador y te dirá la causa exacta (ej: Credenciales inválidas)
     dd("Error físico de conexión con Google Cloud: " . $googleError->getMessage());
 }
-return redirect()->back()->withInput()->with('error', 'Ocurrió un error en el proceso: ' . $e->getMessage());
-    }
+
 }
 
 
