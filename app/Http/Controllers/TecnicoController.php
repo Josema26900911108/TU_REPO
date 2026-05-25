@@ -908,78 +908,82 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
             );
 
             // ==========================================
-            // 4. PROCESAMIENTO DE FOTOS (SINCRO CON PREPAREFORM)
+            // 4. AUDITORÍA AGRESIVA DE FOTOS (PASO A PASO)
             // ==========================================
-            // Accedemos de forma directa a la estructura multidimensional mapeada en tu JavaScript
             $photos = $request->input("items.{$contar}.photos", []);
             $names  = $request->input("items.{$contar}.names", []);
 
+            // PRUEBA 1: Ver si Laravel realmente está recibiendo los datos en esta iteración del ciclo
+            if (empty($photos)) {
+                dd([
+                    'Fallo_en' => 'PRUEBA 1 - Array de fotos vacío',
+                    'Contador_bucle' => $contar,
+                    'SKU_actual' => $sku,
+                    'Todo_el_Request_Items' => $request->input('items')
+                ]);
+            }
+
             foreach ($photos as $i => $photoBase64) {
-                // Validar estructura Base64 e identificar el formato de imagen
-                if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
+                
+                // PRUEBA 2: Ver el contenido exacto del string Base64 antes de evaluar la expresión regular
+                $inicioBase64 = substr($photoBase64, 0, 50); // Capturamos los primeros 50 caracteres
+                
+                if (!preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
+                    dd([
+                        'Fallo_en' => 'PRUEBA 2 - La expresión regular de la imagen falló',
+                        'Inicio_del_string_recibido' => $inicioBase64,
+                        'Explicacion' => 'El string Base64 no tiene el formato estándar "data:image/png;base64," esperado por PHP.'
+                    ]);
+                }
+                
+                // Extraemos la extensión usando la posición del match
+                $extension = strtolower($typeMatch[1]); 
+                $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
+
+                // PRUEBA 3: Validar si la decodificación binaria de PHP dio un archivo real
+                if (!$fileData) {
+                    dd([
+                        'Fallo_en' => 'PRUEBA 3 - base64_decode devolvió vacío',
+                        'Extension_detectada' => $extension,
+                        'Longitud_Base64' => strlen($photoBase64)
+                    ]);
+                }
+
+                // Generación de nombres limpios
+                $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $names[$i] ?? 'foto');
+                $nombreProductoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nombreProducto);
+
+                $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
+                $productoNombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreProductoLetras);
+                $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
+                $productoNombreLimpio = preg_replace('/_+/', '_', $productoNombreLimpio);
+
+                $fileName = trim($nombreLimpio, '_') . "_" . trim($productoNombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
+                $gcsPath = "fotos/ordenes/{$expediente->Orden}/{$fileName}";
+
+                // PRUEBA 4: Forzar la subida definitiva y capturar el error de comunicación
+                try {
+                    Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
                     
-                    // Extraer de forma estricta la extensión (png, jpg, etc.)
-                     $extension = strtolower($typeMatch[1]);
-                    
-                    // Decodificar el archivo binario de la imagen
-                    $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
+                    // Si llega aquí, es porque SÍ SUBIÓ a Google Cloud.
+                    // Forzamos un alto para verificarlo con tus propios ojos en la pantalla.
+                    dd([
+                        'Fallo_en' => 'NINGUNO - ¡La foto subió físicamente con éxito a Google!',
+                        'Ruta_en_Google_Bucket' => $gcsPath,
+                        'URL_Calculada' => Storage::disk('gcs')->url($gcsPath)
+                    ]);
 
-if ($fileData) {
-    // 1. Quitar acentos y caracteres especiales antes de convertir a guiones bajos
-    $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $names[$i] ?? 'foto');
-    $nombreProductoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nombreProducto);
-
-    // 2. Reemplazar cualquier caracter no alfanumérico por un guion bajo plano
-    $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
-    $productoNombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreProductoLetras);
-
-    // 3. CORRECCIÓN CLAVE: Evitar guiones bajos dobles o múltiples (transforma ___ en _)
-    $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
-    $productoNombreLimpio = preg_replace('/_+/', '_', $productoNombreLimpio);
-
-    // 4. Construir un nombre de archivo limpio y corto
-    $fileName = trim($nombreLimpio, '_') . "_" . trim($productoNombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
-    
-    // Ruta de almacenamiento con prefijo plano
-    $gcsPath = "fotos/ordenes/{$expediente->Orden}/{$fileName}";
-
-                            // =========================================================
-                        // ZONA CORRECTA PARA EL DETECTOR DE ERRORES LOCAL
-                        // =========================================================
-                        try {
-                            // Intentamos la subida física
-                            Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
-                        } catch (\Exception $googleError) {
-                            // Si falla, detiene la ejecución y nos dice la razón exacta de Google
-                            dd([
-                                'Mensaje' => 'Error físico de conexión con Google Cloud',
-                                'Detalle_Google' => $googleError->getMessage(),
-                                'Ruta_Buscada' => $gcsPath,
-                                'Configuracion_Disco' => config('filesystems.disks.gcs')
-                            ]);
-                        }
-                        // =========================================================
-                        
-
-    // Subida directa al disco virtual GCS
-    Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
-    
-    // Generación de la URL de acceso público
-    $urlFotografia = Storage::disk('gcs')->url($gcsPath);
-
-    // Registro en la base de datos
-    Expedientefotograficotecnico::create([
-        'fkTienda'   => $expediente->fkTienda,
-        'Orden'      => $expediente->Orden,
-        'fotografia' => $urlFotografia, 
-    ]);
-    
-    unset($fileData);
-}
-
+                } catch (\Exception $googleError) {
+                    dd([
+                        'Fallo_en' => 'PRUEBA 4 - Conexión rechazada por los servidores de Google',
+                        'Error_Oficial_Google' => $googleError->getMessage(),
+                        'Ruta_Objetivo' => $gcsPath,
+                        'Verifica_tu_archivo_ENV' => 'Asegúrate de que tus credenciales de Google estén cargadas en local'
+                    ]);
                 }
             }
         }
+
 
 
         // ==========================================
