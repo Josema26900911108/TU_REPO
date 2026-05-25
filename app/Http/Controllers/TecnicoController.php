@@ -726,14 +726,290 @@ public function InventarioLista(request $request)
 
 public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecnico $expediente)
 {
-// Reemplaza temporalmente esta línea en tu controlador local para auditar el fallo:
-try {
+    try {
+        if (!Auth::check()) return redirect()->route('login');
+
+        DB::beginTransaction();
+
+        $iditemsInput = $request->input('arrayiditem', []);
+        $skusInput = $request->input('arraysku', []);
+        $cantidadesInput = $request->input('arraycantidad', []);
+        $seriesInput = $request->input('arrayserie', []);
+        $nombresInput = $request->input('arraynameProducto', []);
+        
+        // Array enviado desde tu vista con los IDs de MovimientoMaterial eliminados
+        $eliminadosInput = $request->input('arrayEliminados', []); 
+
+        // =================================================================
+        // 1. PROCESAR ÚNICAMENTE LOS ELEMENTOS BORRADOS (DEVOLUCIÓN FIFO EXACTA)
+        // =================================================================
+        if (!empty($eliminadosInput)) {
+            $salidasAEliminar = MovimientoMaterial::whereIn('id', $eliminadosInput)
+                ->where('fkExpediente', $expediente->id)
+                ->where('TIPOMOVIMIENTO', 'INSTALADO')
+                ->get();
+
+            foreach ($salidasAEliminar as $salida) {
+                // Revertir el stock al registro de entrada de donde salió originalmente
+                $origen = MovimientoMaterial::where('fkTecnico', $expediente->fkTecnico)
+                    ->where('SKU', $salida->SKU)
+                    ->where('serie', $salida->serie)
+                    ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                if ($origen) {
+                    $origen->increment('cantidad', floatval($salida->cantidad), [
+                        'Status' => 'A',
+                        'ESTATUS' => 'DISPONIBLE',
+                        'Modificado_el' => now(),
+                        'Modificado_por' => Auth::user()->name
+                    ]);
+                }
+
+                $salida->delete(); 
+
+                // Eliminar el pago asociado a este registro borrado
+                Pagotecnico::where('Orden', $expediente->Orden)
+                    ->where('fkTecnico', $expediente->fkTecnico)
+                    ->where('SKU', $salida->SKU)
+                    ->delete();
+            }
+        }
+        // =================================================================
+        // 2. PROCESAR ITEMS ACTUALES (SÓLO AGREGA LO NUEVO O MANTIENE)
+        // =================================================================
+        foreach ($skusInput as $contar => $sku) {
+            $cantidadRequerida = floatval($cantidadesInput[$contar] ?? 1);
+            $serie = ($seriesInput[$contar] ?? null) ?: '-';
+            $nombreProducto = $nombresInput[$contar] ?? 'Item';
+            $iditem = $iditemsInput[$contar] ?? 0;
+            
+            $ultimoCostoMaterial = 0;
+
+            // Verificar si este registro ya existe guardado en este expediente para no duplicarlo
+            $yaExisteEnBD = MovimientoMaterial::where('fkExpediente', $expediente->id)
+                ->where('SKU', $sku)
+                ->where('serie', $serie)
+                ->where('TIPOMOVIMIENTO', 'INSTALADO')
+                ->first();
+
+            // SI YA EXISTE Y NO FUE MODIFICADO, LO MANTENEMOS INTACTO SIN TOCAR EL STOCK
+            if ($yaExisteEnBD) {
+                $ultimoCostoMaterial = $yaExisteEnBD->COSTO;
+                continue; 
+            }
+
+            // SI ES NUEVO (NO EXISTE EN LA BD), SE PROCESA
+            if ($iditem == 0 || $sku === 'MO') {
+                // MANO DE OBRA NUEVA
+                MovimientoMaterial::create([
+                    'fkExpediente'   => $expediente->id,
+                    'fkTecnico'      => $expediente->fkTecnico,
+                    'fkTienda'       => $expediente->fkTienda,
+                    'SKU'            => $sku,
+                    'TIPO'           => 'MO',
+                    'serie'          => $serie,
+                    'cantidad'       => $cantidadRequerida,
+                    'CENTRO'         => 'CF',
+                    'ESTATUS'        => 'INSTALADO',
+                    'almacen'        => 'ALMA',
+                    'TIPOMOVIMIENTO' => 'INSTALADO',
+                    'Naturaleza'     => 'H',
+                    'Status'         => 'S', 
+                    'Lote'           => 'A000',
+                    'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-', 'COSTO' => 0,
+                    'unidadmedida'   => 'UNIDAD',
+                    'Creado_el'      => now(),
+                    'Creado_por'     => Auth::user()->name,
+                    'Modificado_el'  => now(),
+                    'Modificado_por' => Auth::user()->name,
+                ]);
+            } else {
+                // MATERIAL NUEVO (APLICA FIFO SÓLO A ESTA ADICIÓN NUEVA)
+                $esSeriado = !in_array(strtoupper(trim($serie)), ['-', '0', 'N/A', 'NA', '']);
+
+                $entradasDisponibles = MovimientoMaterial::where('fkTecnico', $expediente->fkTecnico)
+                    ->where('SKU', $sku)
+                    ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
+                    ->where('cantidad', '>', 0)
+                    ->where('Status', 'A') 
+                    ->whereIn('TIPO', ['MA', 'MO']) 
+                    ->when($esSeriado, function ($query) use ($serie) {
+                        return $query->where('serie', trim($serie));
+                    })
+                    ->orderBy('created_at', 'asc')
+                    ->get();
+
+                $porDescontar = $cantidadRequerida;
+
+                foreach ($entradasDisponibles as $entrada) {
+                    if ($porDescontar <= 0) break;
+
+                    $cantidadAExtraer = min($entrada->cantidad, $porDescontar);
+                    $ultimoCostoMaterial = $entrada->COSTO;
+
+                    $entrada->decrement('cantidad', $cantidadAExtraer);
+                    $entrada->refresh();
+                    $entrada->update([
+                        'Status' => ($entrada->cantidad <= 0) ? 'S' : 'A',
+                        'ESTATUS' => ($entrada->cantidad <= 0) ? 'AGOTADO' : 'DISPONIBLE',
+                        'Modificado_el' => now(),
+                        'Modificado_por' => Auth::user()->name
+                    ]);
+
+                    MovimientoMaterial::create([
+                        'fkExpediente'   => $expediente->id,
+                        'fkTecnico'      => $expediente->fkTecnico,
+                        'fkTienda'       => $expediente->fkTienda,
+                        'SKU'            => $sku,
+                        'TIPO'           => $entrada->TIPO,
+                        'serie'          => $serie,
+                        'cantidad'       => $cantidadAExtraer,
+                        'CENTRO'         => 'CF',
+                        'ESTATUS'        => 'INSTALADO',
+                        'almacen'        => 'ALMA',
+                        'TIPOMOVIMIENTO' => 'INSTALADO',
+                        'Naturaleza'     => 'H',
+                        'Status'         => 'S',
+                        'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-',
+                        'Lote'           => $entrada->Lote,
+                        'COSTO'          => $entrada->COSTO,
+                        'unidadmedida'   => $entrada->unidadmedida,
+                        'Creado_el'      => now(),
+                        'Creado_por'     => Auth::user()->name,
+                        'Modificado_el'  => now(),
+                        'Modificado_por' => Auth::user()->name,
+                    ]);
+
+                    $porDescontar -= $cantidadAExtraer;
+                }
+            }
+            // ==========================================
+            // 3. REGISTRO / ACTUALIZACIÓN DE PAGOS (SÓLO ELEMENTOS ACTUALES)
+            // ==========================================
+            $costoUnidad = ($sku === 'MO') ? ($request->input('arrayprecio')[$contar] ?? 0) : $ultimoCostoMaterial;
+
+            Pagotecnico::updateOrCreate(
+                [
+                    'Orden'       => $expediente->Orden,
+                    'SKU'         => $sku,
+                    'fkTienda'    => $expediente->fkTienda,
+                    'fkTecnico'   => $expediente->fkTecnico,
+                ], 
+                [
+                    'Descripcion' => $nombreProducto,
+                    'OBS'         => 'Pago por servicio tecnico',
+                    'Cantidad'    => $cantidadRequerida,
+                    'COSTOPAGO'   => $cantidadRequerida * $costoUnidad,
+                    'Naturaleza'  => 'D',
+                    'Status'      => 'S',
+                ]
+            );
+
+            // ==========================================
+            // 4. PROCESAMIENTO DE FOTOS (SINCRO CON PREPAREFORM)
+            // ==========================================
+            // Accedemos de forma directa a la estructura multidimensional mapeada en tu JavaScript
+            $photos = $request->input("items.{$contar}.photos", []);
+            $names  = $request->input("items.{$contar}.names", []);
+
+            foreach ($photos as $i => $photoBase64) {
+                // Validar estructura Base64 e identificar el formato de imagen
+                if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
+                    
+                    // Extraer de forma estricta la extensión (png, jpg, etc.)
+                     $extension = strtolower($typeMatch[1]);
+                    
+                    // Decodificar el archivo binario de la imagen
+                    $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
+
+if ($fileData) {
+    // 1. Quitar acentos y caracteres especiales antes de convertir a guiones bajos
+    $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $names[$i] ?? 'foto');
+    $nombreProductoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nombreProducto);
+
+    // 2. Reemplazar cualquier caracter no alfanumérico por un guion bajo plano
+    $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
+    $productoNombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreProductoLetras);
+
+    // 3. CORRECCIÓN CLAVE: Evitar guiones bajos dobles o múltiples (transforma ___ en _)
+    $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
+    $productoNombreLimpio = preg_replace('/_+/', '_', $productoNombreLimpio);
+
+    // 4. Construir un nombre de archivo limpio y corto
+    $fileName = trim($nombreLimpio, '_') . "_" . trim($productoNombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
+    
+    // Ruta de almacenamiento con prefijo plano
+    $gcsPath = "fotos/ordenes/{$expediente->Orden}/{$fileName}";
+
+                            // =========================================================
+                        // ZONA CORRECTA PARA EL DETECTOR DE ERRORES LOCAL
+                        // =========================================================
+                        try {
+                            // Intentamos la subida física
+                            Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
+                        } catch (\Exception $googleError) {
+                            // Si falla, detiene la ejecución y nos dice la razón exacta de Google
+                            dd([
+                                'Mensaje' => 'Error físico de conexión con Google Cloud',
+                                'Detalle_Google' => $googleError->getMessage(),
+                                'Ruta_Buscada' => $gcsPath,
+                                'Configuracion_Disco' => config('filesystems.disks.gcs')
+                            ]);
+                        }
+                        // =========================================================
+                        
+
+    // Subida directa al disco virtual GCS
     Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
-} catch (\Exception $googleError) {
-    // Si Google rechaza la conexión local, esto detendrá el depurador y te dirá la causa exacta (ej: Credenciales inválidas)
-    dd("Error físico de conexión con Google Cloud: " . $googleError->getMessage());
+    
+    // Generación de la URL de acceso público
+    $urlFotografia = Storage::disk('gcs')->url($gcsPath);
+
+    // Registro en la base de datos
+    Expedientefotograficotecnico::create([
+        'fkTienda'   => $expediente->fkTienda,
+        'Orden'      => $expediente->Orden,
+        'fotografia' => $urlFotografia, 
+    ]);
+    
+    unset($fileData);
 }
 
+                }
+            }
+        }
+
+
+        // ==========================================
+        // 5. FINALIZAR EXPEDIENTE
+        // ==========================================
+        $updateData = [
+            'Status' => 'S',
+            'FECHAINSTALACION' => now(),
+        ];
+
+        if (!empty($expediente->OBS) && $request->filled('obs')) {
+            $updateData['OBS'] = $expediente->OBS . ' ||OBS TECNICO: ' . $request->input('obs');
+        } elseif ($request->filled('obs')) {
+            $updateData['OBS'] = 'OBS TECNICO: ' . $request->input('obs');
+        }
+
+        $expediente->update($updateData);
+
+        DB::commit();
+        return redirect()->route('tecnico.buckettecnico')->with('success', 'Orden actualizada con éxito vía FIFO.');
+        
+    } catch (\Exception $e) {
+            dd("Error físico de conexión con Google Cloud: " . $googleError->getMessage());
+
+        DB::rollBack();
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+        return redirect()->back()->withInput()->with('error', 'Ocurrió un error en el proceso: ' . $e->getMessage());
+    }
 }
 
 
