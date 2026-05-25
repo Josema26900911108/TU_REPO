@@ -120,26 +120,36 @@
 
 /* Contenedor principal en la esquina superior derecha */
 .floating-window {
-    position: fixed !important; /* Garantiza que flote respecto a la pantalla, no a otros menús */
-    top: 20px;
-    right: 20px;
+    position: fixed !important;
+    bottom: 5% !important;   /* Se adapta al 5% de la altura de cualquier pantalla */
+    right: 5% !important;    /* Se adapta al 5% del ancho de cualquier pantalla */
+    top: auto !important;
+    left: auto !important;
+    
+    /* Tamaños máximos para que no se desborde en celulares pequeños */
     width: 300px;
+    max-width: 85vw;         /* Nunca ocupará más del 85% del ancho del celular */
     height: 400px;
+    max-height: 70vh;        /* Nunca ocupará más del 70% de la altura del celular */
+    
     background-color: #ffffff;
     border: 1px solid #ccc;
     border-radius: 8px;
-    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.3); /* Sombra más pronunciada para dar efecto de superposición */
-    display: flex;
+    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.3);
+    display: flex !important; 
+    visibility: visible !important;
+    opacity: 1 !important;    
     flex-direction: column;
     overflow: hidden;
+    z-index: 99999 !important;
     
-    /* CAPA DOMINANTE: Coloca este número para superar cualquier menú lateral o barra */
-    z-index: 99999 !important; 
-    
+    /* Aceleración por hardware para evitar fallos de carga en móviles */
+    transform: translate3d(0, 0, 0); 
+    -webkit-transform: translate3d(0, 0, 0);
     transition: height 0.2s ease, width 0.2s ease;
 }
 
-
+/* Barra superior de arrastre */
 .window-header {
     padding: 10px;
     background-color: #007bff;
@@ -151,7 +161,8 @@
     user-select: none;
 }
 
-.window-title {
+
+..window-title {
     font-weight: bold;
     font-family: sans-serif;
 }
@@ -182,11 +193,11 @@
     overflow-y: auto;
 }
 
-/* Estado Minimizado por defecto */
+/* Estado Minimizado adaptable */
 .floating-window.minimized {
     height: 45px !important; 
     width: 220px;
-    z-index: 99999 !important;
+    max-width: 60vw;
 }
 
 .floating-window.minimized .window-content {
@@ -201,15 +212,54 @@
     bottom: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
-    transform: none !important; 
+    max-width: 100vw !important;
+    max-height: 100vh !important;
     border-radius: 0;
-    z-index: 999999 !important; /* Un nivel extra por seguridad al maximizar */
 }
 /* Cambia el color de la barra de título solo al maximizar para que resalte */
 .floating-window.maximized .window-header {
     background-color: #1a1a1a; /* Un color oscuro neutro que resalte sobre tus menús */
 }
 
+/* Contenedor del título e icono */
+.window-title-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: bold;
+    font-family: sans-serif;
+}
+
+/* El icono siempre mantiene su tamaño */
+.window-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+/* Estilo inicial del texto (Visible) */
+.window-title-text {
+    display: inline-block;
+    max-width: 200px; /* Ajusta según el largo de tu texto */
+    opacity: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: max-width 0.4s ease, opacity 0.3s ease, margin 0.4s ease;
+}
+
+/* --- ESTADO CONTRAÍDO (Cuando el usuario baja en la página) --- */
+
+/* Oculta el texto suavemente */
+.floating-window.scrolled .window-title-text {
+    max-width: 0px;
+    opacity: 0;
+    margin: 0;
+}
+
+/* Opcional: Hace la ventana un poco más angosta en modo minimizado 
+   cuando el usuario está leyendo el contenido del ERP abajo */
+.floating-window.minimized.scrolled {
+    width: 80px !important; /* Espacio suficiente solo para el icono y los botones */
+}
 
 
 </style>
@@ -403,32 +453,6 @@
     </div>
 </div>
 
-<!-- Ventana Flotante (Inicia minimizada) -->
-<div id="floating-window" class="floating-window minimized">
-    <div id="window-header" class="window-header">
-        <span class="window-title">Arbol de materiales y manos de obra</span>
-<div class="window-controls">
-    <!-- Se agrega type="button" a ambos elementos -->
-    <button id="btn-minimize" type="button" class="win-btn">+</button>
-    <button id="btn-maximize" type="button" class="win-btn">▢</button>
-</div>
-
-    </div>
-    <div id="window-content" class="window-content">
-        <div id="treeview-seleccionar" class="treeview">
-            <!-- Tu contenido aquí -->
-            <ul>
-                <li>Nodo Raíz
-                    <ul>
-                        <li>Hijo 1</li>
-                        <li>Hijo 2</li>
-                    </ul>
-                </li>
-            </ul>
-        </div>
-    </div>
-</div>
-
 
 
 
@@ -452,6 +476,38 @@
         </form>
     </div>
 </div>
+
+
+<!-- Ventana Flotante (Inicia minimizada) -->
+    <div id="floating-window" class="floating-window minimized">
+        <div id="window-header" class="window-header">
+            <div class="window-title-container">
+                <!-- Icono de Materiales y Mano de Obra (Opción Emoji nativa o tu SVG) -->
+                <span class="window-icon">🧱🛠️</span>
+                <!-- Texto que se ocultará/mostrará -->
+                <span id="window-title-text" class="window-title-text">Materiales y Mano de Obra</span>
+            </div>
+            <div class="window-controls">
+                <button id="btn-minimize" type="button" class="win-btn">+</button>
+                <button id="btn-maximize" type="button" class="win-btn">▢</button>
+            </div>
+        </div>
+
+    <div id="window-content" class="window-content">
+        <div id="treeview-seleccionar" class="treeview">
+            <!-- Tu contenido aquí -->
+            <ul>
+                <li>Nodo Raíz
+                    <ul>
+                        <li>Hijo 1</li>
+                        <li>Hijo 2</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('js')
@@ -474,9 +530,9 @@
     let photosForItem = []; // fotos del ítem actual
     let allItems = [];      // todos los ítems agregados
     let stream;
+    let itemsEliminados = [];
 
 
-// Iniciar cámara
 // Iniciar cámara trasera y adaptar visualización
 async function startCamera() {
     try {
@@ -579,6 +635,10 @@ $('#btnOk').click(function() {
 });
 
 function prepareForm() {
+    // CORRECCIÓN SANITARIA: Borra cualquier input oculto de items generado previamente
+    // antes de inyectar los nuevos valores limpios de 'allItems'
+    $("input[name^='items[']").remove();
+
     allItems.forEach((item, idx) => {
         $('<input>').attr({
             type: 'hidden',
@@ -612,18 +672,35 @@ function prepareForm() {
 }
 
 
+// 1. Declarar este array global al inicio de tu archivo JavaScript (fuera de las funciones)
 function eliminarProducto(indice) {
-    // 1. Eliminar el elemento del arreglo global en memoria usando el índice correlativo
-    // Esto garantiza que el autómata reciba la lista limpia sin el ítem borrado
+    // 2. Buscar el ID real de la base de datos antes de limpiar el arreglo en memoria
+    let itemABorrar = allItems.find(function(item) {
+        return item.index == indice;
+    });
+
+    // 3. Si el ítem tiene un ID válido (ya existía en la base de datos), lo registramos para el backend
+    if (itemABorrar && itemABorrar.id) {
+        itemsEliminados.push(itemABorrar.id);
+        
+        // Creamos un input hidden dinámico dentro del formulario para que viaje en el Request de Laravel
+        // NOTA: Reemplaza '#tuFormularioID' por el ID real de tu etiqueta <form> (ej: #form-trabajo)
+        $('#tuFormularioID').append(
+            '<input type="hidden" name="arrayEliminados[]" value="' + itemABorrar.id + '">'
+        );
+    }
+
+    // 4. Tu lógica original: Eliminar el elemento del arreglo global en memoria
     allItems = allItems.filter(function(item) {
         return item.index != indice;
     });
 
-    // 2. Eliminar la fila de la tabla visual en el HTML
+    // 5. Tu lógica original: Eliminar la fila visual y sus fotos
     $('#fila' + indice).remove();
     $(`input[name^='arrayfotos[${indice}]']`).remove();
 }
-        function llenaritems() {
+
+function llenaritems() {
     let id = "{{ $id3 ?? 0 }}";
 
     $.ajax({
@@ -631,8 +708,35 @@ function eliminarProducto(indice) {
         method: 'GET',
         data: { parametros: id },
         success: function(response) {
-            // El segundo parámetro (index) sirve como el contador "cont"
+            // 1. Limpieza inicial obligatoria
+            $('#detalle_tbody').empty();
+            allItems = [];
+            $("input[name^='items[']").remove();
+
+            // Conjunto temporal para rastrear IDs ya renderizados en este ciclo
+            let idsProcesados = {};
+
             response.forEach(function(material, index) {
+                // CORRECCIÓN ANTIDUPLICADOS: Si el ID ya fue pintado en este llamado, lo ignora
+                if (idsProcesados[material.id]) {
+                    return; // Salta al siguiente elemento sin duplicar en la vista
+                }
+                
+                // Si ya existe un elemento físico con este ID en la tabla por otra petición asíncrona, lo ignora
+                if ($('#detalle_tbody').find(`input[value='${material.id}']`).length > 0) {
+                    return;
+                }
+
+                // Registramos el ID para proteger el ciclo actual
+                idsProcesados[material.id] = true;
+
+                // Sincronización de propiedades internas
+                material.index = index;
+                if (!material.photos) {
+                    material.photos = [];
+                }
+
+                // Construcción segura de la fila
                 let fila = '<tr id="fila' + index + '" data-index="' + index + '">' +
                     '<td><input type="hidden" name="arrayiditem[]" value="' + material.id + '">' + material.id + '</td>' +
                     '<td><input type="hidden" name="arraycantidad[]" value="' + material.cantidad + '">' + material.cantidad + '</td>' +
@@ -644,7 +748,6 @@ function eliminarProducto(indice) {
                 
                 $('#detalle_tbody').append(fila);
                 allItems.push(material);
-                
             });
         },
         error: function(xhr) {
@@ -652,6 +755,7 @@ function eliminarProducto(indice) {
         }
     });
 }
+
 
 
 llenaritems();
@@ -1221,6 +1325,52 @@ document.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 document.addEventListener('touchend', endDrag);
+
+// --- Corrección de Carga Fría para Estructuras ERP/Dashboards ---
+function renderizarVentanaFlotante() {
+    const winFlotante = document.getElementById('floating-window');
+    if (!winFlotante) return;
+
+    // 1. Limpiamos cualquier rastro de layouts previos
+    winFlotante.style.display = 'none';
+    
+    // Forzamos un reflow matemático leyendo una propiedad del navegador
+    const m = document.documentElement.clientHeight; 
+
+    // 2. Volvemos a mostrar la ventana aplicando coordenadas de pantalla reales
+    requestAnimationFrame(() => {
+        winFlotante.style.display = 'flex';
+        
+        // Comprobamos si el usuario ya la movió; si no, aseguramos su posición responsiva
+        if (winFlotante.style.left === '' || winFlotante.style.left === 'auto') {
+            winFlotante.style.bottom = '5%';
+            winFlotante.style.right = '5%';
+            winFlotante.style.top = 'auto';
+            winFlotante.style.left = 'auto';
+        }
+    });
+}
+
+// Disparadores automáticos al cargar la página
+document.addEventListener('DOMContentLoaded', renderizarVentanaFlotante);
+window.addEventListener('load', renderizarVentanaFlotante);
+
+// Disparador de seguridad para cuando el menú superior termine de renderizarse
+setTimeout(renderizarVentanaFlotante, 150); 
+
+// --- 4. Control Dinámico del Título con el Scroll de la Página ---
+window.addEventListener('scroll', () => {
+    // Detecta la distancia del scroll (compatible con diferentes navegadores)
+    const despliegueScroll = window.pageYOffset || document.documentElement.scrollTop;
+    
+    // Si el usuario bajó más de 30px, añadimos la clase para ocultar el texto
+    if (despliegueScroll > 30) {
+        win.classList.add('scrolled');
+    } else {
+        // Si regresó al inicio absoluto (0), volvemos a mostrar el texto
+        win.classList.remove('scrolled');
+    }
+});
 
 </script>
 @endpush
