@@ -984,6 +984,8 @@ if ($fileData) {
         return redirect()->route('tecnico.buckettecnico')->with('success', 'Orden actualizada con éxito vía FIFO.');
         
     } catch (\Exception $e) {
+            dd("Error físico de conexión con Google Cloud: " . $googleError->getMessage());
+
         DB::rollBack();
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
