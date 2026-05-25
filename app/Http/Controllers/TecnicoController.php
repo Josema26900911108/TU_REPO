@@ -919,7 +919,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                 if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
                     
                     // Extraer de forma estricta la extensión (png, jpg, etc.)
-                    $extension = strtolower($typeMatch[1]); 
+                     $extension = strtolower($typeMatch[1]);
                     
                     // Decodificar el archivo binario de la imagen
                     $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
