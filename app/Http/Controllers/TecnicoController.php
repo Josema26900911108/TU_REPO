@@ -924,31 +924,41 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     // Decodificar el archivo binario de la imagen
                     $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
 
-                    if ($fileData) {
-                        // Limpiar caracteres especiales para evitar nombres de archivo corruptos en Google Cloud
-                        $nombreLimpio   = preg_replace('/[^A-Za-z0-9_\-]/', '_', $names[$i] ?? 'foto');
-                        $productoNombre = preg_replace('/[^A-Za-z0-9_\-]/', '_', $nombreProducto);
-                        $fileName       = "{$nombreLimpio}_{$productoNombre}_" . uniqid() . ".{$extension}";
-                        
-                        // Ruta de almacenamiento dentro de tu Google Cloud Bucket
-                        $gcsPath = "fotos/ordenes/{$expediente->Orden}/{$fileName}";
-            
-                        // Subida directa al disco virtual GCS
-                        Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
-                        
-                        // Generación de la URL de acceso público
-                        $urlFotografia = Storage::disk('gcs')->url($gcsPath);
+if ($fileData) {
+    // 1. Quitar acentos y caracteres especiales antes de convertir a guiones bajos
+    $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $names[$i] ?? 'foto');
+    $nombreProductoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nombreProducto);
 
-                        // Registro de la URL física en la base de datos de tu ERP
-                        Expedientefotograficotecnico::create([
-                            'fkTienda'   => $expediente->fkTienda,
-                            'Orden'      => $expediente->Orden,
-                            'fotografia' => $urlFotografia, 
-                        ]);
-                        
-                        // Liberación preventiva de memoria RAM por cada imagen procesada
-                        unset($fileData);
-                    }
+    // 2. Reemplazar cualquier caracter no alfanumérico por un guion bajo plano
+    $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
+    $productoNombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreProductoLetras);
+
+    // 3. CORRECCIÓN CLAVE: Evitar guiones bajos dobles o múltiples (transforma ___ en _)
+    $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
+    $productoNombreLimpio = preg_replace('/_+/', '_', $productoNombreLimpio);
+
+    // 4. Construir un nombre de archivo limpio y corto
+    $fileName = trim($nombreLimpio, '_') . "_" . trim($productoNombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
+    
+    // Ruta de almacenamiento con prefijo plano
+    $gcsPath = "fotos/ordenes/{$expediente->Orden}/{$fileName}";
+
+    // Subida directa al disco virtual GCS
+    Storage::disk('gcs')->put($gcsPath, $fileData, 'public');
+    
+    // Generación de la URL de acceso público
+    $urlFotografia = Storage::disk('gcs')->url($gcsPath);
+
+    // Registro en la base de datos
+    Expedientefotograficotecnico::create([
+        'fkTienda'   => $expediente->fkTienda,
+        'Orden'      => $expediente->Orden,
+        'fotografia' => $urlFotografia, 
+    ]);
+    
+    unset($fileData);
+}
+
                 }
             }
         }
