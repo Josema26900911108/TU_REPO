@@ -52,6 +52,13 @@ return [
         'storage_api_uri' => null, 
         'visibility' => 'public',
     ],
+    
+    'gcs_images' => [
+    'driver' => 'gcs',
+    'project_id' => 'able-handbook-478300-q6',
+    'bucket' => 'sistema-pv-imagenes-tienda',
+    'key_file' => null, // 👈 Al poner null, hereda de forma limpia la identidad de la máquina virtual
+],
 
 
         's3' => [

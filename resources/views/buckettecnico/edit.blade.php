@@ -1129,29 +1129,72 @@ $('#btnAbrirCamaraNativa').click(function() {
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
-    const file = e.target.files[0];
+    const file = e.target.files[0]; // Capturamos el archivo de la foto
     if (!file) return;
+
+    // Mostramos un indicador de carga visual para que el técnico sepa que se está procesando
+    Swal.fire({
+        title: 'Procesando fotografía...',
+        text: 'Redimensionando para optimizar la subida móvil',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
 
     const reader = new FileReader();
     reader.onload = function(event) {
-        const dataUrl = event.target.result; // Imagen en Base64 de alta resolución
-        const timestamp = Date.now();
-        const categoriafoto = $('#categoriafoto').val();
+        const img = new Image();
+        img.src = event.target.result;
         
-        // Sincronizamos con tu lógica de guardado de nombres del PDF
-        photosForItem.push({ 
-            name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto, 
-            data: dataUrl 
-        });
+        img.onload = function() {
+            // --- ALGORITMO DE COMPRESIÓN MÓVIL (CANVAS) ---
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Definimos un ancho máximo estándar excelente para reportes (1200 píxeles)
+            const MAX_WIDTH = 1200;
+            let width = img.width;
+            let height = img.height;
+            
+            // Calculamos la proporción para no deformar la imagen
+            if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Dibujamos la imagen original escalada dentro del lienzo en memoria
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convertimos el lienzo a Base64 formato JPEG con calidad optimizada al 65% (0.65)
+            // Esto reduce radicalmente el peso de Megabytes a Kilobytes imperceptibles
+            const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.65);
+            
+            const categoriafoto = $('#categoriafoto').val();
+            const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
+            const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
+            
+            // Guardamos la versión ultraligera en tu arreglo global de fotos
+            photosForItem.push({ 
+                index: indiceActual,
+                name: nombreFotoGenerado, 
+                data: dataUrlComprimida 
+            });
 
-        // Mostramos la miniatura en la web
-        mostrarFotos();
-        
-        // Limpiamos el input del archivo para que permita tomar otra foto de la misma categoría
-        document.getElementById('inputCamaraNativa').value = "";
+            // Refrescamos las miniaturas en la ventana flotante
+            mostrarFotos(indiceActual);
+            
+            // Cerramos el indicador de carga porque el proceso terminó con éxito
+            Swal.close();
+            
+            // Limpiamos el input para permitir capturas consecutivas desde el celular
+            document.getElementById('inputCamaraNativa').value = "";
+        };
     };
     reader.readAsDataURL(file);
 });
+
 
 const win = document.getElementById('floating-window');
 const header = document.getElementById('window-header');
