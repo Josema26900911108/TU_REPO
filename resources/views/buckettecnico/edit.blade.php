@@ -120,7 +120,7 @@
 
 /* Contenedor principal en la esquina superior derecha */
 .floating-window {
-    position: fixed;
+    position: fixed !important; /* Garantiza que flote respecto a la pantalla, no a otros menús */
     top: 20px;
     right: 20px;
     width: 300px;
@@ -128,14 +128,17 @@
     background-color: #ffffff;
     border: 1px solid #ccc;
     border-radius: 8px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.3); /* Sombra más pronunciada para dar efecto de superposición */
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    z-index: 1000;
-    /* Transición solo para maximizar/minimizar, no para arrastrar */
+    
+    /* CAPA DOMINANTE: Coloca este número para superar cualquier menú lateral o barra */
+    z-index: 99999 !important; 
+    
     transition: height 0.2s ease, width 0.2s ease;
 }
+
 
 .window-header {
     padding: 10px;
@@ -183,6 +186,7 @@
 .floating-window.minimized {
     height: 45px !important; 
     width: 220px;
+    z-index: 99999 !important;
 }
 
 .floating-window.minimized .window-content {
@@ -194,11 +198,18 @@
     top: 0 !important;
     right: 0 !important;
     left: 0 !important;
+    bottom: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
-    transform: none !important; /* Anula el arrastre al maximizar */
+    transform: none !important; 
     border-radius: 0;
+    z-index: 999999 !important; /* Un nivel extra por seguridad al maximizar */
 }
+/* Cambia el color de la barra de título solo al maximizar para que resalte */
+.floating-window.maximized .window-header {
+    background-color: #1a1a1a; /* Un color oscuro neutro que resalte sobre tus menús */
+}
+
 
 
 </style>
@@ -295,7 +306,6 @@
             <thead>
                 <tr>
                     <th>Asignado</th>
-                    <th>Seleccionar</th>
                 </tr>
             </thead>
             <tbody>
@@ -396,11 +406,13 @@
 <!-- Ventana Flotante (Inicia minimizada) -->
 <div id="floating-window" class="floating-window minimized">
     <div id="window-header" class="window-header">
-        <span class="window-title">Mi Árbol</span>
-        <div class="window-controls">
-            <button id="btn-minimize" class="win-btn">+</button>
-            <button id="btn-maximize" class="win-btn">▢</button>
-        </div>
+        <span class="window-title">Arbol de materiales y manos de obra</span>
+<div class="window-controls">
+    <!-- Se agrega type="button" a ambos elementos -->
+    <button id="btn-minimize" type="button" class="win-btn">+</button>
+    <button id="btn-maximize" type="button" class="win-btn">▢</button>
+</div>
+
     </div>
     <div id="window-content" class="window-content">
         <div id="treeview-seleccionar" class="treeview">
@@ -1093,5 +1105,122 @@ document.addEventListener('mouseup', () => {
     isDragging = false;
     header.style.cursor = 'move';
 });
+
+// --- 3. Detección de Doble Toque en Móviles (y Doble Clic en PC) ---
+
+// Seleccionamos el contenedor del árbol
+const treeview = document.getElementById('treeview-seleccionar');
+
+// Variables para controlar el tiempo entre toques en móvil
+let lastTouchTime = 0;
+
+// A. LÓGICA PARA MÓVILES (Eventos Touch)
+treeview.addEventListener('touchend', (e) => {
+    // Buscamos el elemento específico del árbol que fue tocado (usualmente un <li> o un <span>)
+    const targetNode = e.target.closest('li'); 
+    
+    if (!targetNode) return; // Si no tocó un nodo, ignorar
+
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTouchTime;
+    
+    // Si el tiempo entre el toque anterior y el actual es menor a 300ms, es un doble toque
+    if (tapLength < 300 && tapLength > 0) {
+        e.preventDefault(); // Previene comportamientos raros del navegador móvil
+        
+        ejecutarSeleccionNodo(targetNode);
+    }
+    
+    lastTouchTime = currentTime;
+});
+
+// B. LÓGICA PARA COMPUTADORA (Evento Click nativo por seguridad)
+treeview.addEventListener('dblclick', (e) => {
+    const targetNode = e.target.closest('li');
+    if (targetNode) {
+        ejecutarSeleccionNodo(targetNode);
+    }
+});
+
+// C. FUNCIÓN DE ACCIÓN (Procesa la selección y minimiza)
+function ejecutarSeleccionNodo(nodo) {
+    // 1. Obtener el texto o ID del nodo seleccionado
+    // Nota: Ajusta 'textContent' o usa 'nodo.dataset.id' según cómo esté estructurado tu árbol
+    const nodoTexto = nodo.firstChild.textContent.trim(); 
+    
+    // Aquí puedes hacer lo que necesites con el nodo (ej. guardarlo en un input oculto)
+    console.log("Nodo seleccionado con éxito:", nodoTexto);
+    
+    // 2. Minimizar la ventana flotante automáticamente
+    win.classList.remove('maximized');
+    win.classList.add('minimized');
+    
+    // 3. Actualizar el botón de minimizar al icono de expandir (+)
+    btnMinimize.textContent = '+';
+    
+    // Opcional: Feedback visual rápido para que el usuario note que se seleccionó
+    nodo.style.backgroundColor = '#d4edda'; // Fondo verde claro temporal
+    setTimeout(() => { nodo.style.backgroundColor = ''; }, 500);
+}
+// --- 2. Lógica de Arrastre Fluido (Compatible con PC y Móvil) ---
+
+
+
+// --- FUNCIONES INTERNAS DE MOVIMIENTO ---
+function startDrag(clientX, clientY) {
+    if (win.classList.contains('maximized')) return; // No arrastrar si está maximizado
+    isDragging = true;
+    
+    // Calcular la distancia entre el dedo/cursor y el borde de la ventana
+    offsetX = clientX - win.getBoundingClientRect().left;
+    offsetY = clientY - win.getBoundingClientRect().top;
+    
+    header.style.cursor = 'grabbing';
+}
+
+function moveDrag(clientX, clientY, event) {
+    if (!isDragging) return;
+    
+    // Evita que la pantalla del celular se mueva o haga scroll mientras arrastras la ventana
+    if (event.cancelable) event.preventDefault();
+
+    let newX = clientX - offsetX;
+    let newY = clientY - offsetY;
+
+    // Aplicar las nuevas coordenadas
+    win.style.right = 'auto';
+    win.style.left = `${newX}px`;
+    win.style.top = `${newY}px`;
+}
+
+function endDrag() {
+    isDragging = false;
+    header.style.cursor = 'move';
+}
+
+// --- EVENTOS PARA MOUSE (COMPUTADORA) ---
+header.addEventListener('mousedown', (e) => {
+    startDrag(e.clientX, e.clientY);
+});
+
+document.addEventListener('mousemove', (e) => {
+    moveDrag(e.clientX, e.clientY, e);
+});
+
+document.addEventListener('mouseup', endDrag);
+
+
+// --- EVENTOS TÁCTILES (MÓVIL) ---
+header.addEventListener('touchstart', (e) => {
+    // Usamos e.touches[0] para leer el primer dedo que toca la pantalla
+    startDrag(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false }); // passive: false permite usar preventDefault()
+
+document.addEventListener('touchmove', (e) => {
+    moveDrag(e.touches[0].clientX, e.touches[0].clientY, e);
+}, { passive: false });
+
+document.addEventListener('touchend', endDrag);
+
 </script>
 @endpush
