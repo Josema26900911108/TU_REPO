@@ -1156,18 +1156,16 @@ $('#btnAbrirCamaraNativa').click(function() {
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
-    const file = e.target.files[0]; // Capturamos el archivo binario directamente
+    const file = e.target.files; 
     if (!file) return;
 
-    // Indicador visual inmediato para congelar interacciones del usuario
     Swal.fire({
-        title: 'Comprimiendo fotografía...',
-        text: 'Reduciendo calidad para optimizar rendimiento móvil',
+        title: 'Optimizando fotografía...',
+        text: 'Procesando en alta resolución para el ERP',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); }
     });
 
-    // EVITAMOS FILEREADER: Creamos un enlace Blob temporal ultra ligero
     const urlTemporalBlob = URL.createObjectURL(file);
     const img = new Image();
     img.src = urlTemporalBlob;
@@ -1176,8 +1174,8 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // REDUCCIÓN AGRESIVA: Forzamos un ancho máximo de 800px (consume un 60% menos de RAM)
-        const MAX_WIDTH = 800;
+        // 🌟 MEJORA DE RESOLUCIÓN: Subimos de 800px a 1600px para máxima nitidez en textos y series
+        const MAX_WIDTH = 1600;
         let width = img.width;
         let height = img.height;
         
@@ -1189,34 +1187,30 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         canvas.width = width;
         canvas.height = height;
         
-        // El hardware gráfico del celular encoge la imagen de forma instantánea
+        // El procesador del móvil redibuja la imagen en alta fidelidad
         ctx.drawImage(img, 0, 0, width, height);
         
-        // MÁXIMA COMPRESIÓN: Calidad al 40% (0.40). La foto pasará de 6.3 MB a escasos 150 KB.
-        const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.40);
+        // 🌟 MEJORA DE CALIDAD: Subimos de 0.40 a 0.80. La compresión JPEG al 80% es el estándar
+        // de oro de la industria: la foto se verá impecable y pesará solo unos 450 KB.
+        const dataUrlComprimida = canvas.toToDataURL ? canvas.toDataURL('image/jpeg', 0.80) : canvas.toDataURL('image/jpeg', 0.80);
         
         const categoriafoto = $('#categoriafoto').val();
         const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
         const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
         
-        // Al pesar solo 150 KB, el ingreso al arreglo en memoria es inmediato
         photosForItem.push({ 
             index: indiceActual,
             name: nombreFotoGenerado, 
             data: dataUrlComprimida 
         });
 
-        // Pintamos la miniatura en tu ventana responsiva
         mostrarFotos(indiceActual);
         
-        // Liberación estricta de memoria RAM en el smartphone
         URL.revokeObjectURL(urlTemporalBlob);
-        
         Swal.close();
-        document.getElementById('inputCamaraNativa').value = ""; // Reseteamos el input
+        document.getElementById('inputCamaraNativa').value = ""; 
     };
 });
-
 
 
 const win = document.getElementById('floating-window');
