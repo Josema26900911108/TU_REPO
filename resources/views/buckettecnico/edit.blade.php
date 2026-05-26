@@ -151,14 +151,17 @@
 
 /* Barra superior de arrastre */
 .window-header {
-    padding: 10px;
+    padding: 10px 14px;
     background-color: #007bff;
     color: white;
     cursor: move;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    display: flex !important;
+        justify-content: space-between !important;
+    align-items: center !important;
     user-select: none;
+    width: 100% !important;
+    box-sizing: border-box !important;
+
 }
 
 
@@ -168,8 +171,11 @@
 }
 
 .window-controls {
-    display: flex;
-    gap: 5px;
+    display: flex !important;
+    gap: 6px;
+    align-items: center !important;
+    flex-shrink: 0 !important; /* Prohíbe terminantemente que el título los aplaste */
+    margin-left: auto !important; /* Los empuja magnéticamente a la derecha */
 }
 
 .win-btn {
@@ -204,28 +210,75 @@
     display: none;
 }
 
-/* Estado Maximizado */
+/* --- CONFIGURACIÓN DE MAXIMIZADO ABSOLUTO E INMÓVIL --- */
 .floating-window.maximized {
+    position: fixed !important;
     top: 0 !important;
-    right: 0 !important;
     left: 0 !important;
-    bottom: 0 !important;
-    width: 100vw !important;
+    
+    /* 🌟 CORRECCIÓN RADICAL: Le restamos 30 píxeles al ancho de la pantalla (Viewport) 
+       Esto empuja a los botones a la izquierda, obligándolos a aparecer a la vista */
+    width: calc(100vw - 30px) !important;
+    max-width: calc(100vw - 30px) !important;
+    
+    /* Mantiene la altura completa de la pantalla */
     height: 100vh !important;
-    max-width: 100vw !important;
     max-height: 100vh !important;
-    border-radius: 0;
+    
+    border-radius: 0px !important;
+    margin: 0px !important;
+    padding: 0px !important;
+    box-sizing: border-box !important;
+    z-index: 999999999 !important; /* Máxima prioridad perimetral */
+    transform: none !important;  
+    -webkit-transform: none !important;
 }
-/* Cambia el color de la barra de título solo al maximizar para que resalte */
+
+/* 2. Forzar que el encabezado maximizado respete un colchón a la derecha */
 .floating-window.maximized .window-header {
-    background-color: #1a1a1a; /* Un color oscuro neutro que resalte sobre tus menús */
+    background-color: #1e293b !important; /* Tono oscuro profesional */
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: 48px !important;
+    box-sizing: border-box !important;
+    
+    /* COLCHÓN DE SEGURIDAD CRÍTICO: Empuja los botones hacia el interior del cristal */
+    padding-right: 25px !important; 
+    padding-left: 15px !important;
 }
+
+/* 3. Asegurar que los botones nunca se encojan ni se desplacen */
+.floating-window.maximized .window-controls {
+    display: flex !important;
+    gap: 8px !important;
+    align-items: center !important;
+    flex-shrink: 0 !important; /* Prohíbe que el título o el espacio los aplaste */
+    margin-left: auto !important; /* Los pega magnéticamente a la derecha */
+}
+
+/* 4. Forzar visibilidad y tamaño táctil en los botones */
+.floating-window.maximized .win-btn {
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    width: 28px !important;
+    height: 28px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+
 
 /* Contenedor del título e icono */
 .window-title-container {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px;
+    min-width: 0 !important; /* Clave: permite que el contenedor se encoja en móviles */
+    flex: 1 !important;
     font-weight: bold;
     font-family: sans-serif;
 }
@@ -244,6 +297,8 @@
     white-space: nowrap;
     overflow: hidden;
     transition: max-width 0.4s ease, opacity 0.3s ease, margin 0.4s ease;
+    text-overflow: ellipsis !important; /* Si el texto no cabe, muestra "..." en lugar de empujar */
+    min-width: 0 !important;
 }
 
 /* --- ESTADO CONTRAÍDO (Cuando el usuario baja en la página) --- */
@@ -491,11 +546,11 @@
                 <!-- Icono de Materiales y Mano de Obra (Opción Emoji nativa o tu SVG) -->
                 <span class="window-icon">🧱🛠️</span>
                 <!-- Texto que se ocultará/mostrará -->
-                <span id="window-title-text" class="window-title-text">Materiales y Mano de Obra</span>
+                <span id="window-title-text" class="window-title-text">MA/MO</span>
             </div>
             <div class="window-controls">
                 <button id="btn-minimize" type="button" class="win-btn">+</button>
-                <button id="btn-maximize" type="button" class="win-btn">▢</button>
+                
             </div>
         </div>
 
@@ -530,8 +585,8 @@
 <!-- jQuery UI -->
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
 
-<script>
 
+<script>
     let cont = 1;
     let photosForItem = []; // fotos del ítem actual
     let allItems = [];      // todos los ítems agregados
@@ -1212,27 +1267,30 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
     };
 });
 
+</script>
+<script type="module">
+
+
 
 const win = document.getElementById('floating-window');
 const header = document.getElementById('window-header');
 const btnMinimize = document.getElementById('btn-minimize');
-const btnMaximize = document.getElementById('btn-maximize');
 
-// --- 1. Lógica de Minimizar y Maximizar ---
+
 btnMinimize.addEventListener('click', (e) => {
     e.stopPropagation();
+    
     win.classList.remove('maximized');
     win.classList.toggle('minimized');
-    // Cambia el icono según el estado
-    btnMinimize.textContent = win.classList.contains('minimized') ? '+' : '−';
-});
-
-btnMaximize.addEventListener('click', (e) => {
-    e.stopPropagation();
-    win.classList.remove('minimized');
-    win.classList.toggle('maximized');
-    btnMinimize.textContent = '−'; // Resetea el botón de minimizar
-    btnMaximize.textContent = win.classList.contains('maximized') ? '🗗' : '▢';
+    
+    // CORRECCIÓN: Cambiar SOLO el texto interno sin alterar la estructura del botón
+    if (win.classList.contains('minimized')) {
+        resetToFixedPosition();
+        btnMinimize.innerHTML = '+';
+    } else {
+        btnMinimize.innerHTML = '−';
+    }
+    
 });
 
 // --- 2. Lógica de Arrastre Fluido (Drag and Drop) ---
