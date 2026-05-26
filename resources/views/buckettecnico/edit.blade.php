@@ -383,7 +383,13 @@
 
 
          
-<input type="file" id="inputCamaraNativa" accept="image/*" capture="environment" style="display: none;">
+<!-- Forzamos la captura nativa directa en JPEG estándar (evita el formato pesado HEIC) -->
+<input type="file" 
+       id="inputCamaraNativa" 
+       accept="image/jpeg, image/jpg" 
+       capture="environment" 
+       style="display: none;">
+
 
                 <br>
                 <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" style="display:none;">
