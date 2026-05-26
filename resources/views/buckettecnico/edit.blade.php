@@ -1129,66 +1129,69 @@ $('#btnAbrirCamaraNativa').click(function() {
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
-    const file = e.target.files[0]; // Capturamos el archivo de 6.3 MB
+    const file = e.target.files[0]; // Capturamos el archivo de 6.3 MB en binario
     if (!file) return;
 
-    // Feedback visual al técnico para evitar que presione múltiples veces mientras se optimiza
+    // 1. Mostrar feedback visual inmediato al técnico para que sepa que el móvil está trabajando
     Swal.fire({
-        title: 'Procesando imagen...',
-        text: 'Optimizando tamaño para la red móvil',
+        title: 'Optimizando fotografía...',
+        text: 'Reduciendo peso para evitar congelamientos',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); }
     });
 
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        const img = new Image();
-        img.src = event.target.result;
+    // 2. CORRECCIÓN MÓVIL: Creamos un objeto de URL temporal en memoria (No consume RAM)
+    // Esto evita transformar los 6.3MB a texto Base64 pesado antes de tiempo
+    const urlTemporalBlob = URL.createObjectURL(file);
+    
+    const img = new Image();
+    img.src = urlTemporalBlob;
+    
+    img.onload = function() {
+        // --- PROCESAMIENTO DINÁMICO POR HARDWARE (CANVAS) ---
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
         
-        img.onload = function() {
-            // --- ALGORITMO DE REDUCCIÓN Y COMPRESIÓN (CANVAS) ---
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Forzar un ancho máximo estándar excelente para auditorías en ERP (1200px)
-            const MAX_WIDTH = 1200;
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > MAX_WIDTH) {
-                height *= MAX_WIDTH / width;
-                width = MAX_WIDTH;
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            // Redibujamos la foto original a su nueva escala optimizada
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // CONVERSIÓN CRÍTICA: Convertimos a JPEG bajando la calidad al 65% (0.65)
-            // Esto destruye el peso de megabytes y lo deja en cómodos kilobytes
-            const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.65);
-            
-            const categoriafoto = $('#categoriafoto').val();
-            const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
-            const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
-            
-            // Guardamos la versión ligera (los Kilobytes comprimidos) en tu arreglo de la vista
-            photosForItem.push({ 
-                index: indiceActual,
-                name: nombreFotoGenerado, 
-                data: dataUrlComprimida 
-            });
+        // Redimensionamos a un tamaño óptimo para pantallas ERP (1200px)
+        const MAX_WIDTH = 1200;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // El procesador gráfico del celular dibuja y encoge la imagen al instante
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // 3. REGLA CLAVE: Aquí es donde se genera el Base64, pero ya comprimido a Kilobytes (Ligero)
+        const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.60); // 60% de calidad es óptimo
+        
+        const categoriafoto = $('#categoriafoto').val();
+        const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
+        const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
+        
+        // 4. El array recibe un string pequeñito, por lo que el push es inmediato
+        photosForItem.push({ 
+            index: indiceActual,
+            name: nombreFotoGenerado, 
+            data: dataUrlComprimida 
+        });
 
-            // Pintamos la miniatura en la ventana flotante adaptable
-            mostrarFotos(indiceActual);
-            
-            Swal.close(); // Cerramos el indicador de procesamiento con éxito
-            document.getElementById('inputCamaraNativa').value = ""; // Limpiamos el input
-        };
+        // Pintamos las miniaturas en la ventana responsiva
+        mostrarFotos(indiceActual);
+        
+        // 5. Liberamos la memoria del celular destruyendo el objeto temporal Blob
+        URL.revokeObjectURL(urlTemporalBlob);
+        
+        // Cerramos la alerta visual y limpiamos la cámara
+        Swal.close();
+        document.getElementById('inputCamaraNativa').value = "";
     };
-    reader.readAsDataURL(file);
 });
 
 
