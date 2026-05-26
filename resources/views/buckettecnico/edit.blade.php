@@ -122,9 +122,9 @@
 .floating-window {
     position: fixed !important;
     bottom: 5% !important;   /* Se adapta al 5% de la altura de cualquier pantalla */
-    right: 5% !important;    /* Se adapta al 5% del ancho de cualquier pantalla */
+    right: auto !important;    /* Se adapta al 5% del ancho de cualquier pantalla */
     top: auto !important;
-    left: auto !important;
+    left: 5% !important;
     
     /* Tamaños máximos para que no se desborde en celulares pequeños */
     width: 300px;
@@ -135,7 +135,7 @@
     background-color: #ffffff;
     border: 1px solid #ccc;
     border-radius: 8px;
-    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.25);
     display: flex !important; 
     visibility: visible !important;
     opacity: 1 !important;    
@@ -258,7 +258,7 @@
 /* Opcional: Hace la ventana un poco más angosta en modo minimizado 
    cuando el usuario está leyendo el contenido del ERP abajo */
 .floating-window.minimized.scrolled {
-    width: 80px !important; /* Espacio suficiente solo para el icono y los botones */
+    width: 90px !important; /* Espacio suficiente solo para el icono y los botones */
 }
 
 
@@ -1156,7 +1156,8 @@ $('#btnAbrirCamaraNativa').click(function() {
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
-    const file = e.target.files; 
+    // CORRECCIÓN CRÍTICA: Añadir [0] para extraer el archivo multimedia real de la lista
+    const file = e.target.files[0]; 
     if (!file) return;
 
     Swal.fire({
@@ -1166,6 +1167,7 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         didOpen: () => { Swal.showLoading(); }
     });
 
+    // Ahora que 'file' es un archivo único legítimo, funcionará al instante sin errores
     const urlTemporalBlob = URL.createObjectURL(file);
     const img = new Image();
     img.src = urlTemporalBlob;
@@ -1174,7 +1176,7 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // 🌟 MEJORA DE RESOLUCIÓN: Subimos de 800px a 1600px para máxima nitidez en textos y series
+        // Mantenemos la alta resolución de 1600px y calidad al 80% para máxima nitidez
         const MAX_WIDTH = 1600;
         let width = img.width;
         let height = img.height;
@@ -1187,12 +1189,10 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         canvas.width = width;
         canvas.height = height;
         
-        // El procesador del móvil redibuja la imagen en alta fidelidad
         ctx.drawImage(img, 0, 0, width, height);
         
-        // 🌟 MEJORA DE CALIDAD: Subimos de 0.40 a 0.80. La compresión JPEG al 80% es el estándar
-        // de oro de la industria: la foto se verá impecable y pesará solo unos 450 KB.
-        const dataUrlComprimida = canvas.toToDataURL ? canvas.toDataURL('image/jpeg', 0.80) : canvas.toDataURL('image/jpeg', 0.80);
+        // Conversión limpia a JPEG de alta fidelidad (unos 450 KB finales)
+        const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.80);
         
         const categoriafoto = $('#categoriafoto').val();
         const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
@@ -1342,19 +1342,36 @@ function startDrag(clientX, clientY) {
     header.style.cursor = 'grabbing';
 }
 
+// --- MODIFICA ÚNICAMENTE ESTA FUNCIÓN EN TU SCRIPT ACTUAL ---
 function moveDrag(clientX, clientY, event) {
     if (!isDragging) return;
     
-    // Evita que la pantalla del celular se mueva o haga scroll mientras arrastras la ventana
+    // Evita que la pantalla completa del celular se desplace mientras arrastras la ventana
     if (event.cancelable) event.preventDefault();
 
+    // 1. Calculamos las coordenadas brutas en píxeles del mouse/dedo
     let newX = clientX - offsetX;
     let newY = clientY - offsetY;
 
-    // Aplicar las nuevas coordenadas
-    win.style.right = 'auto';
-    win.style.left = `${newX}px`;
-    win.style.top = `${newY}px`;
+    // 2. CONTROL DE FRONTERAS EN VIVO: Evita que el técnico saque la ventana fuera de los límites de la pantalla
+    if (newX < 0) newX = 0;
+    if (newY < 0) newY = 0;
+    if (newX > window.innerWidth - win.offsetWidth) newX = window.innerWidth - win.offsetWidth;
+    if (newY > window.innerHeight - win.offsetHeight) newY = window.innerHeight - win.offsetHeight;
+
+    // 3. CONVERSIÓN CRÍTICA A COORDENADAS DE PANTALLA VISIBLE (Viewport Units)
+    // Transformamos los píxeles a porcentajes exactos de la pantalla del celular (vw y vh)
+    // Esto independiza por completo a la ventana flotante del tamaño total de la página larga
+    let porcentajeLeft = (newX / window.innerWidth) * 100;
+    let porcentajeTop = (newY / window.innerHeight) * 100;
+
+    // 4. Aplicamos las reglas usando setProperty con !important para ganarle a cualquier contenedor de tu ERP
+    win.style.setProperty('right', 'auto', 'important');
+    win.style.setProperty('bottom', 'auto', 'important');
+    
+    // Al usar 'vw' y 'vh' fijos, la ventana se queda congelada en la vista de la pantalla
+    win.style.setProperty('left', `${porcentajeLeft}vw`, 'important');
+    win.style.setProperty('top', `${porcentajeTop}vh`, 'important');
 }
 
 function endDrag() {
@@ -1391,22 +1408,18 @@ function renderizarVentanaFlotante() {
     const winFlotante = document.getElementById('floating-window');
     if (!winFlotante) return;
 
-    // 1. Limpiamos cualquier rastro de layouts previos
     winFlotante.style.display = 'none';
-    
-    // Forzamos un reflow matemático leyendo una propiedad del navegador
     const m = document.documentElement.clientHeight; 
 
-    // 2. Volvemos a mostrar la ventana aplicando coordenadas de pantalla reales
     requestAnimationFrame(() => {
         winFlotante.style.display = 'flex';
         
-        // Comprobamos si el usuario ya la movió; si no, aseguramos su posición responsiva
+        // Si el usuario no la ha movido, aseguramos el anclaje inicial abajo a la izquierda
         if (winFlotante.style.left === '' || winFlotante.style.left === 'auto') {
-            winFlotante.style.bottom = '5%';
-            winFlotante.style.right = '5%';
-            winFlotante.style.top = 'auto';
-            winFlotante.style.left = 'auto';
+            winFlotante.style.setProperty('bottom', '5%', 'important');
+            winFlotante.style.setProperty('left', '5%', 'important');
+            winFlotante.style.setProperty('top', 'auto', 'important');
+            winFlotante.style.setProperty('right', 'auto', 'important');
         }
     });
 }
@@ -1419,18 +1432,32 @@ window.addEventListener('load', renderizarVentanaFlotante);
 setTimeout(renderizarVentanaFlotante, 150); 
 
 // --- 4. Control Dinámico del Título con el Scroll de la Página ---
+
+let ultimoScrollTop = 0;
+
 window.addEventListener('scroll', () => {
-    // Detecta la distancia del scroll (compatible con diferentes navegadores)
+    // Detectamos la posición de scroll actual de forma compatible
     const despliegueScroll = window.pageYOffset || document.documentElement.scrollTop;
     
-    // Si el usuario bajó más de 30px, añadimos la clase para ocultar el texto
-    if (despliegueScroll > 30) {
-        win.classList.add('scrolled');
+    // Evitamos lecturas negativas en dispositivos móviles (efecto rebote de iOS/Android)
+    if (despliegueScroll < 0) return; 
+
+    if (despliegueScroll > ultimoScrollTop) {
+        // A. SI EL USUARIO BAJA: Añadimos la clase para encoger el título y liberar espacio visual
+        if (despliegueScroll > 30) {
+            win.classList.add('scrolled');
+        }
     } else {
-        // Si regresó al inicio absoluto (0), volvemos a mostrar el texto
+        // B. SI EL USUARIO SUBE (En cualquier parte de la página larga):
+        // Removemos la clase DE INMEDIATO para que el botón retome su posición y tamaño real
         win.classList.remove('scrolled');
     }
-});
+    
+    // Actualizamos la variable de memoria para la siguiente lectura del dedo
+    ultimoScrollTop = despliegueScroll <= 0 ? 0 : despliegueScroll;
+}, { passive: true }); // passive: true optimiza el rendimiento del scroll en celulares
+
+
 
 </script>
 @endpush
