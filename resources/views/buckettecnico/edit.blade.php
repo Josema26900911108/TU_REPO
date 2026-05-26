@@ -780,7 +780,15 @@ function agregarItem() {
     if (idItem != '' && nameProducto != undefined && cantidad != '' ) {
         if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
 
-            // 1. CREAMOS EL OBJETO EXACTO DE CONTROL
+            // Mostrar un indicador de carga ligero mientras el AJAX viaja a la nube
+            Swal.fire({
+                title: 'Validando material...',
+                text: 'Consultando existencias en el servidor web',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            // 1. CREAMOS EL OBJETO VIRTUAL SIN LAS FOTOS PARA QUE EL AJAX SEA ULTRA LIGERO (VIAJA EN MILISEGUNDOS)
             let nuevoItemVirtual = {
                 index: cont, 
                 idItem: idItem,
@@ -789,13 +797,12 @@ function agregarItem() {
                 nameserie: nameserie,
                 sku: sku.trim(),
                 CENTRO: CENTRO,
-                photos: [...photosForItem]
+                photos: [] // <--- ¡CORRECCIÓN CRÍTICA! Iniciamos vacío para no saturar el internet móvil
             };
             
-            // Enviamos únicamente los ítems que ya fueron aprobados formalmente en la tabla
             let listaSimulada = [...allItems, nuevoItemVirtual]; 
 
-            // 3. LLAMADA AJAX PASANDO LA LISTA INTEGRADA
+            // 3. LLAMADA AJAX PASANDO LA LISTA INTEGRADA (Pesa menos de 1 KB ahora)
             $.ajax({
                 url: "{{ route('tecnico.validar.materiales') }}",
                 type: 'POST',
@@ -808,42 +815,45 @@ function agregarItem() {
                     Items_Memoria: listaSimulada,
                     ItemVirtual: nuevoItemVirtual
                 },
-success: function(response) {
-    
-    // Si el backend detectó problemas en uno o varios registros
-    if (response.status === 'exceso' || response.status === 'falta') {
-        
-        // Unimos todas las líneas de alerta en un solo texto legible
-        let textoAlertas = response.mensajes.join("\n\n");
-        let tituloAlerta = response.status === 'exceso' ? "⚠️ ALERTAS DE EXCESO DETECTADAS:\n\n" : "💡 SUGERENCIAS DE MATERIAL DETECTADAS:\n\n";
+                success: function(response) {
+                    Swal.close(); // Cerramos la alerta de validación inmediatamente
 
-        // Lanzamos un único confirm con toda la información consolidada
-        if (!confirm(tituloAlerta + textoAlertas + "\n\n¿Deseas agregar el ítem de todas formas?")) {
-            return; // Si el usuario presiona "Cancelar", se detiene el proceso
-        }
-    }
+                    // Si el backend detectó problemas en uno o varios registros
+                    if (response.status === 'exceso' || response.status === 'falta') {
+                        let textoAlertas = response.mensajes.join("\n\n");
+                        let tituloAlerta = response.status === 'exceso' ? "⚠️ ALERTAS DE EXCESO DETECTADAS:\n\n" : "💡 SUGERENCIAS DE MATERIAL DETECTADAS:\n\n";
 
-    // 4. SI EL AUTOMATA APRUEBA O EL USUARIO DA CLICK EN ACEPTAR: Guardamos en memoria real
-    allItems.push(nuevoItemVirtual);
+                        if (!confirm(tituloAlerta + textoAlertas + "\n\n¿Deseas agregar el ítem de todas formas?")) {
+                            return; 
+                        }
+                    }
 
-    // 5. SE PINTA EL REGISTRO
-    let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
-        '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
-        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-        '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
-        '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
-        '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
-        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-        '</tr>';
+                    // 4. PASO CLAVE: Si se aprueba, inyectamos las fotos de la cámara al objeto en memoria local (Sin enviarlas a internet aún)
+                    nuevoItemVirtual.photos = [...photosForItem];
 
-    $('#detalle_tbody').append(fila);
+                    // 5. Guardamos formalmente en tu arreglo global seguro en memoria
+                    allItems.push(nuevoItemVirtual);
 
-    // Limpieza
-    photosForItem = [];
-    $('#preview').html('');
-    cont++;
-}
+                    // 6. SE PINTA EL REGISTRO VISUAL EN LA TABLA AL INSTANTE
+                    let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
+                        '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
+                        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
+                        '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
+                        '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
+                        '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
+                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+                        '</tr>';
 
+                    $('#detalle_tbody').append(fila);
+
+                    // Limpieza visual y preparación para el siguiente ítem
+                    photosForItem = [];
+                    $('#preview').html('');
+                    cont++;
+                },
+                error: function(xhr) {
+                    Swal.fire('Error', 'No se pudo validar el material: ' + xhr.responseText, 'error');
+                }
             });
 
         } else {
@@ -851,7 +861,6 @@ success: function(response) {
         }
     }
 }
-
 
 
 
