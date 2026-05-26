@@ -1129,13 +1129,13 @@ $('#btnAbrirCamaraNativa').click(function() {
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
-    const file = e.target.files[0]; // Capturamos el archivo de la foto
+    const file = e.target.files[0]; // Capturamos el archivo de 6.3 MB
     if (!file) return;
 
-    // Mostramos un indicador de carga visual para que el técnico sepa que se está procesando
+    // Feedback visual al técnico para evitar que presione múltiples veces mientras se optimiza
     Swal.fire({
-        title: 'Procesando fotografía...',
-        text: 'Redimensionando para optimizar la subida móvil',
+        title: 'Procesando imagen...',
+        text: 'Optimizando tamaño para la red móvil',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); }
     });
@@ -1146,16 +1146,15 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         img.src = event.target.result;
         
         img.onload = function() {
-            // --- ALGORITMO DE COMPRESIÓN MÓVIL (CANVAS) ---
+            // --- ALGORITMO DE REDUCCIÓN Y COMPRESIÓN (CANVAS) ---
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            // Definimos un ancho máximo estándar excelente para reportes (1200 píxeles)
+            // Forzar un ancho máximo estándar excelente para auditorías en ERP (1200px)
             const MAX_WIDTH = 1200;
             let width = img.width;
             let height = img.height;
             
-            // Calculamos la proporción para no deformar la imagen
             if (width > MAX_WIDTH) {
                 height *= MAX_WIDTH / width;
                 width = MAX_WIDTH;
@@ -1164,36 +1163,34 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
             canvas.width = width;
             canvas.height = height;
             
-            // Dibujamos la imagen original escalada dentro del lienzo en memoria
+            // Redibujamos la foto original a su nueva escala optimizada
             ctx.drawImage(img, 0, 0, width, height);
             
-            // Convertimos el lienzo a Base64 formato JPEG con calidad optimizada al 65% (0.65)
-            // Esto reduce radicalmente el peso de Megabytes a Kilobytes imperceptibles
+            // CONVERSIÓN CRÍTICA: Convertimos a JPEG bajando la calidad al 65% (0.65)
+            // Esto destruye el peso de megabytes y lo deja en cómodos kilobytes
             const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.65);
             
             const categoriafoto = $('#categoriafoto').val();
             const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
             const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
             
-            // Guardamos la versión ultraligera en tu arreglo global de fotos
+            // Guardamos la versión ligera (los Kilobytes comprimidos) en tu arreglo de la vista
             photosForItem.push({ 
                 index: indiceActual,
                 name: nombreFotoGenerado, 
                 data: dataUrlComprimida 
             });
 
-            // Refrescamos las miniaturas en la ventana flotante
+            // Pintamos la miniatura en la ventana flotante adaptable
             mostrarFotos(indiceActual);
             
-            // Cerramos el indicador de carga porque el proceso terminó con éxito
-            Swal.close();
-            
-            // Limpiamos el input para permitir capturas consecutivas desde el celular
-            document.getElementById('inputCamaraNativa').value = "";
+            Swal.close(); // Cerramos el indicador de procesamiento con éxito
+            document.getElementById('inputCamaraNativa').value = ""; // Limpiamos el input
         };
     };
     reader.readAsDataURL(file);
 });
+
 
 
 const win = document.getElementById('floating-window');
