@@ -794,6 +794,18 @@ function agregarItem() {
                 didOpen: () => { Swal.showLoading(); }
             });
 
+            let allItemsSinFotos = allItems.map(item => {
+                return {
+                    index: item.index,
+                    idItem: item.idItem,
+                    nameProducto: item.nameProducto,
+                    cantidad: item.cantidad,
+                    nameserie: item.nameserie,
+                    sku: item.sku,
+                    CENTRO: item.CENTRO
+                };
+            });
+
             // 1. CREAMOS EL OBJETO VIRTUAL SIN LAS FOTOS PARA QUE EL AJAX SEA ULTRA LIGERO (VIAJA EN MILISEGUNDOS)
             let nuevoItemVirtual = {
                 index: cont, 
@@ -806,7 +818,7 @@ function agregarItem() {
                 photos: [] // <--- ¡CORRECCIÓN CRÍTICA! Iniciamos vacío para no saturar el internet móvil
             };
             
-            let listaSimulada = [...allItems, nuevoItemVirtual]; 
+            let listaSimulada = [...allItemsSinFotos, nuevoItemVirtual]; 
 
             // 3. LLAMADA AJAX PASANDO LA LISTA INTEGRADA (Pesa menos de 1 KB ahora)
             $.ajax({
