@@ -316,5 +316,52 @@ function exportarExcel() {
     });
 }
 
+function exportarFotos() {
+    Swal.fire({
+        title: '¿Deseas exportar las fotografías?',
+        text: "Se descargará un archivo comprimido (.ZIP) con las evidencias fotográficas de los expedientes filtrados actualmente.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#0d6efd', // Azul Bootstrap primary
+        cancelButtonColor: '#6c757d',  // Gris Bootstrap secondary
+        confirmButtonText: 'Sí, descargar ZIP',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            
+            // 1. CAPTURA DINÁMICA DE FILTROS EN TIEMPO REAL
+            let orden       = document.querySelector("input[name='orden']").value;
+            let tecnicoId   = document.querySelector("select[name='tecnico_id']").value;
+            let fechaInicio = document.querySelector("input[name='fecha_inicio']").value;
+            let fechaFin    = document.querySelector("input[name='fecha_fin']").value;
+
+            // 2. CONSTRUIR LOS PARÁMETROS URL
+            let queryParams = new URLSearchParams({
+                orden: orden,
+                tecnico_id: tecnicoId,
+                fecha_inicio: fechaInicio,
+                fecha_fin: fechaFin
+            });
+
+            // Reemplaza 'pagostecnico.exportarfotos' por el nombre exacto de tu ruta en web.php
+            let urlBase = "{{ route('pagostecnico.exportarfotos') }}";
+
+            // Mostrar notificación informativa de empaquetado
+            Swal.fire({
+                title: 'Comprimiendo imágenes...',
+                text: 'Esto puede demorar unos segundos dependiendo del volumen de fotos. No cierres la ventana.',
+                icon: 'info',
+                timer: 4000,
+                showConfirmButton: false,
+                allowOutsideClick: false
+            });
+
+            // 3. ACTIVAR LA DESCARGA NATIVA DEL COMPRIMIDO
+            window.location.href = urlBase + '?' + queryParams.toString();
+        }
+    });
+}
+
+
 </script>
 @endpush

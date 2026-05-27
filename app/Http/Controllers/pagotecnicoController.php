@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Pagotecnico;
+use App\Models\Expedientetecnico;
+use App\Models\Expedientefotograficotecnico;
+use ZipArchive;
 
 class pagotecnicoController  extends Controller
 {
@@ -72,6 +75,81 @@ public function index(Request $request)
     $tecnicos = DB::table('tecnico')->select('id', 'nombre')->get();
 
     return view('pagotecnicos.index', compact('pagostecnico', 'totalBalance', 'tecnicos'));
+}
+
+public function exportarFotosZip(Request $request)
+{
+    // 1. Recoger exactamente los mismos filtros de la orden y fechas
+    $fkTienda    = session('user_fkTienda') ?? 0;
+    $orden       = $request->input('orden');
+    $tecnicoId   = $request->input('tecnico_id');
+    $fechaInicio = $request->input('fecha_inicio');
+    $fechaFin    = $request->input('fecha_fin');
+
+    // 2. Construir la consulta filtrando los expedientes correspondientes
+    $queryExpedientes = Expedientetecnico::query();
+
+    if ($fkTienda) {
+        $queryExpedientes->where('fkTienda', $fkTienda);
+    }
+    if (!empty($orden)) {
+        $queryExpedientes->where('Orden', 'LIKE', '%' . trim($orden) . '%');
+    }
+    if (!empty($tecnicoId)) {
+        $queryExpedientes->where('fkTecnico', $tecnicoId);
+    }
+    if (!empty($fechaInicio)) {
+        $queryExpedientes->whereDate('FECHAINSTALACION', '>=', $fechaInicio);
+    }
+    if (!empty($fechaFin)) {
+        $queryExpedientes->whereDate('FECHAINSTALACION', '<=', $fechaFin);
+    }
+
+    // Obtener los números de orden que cumplen con los filtros del usuario
+    $ordenesFiltradas = $queryExpedientes->pluck('Orden')->toArray();
+
+    if (empty($ordenesFiltradas)) {
+        return back()->with('error', 'No se encontraron expedientes con las fotografías bajo los filtros seleccionados.');
+    }
+
+    // 3. Buscar las fotografías ligadas a esas órdenes específicas
+    $fotografias = Expedientefotograficotecnico::whereIn('Orden', $ordenesFiltradas)->get();
+
+    if ($fotografias->isEmpty()) {
+        return back()->with('error', 'Los expedientes filtrados no cuentan con evidencias fotográficas registradas.');
+    }
+
+    // 4. Crear el archivo ZIP temporal en el servidor de forma segura
+    $zipFileName = 'Evidencias_Fotograficas_' . date('Ymd_His') . '.zip';
+    $zipPath = storage_path('app/public/' . $zipFileName);
+    $zip = new ZipArchive;
+
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
+        foreach ($fotografias as $index => $foto) {
+            // Obtener la URL o ruta almacenada en tu base de datos (Google Cloud Storage)
+            $urlImagen = $foto->fotografia;
+
+            // Leer el contenido binario de la imagen mediante file_get_contents de forma segura
+            $imageContent = @file_get_contents($urlImagen);
+
+            if ($imageContent !== false) {
+                // Obtener la extensión original o forzar .jpg
+                $ext = pathinfo(parse_url($urlImagen, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
+                
+                // Organizar el ZIP creando una subcarpeta interna por cada Número de Orden
+                $nombreArchivoInterno = "Orden_{$foto->Orden}/evidencia_" . ($index + 1) . ".{$ext}";
+                
+                // Añadir el archivo al ZIP en memoria
+                $zip->addFromString($nombreArchivoInterno, $imageContent);
+            }
+        }
+        $zip->close();
+    } else {
+        return back()->with('error', 'No se pudo inicializar la librería de compresión ZIP en el servidor.');
+    }
+
+    // 5. Retornar la descarga del archivo ZIP empaquetado y eliminarlo del disco al concluir
+    return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
 }
 
 public function descargarFormatoPago()

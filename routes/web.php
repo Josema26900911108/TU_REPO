@@ -403,6 +403,8 @@ Route::post('/materialmanoobra/importar',[materialmanoobraController::class,'imp
 
 Route::get('/pagotecnico/lista', [PagotecnicoController::class, 'index'])->name('pagotecnico.lista');
 Route::post('/pagotecnico/importar', [PagotecnicoController::class, 'importarPagosTecnico'])->name('pagotecnico.importar');
+Route::get('/pagos-tecnico/exportar-fotos', [PagotecnicoController::class, 'exportarFotosZip'])->name('pagostecnico.exportarfotos');
+
 Route::get('/pagotecnico/formato', [PagotecnicoController::class, 'descargarFormatoPagos'])->name('pagotecnico.formato');
 Route::get('/pagotecnico/formato-pago', [PagotecnicoController::class, 'descargarFormatoPago'])->name('pagotecnico.formato-pago');
 Route::get('/pagotecnico/exportar', [PagotecnicoController::class, 'exportarExcel'])->name('pagotecnico.exportar');
