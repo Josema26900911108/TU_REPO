@@ -631,8 +631,9 @@ public function moveNode(Request $request)
             'node_id' => 'required|integer',
             'new_parent_id' => 'nullable|integer'
         ]);
-$idnodo=$request->node_id;
-$idnodopadre=$request->new_parent_id;
+        
+        $idnodo=$request->node_id;
+        $idnodopadre=$request->new_parent_id;
 
             if ($idnodo==$idnodopadre) {
                 return response()->json([
@@ -641,12 +642,6 @@ $idnodopadre=$request->new_parent_id;
                 ], 400);
             }
 
-            if (is_null($node->padre_id)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No se puede mover un nodo nodo raiz'
-                ], 400);
-            }
         $node = treematerialescategoria::findOrFail($request->node_id);
 
         // Validar que no se esté moviendo a un hijo (evitar ciclos)

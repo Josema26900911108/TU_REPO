@@ -300,10 +300,10 @@ foreach ($productosConsolidados as $item) {
         'fkTienda'              => $fkTienda,
         'fkMateriales'          => $item['id'],
         'fkLotes'               => $idLoteGenerado,
-        'clase_movimiento'      => '101',
+        'clase_movimiento'      => '641',
         'tipo_movimiento'       => 'COMPRA',
         'cantidad'              => $item['cantidad'],
-        'documento_material'    => $compra->numero_comprobante,
+        'documento_material'    => 'COM-' . $compra->numero_comprobante,
         'referencia'            => "Comp ID: ||{$compra->id}||",
         'fecha_contabilizacion' => now(),
         'centro'                => session('centro') ?? $centro->codigo, // Obtener centro de la sesión o asignar uno por defecto

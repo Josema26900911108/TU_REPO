@@ -135,7 +135,7 @@ $Tiendas = Tienda::where('EstatusContable', 'A')->get();
         DB::table('movimiento_materiales')->insert([
             'fkTienda' => $tiendaOrigenId,
             'fkMateriales' => $productoOrigen->id,
-            'clase_movimiento' => '301', // Código estándar para traslados
+            'clase_movimiento' => '311', // Código estándar para traslados
             'tipo_movimiento' => 'TRASLADO',
             'origen_uso' => 'traslado_entre_bodegas',
             'cantidad' => $request->cantidad,

@@ -17,6 +17,8 @@ use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Models\Pagotecnico;
+
 class pagotecnicoController  extends Controller
 {
     public function __construct()
@@ -29,26 +31,365 @@ class pagotecnicoController  extends Controller
 
     }
 
-    public function index()
-    {
-                if(!Auth::check()){
-            return redirect()->route('login');
+public function index(Request $request)
+{
+    // 1. Iniciar la consulta base sobre el modelo Pagotecnico
+    $query = Pagotecnico::with('tienda');
+
+    // 2. Aplicar Filtro por Orden/Expediente si se proporciona
+    if ($request->filled('orden')) {
+        $query->where('Orden', 'LIKE', '%' . trim($request->input('orden')) . '%');
+    }
+
+    // 3. Aplicar Filtro por Técnico (ID o Código)
+    if ($request->filled('tecnico_id')) {
+        $query->where('fkTecnico', $request->input('tecnico_id'));
+    }
+
+    // 4. Aplicar Filtro por Rango de Fechas (usando created_at o la columna de tu preferencia)
+    if ($request->filled('fecha_inicio')) {
+        $query->whereDate('created_at', '>=', $request->input('fecha_inicio'));
+    }
+    if ($request->filled('fecha_fin')) {
+        $query->whereDate('created_at', '<=', $request->input('fecha_fin'));
+    }
+
+    // 5. Obtener los registros filtrados para la tabla
+    $pagostecnico = $query->latest()->get();
+
+    // 6. CALCULAR EL BALANCE BALANCEADO (Suma algebraicamente según la Naturaleza)
+    // Suponemos que Naturaleza 'D' es un Cargo/Salida (-) y 'H' o cualquier otra es un Abono/Crédito (+)
+    $totalBalance = 0;
+    foreach ($pagostecnico as $pago) {
+        if ($pago->Naturaleza === 'D') {
+            $totalBalance -= floatval($pago->COSTOPAGO); // Restar si es salida/cargo
+        } else {
+            $totalBalance += floatval($pago->COSTOPAGO); // Sumar si es entrada/crédito
         }
-           $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
+    }
 
-                if ($Estatus == 'ER') {
+    // Opcional: Obtener lista de técnicos para el select del filtro
+    $tecnicos = DB::table('tecnico')->select('id', 'nombre')->get();
 
-                    $materialmanoobra = Materialmanoobra::all();
+    return view('pagotecnicos.index', compact('pagostecnico', 'totalBalance', 'tecnicos'));
+}
 
-                } else {
-                    $materialmanoobra = Materialmanoobra::where('fkTienda',$fkTienda)->get();
+public function descargarFormatoPago()
+{
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=Formato_Desglose_Pagos_Tecnicos.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // Columnas exactas que requiere tu tabla pagostecnico
+    $columnas = [
+        'Orden',
+        'SKU',
+        'Descripcion',
+        'OBS',
+        'Cantidad',
+        'COSTOPAGO',
+        'Status',
+        'Naturaleza',
+        'fkTecnico',
+        'fkTienda'
+    ];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        
+        // Añadir el BOM UTF-8 para que Excel reconozca los acentos correctamente al abrir el CSV
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        fputcsv($file, $columnas); // Encabezado de la tabla
+
+        // Línea de ejemplo con datos ficticios pero coherentes con tu negocio:
+        // Orden, SKU, Descripcion, Cantidad, COSTOPAGO, Status, Naturaleza, fkTecnico
+        fputcsv($file, [
+            'ORD-100254',
+            'SKU-MO-001',
+            'INSTALACION TOMA DE LINEA RJ11',
+            'Instalación Caja Adicional Servicio Técnico',            
+            1,
+            250.00,
+            'C', // Status (ej: S para aprobado/pendiente)
+            'H', // Naturaleza (H para Suma, D para Resta)
+            12   // ID del Técnico asignado
+        ]);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+public function descargarinventariopago()
+{
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=Formato_Expediente_Pago_Tecnico.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // Columnas ordenadas de acuerdo a la estructura de tu tabla 'pagotecnico'
+    $columnas = [
+        'Orden',
+        'SKU',
+        'Descripcion',
+        'OBS',
+        'Cantidad',
+        'COSTOPAGO',
+        'fkTienda',
+        'fkTecnico',
+        'Naturaleza',
+        'Status'
+    ];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        
+        // Inyectar BOM UTF-8 para evitar errores de codificación en Excel
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        fputcsv($file, $columnas); // encabezado
+
+        $fkTienda = session('user_fkTienda') ?? 1;
+
+        // Línea de ejemplo adaptada fielmente a los tipos de columnas de tu base de datos:
+        fputcsv($file, [
+            'ORD-23450285',                // Orden (varchar)
+            '4013896',                     // SKU (varchar)
+            'Mano de Obra Instalación',    // Descripcion (text)
+            'Pago correspondiente a cajas adicionales', // OBS (text)
+            1.00,                          // Cantidad (double)
+            350.00,                        // COSTOPAGO (double)
+            $fkTienda,                     // fkTienda (bigint)
+            12,                            // fkTecnico (bigint)
+            'D',                           // Naturaleza (char 1 - ej: D o H)
+            'I'                            // Status (char 2)
+        ]);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+public function exportarExcel(Request $request)
+{
+    // 1. Capturar exactamente los mismos filtros de tu consulta de la tabla
+    $fkTienda    = session('user_fkTienda') ?? 0;
+    $orden       = $request->input('orden');
+    $tecnicoId   = $request->input('tecnico_id');
+    $fechaInicio = $request->input('fecha_inicio');
+    $fechaFin    = $request->input('fecha_fin');
+
+    // 2. Consulta idéntica aplicando los filtros acumulativos
+    $query = Pagotecnico::query();
+
+    if ($fkTienda) {
+        $query->where('fkTienda', $fkTienda);
+    }
+
+    if (!empty($orden)) {
+        $query->where('Orden', 'LIKE', '%' . trim($orden) . '%');
+    }
+
+    if (!empty($tecnicoId)) {
+        $query->where('fkTecnico', $tecnicoId);
+    }
+
+    if (!empty($fechaInicio)) {
+        $query->whereDate('created_at', '>=', $fechaInicio);
+    }
+
+    if (!empty($fechaFin)) {
+        $query->whereDate('created_at', '<=', $fechaFin);
+    }
+
+    // 3. Configurar cabeceras de descarga HTTP para Excel/CSV
+    $fileName = 'Reporte_Desglose_Pagos_' . date('Y-m-d_H-i') . '.csv';
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=$fileName",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // 4. Generar el archivo en streaming línea por línea para cuidar la RAM
+    $callback = function() use ($query) {
+        $file = fopen('php://output', 'w');
+        
+        // Agregar BOM UTF-8 para que Excel reconozca correctamente las tildes y eñes
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        // Cabeceras adaptadas a las columnas reales de pagotecnico
+        fputcsv($file, ['ID Pago', 'Orden / Expediente', 'SKU', 'Descripcion', 'Cantidad', 'Costo Pago ($)', 'Naturaleza', 'Estatus', 'ID Técnico', 'Fecha Registro']);
+
+        // Variable para ir acumulando el balance total algebraico del reporte
+        $totalBalance = 0;
+
+        // Procesar los registros en bloques de 1000 para no colapsar la memoria (Chunking)
+        $query->chunk(1000, function($registros) use ($file, &$totalBalance) {
+            foreach ($registros as $row) {
+                $monto = floatval($row->COSTOPAGO);
+                $naturaleza = strtoupper(trim($row->Naturaleza));
+
+                // Lógica algebraica: D resta, H suma
+                if ($naturaleza === 'D') {
+                    $totalBalance -= $monto;
+                } elseif ($naturaleza === 'H') {
+                    $totalBalance += $monto;
                 }
 
+                fputcsv($file, [
+                    $row->id,
+                    $row->Orden,
+                    $row->SKU,
+                    $row->Descripcion,
+                    $row->Cantidad,
+                    number_format($monto, 2, '.', ''), // Formato numérico limpio para Excel
+                    $naturaleza,
+                    $row->Status,
+                    $row->fkTecnico,
+                    date('d-m-Y H:i:s', strtotime($row->created_at))
+                ]);
+            }
+        });
 
+        // 5. INYECTAR FILA DE RESULTADO FINAL BALANCEADO EN EL EXCEL
+        fputcsv($file, []); // Renglón vacío de separación
+        fputcsv($file, [
+            'RESULTADO GENERAL BALANCEADO:', 
+            '', '', '', '', 
+            number_format($totalBalance, 2, '.', ''), // Imprime el total abajo de Costo Pago
+            'Suma total (Abonos H menos Cargos D)', 
+            '', '', ''
+        ]);
 
-        return view('materialmanoobra.index', compact('materialmanoobra'));
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+public function importarPagosTecnico(Request $request)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+
+    $fkTienda = session('user_fkTienda') ?? 0;
+    
+    // Configuraciones de alto rendimiento para archivos masivos
+    set_time_limit(0); 
+    ini_set('memory_limit', '512M');
+    
+    // Desactivar logs de consultas (Crucial para no colapsar la memoria RAM con miles de inserts)
+    DB::connection()->disableQueryLog();
+
+    $request->validate([
+        'archivo' => 'required|file|mimes:csv,txt',
+    ]);
+
+    $file = fopen($request->file('archivo')->getRealPath(), 'r');
+    
+    // Leer el encabezado del CSV y limpiar el posible carácter invisible BOM UTF-8
+    $encabezadoRaw = fgetcsv($file);
+    if ($encabezadoRaw && str_contains($encabezadoRaw[0], chr(0xEF).chr(0xBB).chr(0xBF))) {
+        $encabezadoRaw[0] = str_replace(chr(0xEF).chr(0xBB).chr(0xBF), '', $encabezadoRaw[0]);
+    }
+    $encabezado = $encabezadoRaw;
+
+    $insertados = 0;
+    $omitidos = 0;
+    
+    $batchSize = 500; 
+    $batchData = [];
+    $now = now();
+
+    try {
+        while (($linea = fgetcsv($file)) !== false) {
+            // Validar que la línea tenga el mismo número de campos que las columnas del encabezado
+            if (count($encabezado) !== count($linea)) {
+                $omitidos++;
+                continue;
+            }
+
+            $data = array_combine($encabezado, $linea);
+
+            // Validaciones de campos mandatorios para la tabla pagotecnico
+            if (empty($data['Orden']) || empty($data['SKU']) || !isset($data['COSTOPAGO'])) {
+                $omitidos++;
+                continue;
+            }
+
+            // Normalización y limpieza profunda de Naturaleza (D / H) y Status
+            $naturaleza = strtoupper(trim($data['Naturaleza'] ?? 'D'));
+            if (!in_array($naturaleza, ['D', 'H'])) {
+                $naturaleza = 'D'; // Forzar valor contable base si el usuario escribe otra letra
+            }
+
+            $status = substr(trim($data['Status'] ?? 'I'), 0, 2); // Garantizar formato varchar(2) máximo
+
+            // Mapear el lote alineado a las columnas exactas de tu tabla 'pagotecnico'
+            $batchData[] = [
+                'Orden'       => $data['Orden'],
+                'SKU'         => $data['SKU'],
+                'Descripcion' => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'OBS'         => mb_convert_encoding($data['OBS'] ?? 'Importación masiva', 'UTF-8', 'ISO-8859-1'),
+                'Cantidad'    => floatval($data['Cantidad'] ?? 1.00),
+                'COSTOPAGO'   => floatval($data['COSTOPAGO'] ?? 0.00),
+                'fkTienda'    => $fkTienda,
+                'fkTecnico'   => intval($data['fkTecnico'] ?? 0),
+                'Naturaleza'  => $naturaleza,
+                'Status'      => $status,
+                'created_at'  => $now,
+                'updated_at'  => $now,
+            ];
+
+            $insertados++;
+
+            // Inserción masiva en transacciones atómicas parciales al alcanzar el tamaño del lote
+if (count($batchData) >= $batchSize) {
+    DB::transaction(function () use ($batchData) {
+        DB::table('pagotecnico')->upsert(
+            $batchData, 
+            ['Orden', 'SKU'], // 1. Columnas que definen si el registro ya existe (Deben tener índice UNIQUE en la BD)
+            ['Descripcion', 'OBS', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status', 'updated_at'] // 2. Columnas a actualizar si se halla duplicado
+        );
+    });
+    $batchData = [];
+    gc_collect_cycles();
+}
+
+        }
+
+        // Procesar remanentes que no alcanzaron a completar el último múltiplo de 500
+        if (!empty($batchData)) {
+            DB::transaction(function () use ($batchData) {
+                DB::table('pagotecnico')->insert($batchData);
+            });
+        }
+
+        fclose($file);
+
+        return back()->with('success', "Importación de pagos exitosa: {$insertados} filas procesadas con éxito, {$omitidos} omitidas por errores.");
+
+    } catch (\Exception $e) {
+        if (is_resource($file)) {
+            fclose($file);
+        }
+        return back()->with('error', 'Error crítico en procesamiento Cloud de Pagos: ' . $e->getMessage());
+    }
+}
+
 
     public function show($id)
     {
@@ -63,8 +404,8 @@ class pagotecnicoController  extends Controller
                         if(!Auth::check()){
             return redirect()->route('login');
         }
-        $materialmanoobra = Materialmanoobra::all();
-        return view('materialmanoobra.create', compact('materialmanoobra'));
+        $pagostecnico = Pagotecnico::all();
+        return view('pagotecnicos.create', compact('pagostecnico'));
     }
 
     public function store(StorePersonaRequest $request)

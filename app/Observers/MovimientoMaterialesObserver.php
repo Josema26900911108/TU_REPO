@@ -13,8 +13,32 @@ use Illuminate\Support\Facades\Log;
 
 class MovimientoMaterialesObserver
 {
-    protected $clasesEntrada = ['101', '501', '561', '653', '642', '252','602'];
-    protected $clasesSalida  = ['601', '201', '301', '641', '221', '251'];
+    /**
+     * Clases de movimiento que SUMAN stock físico al almacén (Entradas).
+     * Se añadieron:
+     * - '311' (Traspaso en 1 paso): Suma en la bodega destino.
+     * - '315' (Traspaso en 2 pasos - Entrada): Confirma la recepción del tránsito.
+     * - '312' (Anulación Traspaso): Devuelve stock al origen si se cancela un 311.
+     * - '262' (Anulación Consumo Orden): Devuelve materiales de instalación al técnico.
+     */
+    protected $clasesEntrada = [
+        '101', '501', '561', '653', '642', '252', '602', 
+        '311', '312', '315', '262'
+    ];
+
+    /**
+     * Clases de movimiento que RESTAN stock físico o extinguen inventario (Salidas).
+     * Se añadieron:
+     * - '311' (Traspaso en 1 paso): Resta en la bodega origen.
+     * - '313' (Traspaso en 2 pasos - Salida): Resta origen y congela el lote "En Tránsito".
+     * - '261' (Consumo de Orden): Salida definitiva por instalación física.
+     * - '551' (Merma/Desguace): Destrucción física o baja por daño (Escenario Merma).
+     */
+    protected $clasesSalida  = [
+        '601', '201', '301', '641', '221', '251', 
+        '311', '313', '261', '551'
+    ];
+
 
 public function creating(MovimientoMateriales $movimiento)
 {

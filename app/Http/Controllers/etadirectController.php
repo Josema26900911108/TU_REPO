@@ -175,7 +175,7 @@ public function reporteTecnicos()
             DB::raw('SUM(CASE WHEN clase_movimiento = "251" THEN cantidad ELSE -cantidad END) as saldo_pendiente'),
             DB::raw('MIN(created_at) as fecha_entrega_mas_antigua')
         )
-        ->whereIn('clase_movimiento', ['251', '252', '221']) // Salida, Devolución, Consumo
+        ->whereIn('clase_movimiento', ['261','251', '252', '221','311','641','101']) // Salida, Devolución, Consumo
         ->where('fkTienda', session('user_fkTienda'))
         ->groupBy('contrata', 'fkMateriales')
         ->having('saldo_pendiente', '>', 0)

@@ -20,7 +20,8 @@ use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-
+use App\Models\Arbmanoobra;
+use App\Models\Treematerialescategoria;
 
 class movimientomaterialesController extends Controller
 {
@@ -185,12 +186,56 @@ if (!$existeCentroDestino) {
                 $idTecnicoOrigen = !empty($centroOrigen) ? DB::table('tecnico')->where('codigo', $centroOrigen)->value('id') : null;
                 $idTecnicoDestino = !empty($centroDestino) ? DB::table('tecnico')->where('codigo', $centroDestino)->value('id') : null;
 
-                $docRef = 'ETA-' . $ahora->format('dmY:H:i:s') . '-' . $serie;
+                $docRef = 'ETA-' . $idTecnicoOrigen . ";" . $idTecnicoDestino . ";" . $ahora->format('dmY:H:i:s') . ';' . $serie;
+
+                        // 1. Inicializar la variable del nombre
+                        $nombreProducto = null;
+
+                        // 2. Buscar en la tabla 'productos'
+                        $productoExistente = Producto::where('codigo', $sku)
+                            ->where('fkTienda', $fkTienda)
+                            ->select('nombre')
+                            ->first();
+
+                        if ($productoExistente) {
+                            $nombreProducto = $productoExistente->nombre;
+                        } else {
+                            // 3. Si no está en productos, buscar en 'materialmanoobra'
+                            $materialExiste = Materialmanoobra::where('SKU', $sku)
+                                ->where('fkTienda', $fkTienda)
+                                ->select('Descripcion')
+                                ->first();
+
+                            if ($materialExiste) {
+                                $nombreProducto = $materialExiste->Descripcion;
+                            } else {
+                                // 4. Si no está, buscar en 'arbmanoobra'
+                                $arbMaterialExiste = Arbmanoobra::where('SKU', $sku)
+                                    ->where('fkTienda', $fkTienda)
+                                    ->select('nombre')
+                                    ->first();
+
+                                if ($arbMaterialExiste) {
+                                    $nombreProducto = $arbMaterialExiste->nombre;
+                                } else {
+                                    // 5. Si no está, buscar en 'treematerialescategoria'
+                                    $treeMateriales = Treematerialescategoria::where('SKU', $sku)
+                                        ->where('fkTienda', $fkTienda)
+                                        ->select('nombre')
+                                        ->first();
+
+                                    if ($treeMateriales) {
+                                        $nombreProducto = $treeMateriales->nombre;
+                                    }
+                                }
+                            }
+                        }
+
 
                 $producto = Producto::firstOrCreate(
                     ['codigo' => $sku],
                     [
-                        'nombre' => mb_convert_encoding($data['DESCRIPCION'] ?? "Producto $sku", 'UTF-8', 'ISO-8859-1'),
+                        'nombre' => mb_convert_encoding($nombreProducto ?? "Producto $sku", 'UTF-8', 'ISO-8859-1'),
                         'fkTienda' => $fkTienda, 'estado' => 1, 'marca_id' => 1, 'presentacione_id' => 1,
                         'stock' => 0, 'precio_base' => 0, 'stock_minimo' => 1, 'perecedero' => 0
                     ]
@@ -215,7 +260,7 @@ if (!$existeCentroDestino) {
                     // Historial de Salida (Origen)
                     MovimientoMateriales::create([
                         'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoOrigen,
-                        'clase_movimiento' => '251', 'cantidad' => $cantidad * -1,
+                        'clase_movimiento' => '311', 'cantidad' => $cantidad * -1,
                         'referencia' => "SALIDA TRASLADO SERIE: " . $serie . " | AL DESTINO " . $centroDestino,
                         'tipo_movimiento' => 'TRASPASO_SALIDA', 'documento_material' => $docRef,
                         'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
@@ -240,7 +285,7 @@ if (!$existeCentroDestino) {
                 // Historial de Entrada (Destino) - Aplica tanto para traslados como para inserciones desde cero
                 MovimientoMateriales::create([
                     'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoDestino,
-                    'clase_movimiento' => !empty($centroOrigen) ? '252' : '101', // 101 si es inserción pura
+                    'clase_movimiento' => '641' ? '252' : '101', // 101 si es inserción pura
                     'cantidad' => $cantidad,
                     'referencia' => !empty($centroOrigen) ? "ENTRADA TRASLADO SERIE: " . $serie . " | ORIGEN: " . $centroOrigen : "INSERCION INICIAL DE STOCK SERIE: " . $serie,
                     'tipo_movimiento' => !empty($centroOrigen) ? 'TRASPASO_ENTRADA' : 'INSERCION_STOCK', 
@@ -600,7 +645,7 @@ function traslados(){
     'almacen' => 'Bodega Central',
     'almacen_destino' => 'Tienda Norte', // Obligatorio por el Observer
     'cantidad' => 10,
-    'documento_material' => 'TR-' . time(),
+    'documento_material' => 'TRA-' . time(),
     'fecha_contabilizacion' => now(),
 ]);
 
@@ -670,7 +715,7 @@ function traslados(){
         DB::table('movimiento_materiales')->insert([
             'fkTienda' => $tiendaOrigenId,
             'fkMateriales' => $productoOrigen->id,
-            'clase_movimiento' => '301', // Código estándar para traslados
+            'clase_movimiento' => '311', // Código estándar para traslados
             'tipo_movimiento' => 'TRASLADO',
             'origen_uso' => 'traslado_entre_bodegas',
             'cantidad' => $request->cantidad,

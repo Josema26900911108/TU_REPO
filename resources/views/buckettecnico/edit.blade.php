@@ -339,203 +339,181 @@
         <li><a href="#" id="createChildNode">Nuevo</a></li>
     </ul>
 
-    <div class="card text-bg-light">
-        <form id="formulario" action="{{ route('tecnico.operartrabajo', ['tecnico' => $tecnico, 'expediente' => $orden]) }}"
-      method="POST" enctype="multipart/form-data">
-            @method('POST')
-            @csrf
-            <div class="card-header">
-                <p class="mb-0">Nota: Los usuarios son los que pueden ingresar al sistema</p>
+<div class="card text-bg-light">
+    <form id="formulario" action="{{ route('tecnico.operartrabajo', ['tecnico' => $tecnico, 'expediente' => $orden]) }}" method="POST" enctype="multipart/form-data">
+        @method('POST')
+        @csrf
+        <div class="card-header">
+            <p class="mb-0">Nota: Los usuarios son los que pueden ingresar al sistema</p>
+        </div>
+
+        <div class="card-body">
+            <!-- Información de la orden -->
+            <div class="row mb-4">
+                @foreach ([
+                    'Orden' => $orden->Orden,
+                    'Virtual' => $orden->virtual,
+                    'Tipo Servicio' => $orden->Tipo_servicio,
+                    'Tipo Orden' => $orden->Tipo_orden,
+                    'Cliente' => $orden->NOMBRECLIENTE,
+                    'Dirección' => $orden->DIRECCION,
+                    'Autoriza' => $orden->AUTORIZA,
+                    'TECNOLOGIA' => $orden->TECNOLOGIA,
+                    'Área' => $orden->AREA,
+                    'Fecha' => $orden->FECHAINSTALACION,
+                    'Observaciones' => $orden->OBS,
+                    'Siglas' => $orden->SIGLASCENTRAL
+                ] as $label => $value)
+
+                @php
+                $id3 = $orden->id;
+                $tipo_orden=$orden->Tipo_servicio;
+                @endphp
+                <div class="col-lg-3 col-form-label mb-2">
+                    <div><strong>{{ $label }}:</strong> {{ $value }}</div>
+                </div>
+                @endforeach
             </div>
 
-            <div class="card-body">
-                <!-- Información de la orden -->
-                <div class="row mb-4">
-                    @foreach ([
-                        'Orden' => $orden->Orden,
-                        'Virtual' => $orden->virtual,
-                        'Tipo Servicio' => $orden->Tipo_servicio,
-                        'Tipo Orden' => $orden->Tipo_orden,
-                        'Cliente' => $orden->NOMBRECLIENTE,
-                        'Dirección' => $orden->DIRECCION,
-                        'Autoriza' => $orden->AUTORIZA,
-                        'TECNOLOGIA' => $orden->TECNOLOGIA,
-                        'Área' => $orden->AREA,
-                        'Fecha' => $orden->FECHAINSTALACION,
-                        'Observaciones' => $orden->OBS,
-                        'Siglas' => $orden->SIGLASCENTRAL
-                    ] as $label => $value)
-
-                    @php
-                    $id3 = $orden->id;
-                    $tipo_orden=$orden->Tipo_servicio;
-                    @endphp
-                    <div class="col-lg-3 col-form-label mb-2">
-                        <div><strong>{{ $label }}:</strong> {{ $value }}</div>
-                    </div>
-                    @endforeach
+            <!-- Select Tecnología -->
+            <div class="row mb-4">
+                <label for="itemtecnologia" class="col-lg-2 col-form-label">Seleccione Tecnología:</label>
+                <div class="col-lg-6">
+                    <select name="itemtecnologia" id="itemtecnologia" class="form-control selectpicker" data-live-search="true" data-size="10">
+                    </select>
+                    @error('itemtecnologia')
+                    <small class="text-danger">{{ '*'.$message }}</small>
+                    @enderror
                 </div>
+            </div>
 
-                <!-- Select Tecnología -->
-                <div class="row mb-4">
-                    <label for="itemtecnologia" class="col-lg-2 col-form-label">Seleccione Tecnología:</label>
-                    <div class="col-lg-6">
-                        <select name="itemtecnologia" id="itemtecnologia" class="form-control selectpicker"
-                                data-live-search="true" data-size="10">
-
-                        </select>
-                        @error('itemtecnologia')
-                        <small class="text-danger">{{ '*'.$message }}</small>
-                        @enderror
-                    </div>
+            <!-- Select Mano de Obra -->
+            <div class="row mb-4">
+                <label for="itemmanoobra" class="col-lg-2 col-form-label">Seleccione Mano de Obra:</label>
+                <div class="col-lg-6">
+                    <select name="itemmanoobra" id="itemmanoobra" class="form-control selectpicker" data-live-search="true" data-size="10">
+                    </select>
+                    @error('itemmanoobra')
+                    <small class="text-danger">{{ '*'.$message }}</small>
+                    @enderror
                 </div>
+            </div>
 
-                <!-- Select Mano de Obra -->
-                <div class="row mb-4">
-                    <label for="itemmanoobra" class="col-lg-2 col-form-label">Seleccione Mano de Obra:</label>
-                    <div class="col-lg-6">
-                        <select name="itemmanoobra" id="itemmanoobra" class="form-control selectpicker"
-                                data-live-search="true" data-size="10">
+            <hr class="my-4">
 
-                        </select>
-                        @error('itemmanoobra')
-                        <small class="text-danger">{{ '*'.$message }}</small>
-                        @enderror
-                    </div>
+            <!-- Sección de Asignación de Items (Reemplaza la tabla deformada) -->
+            <div class="card mb-4">
+                <div class="card-header bg-secondary text-white text-center fw-bold">
+                    Asignado
                 </div>
+                <div class="card-body">
+                    <input type="hidden" name="nodoSeleccionado" id="nodoSeleccionado">
+                    
+                    <!-- Seleccione Item -->
+                    <div class="row mb-3 justify-content-center">
+                        <label for="itemmanoobraamterial" class="col-lg-2 col-form-label">Seleccione Item:</label>
+                        <div class="col-lg-6">
+                            <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control select-buscador" data-live-search="true" data-size="10">
+                            </select>
+                            @error('itemmanoobraamterial')
+                            <small class="text-danger">{{ '*'.$message }}</small>
+                            @enderror
+                        </div>
+                    </div>
 
-<!-- Árbol -->
-<div class="row mb-6">
-    <div class="col-lg-12 text-center">
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>Asignado</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>
-                        <input type="hidden" name="nodoSeleccionado" id="nodoSeleccionado">
-                                        <!-- Select Mano de Obra -->
-<div class="row mb-4">
-    <label for="itemmanoobraamterial" class="col-lg-2 col-form-label">Seleccione Item:</label>
-    <div class="col-lg-6">
-        <!-- 🌟 SE CAMBIÓ LA CLASE 'selectpicker' POR 'select-buscador' -->
-        <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control select-buscador"
-                data-live-search="true" data-size="10">
-        </select>
-        @error('itemmanoobraamterial')
-        <small class="text-danger">{{ '*'.$message }}</small>
-        @enderror
-    </div>
-</div>
+                    <!-- Botón Cámara -->
+                    <div class="row mb-3 justify-content-center">
+                        <div class="col-lg-8">
+                            <button id="btnAbrirCamaraNativa" type="button" class="btn btn-primary w-100">
+                                📸 Activar Cámara Nativa
+                            </button>
+                            <input type="file" id="inputCamaraNativa" accept="image/jpeg, image/jpg" capture="environment" style="display: none;">
+                            <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" style="display:none;">
+                                <option value="ANTES">ANTES</option>
+                                <option value="DESPUES">DESPUES</option>
+                                <option value="SERIE">SERIE</option>
+                                <option value="PANORAMICA">PANORAMICA</option>
+                                <option value="MURO">MURO</option>
+                                <option value="TECHO">TECHO</option>
+                                <option value="ESQUINA">ESQUINA</option>
+                                <option value="ENTRE_CABLES">ENTRE CABLES</option>
+                                <option value="POSTE">POSTE</option>
+                                <option value="ANTENA">ANTENA</option>
+                                <option value="ANTENA_WTTx">ANTENA WTTx</option>
+                                <option value="MASTIL_WTTx">MASTIL WTTx</option>
+                                <option value="MASTIL_DTH">MASTIL DTH</option>
+                                <option value="STB">STB</option>
+                                <option value="OTT">OTT</option>
+                                <option value="ONT">ONT</option>
+                                <option value="SWITCH">SWITCH</option>
+                            </select>
+                            <div id="preview" class="mt-2"></div>
+                        </div>
+                    </div>
 
-<button id="btnAbrirCamaraNativa" type="button" class="btn btn-primary my-2 w-100">
-    📸 Activar Cámara Nativa
-</button>
-
-
-
-         
-<!-- Forzamos la captura nativa directa en JPEG estándar (evita el formato pesado HEIC) -->
-<input type="file" 
-       id="inputCamaraNativa" 
-       accept="image/jpeg, image/jpg" 
-       capture="environment" 
-       style="display: none;">
-
-
-                <br>
-                <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" style="display:none;">
-
-                    <option value="ANTES">ANTES</option>
-                    <option value="DESPUES">DESPUES</option>
-                    <option value="SERIE">SERIE</option>
-                    <option value="PANORAMICA">PANORAMICA</option>
-                    <option value="MURO">MURO</option>
-                    <option value="TECHO">TECHO</option>
-                    <option value="ESQUINA">ESQUINA</option>
-                    <option value="ENTRE_CABLES">ENTRE CABLES</option>
-                    <option value="POSTE">POSTE</option>
-                    <option value="ANTENA">ANTENA</option>
-                    <option value="ANTENA_WTTx">ANTENA WTTx</option>
-                    <option value="MASTIL_WTTx">MASTIL WTTx</option>
-                    <option value="MASTIL_DTH">MASTIL DTH</option>
-                    <option value="STB">STB</option>
-                    <option value="OTT">OTT</option>
-                    <option value="ONT">ONT</option>
-                    <option value="SWITCH">SWITCH</option>
-                </select>
-                <div id="preview"></div>
-
-                                        <!-----Precio de venta---->
+                    <!-- Cantidad y Botón Agregar -->
+                    <div class="row justify-content-center align-items-end">
                         <div class="col-sm-4 mb-2">
                             <label for="cantidad" class="form-label">Cantidad:</label>
                             <input type="number" name="cantidad" id="cantidad" class="form-control" step="1" min="1" value="1">
                             <input type="hidden" name="Tipo_Orden" id="Tipo_Orden" value="{{ $tipo_orden }}">
                         </div>
-
-                        <!-----botón para agregar--->
-                        <div class="col-12 mb-4 mt-2 text-end">
-                            <button type="button"  id="btn_agregar" class="btn btn-primary" type="button">Agregar</button>
+                        <div class="col-sm-4 mb-2 text-end">
+                            <button type="button" id="btn_agregar" class="btn btn-primary w-100">Agregar</button>
                         </div>
-
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <div id="materialesList">
-                            <h5>Materiales utilizados</h5>
-                        </div>
-                    </td>
-                </tr>
-                <tr></tr>
-                    <td colspan="2">
-                                <table class="table table-hover">
-                                    <thead class="bg-info">
-                                        <tr>
-                                            <th></th>
-                                            <th class="text-white">Cantidad</th>
-                                            <th class="text-white">Descripción</th>
-                                            <th class="text-white">SKU</th>
-                                            <th class="text-white">SERIE</th>
-                                            <th class="text-white">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="detalle_tbody">
-                                        <!-- Los detalles del comprobante se cargarán aquí -->
-                                    </tbody>
-                                </table>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</div>
-
-
-
-
-                <!-- Observaciones -->
-                <div class="row mb-4">
-                    <label for="obs" class="col-lg-2 col-form-label">Observaciones:</label>
-                    <div class="col-lg-6">
-                        <textarea name="obs" id="obs" class="form-control"></textarea>
-                        @error('obs')
-                        <small class="text-danger">{{ '*'.$message }}</small>
-                        @enderror
                     </div>
                 </div>
             </div>
-                @if ($orden->ESTATUS == 'I')
-                            <div class="card-footer text-center">
-                                <button type="submit" onclick="prepareForm()" class="btn btn-primary">Actualizar</button>
-                            </div>
-                @endif
 
-        </form>
-    </div>
+            <!-- Tabla de Materiales Utilizados -->
+            <div class="mb-4">
+                <h5 class="border-bottom pb-2 mb-3">Materiales utilizados</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered w-100">
+                        <thead class="table-text text-white bg-secondary">
+                            <tr>
+                                <th></th>
+                                <th class="text-white">Cantidad</th>
+                                <th class="text-white">Descripción</th>
+                                <th class="text-white">SKU</th>
+                                <th class="text-white">SERIE</th>
+                                <th class="text-white">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detalle_tbody">
+                            <!-- Los detalles del comprobante se cargarán aquí -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Observaciones -->
+            <div class="row mb-4">
+                <label for="obs" class="col-lg-2 col-form-label">Observaciones:</label>
+                <div class="col-lg-6">
+                    <textarea name="obs" id="obs" class="form-control"></textarea>
+                    @error('obs')
+                    <small class="text-danger">{{ '*'.$message }}</small>
+                    @enderror
+                </div>
+            </div>
+        </div>
+<input type="hidden" name="estatus" id="estatus_input" value="">
+    <input type="hidden" name="id_tecnico" id="id_tecnico" value="{{ $tecnico->id }}">
+
+        @if ($orden->Status == 'I' or $orden->Status == 'S')
+        <div class="card-footer text-center">
+            <button type="button" onclick="prepareForm('I','I')" class="btn btn-primary">Actualizar</button>
+        </div>
+        @endif
+
+        @if ($orden->Status == 'S')
+        <div class="card-footer text-center">
+            <button type="button" onclick="prepareForm('S','S')" class="btn btn-success">Cerrar y Guardar</button
+        </div>
+        @endif
+
+    </form>
 </div>
 
 
@@ -695,9 +673,10 @@ $('#btnOk').click(function() {
     $(this).text("✅ Fotos Guardadas").prop('disabled', true);
 });
 
-function prepareForm() {
+function prepareForm(estatus, MSJ) {
     // CORRECCIÓN SANITARIA: Borra cualquier input oculto de items generado previamente
-    // antes de inyectar los nuevos valores limpios de 'allItems'
+    document.getElementById('estatus_input').value = estatus;
+
     $("input[name^='items[']").remove();
 
     allItems.forEach((item, idx) => {
@@ -730,36 +709,159 @@ function prepareForm() {
             }).appendTo('#formulario');
         });
     });
+
+    itemsEliminados.forEach((id, idx) => {
+        $('<input>').attr({
+            type: 'hidden',
+            name: `arrayEliminados[${idx}]`,
+            value: id
+        }).appendTo('#formulario');
+    });
+
+    $('<input>').attr({
+        type: 'hidden',
+        name: 'estatus',
+        value: estatus
+    }).appendTo('#formulario');
+
+    let mensaje = MSJ === 'S' ?
+        "¿Confirmar cierre de trabajo? Se registrará el consumo de materiales y se actualizará tu inventario físico." :
+        "¿Confirmar actualización de trabajo? Se actualizará el consumo de materiales pero no se cerrará la orden, podrás seguir editando después.";
+
+    let titulo = MSJ === 'S' ?
+        "¿Confirmar cierre de trabajo?" :
+        "¿Confirmar actualización de trabajo?";        
+
+    let icono = MSJ === 'S' ?
+        'success' : 'warning';
+        
+    let textoboton = MSJ === 'S' ?
+        'Sí, guardar y cerrar' : 'Sí, actualizar y seguir editando';
+        
+    // Cuadro de confirmación nativo
+    Swal.fire({
+        title: titulo,
+        text: mensaje,
+        icon: icono,
+        showCancelButton: true,
+        confirmButtonColor: '#198754', 
+        cancelButtonColor: '#dc3545',  
+        confirmButtonText: textoboton,
+        cancelButtonText: 'Cancelar',
+        allowOutsideClick: false 
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Mostramos pantalla de carga
+            Swal.fire({
+                title: 'Procesando...',
+                text: 'Actualizando inventario y guardando orden.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
+            // =================================================================
+            // NUEVA INTERCEPCIÓN AJAX PARA CAPTURAR EL ERROR EN EL ALERT
+            // =================================================================
+            const formulario = document.getElementById('formulario');
+            const formData = new FormData(formulario);
+
+            fetch(formulario.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest' // Indica a Laravel que es una petición AJAX
+                }
+            })
+            .then(async response => {
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    // Si el servidor responde con error (ej: 500 de tu DB::rollBack)
+                    throw new Error(data.message || 'Error desconocido en el servidor.');
+                }
+                return data;
+            })
+            .then(data => {
+                // Alerta de Éxito cuando el controlador hace DB::commit()
+                Swal.fire({
+                    title: '¡Completado!',
+                    text: data.message || 'La operación se realizó con éxito.',
+                    icon: 'success'
+                }).then(() => {
+                    // Redirecciona al listado o refresca la página
+                    window.location.href = "{{ route('tecnico.buckettecnico') }}";
+                });
+            })
+            .catch(error => {
+                // MUESTRA EL ERROR EXACTO DEL CONTROLADOR EN EL ALERT
+                Swal.fire({
+                    title: 'Error en el proceso',
+                    text: error.message, // Mensaje dinámico devuelto por Laravel ($e->getMessage())
+                    icon: 'error',
+                    confirmButtonColor: '#dc3545'
+                });
+            });
+        }
+    });
 }
+
 
 
 // 1. Declarar este array global al inicio de tu archivo JavaScript (fuera de las funciones)
 function eliminarProducto(indice) {
-    // 2. Buscar el ID real de la base de datos antes de limpiar el arreglo en memoria
-    let itemABorrar = allItems.find(function(item) {
-        return item.index == indice;
+    // Lanzamos la alerta de confirmación antes de alterar cualquier dato o el DOM
+    Swal.fire({
+        title: '¿Retirar este material?',
+        text: "El elemento se quitará de la lista actual de materiales utilizados.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545', // Rojo Bootstrap danger (acción de borrar)
+        cancelButtonColor: '#6c757d',  // Gris Bootstrap secondary
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        allowOutsideClick: false
+    }).then((result) => {
+        // Si el usuario confirma, procedemos con toda tu lógica original
+        if (result.isConfirmed) {
+            
+            // 2. Buscar el ID real de la base de datos antes de limpiar el arreglo en memoria
+            let itemABorrar = allItems.find(function(item) {
+                return item.index == indice;
+            });
+
+            // 3. Si el ítem tiene un ID válido (ya existía en la base de datos), lo registramos para el backend
+            if (itemABorrar && itemABorrar.id) {
+                itemsEliminados.push(itemABorrar.id);
+                
+                // Agregamos el input oculto al formulario (usando el ID real de tu formulario '#formulario')
+                $('#formulario').append(
+                    '<input type="hidden" name="arrayEliminados[]" value="' + itemABorrar.id + '">'
+                );
+            }
+
+            // 4. Tu lógica original: Eliminar el elemento del arreglo global en memoria
+            allItems = allItems.filter(function(item) {
+                return item.index != indice;
+            });
+
+            // 5. Tu lógica original: Eliminar la fila visual y sus fotos
+            $('#fila' + indice).remove();
+            $(`input[name^='arrayfotos[${indice}]']`).remove();
+
+            // Opcional: Pequeña notificación de éxito que se cierra sola en 1.5 segundos
+            Swal.fire({
+                title: 'Eliminado',
+                text: 'El material ha sido removido de la lista.',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        }
     });
-
-    // 3. Si el ítem tiene un ID válido (ya existía en la base de datos), lo registramos para el backend
-    if (itemABorrar && itemABorrar.id) {
-        itemsEliminados.push(itemABorrar.id);
-        
-        // Creamos un input hidden dinámico dentro del formulario para que viaje en el Request de Laravel
-        // NOTA: Reemplaza '#tuFormularioID' por el ID real de tu etiqueta <form> (ej: #form-trabajo)
-        $('#tuFormularioID').append(
-            '<input type="hidden" name="arrayEliminados[]" value="' + itemABorrar.id + '">'
-        );
-    }
-
-    // 4. Tu lógica original: Eliminar el elemento del arreglo global en memoria
-    allItems = allItems.filter(function(item) {
-        return item.index != indice;
-    });
-
-    // 5. Tu lógica original: Eliminar la fila visual y sus fotos
-    $('#fila' + indice).remove();
-    $(`input[name^='arrayfotos[${indice}]']`).remove();
 }
+
 
 function llenaritems() {
     let id = "{{ $id3 ?? 0 }}";

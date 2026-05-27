@@ -4,7 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-
+use App\Models\Arbmanoobra;
+use App\Models\Tienda;
 
 class Pagotecnico extends Model
 {
@@ -19,7 +20,12 @@ class Pagotecnico extends Model
         //->where('activo', 1)
                     ->withDefault(); // Para evitar null si no existe relación
     }
-    protected $fillable = ['id','Orden','SKU','Descripcion','OBS','Cantidad','COSTOPAGO','created_at','updated_at', 'fkTienda', 'fkTecnico','Natura','Status'];
+    public function tienda()
+    {
+        return $this->belongsTo(Tienda::class, 'fkTienda'); 
+    }
+    
+    protected $fillable = ['id','Orden','SKU','Descripcion','OBS','Cantidad','COSTOPAGO','created_at','updated_at', 'fkTienda', 'fkTecnico','Naturaleza','Status'];
 
     public $timestamps = true;
 
