@@ -37,6 +37,7 @@ class movimientomaterialesController extends Controller
 
     public function index()
     {
+  DB::connection()->disableQueryLog();
 
                     if(!Auth::check()){
             return redirect()->route('login');
@@ -60,6 +61,7 @@ class movimientomaterialesController extends Controller
 
 public function importarmamo(Request $request)
 {
+      DB::connection()->disableQueryLog();
     if (!Auth::check()) {
         return redirect()->route('login');
     }
@@ -864,6 +866,8 @@ function traslados(){
 
     public function listaClientes(Request $request)
     {
+          DB::connection()->disableQueryLog();
+
         $query = Cliente::with('persona')->orderBy('persona.nombre', 'asc');
 
         if ($request->has('search')) {
@@ -901,6 +905,8 @@ function traslados(){
 public function fetchrelacionmovimientosmat(Request $request)
 {
  try {
+      DB::connection()->disableQueryLog();
+
         if (!Auth::check()) {
             return redirect()->route('login');
         }
@@ -1059,6 +1065,8 @@ public function exportarExcelMovimientos(Request $request)
 
     public function AutomataValidarMamo(Request $request)
 {
+      DB::connection()->disableQueryLog();
+      
     if(!Auth::check()) return redirect()->route('login');
     $procesados = []; $rastro = [];
     $limite = $request->input('Orden', 10);
@@ -1084,7 +1092,7 @@ public function exportarExcelMovimientos(Request $request)
 
 private function ejecutarLogicaInterna($orden, $item, &$procesados, &$rastro)
 {
-
+  DB::connection()->disableQueryLog();
 $centrosEspeciales = ["'MGG845", "'MGG830", "'G888", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
 $patronG8 = "G888";
 
@@ -1332,6 +1340,8 @@ public function AutomataRecursivo(
     string $mensaj=''
 ) {
     try {
+
+      DB::connection()->disableQueryLog();
 
     // 🛑 CASO BASE 1
     if ($valor <= 0 && $nivel==0) {

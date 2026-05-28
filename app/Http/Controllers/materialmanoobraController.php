@@ -33,7 +33,7 @@ class materialmanoobraController extends Controller
 
     public function index()
     {
-
+  DB::connection()->disableQueryLog();
                     if(!Auth::check()){
             return redirect()->route('login');
         }
@@ -98,6 +98,11 @@ class materialmanoobraController extends Controller
 
 public function importarMAMO(Request $request)
 {
+      DB::connection()->disableQueryLog();
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+
     $fkTienda = session('user_fkTienda');
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',

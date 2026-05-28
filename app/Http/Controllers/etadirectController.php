@@ -115,6 +115,8 @@ class etadirectController extends Controller
 
 public function fetchrelacionEta(Request $request)
 {
+      DB::connection()->disableQueryLog();
+      
     try {
         if (!Auth::check()) {
             return redirect()->route('login');
@@ -204,6 +206,7 @@ public function show(){
 
 public function importarMAMO(Request $request)
 {
+      DB::connection()->disableQueryLog();
     if(!Auth::check()){
         return redirect()->route('login');
     }

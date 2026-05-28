@@ -762,6 +762,10 @@ public function InventarioLista(request $request)
 public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecnico $expediente)
 {
     try {
+
+      DB::connection()->disableQueryLog();
+
+      
         if (!Auth::check()) {
             return redirect()->route('login');
         }
@@ -1608,6 +1612,8 @@ public function exportar(Request $request)
     }
 public function importarMAMO(Request $request)
 {
+      DB::connection()->disableQueryLog();
+
     if (!Auth::check()) return redirect()->route('login');
 
     $fkTienda = session('user_fkTienda');

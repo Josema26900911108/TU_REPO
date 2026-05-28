@@ -385,6 +385,9 @@ public function exportarExcel(Request $request)
 
 public function importarPagosTecnico(Request $request)
 {
+
+DB::connection()->disableQueryLog(); 
+
     if (!Auth::check()) {
         return redirect()->route('login');
     }
@@ -438,6 +441,25 @@ public function importarPagosTecnico(Request $request)
             $naturaleza = strtoupper(trim($data['Naturaleza'] ?? 'D'));
             if (!in_array($naturaleza, ['D', 'H'])) {
                 $naturaleza = 'D'; // Forzar valor contable base si el usuario escribe otra letra
+            }
+
+            $obtenervalor= Materialmanoobra::where('SKU', $data['SKU'])->first();
+            $valorcosto=floatval($data['COSTOPAGO'] ?? 0.00);
+
+            if($valorcosto==0){
+                
+            if($obtenervalor->CATEGORIA === 'MANO DE OBRA'){
+                $data['COSTOPAGO'] = $obtenervalor ? floatval($obtenervalor->COSTOPAGO) : 0.00;    
+                } elseif($obtenervalor->CATEGORIA === 'MATERIAL')  {
+                $data['COSTOPAGO'] = $obtenervalor ? floatval($obtenervalor->CATEGORIACOBRO) : 0.00;
+                } else {
+                    $data['COSTOPAGO'] = 0.00; // Valor por defecto si no se encuentra la categoría
+                }
+
+            } else{
+
+                $data['COSTOPAGO'] = isset($data['COSTOPAGO']) ? floatval($data['COSTOPAGO']) : 0;
+
             }
 
             $status = substr(trim($data['Status'] ?? 'I'), 0, 2); // Garantizar formato varchar(2) máximo

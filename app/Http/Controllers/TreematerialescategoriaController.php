@@ -289,6 +289,8 @@ class TreematerialescategoriaController extends Controller
 
     public function importarMAMO(Request $request)
 {
+      DB::connection()->disableQueryLog();
+      
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
     ]);

@@ -200,6 +200,8 @@ $idnodopadre=$request->new_parent_id;
 
         public function importarmasivohijospadresMAMO(Request $request)
 {
+      DB::connection()->disableQueryLog();
+      
     $request->validate([
         'archivohijospadres' => 'required|file|mimes:csv,txt,xls,xlsx', // Agregamos soporte genérico de texto/csv
     ]);
