@@ -408,6 +408,9 @@ Route::get('/pagos-tecnico/exportar-fotos', [PagotecnicoController::class, 'expo
 Route::get('/pagotecnico/formato', [PagotecnicoController::class, 'descargarFormatoPagos'])->name('pagotecnico.formato');
 Route::get('/pagotecnico/formato-pago', [PagotecnicoController::class, 'descargarFormatoPago'])->name('pagotecnico.formato-pago');
 Route::get('/pagotecnico/exportar', [PagotecnicoController::class, 'exportarExcel'])->name('pagotecnico.exportar');
+Route::post('/extraccion-masiva', [TecnicoController::class, 'extraccionMasiva'])
+    ->name('pagotecnico.extraccion-masiva');
+
 
 Route::get('/documentosap/lista',[documentosapController::class,'index'])->name('documentosap.lista');
 

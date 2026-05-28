@@ -38,6 +38,7 @@ use Yajra\DataTables\DataTables;
 use App\Models\Materialmanoobra;
 use App\Models\Arbmanoobra;
 use App\Models\Treematerialescategoria;
+use ZipArchive;
 
 class TecnicoController extends Controller
 {
@@ -57,6 +58,8 @@ class TecnicoController extends Controller
 
     public function index()
     {
+        DB::connection()->disableQueryLog();
+
                         if(!Auth::check()){
             return redirect()->route('login');
         }
@@ -89,8 +92,101 @@ class TecnicoController extends Controller
         return view('tecnico.index', compact('tecnicos'));
     }
 
+public function extraccionMasiva(Request $request)
+{
+    DB::connection()->disableQueryLog();
+
+    $request->validate([
+        'excel_ordenes' => 'required|file'
+    ]);
+
+    $path = $request->file('excel_ordenes')->getRealPath();
+    $ordenes = [];
+    
+    if (($handle = fopen($path, "r")) !== FALSE) {
+        $header = fgetcsv($handle, 1000, ",");
+        while (($datosFila = fgetcsv($handle, 1000, ",")) !== FALSE) {
+            if(!empty($datosFila)) {
+                $ordenes[] = trim($datosFila[0]); // Lee la primera columna
+            }
+        }
+        fclose($handle);
+    }
+
+    if (empty($ordenes)) {
+        return back()->with('error', 'No se encontraron órdenes válidas en el archivo.');
+    }
+
+    // Consultar Base de Datos
+    $registrosPagos = DB::table('pagotecnico')->whereIn('Orden', $ordenes)->get();
+    $movimientos = DB::table('movimientomateriales')->whereIn('fkExpediente', $registrosPagos->pluck('id'))->get();
+
+    // Variables de control para las notificaciones
+    $pagoTecnicoStatus = $registrosPagos->count() > 0 ? 'Pago Técnico OK' : 'Pago Técnico: No descargado (Sin registros)';
+    $movimientosStatus = $movimientos->count() > 0 ? 'Movimiento Materiales OK' : 'Movimiento Materiales: No descargado (Sin registros)';
+    $fotosContador = 0;
+
+    $nombreZip = 'extraccion_masiva_' . now()->format('Ymd_His') . '.zip';
+    $pathZip = storage_path('app/public/' . $nombreZip);
+    $zip = new ZipArchive;
+
+    if ($zip->open($pathZip, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+        
+        // --- 1. CSV Pagos ---
+        if ($registrosPagos->count() > 0) {
+            $csvPagosHandle = fopen('php://memory', 'r+');
+            fputcsv($csvPagosHandle, ['id', 'Orden', 'SKU', 'Descripcion', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status']);
+            foreach ($registrosPagos as $p) {
+
+                fputcsv($csvPagosHandle, [$p->id, $p->Orden, $p->SKU, $p->Descripcion, $p->Cantidad, $p->COSTOPAGO, $p->Naturaleza, $p->Status]);
+            }
+            rewind($csvPagosHandle);
+            $zip->addFromString('reporte_ordenes.csv', stream_get_contents($csvPagosHandle));
+            fclose($csvPagosHandle);
+        }
+
+        // --- 2. CSV Movimientos ---
+        if ($movimientos->count() > 0) {
+            $csvMatHandle = fopen('php://memory', 'r+');
+            fputcsv($csvMatHandle, ['id', 'serie', 'SKU', 'almacen', 'Lote', 'COSTO', 'TIPO', 'TIPOMOVIMIENTO', 'cantidad', 'fkExpediente']);
+            foreach ($movimientos as $m) {
+                fputcsv($csvMatHandle, [$m->id, $m->serie, $m->SKU, $m->almacen, $m->Lote, $m->COSTO, $m->TIPO, $m->TIPOMOVIMIENTO, $m->cantidad, $m->fkExpediente]);
+            }
+            rewind($csvMatHandle);
+            $zip->addFromString('reporte_movimientos.csv', stream_get_contents($csvMatHandle));
+            fclose($csvMatHandle);
+        }
+
+        // --- 3. Fotografías ---
+        foreach ($registrosPagos as $pago) {
+            // Reemplaza 'foto_nombre' por tu columna real de imagen
+            if (!empty($pago->foto_nombre)) { 
+                $rutaFotoLocal = storage_path('app/public/fotos_evidencia/' . $pago->foto_nombre);
+                if (file_exists($rutaFotoLocal)) {
+                    $zip->addFile($rutaFotoLocal, 'fotografias/' . $pago->Orden . '_' . $pago->foto_nombre);
+                    $fotosContador++;
+                }
+            }
+        }
+
+        $zip->close();
+    }
+
+    // Configurar los mensajes para la notificación en sesión flash
+    $fotosStatus = $fotosContador > 0 ? "Fotografías OK ({$fotosContador} descargadas)" : "Fotografías: No descargado (0 encontradas)";
+
+    session()->flash('notificacion_extraccion', [
+        'pago' => $pagoTecnicoStatus,
+        'materiales' => $movimientosStatus,
+        'fotos' => $fotosStatus
+    ]);
+
+    // Retorna la descarga y destruye el archivo temporal
+    return response()->download($pathZip)->deleteFileAfterSend(true);
+}
         public function bucket($id)
     {
+        DB::connection()->disableQueryLog();
         try {
                             if(!Auth::check()){
             return redirect()->route('login');
@@ -192,6 +288,7 @@ if ($tienda->isEmpty()) {
     }
 
 public function prepararimagen($request){
+
     $request->validate([
         'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
     ]);
@@ -379,6 +476,7 @@ $lockKey = 'tecnico_create' . auth()->id();
     public function obtenerdetalless(Request $request){
 
         try {
+            DB::connection()->disableQueryLog();
                             if(!Auth::check()){
             return redirect()->route('login');
         }
@@ -408,6 +506,8 @@ $lockKey = 'tecnico_create' . auth()->id();
 
     public function AutomataValidarMamoOrdenTecnico(Request $request)
 {
+    DB::connection()->disableQueryLog();
+
     if(!Auth::check()) return response()->json(['error' => 'No autorizado'], 401);
     $procesados = []; 
     $rastro = [];
@@ -489,6 +589,7 @@ $lockKey = 'tecnico_create' . auth()->id();
     return response()->json(['sugerencia' => null], 200);
 }
     public function validarMaterialesTecnicos(Request $request) {
+        
     $materialesInput = $request->input('materiales', []);
     $procesados = [];
     $rastro = [];
@@ -510,6 +611,8 @@ $lockKey = 'tecnico_create' . auth()->id();
 
     public function inventariotecnicoorden($tecbucket)
     {
+        DB::connection()->disableQueryLog();
+
         try {
                         if(!Auth::check()){
             return redirect()->route('login');
@@ -602,6 +705,8 @@ try {
 
     public function fillEstructuraMO($id)
     {
+        DB::connection()->disableQueryLog();
+
     try {
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
@@ -627,6 +732,8 @@ try {
 
 public function InventarioLista(request $request)
 {
+    DB::connection()->disableQueryLog();
+
     try {
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
@@ -854,7 +961,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                 ->where('fkTecnico', $id_tecnico)
                 ->where('fkTienda', $fkTienda)
                 ->where('fkExpediente', $expediente->id)
-                ->value('TIPO') ?? 'MA';
+                ->value('TIPO') ?? 'MO';
 
             // MANO DE OBRA PURA DIRECTA: Se registra de manera independiente
             if ($iditem == 0 && $tipoItem === 'MO') {
@@ -871,7 +978,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     $manoObra->Creado_por = $nombreUsuario;
                 }
 
-                $costopagar=Materialmanoobra::where('SKU', $skuActual)->where('fkTienda', $fkTienda)->avg('Costo') ?? 0;
+                $costopagar=Materialmanoobra::where('SKU', $skuActual)->where('fkTienda', $fkTienda)->avg('COSTOPAGO') ?? 0;
 
                 $manoObra->fill([
                     'fkTienda'       => $fkTienda,
@@ -959,6 +1066,12 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     $manoObraInstalada->Creado_el  = $ahora;
                     $manoObraInstalada->Creado_por = $nombreUsuario;
                 }
+                                // Cálculo seguro del costo a pagar de Mano de Obra (Evita duplicados)
+                        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+                                    ->where('fkTienda', $fkTienda)
+                                    ->select('CATEGORIACOBRO','COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida') // Agrega aquí las columnas que ocupes
+                                    ->latest()
+                                    ->first();   
 
                 $manoObraInstalada->fill([
                     'fkTienda'       => $fkTienda,
@@ -969,19 +1082,15 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     'Naturaleza'     => 'H',
                     'Status'         => 'S', 
                     'Lote'           => 'A000',
-                    'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-', 'COSTO' => 0,
+                    'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-', 'COSTO' => ($costoUnidad->TIPO === 'MO') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
+
                     'unidadmedida'   => 'UNIDAD',
                     'Modificado_el'  => $ahora,
                     'Modificado_por' => $nombreUsuario,
                 ]);
                 $manoObraInstalada->save();                
 
-                // Cálculo seguro del costo a pagar de Mano de Obra (Evita duplicados)
-                        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-                                    ->where('fkTienda', $fkTienda)
-                                    ->select('CATEGORIACOBRO','COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida') // Agrega aquí las columnas que ocupes
-                                    ->latest()
-                                    ->first();   
+
 
             } else {
                 // -------------------------------------------------------------
@@ -1071,7 +1180,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                         [
                             'almacen'         => 'CLIENTE_FINAL',
                             'Lote'            => 'N/A',
-                            'COSTO'           => $costoUnidad->CATEGORIACOBRO ?? 0,
+                            'COSTO' => ($costoUnidad->TIPO === 'MO') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
                             'TIPO'            => $tipoItem,
                             'ESTATUS'         => 'INSTALADO',
                             'Status'          => 'S',
@@ -1147,7 +1256,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                 ->where('fkTecnico', $id_tecnico)
                 ->where('fkTienda', $fkTienda)
                 ->where('fkExpediente', $expediente->id)
-                ->value('TIPO') ?? 'MA';
+                ->value('TIPO') ?? 'MO';
             
             // Excluir Mano de Obra explícita por texto en SKU
 
@@ -1176,7 +1285,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                                 'Descripcion' => $producto->nombre ?? "Servicio $skuActual",
                                 'OBS'         => 'Pago por servicio tecnico (Mano de Obra)',
                                 'Cantidad'    => $cantidadRequerida,
-                                'COSTOPAGO'   => $cantidadRequerida * $costoUnidad->COSTOPAGO,
+                                'COSTOPAGO'   => $cantidadRequerida *  ($costoUnidad->TIPO === 'MO') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
                                 'Status'      => 'S',
                             ]
                         );  
@@ -1286,6 +1395,9 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
     public function fetchrelacionTecnico(Request $request)
 {
     try{
+
+    DB::connection()->disableQueryLog();
+    
                         if(!Auth::check()){
             return redirect()->route('login');
         }
@@ -1639,9 +1751,15 @@ public function exportarPagoTecnico(Request $request, $naturaleza)
 
     // Insertar las filas
     foreach ($datos as $item) {
+                                $costoUnidad = Materialmanoobra::where('SKU', $item->SKU)
+                                    ->where('fkTienda', $fkTienda)
+                                    ->select('CATEGORIACOBRO','COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida') // Agrega aquí las columnas que ocupes
+                                    ->latest()
+                                    ->first();     
+
         fputcsv($handle, [
             $item->id, $item->Orden, $item->SKU, $item->Descripcion, $item->OBS, $item->Cantidad, 
-            $item->COSTOPAGO, $item->created_at, $item->updated_at, $item->fkTienda, 
+             ($costoUnidad->TIPO === 'MO') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? $item->COSTOPAGO), $item->created_at, $item->updated_at, $item->fkTienda, 
             $item->fkTecnico, $item->Naturaleza, $item->Status
         ]);
     }
@@ -1912,6 +2030,11 @@ public function importarInvTecnico(Request $request)
                 'unidad_medida_base' => $data['unidadmedida'] ?? 'PZA'
             ]);
 
+                                $costoUnidad = Materialmanoobra::where('SKU', $sku)
+                                    ->where('fkTienda', $fkTienda)
+                                    ->select('CATEGORIACOBRO','COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida') // Agrega aquí las columnas que ocupes
+                                    ->latest()
+                                    ->first();                 
             // 6. ASIGNAR STOCK AL NUEVO TÉCNICO (Blindado contra Error 1364)
             DB::table('movimientomateriales')->updateOrInsert(
                 [
@@ -1926,7 +2049,7 @@ public function importarInvTecnico(Request $request)
                     'MAC1' => $data['MAC1'] ?? '', // <-- Evita error si el CSV no lo trae
                     'MAC2' => $data['MAC2'] ?? '',
                     'MAC3' => $data['MAC3'] ?? '',
-                    'COSTO' => $data['COSTO'] ?? 0,
+                    'COSTO' =>  ($costoUnidad->TIPO === 'MO') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? $data['COSTO']),
                     'TIPO' => $data['TIPO'] ?? 'MA',
                     'ESTATUS' => 'DISPONIBLE',
                     'Status' => 'I',
@@ -2204,7 +2327,7 @@ return response()->json($detallecomprobante);
     public function destroy(string $id)
 {
     DB::connection()->disableQueryLog();
-    
+
     if(!Auth::check()){
         return redirect()->route('login');
     }

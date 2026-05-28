@@ -21,6 +21,37 @@
 @section('content')
 
 @include('layouts.partials.alert')
+@if(session('notificacion_extraccion'))
+    <div class="alert alert-light border shadow-sm rounded-3 mb-4 p-3 animate__animated animate__fadeIn">
+        <div class="d-flex align-items-center mb-2">
+            <i class="fas fa-clipboard-check text-dark fs-16 me-2"></i>
+            <h6 class="mb-0 fw-bold text-dark fs-14">Resultado de la Última Extracción Masiva</h6>
+        </div>
+        <ul class="list-group list-group-flush fs-12 ps-0 mb-0">
+            <!-- Estado de Pago Técnico -->
+            <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center px-0 py-1.5 border-0">
+                <span><i class="fas fa-file-invoice-dollar me-2 text-secondary"></i>Resumen Órdenes:</span>
+                <span class="badge {{ Str::contains(session('notificacion_extraccion.pago'), 'OK') ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle' }} rounded-pill px-2.5">
+                    {{ session('notificacion_extraccion.pago') }}
+                </span>
+            </li>
+            <!-- Estado de Movimientos -->
+            <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center px-0 py-1.5 border-0">
+                <span><i class="fas fa-boxes me-2 text-secondary"></i>Historial de Materiales:</span>
+                <span class="badge {{ Str::contains(session('notificacion_extraccion.materiales'), 'OK') ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle' }} rounded-pill px-2.5">
+                    {{ session('notificacion_extraccion.materiales') }}
+                </span>
+            </li>
+            <!-- Estado de Fotografías -->
+            <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center px-0 py-1.5 border-0">
+                <span><i class="fas fa-images me-2 text-secondary"></i>Evidencias Fotográficas:</span>
+                <span class="badge {{ Str::contains(session('notificacion_extraccion.fotos'), 'OK') ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle' }} rounded-pill px-2.5">
+                    {{ session('notificacion_extraccion.fotos') }}
+                </span>
+            </li>
+        </ul>
+    </div>
+@endif
 
 <div class="container-fluid px-4">
     <h1 class="mt-4 text-center">Desgloce Pagos a Técnicos</h1>
@@ -115,9 +146,41 @@
         <button type="button" class="btn btn-info btn-sm px-3 text-white shadow-sm" onclick="exportarFotos()">
             <i class="fas fa-file-archive me-1.5"></i> Exportar Fotos (ZIP)
         </button>
+        <button type="button" class="btn btn-dark btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalExtraccionMasiva">
+            <i class="fas fa-file-archive me-1.5"></i> Extracción Masiva por Excel
+        </button>
     </div>
 
-
+<div class="modal fade" id="modalExtraccionMasiva" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold text-dark fs-14">
+                    <i class="fas fa-boxes text-dark me-2"></i> Extracción Cruzada de Información
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ route('pagotecnico.extraccion-masiva') }}" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body p-4 fs-13">
+                    <div class="alert alert-info border-0 shadow-sm mb-3 fs-12">
+                        <i class="fas fa-info-circle me-1"></i> Suba un archivo Excel que contenga una columna llamada <b>"orden"</b> o <b>"Orden"</b> con el listado que desea procesar.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-dark">Seleccionar Excel de Órdenes (.xlsx / .xls)</label>
+                        <input type="file" name="excel_ordenes" class="form-control form-control-sm" accept=".xlsx, .xls" required>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0 py-2">
+                    <button type="button" class="btn btn-light btn-sm border" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-dark btn-sm px-3">
+                        <i class="fas fa-cog fa-spin me-1 d-none" id="loader-zip"></i> Procesar y Descargar ZIP
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
     <!-- ========================================== -->
     <!-- TARJETA DE BALANCE ALGEBRAICO TOTAL -->

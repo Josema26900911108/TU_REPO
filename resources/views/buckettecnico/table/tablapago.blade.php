@@ -67,91 +67,96 @@
             </div>
         </div>
 
-        <div class="table-responsive">
-            <table id="datatablesSimplePago" class="table table-hover align-middle mb-0 fs-12 text-secondary">
-                <thead class="table-light text-uppercase fs-11 fw-bold tracking-wider border-bottom text-muted">
-                    <tr>
-                        <th class="ps-3 py-3">Orden</th>
-                        <th>Estatus</th>
-                        <th>SKU</th>
-                        <th>Descripción</th>
-                        <th>OBS</th>
-                        <th class="text-end">Cantidad</th>
-                        <th class="text-end text-success">Pago Dinero</th>
-                        <th class="text-center">Nat.</th>
-                        <th class="text-center pe-3">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if($relacion->count() > 0)
-                        @foreach ($relacion as $item)
-                            <tr class="border-bottom">
-                                <td class="ps-3 fw-bold text-dark">
-                                    <span class="font-monospace text-secondary">{{ $item->Orden }}</span>
-                                </td>
-                                <td>
-                                    @if($item->Status == 'S')
-                                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2">Reportando, pendiente autorización</span>
-                                    @else
-                                        <span class="badge bg-light text-muted border rounded-pill px-2">{{ $item->Status }}</span>
-                                    @endif
-                                </td>
-                                <!-- Relación Arbolmanoobra integrada con fallback nativo -->
-                                <td><code class="text-success fw-semibold bg-light px-1.5 py-0.5 rounded fs-11">{{ $item->arbolmanoobra->SKU ?? $item->SKU }}</code></td>
-                                <td class="text-dark max-w-250 text-truncate" title="{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}">{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}</td>
-                                <td>
-                                    <span class="text-muted fs-11 d-inline-block text-truncate" style="max-width: 150px;" title="{{ $item->OBS }}">
-                                        {{ $item->OBS ?? 'Sin observaciones' }}
-                                    </span>
-                                </td>
-                                <td class="text-end fw-bold text-dark">{{ number_format($item->Cantidad, 2) }}</td>
-                                <td class="text-end fw-bold text-success">Q{{ number_format($item->COSTOPAGO, 2) }}</td>
-                                <td class="text-center"><span class="badge bg-success rounded-circle p-1.5 fs-10" title="Credito / Pago">{{ $item->Naturaleza }}</span></td>
-                                <td class="text-center pe-3">
-                                    <button class="btn btn-light btn-sm border-0 text-muted rounded-circle p-1.5" type="button" data-bs-toggle="dropdown" style="width: 28px; height: 28px;">
-                                        <i class="bi bi-three-dots-vertical"></i>
+<div class="table-responsive">
+    <table id="datatablesSimplePago" class="table table-hover align-middle mb-0 fs-12 text-secondary">
+        <thead class="table-light text-uppercase fs-11 fw-bold tracking-wider border-bottom text-muted">
+            <tr>
+                <th class="ps-3 py-3">Orden</th>
+                <th>Estatus</th>
+                <th>SKU</th>
+                <th>Descripción</th>
+                <th>OBS</th>
+                <th class="text-end">Cantidad</th>
+                <th class="text-end text-success">Pago Dinero</th>
+                <th class="text-center">Nat.</th>
+                <th class="text-center pe-3">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if($relacion->count() > 0)
+                @foreach ($relacion as $item)
+                    <tr class="border-bottom">
+                        <td class="ps-3 fw-bold text-dark">
+                            <span class="font-monospace text-secondary">{{ $item->Orden }}</span>
+                        </td>
+                        <td>
+                            @if($item->Status == 'S')
+                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2">Aprobado</span>
+                            @else
+                                <span class="badge bg-light text-muted border rounded-pill px-2">{{ $item->Status }}</span>
+                            @endif
+                        </td>
+                        <td><code class="text-success fw-semibold bg-light px-1.5 py-0.5 rounded fs-11">{{ $item->arbolmanoobra->SKU ?? $item->SKU }}</code></td>
+                        <td class="text-dark max-w-250 text-truncate" title="{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}">{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}</td>
+                        <td>
+                            <span class="text-muted fs-11 d-inline-block text-truncate" style="max-width: 150px;" title="{{ $item->OBS }}">
+                                {{ $item->OBS ?? 'Sin observaciones' }}
+                            </span>
+                        </td>
+                        <td class="text-end fw-bold text-dark">{{ number_format($item->Cantidad, 2) }}</td>
+                        <td class="text-end fw-bold text-success">${{ number_format($item->COSTOPAGO, 2) }}</td>
+                        <td class="text-center"><span class="badge bg-success rounded-circle p-1.5 fs-10" title="Credito / Pago">{{ $item->Naturaleza }}</span></td>
+                        <td class="text-center pe-3">
+                            <button class="btn btn-light btn-sm border-0 text-muted rounded-circle p-1.5" type="button" data-bs-toggle="dropdown" style="width: 28px; height: 28px;">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 fs-12">
+                                <li>
+                                    <button type="button" 
+                                            class="dropdown-item py-2 btn-ver-detalle" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#modalDetalleTecnico"
+                                            data-orden="{{ $item->Orden }}"
+                                            data-sku="{{ $item->arbolmanoobra->SKU ?? $item->SKU }}"
+                                            data-descripcion="{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}"
+                                            data-obs="{{ $item->OBS ?? 'Sin observaciones' }}"
+                                            data-cantidad="{{ number_format($item->Cantidad, 2) }}"
+                                            data-pago="${{ number_format($item->COSTOPAGO, 2) }}"
+                                            data-status="{{ $item->Status }}"
+                                            data-naturaleza="{{ $item->Naturaleza }}">
+                                        <i class="bi bi-eye me-2 text-primary"></i>Ver detalle
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 fs-12">
-            <button type="button" 
-                    class="dropdown-item py-2 btn-ver-detalle" 
-                    data-bs-toggle="modal" 
-                    data-bs-target="#modalDetalleTecnico"
-                    data-orden="{{ $item->Orden }}"
-                    data-sku="{{ $item->SKU }}"
-                    data-descripcion="{{ $item->Descripcion }}"
-                    data-obs="{{ $item->OBS ?? 'Sin observaciones' }}"
-                    data-cantidad="{{ number_format($item->Cantidad, 2) }}"
-                    data-pago="${{ number_format($item->COSTOPAGO, 2) }}"
-                    data-status="{{ $item->Status }}"
-                    data-naturaleza="{{ $item->Naturaleza }}">
-                <i class="bi bi-eye me-2 text-primary"></i>Ver detalle
-            </button>
-
-                                    </ul>
-                                </td>
-                            </tr>
-                        @endforeach
-                    @else
-                        <tr>
-                            <td colspan="9" class="text-center py-5 text-muted bg-light-subtle">
-                                <div class="mb-2 fs-3 text-secondary-subtle"><i class="bi bi-inbox"></i></div>
-                                No se encontraron registros de pagos coincidentes.
-                            </td>
-                        </tr>
-                    @endif
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Footer / Paginación -->
-        <div class="card-footer bg-white border-0 py-3 d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3">
-            <div class="fs-12 text-muted">
-                Mostrando del <span class="fw-semibold text-dark">{{ $relacion->firstItem() ?? 0 }}</span> al <span class="fw-semibold text-dark">{{ $relacion->lastItem() ?? 0 }}</span> de <span class="fw-semibold text-dark">{{ $relacion->total() }}</span> registros
-            </div>
-            <div>
-                {!! $relacion->links('pagination::bootstrap-5') !!}
-            </div>
-        </div>
-    </div>
+                                </li>
+                            </ul>
+                        </td>
+                    </tr>
+                @endforeach
+            @else
+                <tr>
+                    <!-- 9 Columnas exactas garantizadas en el colspan cuando está vacío -->
+                    <td colspan="9" class="text-center py-5 text-muted bg-light-subtle">
+                        <div class="mb-2 fs-3 text-secondary-subtle"><i class="bi bi-inbox"></i></div>
+                        No se encontraron registros de pagos coincidentes.
+                    </td>
+                </tr>
+            @endif
+        </tbody>
+        
+        @if($relacion->count() > 0)
+            <!-- TFOOT CORREGIDO: 9 Columnas mapeadas de forma explícita sin colspans cruzados complejos -->
+            <tfoot class="table-light fw-bold border-top text-muted">
+                <tr>
+                    <td class="ps-3">TOTALES</td> <!-- 1. Orden -->
+                    <td></td>                     <!-- 2. Estatus -->
+                    <td></td>                     <!-- 3. SKU -->
+                    <td></td>                     <!-- 4. Descripción -->
+                    <td class="text-end text-uppercase fs-11 text-muted">Subtotal:</td> <!-- 5. OBS -->
+                    <td class="text-end text-dark">{{ number_format($relacion->sum('Cantidad'), 2) }}</td> <!-- 6. Cantidad -->
+                    <td class="text-end text-success">${{ number_format($relacion->sum('COSTOPAGO'), 2) }}</td> <!-- 7. Pago Dinero -->
+                    <td></td>                     <!-- 8. Nat. -->
+                    <td class="pe-3"></td>        <!-- 9. Acciones -->
+                </tr>
+            </tfoot>
+        @endif
+    </table>
 </div>
-
