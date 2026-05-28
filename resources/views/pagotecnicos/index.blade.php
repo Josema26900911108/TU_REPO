@@ -107,6 +107,9 @@
         <button type="button" class="btn btn-success" onclick="exportarExcel()"><i class="fas fa-file-excel"></i> Exportar a Excel</button>
     </div>
 
+<button type="button" class="btn btn-info text-white" onclick="exportarFotos()">
+    <i class="fas fa-file-archive"></i> Exportar Fotos (ZIP)
+</button>
 
 
     <!-- ========================================== -->
