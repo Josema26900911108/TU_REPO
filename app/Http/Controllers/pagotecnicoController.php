@@ -50,7 +50,7 @@ public function index(Request $request)
         $query->where('fkTecnico', $request->input('tecnico_id'));
     }
 
-    // 4. Aplicar Filtro por Rango de Fechas (usando created_at o la columna de tu preferencia)
+    // 4. Aplicar Filtro por Rango de Fechas
     if ($request->filled('fecha_inicio')) {
         $query->whereDate('created_at', '>=', $request->input('fecha_inicio'));
     }
@@ -61,21 +61,89 @@ public function index(Request $request)
     // 5. Obtener los registros filtrados para la tabla
     $pagostecnico = $query->latest()->get();
 
-    // 6. CALCULAR EL BALANCE BALANCEADO (Suma algebraicamente según la Naturaleza)
-    // Suponemos que Naturaleza 'D' es un Cargo/Salida (-) y 'H' o cualquier otra es un Abono/Crédito (+)
-    $totalBalance = 0;
-    foreach ($pagostecnico as $pago) {
-        if ($pago->Naturaleza === 'D') {
-            $totalBalance -= floatval($pago->COSTOPAGO); // Restar si es salida/cargo
-        } else {
-            $totalBalance += floatval($pago->COSTOPAGO); // Sumar si es entrada/crédito
-        }
-    }
+    // 6. LOGICA DE BALANCES ALGEBRAICOS (Suma 'H' y Resta 'D')
+    
+    // Función auxiliar interna para calcular el neto según naturaleza
+    $calcularBalance = function ($coleccion) {
+        return $coleccion->reduce(function ($carry, $pago) {
+            $monto = floatval($pago->COSTOPAGO);
+            return $pago->Naturaleza === 'D' ? $carry - $monto : $carry + $monto;
+        }, 0);
+    };
 
-    // Opcional: Obtener lista de técnicos para el select del filtro
+    // Balance General (Todo lo que arrojó el filtro)
+    $totalBalance = $calcularBalance($pagostecnico);
+
+    // Balance filtrado estrictamente por Estatus C
+    $balanceC = $calcularBalance($pagostecnico->where('Status', 'C'));
+
+    // Balance filtrado estrictamente por Estatus S
+    $balanceS = $calcularBalance($pagostecnico->where('Status', 'S'));
+
+    // Balance filtrado estrictamente por Estatus B
+    $balanceB = $calcularBalance($pagostecnico->where('Status', 'B'));
+
+    // Obtener lista de técnicos para el select del filtro
     $tecnicos = DB::table('tecnico')->select('id', 'nombre')->get();
 
-    return view('pagotecnicos.index', compact('pagostecnico', 'totalBalance', 'tecnicos'));
+    // 7. Retornar todas las variables calculadas a la vista
+    return view('pagotecnicos.index', compact(
+        'pagostecnico', 
+        'totalBalance', 
+        'balanceC', 
+        'balanceS', 
+        'balanceB', 
+        'tecnicos'
+    ));
+}
+public function movimiento(Request $request)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+
+    try {
+        DB::beginTransaction();
+
+        // Registrar el movimiento en la tabla 'movimientomateriales'
+        DB::table('movimientomateriales')->insert([
+            'fkTienda' => session('user_fkTienda'),
+             'fkTecnico' => $request->fkTecnico,
+             'Orden' => $request->Orden,
+             'SKU' => $request->SKU,
+             'Descripcion' => $request->Descripcion,
+             'OBS' => $request->OBS,
+             'clase_movimiento' => '311', // Código estándar para traslados
+             'tipo_movimiento' => 'TRASLADO',
+             'origen_uso' => 'traslado_entre_bodegas',
+             'cantidad' => $request->cantidad,
+             'fecha_contabilizacion' => now(),
+             'created_at' => now(),
+             'updated_at' => now(),
+            // Agrega aquí los campos de 'centro' o 'almacen' según tus modelos de Centros
+        ]);
+
+        // Registrar el pago técnico en la tabla 'pagotecnico'
+        DB::table('pagotecnico')->insert([
+            'fkTienda' => session('user_fkTienda'),
+            'fkTecnico' => $request->fkTecnico,
+            'Orden' => $request->Orden,
+            'SKU' => $request->SKU,
+            'Descripcion' => $request->Descripcion,
+            'OBS' => $request->OBS,
+            'Naturaleza' => $request->Naturaleza,
+            'COSTOPAGO' => $request->COSTOPAGO,
+            'Status' => $request->Status,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::commit();
+        return redirect()->back()->with('success', 'Movimiento registrado exitosamente.');
+    } catch (\Exception $e) {
+        DB::rollback();
+        return redirect()->back()->with('error', 'Error al registrar el movimiento.');
+    }
 }
 
 public function exportarFotosZip(Request $request)

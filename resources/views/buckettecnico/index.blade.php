@@ -90,170 +90,237 @@
 
 </ul>
 
-<div class="tab-content mt-3" id="tecnicoTabsContent">
-    <div class="tab-pane fade show active" id="datos" role="tabpanel" aria-labelledby="datos-tab">
-        <div class="card">
-            <div class="card-header">
-                        <div>
-                            <table><tr>
+    <div class="tab-content mt-3" id="tecnicoTabsContent">
+            <div class="tab-pane fade show active" id="datos" role="tabpanel" aria-labelledby="datos-tab">
+                <div class="card">
+                    <div class="card-header">
+                                <div>
+                                    <table>
+                                        <tr>
+                                            @can('crear-eta')
+                                                <td>
+                                                    <form action="{{ route('tecnico.importar') }}" method="POST" enctype="multipart/form-data">
+                                                        @csrf
+                                                        <button type="submit" class="btn btn-success">Subir</button>
+                                                        <label for="archivo" class="btn btn-primary custom-upload-btn">
+                                                        <i class="fa fa-upload"></i>
+                                                        </label>
+                                                            @if ($Estatus = "ER")
+                                                            <input type="hidden" name="id" id="id" value="{{ $idtecnico ?? '' }}">
+                                                            @else
+                                                            <input type="hidden" name="id" id="id" value="{{ $tecnico->id }}">
+                                                            @endif
+                                                        <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
+                                                        <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
+                                                    </form>
+                                                </td>
+                                                <td>
+                                                    <a href="{{route('tecnico.formexpediente')}}">
+                                                        <button type="button" class="fa fa-download">descargar formato</button>
+                                                    </a>
+                                                </td>
+                                            @endcan
+                                        </tr>
+                                        <tr>
+                                            <td>
+                                                <form action="{{ route('tecnico.exportar') }}" method="POST" enctype="multipart/form-data">
+                                                    @csrf
+                                                    <label for="fechaincio">Fecha Inicio:</label>
+                                                    <input type="date" name="fechaincio" id="fechaincio" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
 
-                                @can('crear-eta')
-                            <td>
-                                <form action="{{ route('tecnico.importar') }}" method="POST" enctype="multipart/form-data">
-                                    @csrf
-                                    <button type="submit" class="btn btn-success">Subir</button>
-                                    <label for="archivo" class="btn btn-primary custom-upload-btn">
-                                    <i class="fa fa-upload"></i>
-                                    </label>
+                                                    <label for="fechafin">Fecha Fin:</label>
+                                                    <input type="date" name="fechafin" id="fechafin" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
+                                                </form>
+
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                    </div>
+                </div>
+                <div id="tabla_materiales_container">
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="inventario" role="tabpanel" aria-labelledby="inventario-tab">        
+                <div class="card">
+                    <div class="card-header">
+                        @can('crear-etamaterial')
+                            <table>
+                                <td>
+                                    <a href="{{route('tecnico.forminventario')}}">
+                                        <button type="button" class="fa fa-download">descargar formato</button>
+                                    </a>
+                                </td>
+                                <td>
+                                    <form action="{{ route('tecnico.invimportar') }}" method="POST" enctype="multipart/form-data">
+                                        @csrf
+                                        <button type="submit" class="btn btn-success">Subir</button>
+                                        <label for="archivoinv" class="btn btn-primary custom-upload-btn">
+                                        <i class="fa fa-upload"></i>
+                                        </label>
                                         @if ($Estatus = "ER")
                                         <input type="hidden" name="id" id="id" value="{{ $idtecnico ?? '' }}">
                                         @else
                                         <input type="hidden" name="id" id="id" value="{{ $tecnico->id }}">
                                         @endif
-                                    <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
-                                    <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
-                                </form>
-                            </td>
-                            <td>
-                                <a href="{{route('tecnico.formexpediente')}}">
-                                    <button type="button" class="fa fa-download">descargar formato</button>
-                                </a>
-                            </td>
-                            @endcan
-</tr>
-<tr>
-
-                            <td>
-                        <form action="{{ route('tecnico.exportar') }}" method="POST" enctype="multipart/form-data">
-                            @csrf
-
-                            <label for="fechaincio">Fecha Inicio:</label>
-                            <input type="date" name="fechaincio" id="fechaincio" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
-
-                            <label for="fechafin">Fecha Fin:</label>
-                            <input type="date" name="fechafin" id="fechafin" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
-
-
-
-                        </form>
-
-                            </td>
-                        </tr></table>
-                    </div>
-            </div>
-        </div>
-        <div id="tabla_materiales_container">
-        </div>
-    </div>
-
-    <div class="tab-pane fade" id="inventario" role="tabpanel" aria-labelledby="inventario-tab">
-        
-        <div class="card">
-            <div class="card-header">
-                @can('crear-etamaterial')
-                <table>
-                            <td>
-
-                                <a href="{{route('tecnico.forminventario')}}">
-                                    <button type="button" class="fa fa-download">descargar formato</button>
-                                </a>
-
-
-                            </td>
-                            <td>
-                            <form action="{{ route('tecnico.invimportar') }}" method="POST" enctype="multipart/form-data">
-                                @csrf
-                                <button type="submit" class="btn btn-success">Subir</button>
-                                <label for="archivoinv" class="btn btn-primary custom-upload-btn">
-                                <i class="fa fa-upload"></i>
-                                </label>
-                                @if ($Estatus = "ER")
-                                <input type="hidden" name="id" id="id" value="{{ $idtecnico ?? '' }}">
-                                @else
-                                <input type="hidden" name="id" id="id" value="{{ $tecnico->id }}">
-                                @endif
-                                <input type="file" id="archivoinv" name="archivoinv" class="custom-file-input" onchange="mostrarNombreINVENTARIO(this)">
-                                <span id="nombre-archivoinv" class="ml-2 text-muted">Ningún archivo seleccionado</span>
-                            </form>
-                            </td>
-</table>@endcan
+                                        <input type="file" id="archivoinv" name="archivoinv" class="custom-file-input" onchange="mostrarNombreINVENTARIO(this)">
+                                        <span id="nombre-archivoinv" class="ml-2 text-muted">Ningún archivo seleccionado</span>
+                                    </form>
+                                </td>
+                            </table>
+                        @endcan
                         <div id="tabla_materialesinv_container">
                         </div>
-
-                </div>
-                </div>
-                </div>
-
-        <div class="tab-pane fade" id="expediente" role="tabpanel" aria-labelledby="expediente-tab">
-        <div class="card">
-            <div class="card-header">
-                        <div>
-                            
-                            <table><tr>
-</tr>
-<tr>
-
-                            <td>
-                        <form action="{{ route('tecnico.exportar') }}" method="POST" enctype="multipart/form-data">
-                            @csrf
-
-                            <label for="fechaincio">Fecha Inicio:</label>
-                            <input type="date" name="fechaincio" id="fechaincioS" required value="{{ date('Y-m-d',strtotime('-1 day')) }}">
-
-                            <label for="fechafin">Fecha Fin:</label>
-                            <input type="date" name="fechafin" id="fechafinS" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
-
-
-
-                            <button type="submit">
-                                <i class="fa fa-cloud-download"></i> Descargar
-                            </button>
-                        </form>
-
-                            </td>
-                        </tr></table>
                     </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="expediente" role="tabpanel" aria-labelledby="expediente-tab">
+                    <div class="card">
+                        <div class="card-header">
+                            <div>                            
+                                <table>
+                                    <tr></tr>
+                                    <tr>    
+                                        <td>
+                                            <form action="{{ route('tecnico.exportar') }}" method="POST" enctype="multipart/form-data">
+                                                @csrf
+
+                                                <label for="fechaincio">Fecha Inicio:</label>
+                                                <input type="date" name="fechaincio" id="fechaincioS" required value="{{ date('Y-m-d',strtotime('-1 day')) }}">
+
+                                                <label for="fechafin">Fecha Fin:</label>
+                                                <input type="date" name="fechafin" id="fechafinS" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
+
+
+
+                                                <button type="submit">
+                                                    <i class="fa fa-cloud-download"></i> Descargar
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="tabla_expediente_container">
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="pago" role="tabpanel" aria-labelledby="pago-tab">
+                        <div class="card">
+                            <div class="card-header">
+                                <div>
+                                    <table>
+                                        <tr></tr>
+                                        <tr>
+                                            <td>
+                                                <form action="{{ route('verpagotecnico.exportar', 'H') }}" method="POST" enctype="multipart/form-data">
+                                                    
+                                                    @csrf
+
+                                                    <label for="fechaincio">Fecha S Inicio:</label>
+                                                    <input type="date" name="fechaincioP" id="fechaincioP" required value="{{ date('Y-m-d',strtotime('-1 day')) }}">
+
+                                                    <label for="fechafin">Fecha S Fin:</label>
+                                                    <input type="date" name="fechafinP" id="fechafinP" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
+
+
+
+                                                    <button type="submit">
+                                                        <i class="fa fa-cloud-download"></i> Descargar
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    <div id="tabla_pago_container">
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="cobro" role="tabpanel" aria-labelledby="pago-tab">
+                        <div class="card">
+                            <div class="card-header">
+                                <div>
+                                    <table>
+                                        <tr></tr>
+                                        <tr>
+                                            <td>
+                                                <form action="{{ route('verpagotecnico.exportar', 'D') }}" method="POST" enctype="multipart/form-data">
+                                                    @csrf
+
+                                                    <label for="fechaincio">Fecha Inicio:</label>
+                                                    <input type="date" name="fechaincioC" id="fechaincioC" required value="{{ date('Y-m-d',strtotime('-1 day')) }}">
+
+                                                    <label for="fechafin">Fecha Fin:</label>
+                                                    <input type="date" name="fechafinC" id="fechafinC" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
+
+
+
+                                                    <button type="submit">
+                                                        <i class="fa fa-cloud-download"></i> Descargar
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>                
+                        </div>
+                    <div id="tabla_cobro_container">
+                    </div>
+                </div>
+
+    
+<!-- Modal Única para Detalles -->
+<div class="modal fade" id="modalDetalleTecnico" tabindex="-1" aria-labelledby="modalDetalleTecnicoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold text-dark fs-15" id="modalDetalleTecnicoLabel">
+                    <i class="bi bi-file-earmark-text me-2 text-primary"></i>Detalle de Orden: <span id="modal-txt-orden" class="font-monospace"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-shadow="none" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 fs-13">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="text-muted d-block mb-1">SKU / Código</label>
+                        <code id="modal-txt-sku" class="fs-12 fw-semibold px-2 py-1 bg-light rounded text-dark"></code>
+                    </div>
+                    <div class="col-6">
+                        <label class="text-muted d-block mb-1">Estatus / Nat.</label>
+                        <span id="modal-txt-status" class="badge bg-light text-dark border"></span>
+                        <span id="modal-txt-naturaleza" class="badge bg-secondary"></span>
+                    </div>
+                    <div class="col-12 border-top pt-2">
+                        <label class="text-muted d-block mb-1 fw-bold">Descripción del Servicio</label>
+                        <p id="modal-txt-descripcion" class="text-dark bg-light p-2.5 rounded mb-0 text-wrap-break font-sans-serif"></p>
+                    </div>
+                    <div class="col-12 border-top pt-2">
+                        <label class="text-muted d-block mb-1">Observaciones internas</label>
+                        <p id="modal-txt-obs" class="text-secondary bg-light p-2.5 rounded mb-0 fst-italic"></p>
+                    </div>
+                    <div class="col-6 border-top pt-2">
+                        <label class="text-muted d-block mb-1 fw-bold">Cantidad</label>
+                        <span id="modal-txt-cantidad" class="fs-15 fw-bold text-dark"></span>
+                    </div>
+                    <div class="col-6 border-top pt-2">
+                        <label class="text-muted d-block mb-1 fw-bold">Monto Económico</label>
+                        <span id="modal-txt-pago" class="fs-15 fw-bold text-success"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-light border-0 py-2">
+                <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Cerrar Ventana</button>
             </div>
         </div>
-        <div id="tabla_expediente_container">
-        </div>
     </div>
-
-            <div class="tab-pane fade" id="pago" role="tabpanel" aria-labelledby="pago-tab">
-        <div class="card">
-            <div class="card-header">
-                        <div>
-                            <table><tr>
-</tr>
-<tr>
-
-                            <td>
-                        <form action="{{ route('tecnico.exportar') }}" method="POST" enctype="multipart/form-data">
-                            @csrf
-
-                            <label for="fechaincio">Fecha Inicio:</label>
-                            <input type="date" name="fechaincioP" id="fechaincioP" required value="{{ date('Y-m-d',strtotime('-1 day')) }}">
-
-                            <label for="fechafin">Fecha Fin:</label>
-                            <input type="date" name="fechafinP" id="fechafinP" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
-
-
-
-                            <button type="submit">
-                                <i class="fa fa-cloud-download"></i> Descargar
-                            </button>
-                        </form>
-
-                            </td>
-                        </tr></table>
-                    </div>
-            </div>
-        </div>
-        <div id="tabla_pago_container">
-        </div>
-    </div>
-
-    </div>
+</div>
 
 @endsection
 
@@ -993,6 +1060,14 @@ $(document).on('click', '#tabla_pago_container a[href*="page="]', function (e) {
     fillRelacionP(page);
 });
 
+$(document).on('click', '#tabla_cobro_container a[href*="page="]', function (e) {
+    e.preventDefault();
+    let url = $(this).attr('href');
+    let page = new URL(url, window.location.origin).searchParams.get('page') || 1;
+    console.log('Paginación cobro, página:', page);
+    fillRelacionCobro(page);
+});
+
 // Funciones auxiliares
 function mostrarNombre(input) {
     const nombre = input.files.length > 0 ? input.files[0].name : "Ningún archivo seleccionado";
@@ -1018,13 +1093,41 @@ function fillRelacionAsignada(page) {
     }
 
     $.ajax({
-        url: "{{ route('fetchtabla') }}",
+        url: "{{ route('fetchtabla') }}",   
         method: 'GET',
         data: { id : id, fechain : fechain, fechafin : fechafin, page: page },
         success: function(data) {
             $('#tabla_materiales_container').html(data);
 setTimeout(function() {
                 initDataTable('#datatablesSimpleAsig', '#globalSearchAsig');
+            }, 300);
+        },
+        error: function(xhr) {
+            Swal.fire('Error', 'Hubo un problema al actualizar: ' + xhr.responseText, 'error');
+        }
+    });
+}
+
+function fillRelacionCobro(page) {
+    var select = document.getElementById("tecnicoid");
+    var fechainC = $('#fechaincioC').val();
+    var fechafinC = $('#fechafinC').val();
+
+    let id = null;
+    if (select !== null) {
+        id = select.options[select.selectedIndex].value;
+    } else {
+        id = "{{ $tecnico->id ?? '' }}";
+    }
+
+    $.ajax({
+        url: "{{ route('fetchtablaC') }}",
+        method: 'GET',
+        data: { id: id, fechainC: fechainC, fechafinC: fechafinC, page: page },
+        success: function(data) {
+            $('#tabla_cobro_container').html(data);
+            setTimeout(function() {
+                initDataTable('#datatablesSimpleCobro', '#globalSearchCobro');
             }, 300);
         },
         error: function(xhr) {
@@ -1088,6 +1191,44 @@ function fillRelacionS() {
         }
     });
 }
+document.addEventListener('DOMContentLoaded', function () {
+    // Escuchar clics en los elementos del DOM de forma dinámica (funciona incluso con paginación AJAX)
+    document.addEventListener('click', function (event) {
+        // Verificar si el elemento clickeado tiene la clase del botón de detalle
+        const button = event.target.closest('.btn-ver-detalle');
+        
+        if (button) {
+            // Extraer la información desde los atributos data-*
+            const orden = button.getAttribute('data-orden');
+            const sku = button.getAttribute('data-sku');
+            const descripcion = button.getAttribute('data-descripcion');
+            const obs = button.getAttribute('data-obs');
+            const cantidad = button.getAttribute('data-cantidad');
+            const pago = button.getAttribute('data-pago');
+            const status = button.getAttribute('data-status');
+            const naturaleza = button.getAttribute('data-naturaleza');
+
+            // Inyectar los datos en los contenedores correspondientes de la modal
+            document.getElementById('modal-txt-orden').textContent = orden;
+            document.getElementById('modal-txt-sku').textContent = sku;
+            document.getElementById('modal-txt-descripcion').textContent = descripcion;
+            document.getElementById('modal-txt-obs').textContent = obs;
+            document.getElementById('modal-txt-cantidad').textContent = cantidad;
+            document.getElementById('modal-txt-pago').textContent = pago;
+            document.getElementById('modal-txt-status').textContent = 'Estatus: ' + status;
+            document.getElementById('modal-txt-naturaleza').textContent = 'Nat: ' + naturaleza;
+            
+            // Cambiar color del monto según naturaleza de forma dinámica
+            const pagoElement = document.getElementById('modal-txt-pago');
+            if(naturaleza === 'D') {
+                pagoElement.className = "fs-15 fw-bold text-danger";
+            } else {
+                pagoElement.className = "fs-15 fw-bold text-success";
+            }
+        }
+    });
+});
+
 
 // REMOVER LA FUNCIÓN DUPLICADA fillRelacionS que está al final
 </script>

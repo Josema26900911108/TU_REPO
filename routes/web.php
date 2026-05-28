@@ -449,6 +449,9 @@ Route::get('/tecnico-formatoinventario',[TecnicoController::class,'descargarinve
 Route::post('/tecnicoim/importar',[TecnicoController::class,'importarMAMO'])->name('tecnico.importar');
 Route::post('/tecnicoinv/importar',[TecnicoController::class,'importarInvTecnico'])->name('tecnico.invimportar');
 Route::post('/exportar-tecnicoordenes', [TecnicoController::class, 'exportar'])->name('tecnico.exportar');
+Route::post('/exportar-pagotecnico/{naturaleza}', [TecnicoController::class, 'exportarPagoTecnico'])
+    ->name('verpagotecnico.exportar');
+
 Route::get('/tecnicoTtabla', [TecnicoController::class, 'fetchrelacionTecnico'])->name('fetchtablaT');
 
 
@@ -458,6 +461,7 @@ Route::get('/etaTtabla', [etadirectController::class, 'fetchrelacionEta'])->name
 Route::get('/tecnicotabla', [TecnicoController::class, 'fetchrelacion'])->name('fetchtabla');
 Route::get('/tecnicotablaS', [TecnicoController::class, 'fetchrelacionS'])->name('fetchtablaS');
 Route::get('/tecnicotablaP', [TecnicoController::class, 'fetchrelacionP'])->name('fetchtablaP');
+Route::get('/tecnicotablaC', [TecnicoController::class, 'fetchrelacionC'])->name('fetchtablaC');
 Route::get('/tecnicoinvtabla', [TecnicoController::class, 'fetchrelacioninv'])->name('fetchinvtabla');
 Route::get('/tecnologiacategoria', [TecnicoController::class, 'fillEstructura'])->name('tecnologiaarb');
 Route::get('/manoobracategoria/{id}', [TecnicoController::class, 'fillEstructuraMO'])->name('manoobrarb');

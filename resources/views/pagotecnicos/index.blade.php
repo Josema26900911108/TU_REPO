@@ -115,26 +115,52 @@
     <!-- ========================================== -->
     <!-- TARJETA DE BALANCE ALGEBRAICO TOTAL -->
     <!-- ========================================== -->
-    <div class="row mb-4">
-        <div class="col-xl-4 col-md-6">
-            <div class="card {{ $totalBalance >= 0 ? 'bg-success' : 'bg-danger' }} text-white mb-4">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <div class="text-white-50 small text-uppercase fw-bold">Resultado General Balanceado</div>
-                            <div class="fs-2 fw-semibold">Q. {{ number_format($totalBalance, 2) }}</div>
-                        </div>
-                        <div>
-                            <i class="fas {{ $totalBalance >= 0 ? 'fa-wallet' : 'fa-exclamation-triangle' }} fa-2x"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-footer d-flex align-items-center justify-content-between small text-white-50">
-                    <span>Suma total (Entradas menos Salidas)</span>
-                </div>
+<div class="row g-3 mb-4">
+    <!-- Tarjeta Balance General -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-white" style="background: linear-gradient(135deg, #212529 0%, #343a40 100%);">
+            <div class="card-body">
+                <h6 class="text-white-50 text-uppercase fw-bold fs-11 mb-1">Balance General</h6>
+                <h4 class="fw-bold mb-0">Q{{ number_format($totalBalance, 2) }}</h4>
+                <small class="text-white-50 fs-11">Total neto filtrado</small>
             </div>
         </div>
     </div>
+
+    <!-- Tarjeta Estatus S -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-white bg-success" style="background: linear-gradient(135deg, #198754 0%, #146c43 100%);">
+            <div class="card-body">
+                <h6 class="text-white-50 text-uppercase fw-bold fs-11 mb-1">Estatus S (Pendiente)</h6>
+                <h4 class="fw-bold mb-0">Q{{ number_format($balanceS, 2) }}</h4>
+                <small class="text-white-50 fs-11">Monto acumulado</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tarjeta Estatus C -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-white bg-warning" style="background: linear-gradient(135deg, #ffc107 0%, #d39e00 100%);">
+            <div class="card-body">
+                <h6 class="text-dark-50 text-uppercase fw-bold fs-11 mb-1 text-dark">Estatus C (Pagado)</h6>
+                <h4 class="fw-bold mb-0 text-dark">Q{{ number_format($balanceC, 2) }}</h4>
+                <small class="text-dark-50 fs-11 text-dark">Monto acumulado</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tarjeta Estatus B -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm text-white bg-danger" style="background: linear-gradient(135deg, #dc3545 0%, #b21f2d 100%);">
+            <div class="card-body">
+                <h6 class="text-white-50 text-uppercase fw-bold fs-11 mb-1">Estatus B (No Pagado)</h6>
+                <h4 class="fw-bold mb-0">Q{{ number_format($balanceB, 2) }}</h4>
+                <small class="text-white-50 fs-11">Monto acumulado</small>
+            </div>
+        </div>
+    </div>
+</div>
+
     <!-- ========================================== -->
     <!-- TABLA PRINCIPAL DE REGISTROS -->
     <!-- ========================================== -->

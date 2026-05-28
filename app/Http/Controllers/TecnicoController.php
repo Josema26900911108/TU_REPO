@@ -765,7 +765,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
 
       DB::connection()->disableQueryLog();
 
-      
+
         if (!Auth::check()) {
             return redirect()->route('login');
         }
@@ -1334,6 +1334,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
 
 public function fetchrelacionS(Request $request)
 {
+    DB::connection()->disableQueryLog();
     try{
                         if(!Auth::check()){
             return redirect()->route('login');
@@ -1389,39 +1390,45 @@ public function fetchrelacionS(Request $request)
 
 public function fetchrelacionP(Request $request)
 {
+    DB::connection()->disableQueryLog();
     try {
-                        if(!Auth::check()){
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
 
         $Estatus   = session('user_estatus');
-        $fkTienda  = session('user_fkTienda');
+        // Nota: Asegúrate si en tu sesión es user_fkTienda o user_fktienda (en tus anteriores prompts usaste minúscula)
+        $fkTienda  = session('user_fkTienda') ?? session('user_fktienda'); 
         $idtecnico = $request->input('id');
         $fechain   = $request->input('fechainP');
         $fechafin  = $request->input('fechafinP');
 
-$relacion = Pagotecnico::with(['arbolmanoobra' => function($query) {
-        $query->select('SKU', 'nombre as descripcion');
-    }])
-    ->where('fkTecnico', $idtecnico)
-    ->where('Status', 'C')
-    ->orWhere('Status', 'S')
-    ->whereNotNull('fkTecnico')
-    ->whereHas('arbolmanoobra', function($query) {
-        $query->where('Tipo_servicio', 'MO');
-    });
+        $query = Pagotecnico::with(['arbolmanoobra' => function($q) {
+                $q->select('SKU', 'nombre as descripcion'); // Asegúrate de incluir la FK/PK para la relación en el select si falla
+            }])
+            ->where('fkTecnico', $idtecnico)
+            ->whereNotNull('fkTecnico')
+            ->whereHas('arbolmanoobra', function($q) {
+                $q->where('Tipo_servicio', 'MO');
+            });
 
-
+        // CORRECCIÓN: Agrupación del OR para no romper los filtros de Tienda, Técnico y Fechas
+        $query->where(function($q) {
+            $q->where('Naturaleza', 'H')
+              ->orWhere('Status', 'S');
+        });
 
         if ($Estatus !== 'ER') {
-            $relacion->where('fkTienda', $fkTienda);
+            $query->where('fkTienda', $fkTienda);
         }
 
         if ($fechain && $fechafin) {
-            $relacion->whereBetween('created_at', [$fechain, $fechafin]);
+            $inicio = Carbon::parse($fechain)->startOfDay();
+            $fin = Carbon::parse($fechafin)->endOfDay();
+            $query->whereBetween('created_at', [$inicio, $fin]);
         }
 
-        $relacion = $relacion->paginate(10);
+        $relacion = $query->paginate(10);
 
         return view('buckettecnico.table.tablapago', compact('relacion'))->render();
 
@@ -1432,27 +1439,32 @@ $relacion = Pagotecnico::with(['arbolmanoobra' => function($query) {
 
 public function fetchrelacionC(Request $request)
 {
+    DB::connection()->disableQueryLog();
     try {
-                        if(!Auth::check()){
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
 
         $Estatus   = session('user_estatus');
-        $fkTienda  = session('user_fkTienda');
+        $fkTienda  = session('user_fkTienda') ?? session('user_fktienda');
         $idtecnico = $request->input('id');
-        $fechain   = $request->input('fechainP');
-        $fechafin  = $request->input('fechafinP');
+        $fechain   = $request->input('fechainC');
+        $fechafin  = $request->input('fechafinC');
 
-        $query = pagotecnico::where('fkTecnico', $idtecnico)
-            ->where('Status', 'C')
-            ->whereNotNull('fkTecnico');
+        // Se eliminaron las condiciones repetidas de fkTecnico y fkTienda
+        $query = Pagotecnico::where('fkTecnico', $idtecnico)
+            ->whereNotNull('fkTecnico')
+            ->where('Status', 'S')
+            ->where('Naturaleza', 'D');
 
         if ($Estatus !== 'ER') {
             $query->where('fkTienda', $fkTienda);
         }
 
         if ($fechain && $fechafin) {
-            $query->whereBetween('created_at', [$fechain, $fechafin]);
+            $inicio = Carbon::parse($fechain)->startOfDay();
+            $fin = Carbon::parse($fechafin)->endOfDay();
+            $query->whereBetween('created_at', [$inicio, $fin]);
         }
 
         $relacion = $query->paginate(10);
@@ -1467,8 +1479,10 @@ public function fetchrelacionC(Request $request)
 
 
 
+
     public function fetchrelacioninv(Request $request)
 {
+    DB::connection()->disableQueryLog();
     try{
                         if(!Auth::check()){
             return redirect()->route('login');
@@ -1502,7 +1516,7 @@ public function fetchrelacionC(Request $request)
 
 public function exportar(Request $request)
 {
-
+DB::connection()->disableQueryLog();
                 if(!Auth::check()){
             return redirect()->route('login');
         }
@@ -1569,8 +1583,91 @@ public function exportar(Request $request)
     ]);
 }
 
+public function exportarPagoTecnico(Request $request, $naturaleza) 
+{
+    DB::connection()->disableQueryLog();
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+
+    // Validar que la naturaleza sea estrictamente D o H
+    if (!in_array($naturaleza, ['D', 'H'])) {
+        abort(404, 'Naturaleza no válida.');
+    }
+
+    $fkTienda = session('user_fktienda');
+    $estatus = session('user_estatus');
+
+    $request->validate([
+        'fechaincio' => 'required|date',
+        'fechafin' => 'required|date|after_or_equal:fechaincio',
+    ]);
+
+    $inicio = Carbon::parse($request->fechaincio)->startOfDay();
+    $fin = Carbon::parse($request->fechafin)->endOfDay();
+
+    // Construcción de la consulta para la tabla pagotecnico
+    $query = DB::table('pagotecnico')
+        ->select([
+            'id', 'Orden', 'SKU', 'Descripcion', 'OBS', 'Cantidad', 
+            'COSTOPAGO', 'created_at', 'updated_at', 'fkTienda', 
+            'fkTecnico', 'Naturaleza', 'Status'
+        ])
+        ->where('Naturaleza', $naturaleza)
+        ->whereBetween('created_at', [$inicio, $fin]); // O cambia a updated_at si es preferible
+
+    // Filtrado por tienda si el usuario no tiene estatus 'er'
+    if ($estatus !== 'er') {
+        $query->where('fkTienda', $fkTienda);
+    }
+
+    $datos = $query->get();
+    $nombreArchivo = 'pagotecnico_' . strtolower($naturaleza) . '_export_' . now()->format('Ymd_His') . '.csv';
+
+    // Generar el contenido del CSV de forma segura en memoria
+    $handle = fopen('php://memory', 'r+');
+    
+    // UTF-8 BOM para soporte de acentos en Excel
+    fprintf($handle, chr(0xEF).chr(0xBB).chr(0xBF));
+
+    // Encabezados del CSV
+    fputcsv($handle, [
+        'id', 'Orden', 'SKU', 'Descripcion', 'OBS', 'Cantidad', 
+        'COSTOPAGO', 'created_at', 'updated_at', 'fkTienda', 
+        'fkTecnico', 'Naturaleza', 'Status'
+    ]);
+
+    // Insertar las filas
+    foreach ($datos as $item) {
+        fputcsv($handle, [
+            $item->id, $item->Orden, $item->SKU, $item->Descripcion, $item->OBS, $item->Cantidad, 
+            $item->COSTOPAGO, $item->created_at, $item->updated_at, $item->fkTienda, 
+            $item->fkTecnico, $item->Naturaleza, $item->Status
+        ]);
+    }
+
+    // Leer el contenido generado
+    rewind($handle);
+    $csv = stream_get_contents($handle);
+    fclose($handle);
+
+    // Retornar la respuesta tal como la necesitas
+    return Response::make($csv, 200, [
+        'Content-Type' => 'text/csv; charset=UTF-8',
+        'Content-Disposition' => "attachment; filename=\"$nombreArchivo\"",
+        'Pragma' => 'no-cache',
+        'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+        'Expires' => '0',
+    ]);
+}
+
+
     public function bucketlista()
     {
+        DB::connection()->disableQueryLog();
+            if(!Auth::check()){
+                return redirect()->route('login');
+            }
         try {
             DB::beginTransaction();
 
@@ -1719,6 +1816,8 @@ public function importarMAMO(Request $request)
 
 public function importarInvTecnico(Request $request)
 {
+    DB::connection()->disableQueryLog();
+
     if (!Auth::check()) return redirect()->route('login');
 
     $fkTienda = session('user_fkTienda');
@@ -1916,6 +2015,7 @@ public function importarInvTecnico(Request $request)
 
       public function pagocobro($id)
     {
+        DB::connection()->disableQueryLog();
             try {
                                 if(!Auth::check()){
             return redirect()->route('login');
@@ -1965,6 +2065,7 @@ public function importarInvTecnico(Request $request)
     }
 public function ejecutarconsulta(Request $request)
     {
+        DB::connection()->disableQueryLog();
         try{
         $comprobanteId=$request->idcomprobante;
 
@@ -2008,6 +2109,7 @@ return response()->json($detallecomprobante);
 
     public function fetchrelacion(Request $request)
 {
+    DB::connection()->disableQueryLog();
     try{
                         if(!Auth::check()){
             return redirect()->route('login');
@@ -2057,6 +2159,7 @@ return response()->json($detallecomprobante);
 
     public function obtenerdetalles(string $sql, array $parametros)
     {
+        DB::connection()->disableQueryLog();
         try{
 
                 $pdo = DB::getPdo();
@@ -2083,6 +2186,8 @@ return response()->json($detallecomprobante);
 
     public function listaClientes(Request $request)
     {
+        DB::connection()->disableQueryLog();
+
         $query = Cliente::with('persona')->orderBy('persona.nombre', 'asc');
 
         if ($request->has('search')) {
@@ -2098,6 +2203,8 @@ return response()->json($detallecomprobante);
 
     public function destroy(string $id)
 {
+    DB::connection()->disableQueryLog();
+    
     if(!Auth::check()){
         return redirect()->route('login');
     }
