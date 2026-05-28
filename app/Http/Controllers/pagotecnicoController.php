@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Pagotecnico;
 use App\Models\Expedientetecnico;
 use App\Models\Expedientefotograficotecnico;
+use Illuminate\Support\Facades\Storage;
 use ZipArchive;
 
 class pagotecnicoController  extends Controller
@@ -79,14 +80,14 @@ public function index(Request $request)
 
 public function exportarFotosZip(Request $request)
 {
-    // 1. Recoger exactamente los mismos filtros de la orden y fechas
+    // 1. Recoger los filtros desde el Request
     $fkTienda    = session('user_fkTienda') ?? 0;
     $orden       = $request->input('orden');
     $tecnicoId   = $request->input('tecnico_id');
     $fechaInicio = $request->input('fecha_inicio');
     $fechaFin    = $request->input('fecha_fin');
 
-    // 2. Construir la consulta filtrando los expedientes correspondientes
+    // 2. Filtrar los expedientes en la base de datos
     $queryExpedientes = Expedientetecnico::query();
 
     if ($fkTienda) {
@@ -105,53 +106,78 @@ public function exportarFotosZip(Request $request)
         $queryExpedientes->whereDate('FECHAINSTALACION', '<=', $fechaFin);
     }
 
-    // Obtener los números de orden que cumplen con los filtros del usuario
     $ordenesFiltradas = $queryExpedientes->pluck('Orden')->toArray();
 
     if (empty($ordenesFiltradas)) {
-        return back()->with('error', 'No se encontraron expedientes con las fotografías bajo los filtros seleccionados.');
+        return back()->with('error', 'No se encontraron expedientes bajo los filtros seleccionados.');
     }
 
-    // 3. Buscar las fotografías ligadas a esas órdenes específicas
+    // 3. Buscar las fotografías ligadas a esas órdenes
     $fotografias = Expedientefotograficotecnico::whereIn('Orden', $ordenesFiltradas)->get();
 
     if ($fotografias->isEmpty()) {
-        return back()->with('error', 'Los expedientes filtrados no cuentan con evidencias fotográficas registradas.');
+        return back()->with('error', 'Los expedientes filtrados no cuentan con evidencias fotográficas.');
     }
 
-    // 4. Crear el archivo ZIP temporal en el servidor de forma segura
-    $zipFileName = 'Evidencias_Fotograficas_' . date('Ymd_His') . '.zip';
-    $zipPath = storage_path('app/public/' . $zipFileName);
+    // 4. Configurar el archivo ZIP en el directorio temporal del sistema operativo (XAMPP)
+    $zipFileName = 'Evidencias_Bucket_' . date('Ymd_His') . '.zip';
+    $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipFileName; 
+    
     $zip = new ZipArchive;
 
     if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
-        foreach ($fotografias as $index => $foto) {
-            // Obtener la URL o ruta almacenada en tu base de datos (Google Cloud Storage)
-            $urlImagen = $foto->fotografia;
+        foreach ($fotografias as $foto) {
+            
+            $urlCompleta = $foto->fotografia;
+            $pathBucket = $urlCompleta;
 
-            // Leer el contenido binario de la imagen mediante file_get_contents de forma segura
-            $imageContent = @file_get_contents($urlImagen);
+            // =================================================================
+            // LIMPIEZA ABSOLUTA DE RUTA PARA EL DISCO: gcs_images
+            // =================================================================
+            $nombreBucket = 'sistema-pv-imagenes-tienda';
 
-            if ($imageContent !== false) {
-                // Obtener la extensión original o forzar .jpg
-                $ext = pathinfo(parse_url($urlImagen, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'jpg';
+            if (str_contains($urlCompleta, $nombreBucket)) {
+                // Cortar la cadena justo después de que termine el nombre del bucket
+                $posicionBucket = strpos($urlCompleta, $nombreBucket);
+                $pathBucket = substr($urlCompleta, $posicionBucket + strlen($nombreBucket));
+                $pathBucket = ltrim($pathBucket, '/'); // Remueve diagonales iniciales (ej: "/productos/123.jpg" -> "productos/123.jpg")
+            } else {
+                // Si ya es una ruta relativa, limpiamos protocolo y dominios usando parse_url
+                $pathBucket = ltrim(parse_url($urlCompleta, PHP_URL_PATH), '/');
+            }
+
+            // =================================================================
+            // EXTRACCIÓN CONECTADA DIRECTAMENTE A TU DISCO GOOGLE BUCKET
+            // =================================================================
+            // Laravel busca la ruta $pathBucket (ej: "productos/1779159067_62055.jpg") dentro del bucket asignado a gcs_images
+            if (Storage::disk('gcs_images')->exists($pathBucket)) {
                 
-                // Organizar el ZIP creando una subcarpeta interna por cada Número de Orden
-                $nombreArchivoInterno = "Orden_{$foto->Orden}/evidencia_" . ($index + 1) . ".{$ext}";
+                // Descarga el binario del servidor de Google al servidor local de XAMPP de forma interna
+                $imageContent = Storage::disk('gcs_images')->get($pathBucket);
                 
-                // Añadir el archivo al ZIP en memoria
+                // Obtener el nombre del archivo con su extensión original
+                $nombreArchivoOriginal = pathinfo($pathBucket, PATHINFO_BASENAME);
+                
+                // Clasificar el ZIP creando una subcarpeta interna por cada Número de Orden Técnica
+                $nombreArchivoInterno = "Orden_{$foto->Orden}/" . $nombreArchivoOriginal;
+                
                 $zip->addFromString($nombreArchivoInterno, $imageContent);
             }
         }
         $zip->close();
     } else {
-        return back()->with('error', 'No se pudo inicializar la librería de compresión ZIP en el servidor.');
+        return back()->with('error', 'No se pudo inicializar el motor de compresión ZIP en el servidor.');
     }
 
-    // 5. Retornar la descarga del archivo ZIP empaquetado y eliminarlo del disco al concluir
+    // 5. Validación final del peso y existencia del ZIP armado
+    if (!file_exists($zipPath) || filesize($zipPath) <= 22) { 
+        @unlink($zipPath);
+        return back()->with('error', 'El archivo comprimido se generó vacío. Comprueba que las columnas apunten a los archivos existentes en tu disco gcs_images.');
+    }
+
+    // Iniciar transferencia masiva al navegador y purgar el archivo de XAMPP automáticamente
     return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
 }
-
 public function descargarFormatoPago()
 {
     $headers = [
