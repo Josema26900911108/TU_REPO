@@ -402,7 +402,7 @@ public function exportarExcel(Request $request)
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
 
         // Cabeceras adaptadas a las columnas reales de pagotecnico
-        fputcsv($file, ['ID Pago', 'Orden / Expediente', 'SKU', 'Descripcion', 'Cantidad', 'Costo Pago ($)', 'Naturaleza', 'Estatus', 'ID Técnico', 'Fecha Registro']);
+        fputcsv($file, ['ID Pago', 'Orden / Expediente', 'SKU', 'Descripcion', 'Cantidad', 'Costo Pago ($)', 'Naturaleza', 'Estatus', 'ID Tienda', 'ID Técnico', 'Fecha Registro']);
 
         // Variable para ir acumulando el balance total algebraico del reporte
         $totalBalance = 0;
@@ -429,6 +429,7 @@ public function exportarExcel(Request $request)
                     number_format($monto, 2, '.', ''), // Formato numérico limpio para Excel
                     $naturaleza,
                     $row->Status,
+                    $row->fkTienda,
                     $row->fkTecnico,
                     date('d-m-Y H:i:s', strtotime($row->created_at))
                 ]);

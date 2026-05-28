@@ -31,22 +31,26 @@
 
     @can('crear-materialmanoobra')
 
-    <div class="container mt-4">
-        <form action="{{ route('pagotecnico.importar') }}" method="POST" enctype="multipart/form-data">
-            @csrf
-            <button type="submit" class="btn btn-success">Subir</button>
-                <label for="archivo" class="btn btn-primary custom-upload-btn">
-                <i class="fa fa-upload"></i>
-                </label>
+        <div class="card border-0 shadow-sm rounded-3 mb-4">
+            <div class="card-body p-2">
+                <div class="row align-items-center g-3">
+                    <form action="{{ route('pagotecnico.importar') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <button type="submit" class="btn btn-success">Subir</button>
+                            <label for="archivo" class="btn btn-primary custom-upload-btn">
+                            <i class="fa fa-upload"></i>
+                            </label>
 
-                <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
-                <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
-        </form>
-    </div>
-        <div class="mb-4">
-            <a href="{{route('pagotecnico.formato-pago')}}">
-                <button type="button" class="fa fa-download">descargar formato</button>
-            </a>
+                            <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
+                            <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
+                    </form>
+                </div>
+                <div class="row align-items-center g-1">
+                    <a href="{{route('pagotecnico.formato-pago')}}">
+                        <button type="button" class="fa fa-download">descargar formato</button>
+                    </a>
+                </div>
+            </div>
         </div>
     @endcan
 
@@ -74,16 +78,15 @@
                 <div class="col-md-3">
                     <label class="form-label fw-bold">Estatus de Pago</label>
                     <select name="Status" class="form-select">
-                        <option value="">-- Todos los Estatus de Pago --</option>
-                        
+                            <option value="">-- Todos los Estatus de Pago --</option>
                             <option value="C" {{ request('Status') == 'C' ? 'selected' : '' }}>
-                                Contabilizado
+                                Pagado (C)
                             </option>
-                            <option value="I" {{ request('Status') == 'S' ? 'selected' : '' }}>
-                                Pendiente
+                            <option value="I" {{ request('Status') == 'I' ? 'selected' : '' }}>
+                                Pendiente (I)
                             </option>
-                            <option value="A" {{ request('Status') == 'S' ? 'selected' : '' }}>
-                                Anulado
+                            <option value="B" {{ request('Status') == 'B' ? 'selected' : '' }}>
+                                Pago Anulado/No pagado (B)
                             </option>                            
                         
                     </select>
@@ -103,13 +106,17 @@
             </form>
         </div>
     </div>
-    <div class="d-flex justify-content-end mb-3">
-        <button type="button" class="btn btn-success" onclick="exportarExcel()"><i class="fas fa-file-excel"></i> Exportar a Excel</button>
+
+
+    <div class="d-flex flex-wrap justify-content-end gap-2 mb-4">
+        <button type="button" class="btn btn-success btn-sm px-3 shadow-sm" onclick="exportarExcel()">
+            <i class="fas fa-file-excel me-1.5"></i> Exportar a Excel
+        </button>
+        <button type="button" class="btn btn-info btn-sm px-3 text-white shadow-sm" onclick="exportarFotos()">
+            <i class="fas fa-file-archive me-1.5"></i> Exportar Fotos (ZIP)
+        </button>
     </div>
 
-<button type="button" class="btn btn-info text-white" onclick="exportarFotos()">
-    <i class="fas fa-file-archive"></i> Exportar Fotos (ZIP)
-</button>
 
 
     <!-- ========================================== -->
