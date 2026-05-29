@@ -167,8 +167,8 @@
                         <i class="fas fa-info-circle me-1"></i> Suba un archivo Excel que contenga una columna llamada <b>"orden"</b> o <b>"Orden"</b> con el listado que desea procesar.
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold text-dark">Seleccionar Excel de Órdenes (.xlsx / .xls)</label>
-                        <input type="file" name="excel_ordenes" class="form-control form-control-sm" accept=".xlsx, .xls" required>
+                        <label class="form-label fw-semibold text-dark">Seleccionar Excel de Órdenes (.csv)</label>
+                        <input type="file" name="excel_ordenes" class="form-control form-control-sm" accept=".csv" required>
                     </div>
                 </div>
                 <div class="modal-footer bg-light border-0 py-2">
