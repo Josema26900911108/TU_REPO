@@ -2076,7 +2076,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                                 'SKU'       => $skuActual,
                                 'fkTienda'  => $fkTienda,
                                 'fkTecnico' => $id_tecnico,
-                                'Naturaleza'  => 'D',
+                                'Naturaleza'  => 'H',
                             ], 
                             [
                                 'Descripcion' => $producto->nombre ?? "Servicio $skuActual",
