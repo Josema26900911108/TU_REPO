@@ -1990,11 +1990,15 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     $porDescontar -= $cantidadAExtraer;
                 } // Fin del bucle foreach ($entradasDisponibles)
             } // Fin de la bifurcación de Tipo de Ítem (MO vs MA)
-            // -------------------------------------------------------------
+
+        } // <<< AQUÍ TERMINA DE MANERA CORRECTA EL FOREACH GENERAL DE SKUS >>>
+
+                    // -------------------------------------------------------------
             // B.4. PROCESAMIENTO DE IMÁGENES / EVIDENCIAS
             // -------------------------------------------------------------
             $photos = $request->input("items.{$contar}.photos", []);
             $names  = $request->input("items.{$contar}.names", []);
+            $iditemsTecnologia = $request->input("items.{$contar}.fkTecnologia", []);
 
             if (!empty($photos) && is_array($photos)) {
                 foreach ($photos as $i => $photoBase64) {
@@ -2005,6 +2009,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                         if ($fileData) {
                             $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $names[$i] ?? 'foto');
                             $nombreProductoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nombreProducto ?? $skuActual);
+                            $idtec=$iditemsTecnologia[$i] ?? '0';
 
                             $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
                             $productoNombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreProductoLetras);
@@ -2021,14 +2026,14 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                                 'fkTienda'   => $fkTienda,
                                 'Orden'      => $expediente->Orden,
                                 'fotografia' => $urlFotografia, 
-                                'fkTecnologia' => $iditemsTecnologia[$contar] ?? null,
+                                'fkTecnologia' => $idtec,
                             ]);
                             unset($fileData); 
                         }
                     }
                 }
             }
-        } // <<< AQUÍ TERMINA DE MANERA CORRECTA EL FOREACH GENERAL DE SKUS >>>
+
         // =================================================================
         // SECCIÓN C: FINALIZACIÓN Y AUDITORÍA DEL EXPEDIENTE
         // =================================================================

@@ -624,10 +624,11 @@ $('#btnCapture').click(function() {
     const photoName = `foto_${timestamp}.png`;
     const categoriafoto = $('#categoriafoto').val();
     const itemname = $('#itemmanoobraamterial').text();
+    const idTecnologiaUnificado = $('#itemtecnologia').val();
 
 
 
-    photosForItem.push({ name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}"+categoriafoto, data: dataUrl });
+    photosForItem.push({ name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}"+categoriafoto, data: dataUrl, fkTecnologia: idTecnologiaUnificado });
     mostrarFotos();
 
     $('#btnOk').show();
@@ -715,13 +716,27 @@ function prepareForm(estatus, MSJ) {
             // 2. Normalización opcional: Si la foto contiene un espacio o guion, asegura la legibilidad para SQL
             nombreLimpio = nombreLimpio.replace(/[\s\u00A0]+/g, ' ');
 
-
             $('<input>').attr({
                 type: 'hidden',
                 name: `items[${idx}][names][${pidx}]`,
                 value: nombreLimpio // Inyecta el nombre estandarizado (Ej: "ANTENA DTH.JPG")
             }).appendTo('#formulario');
         });
+
+        // =================================================================
+        // INYECCIÓN DE LA LLAVE TECNOLÓGICA DE LA FOTOGRAFÍA
+        // =================================================================
+        item.photos.forEach((photo, pidx) => {
+            // Lee el fkTecnologia que inyectamos previamente en el photosForItem.push
+            let idTecnologiaFoto = photo.fkTecnologia ?? 0;
+
+            $('<input>').attr({
+                type: 'hidden',
+                name: `items[${idx}][fkTecnologia][${pidx}]`,
+                value: idTecnologiaFoto // Inyecta el ID numérico (Ej: 3 o 15)
+            }).appendTo('#formulario');
+        });
+
     });
 
     itemsEliminados.forEach((id, idx) => {
@@ -1365,11 +1380,13 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         const categoriafoto = $('#categoriafoto').val();
         const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
         const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
-        
+        const idTecnologiaUnificado = $('#itemtecnologia').val();
+
         photosForItem.push({ 
             index: indiceActual,
             name: nombreFotoGenerado, 
-            data: dataUrlComprimida 
+            data: dataUrlComprimida,
+            fkTecnologia: idTecnologiaUnificado
         });
 
         mostrarFotos(indiceActual);
