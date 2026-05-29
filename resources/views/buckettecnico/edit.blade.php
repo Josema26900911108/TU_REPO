@@ -431,6 +431,10 @@
                             <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" style="display:none;">
                                 <option value="ANTES">ANTES</option>
                                 <option value="DESPUES">DESPUES</option>
+                                <option value="poste antes">poste antes</option>
+                                <option value="poste despues">poste despues</option>
+                                <option value="anillo postes">anillo postes</option>
+                                <option value="conectividad">conectividad</option>
                                 <option value="SERIE">SERIE</option>
                                 <option value="PANORAMICA">PANORAMICA</option>
                                 <option value="MURO">MURO</option>
