@@ -133,7 +133,9 @@ public function generarMemoriaFotografica(Request $request)
     }
 
     // Palabras reservadas solicitadas para la auditoría de nombres
-    $palabrasClave = ['antena', 'conectividad', 'mastil', 'switch', 'poste antes', 'poste despues', 'anillo postes'];
+    // Palabras reservadas solicitadas en MAYÚSCULAS
+    $palabrasClave = ['ANTENA', 'CONECTIVIDAD', 'MASTIL', 'SWITCH', 'POSTE ANTES', 'POSTE DESPUES', 'ANILLO POSTES'];
+
 
     // Consultar el universo fotográfico cruzando con el árbol de tecnología
     $fotografiasUniverso = DB::table('expedientefotograficotecnico as ef')
@@ -168,7 +170,7 @@ public function generarMemoriaFotografica(Request $request)
             
             // Filtrar las fotos por coincidencia con la palabra clave
             $fotosFiltradas = $fotosTecnologia->filter(function ($f) use ($palabra) {
-                return str_contains(strtolower($f->fotografia), strtolower($palabra));
+                    return str_contains(strtoupper($f->fotografia), $palabra);
             });
 
             if ($fotosFiltradas->isEmpty()) {
