@@ -94,43 +94,61 @@ class TecnicoController extends Controller
 
 public function extraccionMasiva(Request $request)
 {
-    $request->validate([
-        'excel_ordenes' => 'required|file'
-    ]);
+    // 1. Validar la carga del archivo de forma explícita
+    if (!$request->hasFile('excel_ordenes')) {
+        return back()->with('error', 'No se recibió ningún archivo en el servidor.');
+    }
 
-    // 1. Procesamiento veloz de las órdenes provenientes del archivo delimitado por comas
-    $path = $request->file('excel_ordenes')->getRealPath();
+    $file = $request->file('excel_ordenes');
+    if (!$file->isValid()) {
+        return back()->with('error', 'El archivo cargado está dañado o excede el límite de tamaño del servidor.');
+    }
+
+    $path = $file->getRealPath();
     $ordenes = [];
     
+    // 2. Leer el archivo detectando el delimitador de forma dinámica (Tolerancia a Excel)
     if (($handle = fopen($path, "r")) !== FALSE) {
-        $header = fgetcsv($handle, 1000, ","); // Omitir la primera línea / cabecera
-        while (($datosFila = fgetcsv($handle, 1000, ",")) !== FALSE) {
-            if (!empty($datosFila[0])) {
-                $ordenes[] = trim($datosFila[0]); // Asume que la orden se ubica en la primera columna
+        // Leer la primera línea para identificar si usa coma o punto y coma
+        $primerLinea = fgets($handle);
+        $delimitador = (strpos($primerLinea, ';') !== false) ? ';' : ',';
+        
+        // Regresar el puntero al inicio del archivo
+        rewind($handle);
+        
+        // Omitir la primera línea (cabecera)
+        fgetcsv($handle, 1000, $delimitador); 
+        
+        while (($datosFila = fgetcsv($handle, 1000, $delimitador)) !== FALSE) {
+            // Asegurar que la primera celda no esté vacía
+            if (!empty($datosFila) && isset($datosFila[0]) && trim($datosFila[0]) !== '') {
+                $ordenes[] = trim($datosFila[0]); 
             }
         }
         fclose($handle);
     }
 
+    // SI EL ARCHIVO SE LEYÓ VACÍO: Alerta explícita para el operador
     if (empty($ordenes)) {
-        return back()->with('error', 'No se encontraron órdenes válidas en el archivo seleccionado.');
+        return back()->with('error', 'El archivo fue leído, pero no se encontraron filas legibles de órdenes. Asegúrese de guardarlo como CSV.');
     }
 
-    // 2. Consultar Base de Datos cruzando el universo de órdenes ingresadas
+    // 3. Consultar Base de Datos cruzando el universo de órdenes ingresadas
     $registrosPagos = DB::table('pagotecnico')->whereIn('Orden', $ordenes)->get();
     
-    // Obtenemos los movimientos vinculados por fkExpediente (usando los IDs de los registros de pago obtenidos)
+    // Si no encuentra registros, evitar crear un ZIP vacío que tire error
+    if ($registrosPagos->isEmpty()) {
+        return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la base de datos de pagotecnico.');
+    }
+
     $movimientos = DB::table('movimientomateriales')->whereIn('fkExpediente', $registrosPagos->pluck('id'))->get();
-    
-    // Obtenemos las imágenes ligadas a través de tu tabla de evidencias fotográficas
     $fotografias = DB::table('expedientefotograficotecnico')->whereIn('Orden', $ordenes)->get();
 
-    // Variables de control semántico para auditoría de notificaciones
-    $pagoTecnicoStatus = $registrosPagos->count() > 0 ? 'Pago Técnico OK' : 'Pago Técnico: No descargado';
+    $pagoTecnicoStatus = 'Pago Técnico OK';
     $movimientosStatus = $movimientos->count() > 0 ? 'Movimiento Materiales OK' : 'Movimiento Materiales: No descargado';
     $fotosContador = 0;
 
-    // 3. Crear el contenedor ZIP temporal en la raíz del sistema operativo (XAMPP / Linux)
+    // 4. Crear el contenedor ZIP temporal en el directorio temporal universal de XAMPP / Servidor
     $zipFileName = 'Extraccion_Masiva_GCS_' . date('Ymd_His') . '.zip';
     $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipFileName; 
 
@@ -138,19 +156,17 @@ public function extraccionMasiva(Request $request)
 
     if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
         
-        // --- COMPONENTE 1: Generación de reporte CSV de las Órdenes ---
-        if ($registrosPagos->count() > 0) {
-            $csvPagosHandle = fopen('php://memory', 'r+');
-            fputcsv($csvPagosHandle, ['id', 'Orden', 'SKU', 'Descripcion', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status']);
-            foreach ($registrosPagos as $p) {
-                fputcsv($csvPagosHandle, [$p->id, $p->Orden, $p->SKU, $p->Descripcion, $p->Cantidad, $p->COSTOPAGO, $p->Naturaleza, $p->Status]);
-            }
-            rewind($csvPagosHandle);
-            $zip->addFromString('reporte_ordenes.csv', stream_get_contents($csvPagosHandle));
-            fclose($csvPagosHandle);
+        // --- CSV de Órdenes ---
+        $csvPagosHandle = fopen('php://memory', 'r+');
+        fputcsv($csvPagosHandle, ['id', 'Orden', 'SKU', 'Descripcion', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status']);
+        foreach ($registrosPagos as $p) {
+            fputcsv($csvPagosHandle, [$p->id, $p->Orden, $p->SKU, $p->Descripcion, $p->Cantidad, $p->COSTOPAGO, $p->Naturaleza, $p->Status]);
         }
+        rewind($csvPagosHandle);
+        $zip->addFromString('reporte_ordenes.csv', stream_get_contents($csvPagosHandle));
+        fclose($csvPagosHandle);
 
-        // --- COMPONENTE 2: Generación de reporte CSV de Materiales ---
+        // --- CSV de Materiales ---
         if ($movimientos->count() > 0) {
             $csvMatHandle = fopen('php://memory', 'r+');
             fputcsv($csvMatHandle, ['id', 'serie', 'SKU', 'almacen', 'Lote', 'COSTO', 'TIPO', 'TIPOMOVIMIENTO', 'cantidad', 'fkExpediente']);
@@ -162,14 +178,13 @@ public function extraccionMasiva(Request $request)
             fclose($csvMatHandle);
         }
 
-        // --- COMPONENTE 3: Extracción e inyección binaria desde gcs_images ---
+        // --- Descarga e inyección desde Google Cloud Storage ---
         $nombreBucket = 'sistema-pv-imagenes-tienda';
 
         foreach ($fotografias as $foto) {
             $urlCompleta = $foto->fotografia;
             $pathBucket = $urlCompleta;
 
-            // Aplicamos tu algoritmo de limpieza para obtener la ruta relativa del archivo en Google
             if (str_contains($urlCompleta, $nombreBucket)) {
                 $posicionBucket = strpos($urlCompleta, $nombreBucket);
                 $pathBucket = substr($urlCompleta, $posicionBucket + strlen($nombreBucket));
@@ -178,12 +193,9 @@ public function extraccionMasiva(Request $request)
                 $pathBucket = ltrim(parse_url($urlCompleta, PHP_URL_PATH), '/');
             }
 
-            // Consumir el disco de Google utilizando tu configuración nativa
             if (Storage::disk('gcs_images')->exists($pathBucket)) {
                 $imageContent = Storage::disk('gcs_images')->get($pathBucket);
                 $nombreArchivoOriginal = pathinfo($pathBucket, PATHINFO_BASENAME);
-                
-                // Clasificación interna organizada en subcarpetas por número de Orden
                 $nombreArchivoInterno = "fotografias/Orden_{$foto->Orden}/" . $nombreArchivoOriginal;
                 
                 $zip->addFromString($nombreArchivoInterno, $imageContent);
@@ -193,16 +205,10 @@ public function extraccionMasiva(Request $request)
 
         $zip->close();
     } else {
-        return back()->with('error', 'No se pudo inicializar la librería ZipArchive en el entorno local.');
+        return back()->with('error', 'Error del sistema: No se pudo abrir el empaquetador ZipArchive temporal.');
     }
 
-    // 4. Verificación final de consistencia del empaquetado antes del envío
-    if (!file_exists($zipPath) || filesize($zipPath) <= 22) { 
-        @unlink($zipPath);
-        return back()->with('error', 'El proceso concluyó sin datos empaquetables. Confirme que las órdenes coincidan.');
-    }
-
-    // 5. Configurar los mensajes exactos solicitados para la bitácora Flash
+    // 5. Envío y notificación final
     $fotosStatus = $fotosContador > 0 ? "Fotografías OK ({$fotosContador} descargadas)" : "Fotografías: No descargado";
     
     session()->flash('notificacion_extraccion', [
@@ -211,7 +217,6 @@ public function extraccionMasiva(Request $request)
         'fotos' => $fotosStatus
     ]);
 
-    // Descarga fluida y depuración automática del archivo temporal en el servidor local
     return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
 }
         public function bucket($id)
