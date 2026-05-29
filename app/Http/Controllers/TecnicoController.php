@@ -93,151 +93,156 @@ class TecnicoController extends Controller
         return view('tecnico.index', compact('tecnicos'));
     }
 
-   public function extraccionMasiva(Request $request)
-    {
-        // 1. Validar la existencia del archivo cargado
-        if (!$request->hasFile('excel_ordenes')) {
-            return back()->with('error', 'No se recibió ningún archivo en el servidor.');
-        }
-
-        $file = $request->file('excel_ordenes');
-        $path = $file->getRealPath();
-        $ordenesRaw = [];
-        
-        try {
-            // 2. Cargar el lector de PhpSpreadsheet para abrir el archivo .xlsx nativo
-            $spreadsheet = IOFactory::load($path);
-            $worksheet = $spreadsheet->getActiveSheet();
-            $highestRow = $worksheet->getHighestRow();
-
-            // Recorrer las filas de la columna A (empezando en la fila 2 para ignorar la cabecera)
-            for ($row = 2; $row <= $highestRow; $row++) {
-                $valorCelda = $worksheet->getCell('A' . $row)->getValue();
-                $valorCelda = trim($valorCelda);
-
-                if ($valorCelda !== '' && !is_null($valorCelda)) {
-                    $ordenesRaw[] = $valorCelda;
-                }
-            }
-        } catch (\Exception $e) {
-            return back()->with('error', 'Error al leer el formato del archivo Excel: ' . $e->getMessage());
-        }
-
-        // Filtrar valores duplicados cargados en el Excel
-        $ordenes = array_unique($ordenesRaw);
-
-        if (empty($ordenes)) {
-            return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
-        }
-
-        // 3. Consultar Base de Datos mediante el Triple Cruce de Tablas
-        $registrosPagos = DB::table('pagotecnico')->whereIn('Orden', $ordenes)->get();
-        
-        if ($registrosPagos->isEmpty()) {
-            return back()->with('error', 'Las órdenes ingresadas en tu archivo no existen en la tabla pagotecnico.');
-        }
-
-        // Obtener los IDs autoincrementales desde la tabla puente 'expedientetecnico'
-        $idsExpedientes = DB::table('expedientetecnico')
-                            ->whereIn('Orden', $ordenes)
-                            ->pluck('id')
-                            ->toArray();
-
-        // Extraer los materiales usando los IDs rescatados del puente relacional
-        $movimientos = DB::table('movimientomateriales')
-                            ->whereIn('fkExpediente', $idsExpedientes)
-                            ->get();
-        
-        // Obtener las evidencias fotográficas ligadas a esas órdenes
-        $fotografias = DB::table('expedientefotograficotecnico')->whereIn('Orden', $ordenes)->get();
-
-        // Variables de control de estados para la notificación Flash
-        $pagoTecnicoStatus = 'Pago Técnico OK';
-        $movimientosStatus = $movimientos->count() > 0 ? 'Movimiento Materiales OK' : 'Movimiento Materiales: No descargado (Sin registros)';
-        $fotosContador = 0;
-
-        // 4. Crear el archivo ZIP temporal en el directorio universal del sistema operativo
-        $zipFileName = 'Extraccion_Masiva_GCS_' . date('Ymd_His') . '.zip';
-        $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipFileName; 
-
-        $zip = new ZipArchive;
-
-        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
-            
-            // --- ARCHIVO 1: CSV de Reporte Órdenes de Pago ---
-            $csvPagosHandle = fopen('php://memory', 'r+');
-            fputcsv($csvPagosHandle, ['id', 'Orden', 'SKU', 'Descripcion', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status']);
-            foreach ($registrosPagos as $p) {
-                fputcsv($csvPagosHandle, [$p->id, $p->Orden, $p->SKU, $p->Descripcion, $p->Cantidad, $p->COSTOPAGO, $p->Naturaleza, $p->Status]);
-            }
-            rewind($csvPagosHandle);
-            $zip->addFromString('reporte_ordenes.csv', stream_get_contents($csvPagosHandle));
-            fclose($csvPagosHandle);
-
-            // --- ARCHIVO 2: CSV de Reporte de Materiales ---
-            if ($movimientos->count() > 0) {
-                $csvMatHandle = fopen('php://memory', 'r+');
-                fputcsv($csvMatHandle, ['id', 'serie', 'SKU', 'almacen', 'Lote', 'COSTO', 'TIPO', 'TIPOMOVIMIENTO', 'cantidad', 'fkExpediente']);
-                foreach ($movimientos as $m) {
-                    fputcsv($csvMatHandle, [$m->id, $m->serie, $m->SKU, $m->almacen, $m->Lote, $m->COSTO, $m->TIPO, $m->TIPOMOVIMIENTO, $m->cantidad, $m->fkExpediente]);
-                }
-                rewind($csvMatHandle);
-                $zip->addFromString('reporte_movimientos.csv', stream_get_contents($csvMatHandle));
-                fclose($csvMatHandle);
-            }
-
-            // --- SECCIÓN 3: Descarga de Evidencias desde Google Cloud Storage (gcs_images) ---
-            $nombreBucket = 'sistema-pv-imagenes-tienda';
-
-            foreach ($fotografias as $foto) {
-                $urlCompleta = $foto->fotografia;
-                $pathBucket = $urlCompleta;
-
-                // Aplicar limpieza de la URL del Bucket
-                if (str_contains($urlCompleta, $nombreBucket)) {
-                    $posicionBucket = strpos($urlCompleta, $nombreBucket);
-                    $pathBucket = substr($urlCompleta, $posicionBucket + strlen($nombreBucket));
-                    $pathBucket = ltrim($pathBucket, '/');
-                } else {
-                    $pathBucket = ltrim(parse_url($urlCompleta, PHP_URL_PATH), '/');
-                }
-
-                // Consumir el disco de Google Cloud
-                if (Storage::disk('gcs_images')->exists($pathBucket)) {
-                    $imageContent = Storage::disk('gcs_images')->get($pathBucket);
-                    $nombreArchivoOriginal = pathinfo($pathBucket, PATHINFO_BASENAME);
-                    
-                    // Almacenar dentro del ZIP en subcarpetas clasificadas por número de Orden
-                    $nombreArchivoInterno = "fotografias/Orden_{$foto->Orden}/" . $nombreArchivoOriginal;
-                    
-                    $zip->addFromString($nombreArchivoInterno, $imageContent);
-                    $fotosContador++;
-                }
-            }
-
-            $zip->close();
-        } else {
-            return back()->with('error', 'Error del sistema: No se pudo inicializar la librería de compresión ZipArchive.');
-        }
-
-        // 5. Validación final del peso y existencia del archivo armado
-        if (!file_exists($zipPath) || filesize($zipPath) <= 22) { 
-            @unlink($zipPath);
-            return back()->with('error', 'El proceso concluyó sin datos empaquetables. Comprueba la información.');
-        }
-
-        // Configurar los mensajes exactos para la notificación flash
-        $fotosStatus = $fotosContador > 0 ? "Fotografías OK ({$fotosContador} descargadas)" : "Fotografías: No descargado";
-        
-        session()->flash('notificacion_extraccion', [
-            'pago' => $pagoTecnicoStatus,
-            'materiales' => $movimientosStatus,
-            'fotos' => $fotosStatus
-        ]);
-
-        // Descarga el archivo y lo elimina del directorio temporal automáticamente
-        return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+public function extraccionMasiva(Request $request)
+{
+    // 1. Validar la existencia del archivo cargado
+    if (!$request->hasFile('excel_ordenes')) {
+        return back()->with('error', 'No se recibió ningún archivo en el servidor.');
     }
+
+    $file = $request->file('excel_ordenes');
+    $path = $file->getRealPath();
+    $ordenesRaw = [];
+    
+    try {
+        // 2. Cargar el lector de PhpSpreadsheet para abrir el archivo .xlsx nativo
+        $spreadsheet = IOFactory::load($path);
+        $worksheet = $spreadsheet->getActiveSheet();
+        $highestRow = $worksheet->getHighestRow();
+
+        // Recorrer TODAS las filas de la columna A (desde la fila 2 hasta la última)
+        for ($row = 2; $row <= $highestRow; $row++) {
+            // getCalculatedValue garantiza leer el valor real aunque la celda tenga formato numérico o de texto
+            $valorCelda = $worksheet->getCell('A' . $row)->getCalculatedValue();
+            
+            // Limpieza absoluta de espacios en blanco normales e invisibles (caracteres no-rompibles)
+            $valorCelda = trim(preg_replace('/[\s\x{00a0}]+/u', ' ', $valorCelda));
+
+            if ($valorCelda !== '' && !is_null($valorCelda)) {
+                $ordenesRaw[] = (string)$valorCelda; // Forzar a tipo String para evitar fallos en base de datos
+            }
+        }
+    } catch (\Exception $e) {
+        return back()->with('error', 'Error al leer el formato del archivo Excel: ' . $e->getMessage());
+    }
+
+    // Quitar duplicados y limpiar el índice del arreglo
+    $ordenes = array_values(array_unique($ordenesRaw));
+
+    if (empty($ordenes)) {
+        return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
+    }
+
+    // 3. Consultar Base de Datos mediante el Triple Cruce de Tablas usando la lista completa
+    $registrosPagos = DB::table('pagotecnico')->whereIn('Orden', $ordenes)->get();
+    
+    if ($registrosPagos->isEmpty()) {
+        return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la tabla pagotecnico.');
+    }
+
+    // Volver a mapear las órdenes que sí se encontraron para amarrar los expedientes y fotos
+    $ordenesEncontradas = $registrosPagos->pluck('Orden')->unique()->toArray();
+
+    // Obtener los IDs de la tabla puente 'expedientetecnico' usando las órdenes validadas
+    $idsExpedientes = DB::table('expedientetecnico')
+                        ->whereIn('Orden', $ordenesEncontradas)
+                        ->pluck('id')
+                        ->toArray();
+
+    // Extraer TODOS los materiales vinculados a este lote de expedientes
+    $movimientos = DB::table('movimientomateriales')
+                        ->whereIn('fkExpediente', $idsExpedientes)
+                        ->get();
+    
+    // Obtener TODAS las evidencias fotográficas del grupo de órdenes
+    $fotografias = DB::table('expedientefotograficotecnico')->whereIn('Orden', $ordenesEncontradas)->get();
+
+    // Variables de control de estados para la notificación Flash
+    $pagoTecnicoStatus = 'Pago Técnico OK';
+    $movimientosStatus = $movimientos->count() > 0 ? 'Movimiento Materiales OK' : 'Movimiento Materiales: No descargado (Sin registros)';
+    $fotosContador = 0;
+
+    // 4. Crear el archivo ZIP temporal
+    $zipFileName = 'Extraccion_Masiva_GCS_' . date('Ymd_His') . '.zip';
+    $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipFileName; 
+
+    $zip = new ZipArchive;
+
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
+        
+        // --- ARCHIVO 1: CSV de Reporte Órdenes de Pago ---
+        $csvPagosHandle = fopen('php://memory', 'r+');
+        fputcsv($csvPagosHandle, ['id', 'Orden', 'SKU', 'Descripcion', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status']);
+        foreach ($registrosPagos as $p) {
+            fputcsv($csvPagosHandle, [$p->id, $p->Orden, $p->SKU, $p->Descripcion, $p->Cantidad, $p->COSTOPAGO, $p->Naturaleza, $p->Status]);
+        }
+        rewind($csvPagosHandle);
+        $zip->addFromString('reporte_ordenes.csv', stream_get_contents($csvPagosHandle));
+        fclose($csvPagosHandle);
+
+        // --- ARCHIVO 2: CSV de Reporte de Materiales ---
+        if ($movimientos->count() > 0) {
+            $csvMatHandle = fopen('php://memory', 'r+');
+            fputcsv($csvMatHandle, ['id', 'serie', 'SKU', 'almacen', 'Lote', 'COSTO', 'TIPO', 'TIPOMOVIMIENTO', 'cantidad', 'fkExpediente']);
+            foreach ($movimientos as $m) {
+                fputcsv($csvMatHandle, [$m->id, $m->serie, $m->SKU, $m->almacen, $m->Lote, $m->COSTO, $m->TIPO, $m->TIPOMOVIMIENTO, $m->cantidad, $m->fkExpediente]);
+            }
+            rewind($csvMatHandle);
+            $zip->addFromString('reporte_movimientos.csv', stream_get_contents($csvMatHandle));
+            fclose($csvMatHandle);
+        }
+
+        // --- SECCIÓN 3: Descarga de Evidencias desde Google Cloud Storage (gcs_images) ---
+        $nombreBucket = 'sistema-pv-imagenes-tienda';
+
+        foreach ($fotografias as $foto) {
+            $urlCompleta = $foto->fotografia;
+            $pathBucket = $urlCompleta;
+
+            if (str_contains($urlCompleta, $nombreBucket)) {
+                $posicionBucket = strpos($urlCompleta, $nombreBucket);
+                $pathBucket = substr($urlCompleta, $posicionBucket + strlen($nombreBucket));
+                $pathBucket = ltrim($pathBucket, '/');
+            } else {
+                $pathBucket = ltrim(parse_url($urlCompleta, PHP_URL_PATH), '/');
+            }
+
+            if (Storage::disk('gcs_images')->exists($pathBucket)) {
+                $imageContent = Storage::disk('gcs_images')->get($pathBucket);
+                $nombreArchivoOriginal = pathinfo($pathBucket, PATHINFO_BASENAME);
+                
+                // Clasificación interna organizada en subcarpetas por número de Orden
+                $nombreArchivoInterno = "fotografias/Orden_{$foto->Orden}/" . $nombreArchivoOriginal;
+                
+                $zip->addFromString($nombreArchivoInterno, $imageContent);
+                $fotosContador++;
+            }
+        }
+
+        $zip->close();
+    } else {
+        return back()->with('error', 'Error del sistema: No se pudo inicializar la librería de compresión ZipArchive.');
+    }
+
+    if (!file_exists($zipPath) || filesize($zipPath) <= 22) { 
+        @unlink($zipPath);
+        return back()->with('error', 'El archivo final se generó vacío.');
+    }
+
+    $fotosStatus = $fotosContador > 0 ? "Fotografías OK ({$fotosContador} descargadas)" : "Fotografías: No descargado";
+    
+    session()->flash('notificacion_extraccion', [
+        'pago' => $pagoTecnicoStatus,
+        'materiales' => $movimientosStatus,
+        'fotos' => $fotosStatus
+    ]);
+
+    return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+}
+
+
+
+
         public function bucket($id)
     {
         DB::connection()->disableQueryLog();
