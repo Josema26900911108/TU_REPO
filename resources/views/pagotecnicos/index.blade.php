@@ -147,7 +147,10 @@
             <i class="fas fa-file-archive me-1.5"></i> Exportar Fotos (ZIP)
         </button>
         <button type="button" class="btn btn-dark btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalExtraccionMasiva">
-            <i class="fas fa-file-archive me-1.5"></i> Extracción Masiva por Excel
+            <i class="fas fa-file-archive me-1.5"></i> Exportar Expedientes Masivos (ZIP)
+        </button>
+                <button type="button" class="btn btn-dark btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalMemoriaFotografica">
+            <i class="fas fa-file-archive me-1.5"></i> Memoria Fotográfica (ZIP)
         </button>
     </div>
 
@@ -182,6 +185,36 @@
     </div>
 </div>
 
+<div class="modal fade" id="modalMemoriaFotografica" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold text-dark fs-14">
+                    <i class="fas fa-boxes text-dark me-2"></i> Memoria Fotográfica
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ route('pagotecnico.memoria-fotografica') }}" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body p-4 fs-13">
+                    <div class="alert alert-info border-0 shadow-sm mb-3 fs-12">
+                        <i class="fas fa-info-circle me-1"></i> Suba un archivo Excel que contenga una columna llamada <b>"orden"</b> o <b>"Orden"</b> con el listado que desea procesar.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-dark">Seleccionar Excel de Órdenes (.csv)</label>
+                        <input type="file" name="excel_ordenes" class="form-control form-control-sm" accept=".csv" required>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0 py-2">
+                    <button type="button" class="btn btn-light btn-sm border" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-dark btn-sm px-3">
+                        <i class="fas fa-cog fa-spin me-1 d-none" id="loader-zip"></i> Procesar y Descargar ZIP
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
     <!-- ========================================== -->
     <!-- TARJETA DE BALANCE ALGEBRAICO TOTAL -->
     <!-- ========================================== -->

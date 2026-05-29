@@ -928,6 +928,9 @@ function agregarItem() {
     let idItem = $('#itemmanoobraamterial').val();
     let optionText = $('#itemmanoobraamterial option:selected').text();
     let optionSelected = $('#itemmanoobraamterial option:selected');
+
+    
+
     
     if (idItem == '' || optionText == '') return;
 
@@ -939,6 +942,7 @@ function agregarItem() {
     let cantidad = $('#cantidad').val();
     let ordenActual = "{{ $orden->Orden }}"; 
     let tipoOrden = "{{ $orden->Tipo_servicio }}";  
+    let optionSelectedtec = $('#itemtecnologia').val();
 
     if (idItem != '' && nameProducto != undefined && cantidad != '' ) {
         if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
@@ -966,6 +970,7 @@ function agregarItem() {
             // 1. CREAMOS EL OBJETO VIRTUAL SIN LAS FOTOS PARA QUE EL AJAX SEA ULTRA LIGERO (VIAJA EN MILISEGUNDOS)
             let nuevoItemVirtual = {
                 index: cont, 
+                idTecnologia: optionSelectedtec,
                 idItem: idItem,
                 nameProducto: nameProducto,
                 cantidad: parseFloat(cantidad),
@@ -1016,6 +1021,7 @@ function agregarItem() {
                         '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
                         '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
                         '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
+                        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + optionSelectedtec + '">' + optionSelectedtec + '</td>' +
                         '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
                         '</tr>';
 

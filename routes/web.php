@@ -411,6 +411,9 @@ Route::get('/pagotecnico/exportar', [PagotecnicoController::class, 'exportarExce
 Route::post('/extraccion-masiva', [TecnicoController::class, 'extraccionMasiva'])
     ->name('pagotecnico.extraccion-masiva');
 
+Route::post('/memoria-fotografica', [TecnicoController::class, 'generarMemoriaFotografica'])
+    ->name('pagotecnico.memoria-fotografica');    
+
 
 Route::get('/documentosap/lista',[documentosapController::class,'index'])->name('documentosap.lista');
 

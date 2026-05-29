@@ -145,6 +145,215 @@ public function movimiento(Request $request)
         return redirect()->back()->with('error', 'Error al registrar el movimiento.');
     }
 }
+public function generarMemoriaFotografica(Request $request)
+{
+    if (!$request->hasFile('excel_ordenes')) {
+        return back()->with('error', 'No se recibió ningún archivo de órdenes.');
+    }
+
+    $file = $request->file('excel_ordenes');
+    $path = $file->getRealPath();
+    $ordenesRaw = [];
+    
+    try {
+        $spreadsheetLoad = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+        $worksheetLoad = $spreadsheetLoad->getActiveSheet();
+        $highestRow = $worksheetLoad->getHighestRow();
+
+        for ($row = 2; $row <= $highestRow; $row++) {
+            $valorCelda = $worksheetLoad->getCell('A' . $row)->getCalculatedValue();
+            $valorCelda = trim(preg_replace('/[\s\x{00a0}]+/u', ' ', $valorCelda));
+            if ($valorCelda !== '' && !is_null($valorCelda)) {
+                $ordenesRaw[] = (string)$valorCelda;
+            }
+        }
+    } catch (\Exception $e) {
+        return back()->with('error', 'Error al leer el archivo de órdenes: ' . $e->getMessage());
+    }
+
+    $ordenes = array_values(array_unique($ordenesRaw));
+    if (empty($ordenes)) {
+        return back()->with('error', 'El archivo no contiene órdenes legibles.');
+    }
+
+    // Palabras reservadas solicitadas
+    $palabrasClave = ['antena', 'conectividad', 'mastil', 'switch', 'poste antes', 'poste despues', 'anillo postes'];
+
+    // Consultar el universo fotográfico cruzando con el árbol de tecnología
+    $fotografiasUniverso = DB::table('expedientefotograficotecnico as ef')
+        ->leftJoin('arbolmanoobra as am', 'ef.fkTecnologia', '=', 'am.id')
+        ->whereIn('ef.Orden', $ordenes)
+        ->select(['ef.*', 'am.nombre as nombre_tecnologia'])
+        ->get();
+
+    if ($fotografiasUniverso->isEmpty()) {
+        return back()->with('error', 'No se encontraron evidencias fotográficas para las órdenes suministradas.');
+    }
+
+    $fotosPorTecnologia = $fotografiasUniverso->groupBy('nombre_tecnologia');
+
+    $zipFileName = 'Memorias_Fotograficas_' . date('Ymd_His') . '.zip';
+    $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipFileName;
+    $zip = new ZipArchive;
+    $imagenesTemporalesABorrar = [];
+
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        return back()->with('error', 'No se pudo inicializar el empaquetador ZIP.');
+    }
+        $nombreBucket = 'sistema-pv-imagenes-tienda';
+
+    foreach ($fotosPorTecnologia as $tecnologiaNombre => $fotosTecnologia) {
+        
+        $techClean = empty($tecnologiaNombre) ? 'OTRAS_TECNOLOGIAS' : str_replace(['/', '\\', '?', '*', ':', '[', ']'], '_', $tecnologiaNombre);
+        $spreadsheet = new Spreadsheet();
+        $sheetIndex = 0;
+
+        foreach ($palabrasClave as $palabra) {
+            
+            // Filtrar las fotos por coincidencia con la palabra clave
+            $fotosFiltradas = $fotosTecnologia->filter(function ($f) use ($palabra) {
+                return str_contains(strtolower($f->fotografia), strtolower($palabra));
+            });
+
+            if ($fotosFiltradas->isEmpty()) {
+                continue;
+            }
+
+            if ($sheetIndex === 0) {
+                $sheet = $spreadsheet->getActiveSheet();
+            } else {
+                $sheet = $spreadsheet->createSheet();
+            }
+
+            $tituloPestana = substr(ucwords($palabra) . ' ' . strtoupper($techClean), 0, 31);
+            $sheet->setTitle($tituloPestana);
+
+            // --- DISEÑO DE ENCABEZADOS SUPERIORES ---
+            $sheet->mergeCells('B2:I2');
+            $sheet->setCellValue('B2', 'MEMORIA FOTOGRAFICA');
+            $sheet->getStyle('B2')->getFont()->setBold(true)->setSize(14);
+            $sheet->getStyle('B2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+            $sheet->mergeCells('B3:I3');
+            $sheet->setCellValue('B3', strtoupper($palabra) . ' - SERVICIOS ' . strtoupper($techClean));
+            $sheet->getStyle('B3')->getFont()->setBold(true)->setSize(11);
+            $sheet->getStyle('B3')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+            $sheet->setCellValue('B5', 'DATOS DE LA OBRA:');
+            $sheet->getStyle('B5')->getFont()->setBold(true)->setSize(10);
+            $sheet->getStyle('B5')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('000000');
+            $sheet->getStyle('B5')->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_WHITE));
+
+            $sheet->setCellValue('B6', 'DIVISION:');      $sheet->setCellValue('C6', strtoupper($techClean));
+            $sheet->setCellValue('B7', 'NOMBRE DEL COORDINADOR:'); $sheet->setCellValue('C7', 'Carlos Oliva');
+            $sheet->setCellValue('B8', 'NOMBRE DEL CONTRATISTA:'); $sheet->setCellValue('C8', 'SIC');
+            
+            $sheet->setCellValue('E6', 'AREA:');          $sheet->setCellValue('F6', 'OCCIDENTE');
+            $sheet->setCellValue('E7', 'FECHA INICIO:');   $sheet->setCellValue('F7', '01/05/2026');
+            $sheet->setCellValue('E8', 'FECHA TERMINACION:'); $sheet->setCellValue('F8', '31/05/2026');
+            
+            $sheet->getStyle('B6:B8')->getFont()->setBold(true);
+            $sheet->getStyle('E6:E8')->getFont()->setBold(true);
+            $sheet->getStyle('B6:I8')->getBorders()->getOutline()->setBorderStyle(Border::BORDER_THIN);
+            // --- DISTRIBUCIÓN DE IMÁGENES EN 3 COLUMNAS ---
+            $columnaLetras = ['B', 'E', 'H']; 
+            $fotoIndex = 0;
+            $filaBaseFotos = 11; 
+
+            foreach ($fotosFiltradas as $fotoItem) {
+                
+                $subColIndex = $fotoIndex % 3;
+                $lineaMultiplo = floor($fotoIndex / 3);
+                
+                $filaImagenInicio = $filaBaseFotos + ($lineaMultiplo * 16);
+                $filaImagenFin    = $filaImagenInicio + 11;
+                $filaOrdenTexto   = $filaImagenFin + 1;
+
+                $colLetra = $columnaLetras[$subColIndex];
+                $colSiguiente = $subColIndex == 0 ? 'C' : ($subColIndex == 1 ? 'F' : 'I');
+
+                $urlCompleta = $fotoItem->fotografia;
+                $pathBucket = $urlCompleta;
+
+                if (str_contains($urlCompleta, $nombreBucket)) {
+                    $posicionBucket = strpos($urlCompleta, $nombreBucket);
+                    $pathBucket = substr($urlCompleta, $posicionBucket + strlen($nombreBucket));
+                    $pathBucket = ltrim($pathBucket, '/');
+                } else {
+                    $pathBucket = ltrim(parse_url($urlCompleta, PHP_URL_PATH), '/');
+                }
+
+                if (Storage::disk('gcs_images')->exists($pathBucket)) {
+                    
+                    $imageBinary = Storage::disk('gcs_images')->get($pathBucket);
+                    $tempImageName = 'temp_img_' . uniqid() . '.jpg';
+                    $tempImagePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $tempImageName;
+                    
+                    file_put_contents($tempImagePath, $imageBinary);
+
+                    $drawing = new Drawing();
+                    $drawing->setName('Evidencia_' . $fotoItem->Orden);
+                    $drawing->setPath($tempImagePath);
+                    $drawing->setHeight(190); // Alto fijo para mantener el recuadro simétrico
+                    $drawing->setCoordinates($colLetra . $filaImagenInicio);
+                    $drawing->setOffsetX(10);
+                    $drawing->setOffsetY(5);
+                    $drawing->setWorksheet($sheet);
+
+                    $imagenesTemporalesABorrar[] = $tempImagePath;
+                }
+
+                // Dibujar marco e información de la Orden técnica
+                $sheet->getStyle("{$colLetra}{$filaImagenInicio}:{$colSiguiente}{$filaImagenFin}")
+                      ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+
+                $sheet->setCellValue($colLetra . $filaOrdenTexto, 'ORDEN');
+                $sheet->getStyle($colLetra . $filaOrdenTexto)->getFont()->setBold(true);
+                
+                $sheet->setCellValue($colSiguiente . $filaOrdenTexto, $fotoItem->Orden);
+                $sheet->getStyle($colSiguiente . $filaOrdenTexto)->getFont()->setFontFamily('Courier New');
+                $sheet->getStyle("{$colLetra}{$filaOrdenTexto}:{$colSiguiente}{$filaOrdenTexto}")
+                      ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+
+                $fotoIndex++;
+            }
+
+            // Ancho simétrico de columnas
+            $sheet->getColumnDimension('B')->setWidth(16); $sheet->getColumnDimension('C')->setWidth(16);
+            $sheet->getColumnDimension('E')->setWidth(16); $sheet->getColumnDimension('F')->setWidth(16);
+            $sheet->getColumnDimension('H')->setWidth(16); $sheet->getColumnDimension('I')->setWidth(16);
+            
+            $sheetIndex++;
+        }
+
+        // Si el libro acumuló evidencias válidas, se integra a la raíz del ZIP
+        if ($sheetIndex > 0) {
+            $writer = new Xlsx($spreadsheet);
+            $excelPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Memoria_Fotografica_' . $techClean . '.xlsx';
+            $writer->save($excelPath);
+            $zip->addFile($excelPath, 'Memoria_Fotografica_' . $techClean . '.xlsx');
+        }
+    }
+    $zip->close();
+
+    // Eliminar del almacenamiento local los archivos temporales utilizados para dibujar en las celdas
+    if (!empty($imagenesTemporalesABorrar)) {
+        foreach ($imagenesTemporalesABorrar as $p) {
+            if (file_exists($p)) { 
+                @unlink($p); 
+            }
+        }
+    }
+
+    if (!file_exists($zipPath) || filesize($zipPath) <= 22) {
+        @unlink($zipPath);
+        return back()->with('error', 'No se generaron memorias fotográficas. Ninguna imagen cumplió las condiciones.');
+    }
+
+    // Iniciar transmisión del ZIP y destruirlo tras completarse la descarga
+    return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+}
+
 
 public function exportarFotosZip(Request $request)
 {
