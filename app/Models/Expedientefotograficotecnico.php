@@ -18,7 +18,7 @@ class Expedientefotograficotecnico extends Model
     public $incrementing = true; // Si es autoincremental
 
 
-    protected $fillable = ['id','fkTienda','Orden','fotografia','created_at','updated_at'];
+    protected $fillable = ['id','fkTienda','Orden','fotografia','created_at','updated_at', 'fkTecnologia'];
 
     public $timestamps = true;
 
