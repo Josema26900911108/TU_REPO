@@ -23,7 +23,7 @@ public function treematerialcategoria()
     protected $fillable = ['id','serie','SKU','almacen',
     'Lote','MAC1','MAC2','MAC3','ESTATUS','COSTO','CENTRO','Modificado_el',
     'Modificado_por','Creado_el','Creado_por','TIPO','unidadmedida','TIPOMOVIMIENTO',
-    'fkTienda','created_at','updated_at','cantidad','fkExpediente','fkTecnico','Naturaleza','Status']; // Agrega aquí todos los campos que deseas que sean "fillables"
+    'fkTienda','created_at','updated_at','cantidad','fkExpediente','fkTecnico','Naturaleza','Status', 'fkTecnologiaarbol']; // Agrega aquí todos los campos que deseas que sean "fillables"
 
     public $timestamps = true;
 

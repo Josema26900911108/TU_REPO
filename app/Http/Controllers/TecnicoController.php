@@ -1265,18 +1265,24 @@ $lockKey = 'tecnico_create' . auth()->id();
         $param = $request->input('parametros');
 
 
-            $materiales = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sku', '=', 'movimientomateriales.SKU')
-            ->join('expedientetecnico as et', 'et.id', '=', 'movimientomateriales.fkExpediente')
-            ->where('et.id', $param)
-            ->select(
-                'movimientomateriales.*',  
-                'movimientomateriales.id',  
-                'movimientomateriales.serie',
-                'tmc.nombre as Descripcion',
-                'tmc.sku as sku',
-                DB::raw('IFNULL(movimientomateriales.cantidad, 1) as cantidad')
-            )
+$materiales = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sku', '=', 'movimientomateriales.SKU')
+    ->join('expedientetecnico as et', 'et.id', '=', 'movimientomateriales.fkExpediente')
+    ->where('et.id', $param)
+    ->select([
+        'movimientomateriales.serie',
+        'tmc.nombre as Descripcion',
+        'tmc.sku as sku',
+        'movimientomateriales.id as id',  
+        
+        // RESTRUCTURACIÓN: Cambiamos el nombre del alias para romper la confusión de objetos
+        DB::raw("COALESCE(NULLIF(movimientomateriales.fkTecnologiaarbol, ''), 0) AS fkTecnologiaarbol"),
+        
+        DB::raw("IFNULL(movimientomateriales.cantidad, 1) as cantidad")
+    ])
     ->get();
+
+
+    
     return response()->json($materiales);
             } catch (Exception $e) {
             dd($e);
@@ -1667,7 +1673,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
         $nombresInput    = $request->input('arraynameProducto', []);
         $id_tecnico      = $request->input('id_tecnico');
         $eliminadosInput = $request->input('arrayEliminados', []); 
-        $iditemsTecnologia = $request->input('arrayiditemtecnologia', []);
+        $iditemsTecnologia = $request->input('arrayidTecnologia', []);
         $fkTienda      = session('user_fkTienda') ?? $expediente->fkTienda;
         $nombreUsuario = session('nombreUsuario') ?? Auth::user()->name ?? 'SISTEMA';
         $ahora         = now();
@@ -1751,6 +1757,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     'SKU'            => $skuActual,
                     'TIPO'           => 'MO',
                     'serie'          => $serie,
+                    'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                 ]);
 
                 if (!$manoObra->exists) {
@@ -1767,7 +1774,6 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     'ESTATUS'        => 'INSTALADO',
                     'almacen'        => 'INSTALACION',
                     'TIPOMOVIMIENTO' => 'INSTALADO',
-                    'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                     'Naturaleza'     => 'H',
                     'Status'         => 'S', 
                     'Lote'           => 'A000',
@@ -1840,6 +1846,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     'SKU'            => $skuActual,
                     'TIPO'           => 'MO',
                     'serie'          => $serie,
+                    'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                     'TIPOMOVIMIENTO' => 'INSTALADO',
                 ]);
 
@@ -1863,7 +1870,6 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     'Naturaleza'     => 'H',
                     'Status'         => 'S', 
                     'Lote'           => 'A000',
-                    'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                     'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-', 'COSTO' => ($costoUnidad->TIPO === 'MANO DE OBRA') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
 
                     'unidadmedida'   => 'UNIDAD',
@@ -1960,6 +1966,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                             'serie'    => $serie,
                             'SKU'      => $skuActual,
                             'fkTienda' => $fkTienda,
+                            'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                         ],
                         [
                             'almacen'         => 'CLIENTE_FINAL',
@@ -1971,7 +1978,6 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                             'Naturaleza'      => 'H',
                             'CENTRO'          => $centroTecnico,
                             'cantidad'        => $cantidadAExtraer,
-                            'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                             'unidadmedida'    => $costoUnidad->unidadmedida ?? 'UNIDAD',
                             'TIPOMOVIMIENTO'  => 'CONSUMO_INSTALACION',
                             'Modificado_el'   => $ahora->format('Y-m-d'),

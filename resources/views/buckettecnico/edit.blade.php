@@ -678,9 +678,9 @@ $('#btnOk').click(function() {
 });
 
 function prepareForm(estatus, MSJ) {
-    // CORRECCIÓN SANITARIA: Borra cualquier input oculto de items generado previamente
     document.getElementById('estatus_input').value = estatus;
 
+    // 1. Limpieza inicial obligatoria de inputs previos
     $("input[name^='items[']").remove();
 
     allItems.forEach((item, idx) => {
@@ -696,7 +696,7 @@ function prepareForm(estatus, MSJ) {
             value: item.cantidad
         }).appendTo('#formulario');
 
-        // Fotos Base64
+        // Fotos en Base64
         item.photos.forEach((photo, pidx) => {
             $('<input>').attr({
                 type: 'hidden',
@@ -705,11 +705,21 @@ function prepareForm(estatus, MSJ) {
             }).appendTo('#formulario');
         });
 
+        // =================================================================
+        // SANITIZACIÓN SEMÁNTICA DE NOMBRES EN MAYÚSCULAS (MÓDULO AUDITORÍA)
+        // =================================================================
         item.photos.forEach((photo, pidx) => {
+            // 1. Forzar a cadenas de texto en MAYÚSCULAS limpias
+            let nombreLimpio = photo.name ? photo.name.toUpperCase().trim() : 'EVIDENCIA_FOTO';
+            
+            // 2. Normalización opcional: Si la foto contiene un espacio o guion, asegura la legibilidad para SQL
+            nombreLimpio = nombreLimpio.replace(/[\s\u00A0]+/g, ' ');
+
+
             $('<input>').attr({
                 type: 'hidden',
                 name: `items[${idx}][names][${pidx}]`,
-                value: photo.name
+                value: nombreLimpio // Inyecta el nombre estandarizado (Ej: "ANTENA DTH.JPG")
             }).appendTo('#formulario');
         });
     });
@@ -736,13 +746,9 @@ function prepareForm(estatus, MSJ) {
         "¿Confirmar cierre de trabajo?" :
         "¿Confirmar actualización de trabajo?";        
 
-    let icono = MSJ === 'S' ?
-        'success' : 'warning';
+    let icono = MSJ === 'S' ? 'success' : 'warning';
+    let textoboton = MSJ === 'S' ? 'Sí, guardar y cerrar' : 'Sí, actualizar y seguir editando';
         
-    let textoboton = MSJ === 'S' ?
-        'Sí, guardar y cerrar' : 'Sí, actualizar y seguir editando';
-        
-    // Cuadro de confirmación nativo
     Swal.fire({
         title: titulo,
         text: mensaje,
@@ -755,7 +761,6 @@ function prepareForm(estatus, MSJ) {
         allowOutsideClick: false 
     }).then((result) => {
         if (result.isConfirmed) {
-            // Mostramos pantalla de carga
             Swal.fire({
                 title: 'Procesando...',
                 text: 'Actualizando inventario y guardando orden.',
@@ -765,9 +770,6 @@ function prepareForm(estatus, MSJ) {
                 }
             });
             
-            // =================================================================
-            // NUEVA INTERCEPCIÓN AJAX PARA CAPTURAR EL ERROR EN EL ALERT
-            // =================================================================
             const formulario = document.getElementById('formulario');
             const formData = new FormData(formulario);
 
@@ -775,34 +777,29 @@ function prepareForm(estatus, MSJ) {
                 method: 'POST',
                 body: formData,
                 headers: {
-                    'X-Requested-With': 'XMLHttpRequest' // Indica a Laravel que es una petición AJAX
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
             })
             .then(async response => {
                 const data = await response.json();
-                
                 if (!response.ok) {
-                    // Si el servidor responde con error (ej: 500 de tu DB::rollBack)
                     throw new Error(data.message || 'Error desconocido en el servidor.');
                 }
                 return data;
             })
             .then(data => {
-                // Alerta de Éxito cuando el controlador hace DB::commit()
                 Swal.fire({
                     title: '¡Completado!',
                     text: data.message || 'La operación se realizó con éxito.',
                     icon: 'success'
                 }).then(() => {
-                    // Redirecciona al listado o refresca la página
                     window.location.href = "{{ route('tecnico.buckettecnico') }}";
                 });
             })
             .catch(error => {
-                // MUESTRA EL ERROR EXACTO DEL CONTROLADOR EN EL ALERT
                 Swal.fire({
                     title: 'Error en el proceso',
-                    text: error.message, // Mensaje dinámico devuelto por Laravel ($e->getMessage())
+                    text: error.message,
                     icon: 'error',
                     confirmButtonColor: '#dc3545'
                 });
@@ -910,6 +907,7 @@ function llenaritems() {
                     '<td><input type="hidden" name="arraynameProducto[]" value="' + material.Descripcion + '">' + material.Descripcion + '</td>' +
                     '<td><input type="hidden" name="arraysku[]" value="' + material.sku + '">' + material.sku + '</td>' +
                     '<td><input type="hidden" name="arrayserie[]" value="' + material.serie + '">' + material.serie + '</td>' +
+                    '<td><input type="hidden" name="arrayidTecnologia[]" value="' + material.fkTecnologiaarbol + '">' + material.fkTecnologiaarbol + '</td>' +
                     '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
                     '</tr>';
                 
@@ -946,7 +944,7 @@ function agregarItem() {
     let cantidad = $('#cantidad').val();
     let ordenActual = "{{ $orden->Orden }}"; 
     let tipoOrden = "{{ $orden->Tipo_servicio }}";  
-    let optionSelectedtec = $('#itemtecnologia').val();
+    let idTecnologia = $('#itemtecnologia').val();
 
     if (idItem != '' && nameProducto != undefined && cantidad != '' ) {
         if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
@@ -962,6 +960,7 @@ function agregarItem() {
             let allItemsSinFotos = allItems.map(item => {
                 return {
                     index: item.index,
+                    idTecnologia: idTecnologia,
                     idItem: item.idItem,
                     nameProducto: item.nameProducto,
                     cantidad: item.cantidad,
@@ -974,7 +973,7 @@ function agregarItem() {
             // 1. CREAMOS EL OBJETO VIRTUAL SIN LAS FOTOS PARA QUE EL AJAX SEA ULTRA LIGERO (VIAJA EN MILISEGUNDOS)
             let nuevoItemVirtual = {
                 index: cont, 
-                idTecnologia: optionSelectedtec,
+                idTecnologia: idTecnologia,
                 idItem: idItem,
                 nameProducto: nameProducto,
                 cantidad: parseFloat(cantidad),
@@ -1025,7 +1024,7 @@ function agregarItem() {
                         '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
                         '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
                         '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
-                        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + optionSelectedtec + '">' + optionSelectedtec + '</td>' +
+                        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + idTecnologia + '">' + idTecnologia + '</td>' +
                         '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
                         '</tr>';
 
@@ -1110,7 +1109,8 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
         nameserie,
         photos: [...photosForItem]
     };
-
+    
+    let optionSelectedtec = $('#itemtecnologia').val();
     allItems.push(item); // Sincroniza el listado en memoria
 
     let fila = '<tr id="fila' + cont + '">' +
@@ -1119,6 +1119,7 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
         '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
         '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
         '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
+        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + optionSelectedtec + '">' + optionSelectedtec + '</td>' +
         '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
         '</tr>';
 
