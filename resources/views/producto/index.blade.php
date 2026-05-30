@@ -231,4 +231,40 @@
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@latest" type="text/javascript"></script>
 <script src="{{ asset('js/datatables-simple-demo.js') }}"></script>
+<script>
+document.getElementById('img_path_file').addEventListener('change', function(e) {
+    const file = e.target.files[0]; // Corrección aquí: leer el primer archivo [0]
+    if (!file) {
+        document.getElementById('img_path').value = ""; // Si lo quitan, queda vacío
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = function(event) {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = function() {
+            const maxWidth = 1200;
+            const scale = maxWidth / img.width;
+            const canvas = document.createElement('canvas');
+            
+            if (img.width > maxWidth) {
+                canvas.width = maxWidth;
+                canvas.height = img.height * scale;
+            } else {
+                canvas.width = img.width;
+                canvas.height = img.height;
+            }
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            document.getElementById('img_path').value = compressedDataUrl;
+        }
+    }
+});
+</script>
+
 @endpush

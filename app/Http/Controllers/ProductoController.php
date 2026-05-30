@@ -178,11 +178,14 @@ public function store(StoreProductoRequest $request)
         $name = null; // En store, por defecto la imagen empieza en null o vacío
 
         // 2. Manejar la carga de la imagen de forma segura
-        if ($request->hasFile('img_path')) {
-            // Nota: En 'store' el producto es nuevo, no tiene 'imagenVieja', 
-            // así que eliminamos la lógica de borrado innecesaria aquí.
-            $name = $producto->handleUploadImage($request->file('img_path'));
-        }
+if ($request->filled('img_path') && str_starts_with($request->img_path, 'data:image')) {
+    try {
+        $name = $producto->handleUploadImage($request->img_path);
+    } catch (Exception $e) {
+        DB::rollBack();
+        return redirect()->back()->withInput()->with('error', 'Error al cargar la imagen en la nube: ' . $e->getMessage());
+    }
+}
 
         // 3. Llenar los campos del producto
         $producto->fill([

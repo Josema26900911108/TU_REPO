@@ -59,6 +59,16 @@ public function rules(): array
     ];
 }
 
+protected function prepareForValidation()
+{
+    // Si el campo img_path viene vacío o no es una cadena válida, lo forzamos a null
+    if (empty($this->img_path) || !is_string($this->img_path)) {
+        $this->merge([
+            'img_path' => null,
+        ]);
+    }
+}
+
 
     public function attributes()
     {
