@@ -171,17 +171,18 @@ public function store(StoreProductoRequest $request)
 
     // 1. Iniciar la transacción de inmediato
     DB::beginTransaction();
-    dd($request->all(), gettype($request->img_path), $request->file('img_path'));
 
     try {
         $fkTienda = session('user_fkTienda');
         $producto = new Producto();
-        $name = null; // En store, por defecto la imagen empieza en null o vacío
 
-        // 2. Manejar la carga de la imagen de forma segura
-if ($request->filled('img_path') && str_starts_with($request->img_path, 'data:image')) {
+        // Capturamos el valor directamente como texto
+$imgData = request()->input('img_path');
+
+// Verificamos si el usuario seleccionó una foto y si el JS generó el Base64 correctamente
+if (!empty($imgData) && is_string($imgData) && str_starts_with($imgData, 'data:image')) {
     try {
-        $name = $producto->handleUploadImage($request->img_path);
+        $name = $producto->handleUploadImage($imgData);
     } catch (Exception $e) {
         DB::rollBack();
         return redirect()->back()->withInput()->with('error', 'Error al cargar la imagen en la nube: ' . $e->getMessage());
