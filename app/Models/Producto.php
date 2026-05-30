@@ -28,27 +28,6 @@ class Producto extends Model
             ->withPivot('cantidad', 'precio_compra', 'precio_venta');
     }
 
-    public function handleUploadImage($base64String)
-{
-    if (preg_match('/^data:image\/(\w+);base64,/', $base64String, $type)) {
-        // Extraer los datos base64 puros
-        $data = substr($base64String, strpos($base64String, ',') + 1);
-        $data = base64_decode($data);
-
-        // Generar un nombre único con la extensión correspondiente
-        $extension = strtolower($type[1]); // png, jpeg, webp, etc.
-        $fileName = 'productos/' . uniqid() . '.' . $extension;
-
-        // Subir directamente el binario decodificado al disco de Google Cloud
-        Storage::disk('gcs_images')->put($fileName, $data, 'public');
-
-        return $fileName; // Retorna el nombre final para persistir en BD
-    }
-
-    throw new \Exception("El formato de la imagen no es válido.");
-}
-
-
     public function ventas()
     {
         return $this->belongsToMany(Venta::class)->withTimestamps()
@@ -115,31 +94,44 @@ public function lotes() {
     {
         return $this->hasMany(MovimientoMaterial::class);
     }
-public function handleUploadImage($image)
+public function handleUploadImage($base64String)
 {
-    $file = $image;
-    $name = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
-    $path = 'productos/' . $name;
+    // 1. Validar que sea una cadena Base64 válida
+    if (preg_match('/^data:image\/(\w+);base64,/', $base64String, $type)) {
+        
+        // 2. Extraer y decodificar el contenido binario de la imagen
+        $data = substr($base64String, strpos($base64String, ',') + 1);
+        $data = base64_decode($data);
 
-    try {
-        // CORREGIDO: Leemos el archivo como un stream de datos binarios limpios
-        $stream = fopen($file->getRealPath(), 'r');
-        
-        // Usamos el método put que es universal y altamente compatible
-        $resultado = Storage::disk('gcs_images')->put($path, $stream);
-        
-        if (is_resource($stream)) {
-            fclose($stream);
+        // 3. Generar un nombre único y seguro
+        $extension = strtolower($type[1]); // png, jpeg, webp, etc.
+        $name = time() . '_' . uniqid() . '.' . $extension;
+        $path = 'productos/' . $name;
+
+        try {
+            // 4. Crear un stream en memoria para los datos binarios decodificados
+            $stream = fopen('php://temp', 'r+');
+            fwrite($stream, $data);
+            rewind($stream); // Regresar al inicio del stream para la lectura
+
+            // 5. Subir el stream a Google Cloud Storage
+            Storage::disk('gcs_images')->put($path, $stream);
+            
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+
+            return $path; // Retorna la ruta exacta para guardar en BD
+
+        } catch (\Exception $e) {
+            dd([
+                'Mensaje' => 'Error crítico en stream al subir a GCS',
+                'Error' => $e->getMessage()
+            ]);
         }
-
-    } catch (\Exception $e) {
-        dd([
-            'Mensaje' => 'Error crítico en stream',
-            'Error' => $e->getMessage()
-        ]);
     }
 
-    return $path;
+    throw new \Exception("El formato de la imagen no es una cadena Base64 válida.");
 }
 
 
