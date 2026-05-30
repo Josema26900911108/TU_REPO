@@ -171,6 +171,7 @@ public function store(StoreProductoRequest $request)
 
     // 1. Iniciar la transacción de inmediato
     DB::beginTransaction();
+    dd($request->all(), gettype($request->img_path), $request->file('img_path'));
 
     try {
         $fkTienda = session('user_fkTienda');
