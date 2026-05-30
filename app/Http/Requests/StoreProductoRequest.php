@@ -51,7 +51,7 @@ public function rules(): array
 
         'descripcion'       => 'nullable|max:255',
         'fecha_vencimiento' => 'nullable|date',
-        'img_path' => 'nullable|image|max:10240', // Quitamos mimes y subimos el límite a 10MB (10240 KB)
+        'img_path' => 'nullable|string', // Cambia de 'image' a 'string'
         'marca_id'          => 'required|integer|exists:marcas,id',
         'presentacione_id'  => 'required|integer|exists:presentaciones,id',
         'categorias'        => 'required|array', // Aseguramos que sea un array

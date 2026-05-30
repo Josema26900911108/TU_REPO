@@ -162,6 +162,7 @@ return $productos;
     /**
      * Store a newly created resource in storage.
      */
+    
 public function store(StoreProductoRequest $request)
 {
     if (!Auth::check()) {

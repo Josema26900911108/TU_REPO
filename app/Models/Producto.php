@@ -28,6 +28,27 @@ class Producto extends Model
             ->withPivot('cantidad', 'precio_compra', 'precio_venta');
     }
 
+    public function handleUploadImage($base64String)
+{
+    if (preg_match('/^data:image\/(\w+);base64,/', $base64String, $type)) {
+        // Extraer los datos base64 puros
+        $data = substr($base64String, strpos($base64String, ',') + 1);
+        $data = base64_decode($data);
+
+        // Generar un nombre único con la extensión correspondiente
+        $extension = strtolower($type[1]); // png, jpeg, webp, etc.
+        $fileName = 'productos/' . uniqid() . '.' . $extension;
+
+        // Subir directamente el binario decodificado al disco de Google Cloud
+        Storage::disk('gcs_images')->put($fileName, $data, 'public');
+
+        return $fileName; // Retorna el nombre final para persistir en BD
+    }
+
+    throw new \Exception("El formato de la imagen no es válido.");
+}
+
+
     public function ventas()
     {
         return $this->belongsToMany(Venta::class)->withTimestamps()
