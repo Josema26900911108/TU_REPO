@@ -61,13 +61,14 @@ public function rules(): array
 
 protected function prepareForValidation()
 {
-    // Si el campo img_path viene vacío o no es una cadena válida, lo forzamos a null
-    if (empty($this->img_path) || !is_string($this->img_path)) {
+    // Si el campo no viene con la cabecera de la imagen codificada, lo removemos o lo hacemos nulo
+    if (!$this->filled('img_path') || !str_starts_with($this->img_path, 'data:image')) {
         $this->merge([
             'img_path' => null,
         ]);
     }
 }
+
 
 
     public function attributes()

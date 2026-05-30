@@ -195,13 +195,18 @@ function StopScanner() {
 
 
                     <!---Imagen---->
-                    <div class="col-md-6">
-                        <label for="img_path" class="form-label">Imagen:</label>
-                        <input type="file" name="img_path" id="img_path" class="form-control" accept="image/*" capture="environment">
-                        @error('img_path')
-                        <small class="text-danger">{{'*'.$message}}</small>
-                        @enderror
-                    </div>
+<div class="col-md-6">
+    <label for="img_file_input" class="form-label">Imagen:</label>
+    <!-- Este input NO lleva el atributo 'name', así no interfiere con Laravel -->
+    <input type="file" id="img_file_input" class="form-control" accept="image/*" capture="environment">
+    
+    <!-- Este input oculto SÍ lleva el name="img_path" y enviará el texto Base64 -->
+    <input type="hidden" name="img_path" id="img_path_hidden">
+    
+    @error('img_path')
+    <small class="text-danger">{{'*'.$message}}</small>
+    @enderror
+</div>
 
 
                     <!---Marca---->
