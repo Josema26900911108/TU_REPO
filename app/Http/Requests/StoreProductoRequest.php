@@ -51,23 +51,13 @@ public function rules(): array
 
         'descripcion'       => 'nullable|max:255',
         'fecha_vencimiento' => 'nullable|date',
+        'img_path'          => 'nullable|image|mimes:png,jpg,jpeg|max:2048',
         'marca_id'          => 'required|integer|exists:marcas,id',
         'presentacione_id'  => 'required|integer|exists:presentaciones,id',
         'categorias'        => 'required|array', // Aseguramos que sea un array
         'perecedero'        => 'boolean'
     ];
 }
-
-protected function prepareForValidation()
-{
-    // Si el campo no viene con la cabecera de la imagen codificada, lo removemos o lo hacemos nulo
-    if (!$this->filled('img_path') || !str_starts_with($this->img_path, 'data:image')) {
-        $this->merge([
-            'img_path' => null,
-        ]);
-    }
-}
-
 
 
     public function attributes()

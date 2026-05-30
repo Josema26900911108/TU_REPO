@@ -194,19 +194,14 @@ function StopScanner() {
                     </div>
 
 
-
                     <!---Imagen---->
-<div class="col-md-6">
-    <label for="img_path" class="form-label">Imagen:</label>
-    <!-- Atributo capture para activar la cámara en móviles -->
-    <input type="file" name="img_path" id="img_path" class="form-control" accept="image/*" capture="environment">
-    <small class="text-muted">Si toma una foto, intente que no supere los 2MB.</small>
-    
-    @error('img_path')
-    <small class="text-danger">{{'*'.$message}}</small>
-    @enderror
-</div>
-
+                    <div class="col-md-6">
+                        <label for="img_path" class="form-label">Imagen:</label>
+                        <input type="file" name="img_path" id="img_path" class="form-control" accept="image/*">
+                        @error('img_path')
+                        <small class="text-danger">{{'*'.$message}}</small>
+                        @enderror
+                    </div>
 
                     <!---Marca---->
                     <div class="col-md-6">

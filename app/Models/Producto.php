@@ -94,44 +94,31 @@ public function lotes() {
     {
         return $this->hasMany(MovimientoMaterial::class);
     }
-public function handleUploadImage($base64String)
+public function handleUploadImage($image)
 {
-    // 1. Validar que sea una cadena Base64 válida
-    if (preg_match('/^data:image\/(\w+);base64,/', $base64String, $type)) {
+    $file = $image;
+    $name = time() . '_' . str_replace(' ', '_', $file->getClientOriginalName());
+    $path = 'productos/' . $name;
+
+    try {
+        // CORREGIDO: Leemos el archivo como un stream de datos binarios limpios
+        $stream = fopen($file->getRealPath(), 'r');
         
-        // 2. Extraer y decodificar el contenido binario de la imagen
-        $data = substr($base64String, strpos($base64String, ',') + 1);
-        $data = base64_decode($data);
-
-        // 3. Generar un nombre único y seguro
-        $extension = strtolower($type[1]); // png, jpeg, webp, etc.
-        $name = time() . '_' . uniqid() . '.' . $extension;
-        $path = 'productos/' . $name;
-
-        try {
-            // 4. Crear un stream en memoria para los datos binarios decodificados
-            $stream = fopen('php://temp', 'r+');
-            fwrite($stream, $data);
-            rewind($stream); // Regresar al inicio del stream para la lectura
-
-            // 5. Subir el stream a Google Cloud Storage
-            Storage::disk('gcs_images')->put($path, $stream);
-            
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-
-            return $path; // Retorna la ruta exacta para guardar en BD
-
-        } catch (\Exception $e) {
-            dd([
-                'Mensaje' => 'Error crítico en stream al subir a GCS',
-                'Error' => $e->getMessage()
-            ]);
+        // Usamos el método put que es universal y altamente compatible
+        $resultado = Storage::disk('gcs_images')->put($path, $stream);
+        
+        if (is_resource($stream)) {
+            fclose($stream);
         }
+
+    } catch (\Exception $e) {
+        dd([
+            'Mensaje' => 'Error crítico en stream',
+            'Error' => $e->getMessage()
+        ]);
     }
 
-    throw new \Exception("El formato de la imagen no es una cadena Base64 válida.");
+    return $path;
 }
 
 

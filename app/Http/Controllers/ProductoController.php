@@ -162,66 +162,77 @@ return $productos;
     /**
      * Store a newly created resource in storage.
      */
-    
-public function store(StoreProductoRequest $request)
+    public function store(StoreProductoRequest $request)
 {
-    if (!Auth::check()) {
-        return redirect()->route('login');
-    }
-
-    // 1. Iniciar la transacción de inmediato
-    DB::beginTransaction();
-
     try {
+                        if(!Auth::check()){
+            return redirect()->route('login');
+        }
+
+        // Recuperar la tienda de la sesión
         $fkTienda = session('user_fkTienda');
+
+        DB::beginTransaction();
+
+        // Inicializar el modelo Producto
         $producto = new Producto();
 
-        // Capturamos el valor directamente como texto
-$imgData = request()->input('img_path');
-
-// Verificamos si el usuario seleccionó una foto y si el JS generó el Base64 correctamente
-if (!empty($imgData) && is_string($imgData) && str_starts_with($imgData, 'data:image')) {
+        // Manejar la carga de la imagen
+if ($request->hasFile('img_path')) {
     try {
-        $name = $producto->handleUploadImage($imgData);
+        // 1. Guarda el nombre de la imagen vieja antes de actualizarla
+        $imagenVieja = $producto->img_path;
+
+        // 2. Sube la nueva imagen al bucket de Google Cloud
+        $name = $producto->handleUploadImage($request->file('img_path'));
+
+        // 3. Si la subida fue exitosa, elimina de inmediato la imagen vieja del bucket
+        if (!empty($imagenVieja) && Storage::disk('gcs_images')->exists($imagenVieja)) {
+            Storage::disk('gcs_images')->delete($imagenVieja);
+        }
+
     } catch (Exception $e) {
-        DB::rollBack();
-        return redirect()->back()->withInput()->with('error', 'Error al cargar la imagen en la nube: ' . $e->getMessage());
+        return redirect()->back()->with('error', 'Error al cargar la imagen en la nube: ' . $e->getMessage());
     }
+} else {
+    // Si no se sube una nueva imagen, conservamos la que ya tenía el producto
+    $name = $producto->img_path;
 }
 
-        // 3. Llenar los campos del producto
+
+        // Llenar los campos del producto con los datos del formulario
         $producto->fill([
             'codigo' => $request->codigo,
             'nombre' => $request->nombre,
             'descripcion' => $request->descripcion,
-            'img_path' => $name, // Se asigna el nombre obtenido de GCS
+            'img_path' => $name,
             'marca_id' => $request->marca_id,
             'presentacione_id' => $request->presentacione_id,
             'fkTienda' => $fkTienda,
             'perecedero' => $request->perecedero ? 1 : 0
         ]);
 
-        // 4. Guardar el producto
+        // Guardar el producto
         $producto->save();
 
-        // 5. Manejar la relación de categorías
+        // Manejar la relación de categorías
         $categorias = $request->get('categorias');
         if (!empty($categorias)) {
             $producto->categorias()->attach($categorias);
         }
 
-        // 6. Confirmar la transacción si todo salió bien
+        // Confirmar la transacción
         DB::commit();
 
+        // Redirigir con éxito
         return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
 
     } catch (Exception $e) {
-        // 7. SIEMPRE revertir la transacción si algo falla (incluyendo Google Cloud)
+        // En caso de error, revertir la transacción
         DB::rollBack();
 
-        return redirect()->back()
-            ->withInput() // Mantiene los datos del formulario que llenó el usuario
-            ->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
+        // Retornar el error para el usuario
+        return redirect()->back()->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
     }
 }
 

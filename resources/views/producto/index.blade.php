@@ -231,16 +231,4 @@
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@latest" type="text/javascript"></script>
 <script src="{{ asset('js/datatables-simple-demo.js') }}"></script>
-<script>
-document.getElementById('img_path').addEventListener('change', function() {
-    if (this.files && this.files[0]) {
-        const fileSize = this.files[0].size / 1024 / 1024; // Convertir a MB
-        // Si tu php.ini limita a 2MB, validamos contra 1.9MB para ir seguros
-        if (fileSize > 1.9) {
-            alert('La foto es demasiado pesada (' + fileSize.toFixed(2) + 'MB). Por favor, elija una imagen más ligera o reduzca la resolución de su cámara para poder subirla.');
-            this.value = ''; // Limpia el campo para que no intente enviarse
-        }
-    }
-});
-</script>
 @endpush
