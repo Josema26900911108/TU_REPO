@@ -194,14 +194,13 @@ function StopScanner() {
                     </div>
 
 
+
                     <!---Imagen---->
 <div class="col-md-6">
-    <label for="img_file_input" class="form-label">Imagen:</label>
-    <!-- Este input NO lleva el atributo 'name', así no interfiere con Laravel -->
-    <input type="file" id="img_file_input" class="form-control" accept="image/*" capture="environment">
-    
-    <!-- Este input oculto SÍ lleva el name="img_path" y enviará el texto Base64 -->
-    <input type="hidden" name="img_path" id="img_path_hidden">
+    <label for="img_path" class="form-label">Imagen:</label>
+    <!-- Atributo capture para activar la cámara en móviles -->
+    <input type="file" name="img_path" id="img_path" class="form-control" accept="image/*" capture="environment">
+    <small class="text-muted">Si toma una foto, intente que no supere los 2MB.</small>
     
     @error('img_path')
     <small class="text-danger">{{'*'.$message}}</small>
