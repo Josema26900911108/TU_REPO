@@ -134,12 +134,12 @@ public function generarMemoriaFotografica(Request $request)
 
     // Palabras reservadas solicitadas para la auditoría de nombres
     // Palabras reservadas solicitadas en MAYÚSCULAS
-    $palabrasClave = ['ANTENA', 'CONECTIVIDAD', 'MASTIL', 'SWITCH', 'POSTE ANTES', 'POSTE DESPUES', 'ANILLO POSTES'];
+    $palabrasClave = ['ANTENA', 'CONECTIVIDAD', 'MASTIL', 'SWITCH', 'POSTE_ANTES', 'POSTE_DESPUES', 'ANILLO_POSTES', 'ONT', 'OTT'];
 
 
     // Consultar el universo fotográfico cruzando con el árbol de tecnología
     $fotografiasUniverso = DB::table('expedientefotograficotecnico as ef')
-        ->leftJoin('arbolmanoobra as am', 'ef.fkTecnologia', '=', 'am.id')
+        ->leftJoin('arbolmaterial as am', 'ef.fkTecnologia', '=', 'am.id')
         ->whereIn('ef.Orden', $ordenes)
         ->select(['ef.*', 'am.nombre as nombre_tecnologia'])
         ->get();
@@ -401,7 +401,7 @@ public function generarMemoriaFotografica(Request $request)
     $movimientosRaw = DB::table('movimientomateriales as mm')
         ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
         ->leftJoin('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
-        ->leftJoin('arbolmanoobra as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
+        ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
         ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
         ->where('mm.fkTienda', session('user_fkTienda'))
         ->whereIn('ex.Orden', $ordenesEncontradas)
@@ -781,7 +781,7 @@ public function extraccionMasiva1(Request $request)
 $movimientos = DB::table('movimientomateriales as mm')
     ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
     ->leftJoin('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
-    ->leftJoin('arbolmanoobra as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
+    ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
     ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
     ->where('mm.fkTienda', session('user_fkTienda'))
     ->whereIn('ex.Orden', $ordenesEncontradas)
