@@ -197,11 +197,12 @@ function StopScanner() {
                     <!---Imagen---->
                     <div class="col-md-6">
                         <label for="img_path" class="form-label">Imagen:</label>
-                        <input type="file" name="img_path" id="img_path" class="form-control" accept="image/*">
+                        <input type="file" name="img_path" id="img_path" class="form-control" accept="image/*" capture="environment">
                         @error('img_path')
                         <small class="text-danger">{{'*'.$message}}</small>
                         @enderror
                     </div>
+
 
                     <!---Marca---->
                     <div class="col-md-6">
