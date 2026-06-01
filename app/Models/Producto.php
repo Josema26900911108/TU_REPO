@@ -58,10 +58,12 @@ class Producto extends Model
         return $this->belongsTo(Tienda::class, 'fkTienda', 'idTienda');
     }
 
-    public function categorias()
-    {
-        return $this->belongsToMany(Categoria::class)->withTimestamps();
-    }
+public function categorias()
+{
+    // Forzamos a Laravel a usar exactamente la tabla 'categoria_producto'
+    return $this->belongsToMany(Categoria::class, 'categoria_producto')->withTimestamps();
+}
+
 
     public function marca()
     {
