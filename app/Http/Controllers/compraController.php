@@ -131,7 +131,8 @@ public function store(StoreCompraRequest $request)
         if (!Auth::check()) {
             return redirect()->route('login');
         }
-        dd($request->only(['producto_id', 'cantidad', 'precio_compra']));
+           $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
+
 
         $lockKey = 'submit_venta_' . auth()->id();
 
