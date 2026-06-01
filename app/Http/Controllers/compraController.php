@@ -231,10 +231,11 @@ public function store(StoreCompraRequest $request)
         }
 
 // ==========================================
-// PASO 1: CONSOLIDACIÓN CON SANITIZACIÓN AGRESIVA CONTRA STRINGS
+// PASO 1: CONSOLIDACIÓN DIRECTA Y LIMPIA
 // ==========================================
 $productosConsolidados = [];
 
+// Forzamos índices secuenciales limpios (0, 1, 2...) para evitar desalineaciones
 $idsProductos = array_values($arrayProducto_id ?? []);
 $cantidades   = array_values($arrayCantidad ?? []);
 $fechas       = array_values($arrayFechaVencimiento ?? []);
@@ -244,37 +245,26 @@ $impuestos    = array_values($arraysubiva ?? []);
 
 foreach ($idsProductos as $index => $id) {
     
-    // 1. Extraer el valor crudo enviado por el formulario
-    $cantidadCruda = isset($cantidades[$index]) ? $cantidades[$index] : 0;
+    // Captura directa y conversión a entero sin alterar el formato nativo
+    $cantidadNumerica = isset($cantidades[$index]) ? intval($cantidades[$index]) : 0;
 
-    // 2. FILTRO ANTI-TEXTO: Remueve cualquier cosa que NO sea un número (letras, espacios, símbolos, comas)
-    // Si venía un "Q. 10" o "1,000", se transformará en un "10" o "1000" puro.
-    $cantidadLimpia = preg_replace('/[^0-9]/', '', $cantidadCruda);
-    
-    // 3. Convertir ahora sí de forma segura a un número entero entero
-    $cantidadNumerica = (!empty($cantidadLimpia)) ? intval($cantidadLimpia) : 0;
-
-    // Si el ID del producto no es válido o la cantidad limpia sigue dando 0, saltamos la fila
+    // Si el ID del producto no es válido o la cantidad es 0 o menor, saltamos la fila
     if (intval($id) <= 0 || $cantidadNumerica <= 0) {
         continue;
     }
 
-    // Normalizar precios e impuestos limpiando posibles caracteres extraños
+    // Normalizar el resto de variables de forma segura
     $fecha   = !empty($fechas[$index]) ? $fechas[$index] : 'N/A';
+    $pCompra = number_format(floatval($preciosComp[$index] ?? 0), 2, '.', '');
+    $pVenta  = number_format(floatval($preciosVent[$index] ?? 0), 2, '.', '');
     
-    $pCompraLimpio = preg_replace('/[^0-9.]/', '', $preciosComp[$index] ?? 0);
-    $pCompra = number_format(floatval($pCompraLimpio), 2, '.', '');
-    
-    $pVentaLimpio = preg_replace('/[^0-9.]/', '', $preciosVent[$index] ?? 0);
-    $pVenta = number_format(floatval($pVentaLimpio), 2, '.', '');
-    
-    // Generar la llave única de agrupación
+    // Generar la llave única combinada de agrupación
     $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
 
     if (!isset($productosConsolidados[$key])) {
         $productosConsolidados[$key] = [
             'id'            => intval($id),
-            'cantidad'      => 0,
+            'cantidad'      => 0, // Inicializador del acumulador
             'precio_compra' => floatval($pCompra),
             'precio_venta'  => floatval($pVenta),
             'impuesto'      => 0,
@@ -282,11 +272,9 @@ foreach ($idsProductos as $index => $id) {
         ];
     }
     
-    // Acumular los valores sanitizados
+    // Sumamos la cantidad numérica real de la petición
     $productosConsolidados[$key]['cantidad'] += $cantidadNumerica;
-    
-    $impuestoLimpio = preg_replace('/[^0-9.]/', '', $impuestos[$index] ?? 0);
-    $productosConsolidados[$key]['impuesto'] += floatval($impuestoLimpio);
+    $productosConsolidados[$key]['impuesto'] += floatval($impuestos[$index] ?? 0);
 }
 
 $productosConsolidados = array_values($productosConsolidados);
