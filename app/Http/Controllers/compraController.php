@@ -131,6 +131,8 @@ public function store(StoreCompraRequest $request)
         if (!Auth::check()) {
             return redirect()->route('login');
         }
+        dd($request->only(['producto_id', 'cantidad', 'precio_compra']));
+
         $lockKey = 'submit_venta_' . auth()->id();
 
         DB::beginTransaction();
@@ -227,33 +229,41 @@ public function store(StoreCompraRequest $request)
         }
 
 // ==========================================
-// PASO 1: CONSOLIDACIÓN DE PRODUCTOS (CORREGIDO)
+// PASO 1: RE-ALINEAR ÍNDICES Y CONSOLIDAR (SOLUCIÓN DEFINITIVA)
 // ==========================================
 $productosConsolidados = [];
 
-foreach ($arrayProducto_id as $index => $id) {
-    // 1. Validar y capturar la cantidad de forma estricta
-    // Si viene vacío o no está definido, forzamos un valor por defecto o evitamos procesar
-    $cantidadOriginal = isset($arrayCantidad[$index]) ? trim($arrayCantidad[$index]) : 0;
-    $cantidadNumerica = intval($cantidadOriginal);
+// Forzamos a que todos los arreglos de la petición tengan índices limpios (0, 1, 2, 3...)
+$idsProductos = array_values($arrayProducto_id ?? []);
+$cantidades   = array_values($arrayCantidad ?? []);
+$fechas       = array_values($arrayFechaVencimiento ?? []);
+$preciosComp  = array_values($arrayPrecioCompra ?? []);
+$preciosVent  = array_values($arrayPrecioVenta ?? []);
+$impuestos    = array_values($arraysubiva ?? []);
 
-    // Opcional: Si la cantidad de la solicitud es 0 o menor, ignoramos esta fila para evitar basura
+// Recorremos usando la nueva estructura indexada secuencialmente
+foreach ($idsProductos as $index => $id) {
+    
+    // Capturar la cantidad usando el índice limpio alineado
+    $cantidadNumerica = isset($cantidades[$index]) ? intval($cantidades[$index]) : 0;
+
+    // Si el producto no es válido o la cantidad viene en 0, ignoramos la fila
     if ($id <= 0 || $cantidadNumerica <= 0) {
         continue;
     }
 
-    // 2. Normalizar el resto de variables
-    $fecha   = !empty($arrayFechaVencimiento[$index]) ? $arrayFechaVencimiento[$index] : 'N/A';
-    $pCompra = number_format(floatval($arrayPrecioCompra[$index] ?? 0), 2, '.', '');
-    $pVenta  = number_format(floatval($arrayPrecioVenta[$index] ?? 0), 2, '.', '');
+    // Normalizar el resto de variables con los arreglos limpios
+    $fecha   = !empty($fechas[$index]) ? $fechas[$index] : 'N/A';
+    $pCompra = number_format(floatval($preciosComp[$index] ?? 0), 2, '.', '');
+    $pVenta  = number_format(floatval($preciosVent[$index] ?? 0), 2, '.', '');
     
-    // Generar la llave única asociativa
+    // Generar llave única
     $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
 
     if (!isset($productosConsolidados[$key])) {
         $productosConsolidados[$key] = [
             'id'            => intval($id),
-            'cantidad'      => 0, // Inicializa en cero para el acumulador
+            'cantidad'      => 0,
             'precio_compra' => floatval($pCompra),
             'precio_venta'  => floatval($pVenta),
             'impuesto'      => 0,
@@ -261,16 +271,13 @@ foreach ($arrayProducto_id as $index => $id) {
         ];
     }
     
-    // 3. Acumular de forma explícita
+    // Acumular de forma segura
     $productosConsolidados[$key]['cantidad'] += $cantidadNumerica;
-    $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index] ?? 0);
+    $productosConsolidados[$key]['impuesto'] += floatval($impuestos[$index] ?? 0);
 }
 
-// ⚠️ PRUEBA DE CONTROL DE CALIDAD:
-// Si sigue fallando, descomenta la siguiente línea para matar el proceso y ver qué datos se consolidaron:
-// dd($productosConsolidados);
-
 $productosConsolidados = array_values($productosConsolidados);
+
 
 
 // ==========================================
