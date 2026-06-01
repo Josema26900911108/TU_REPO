@@ -160,7 +160,7 @@ public function store(StoreCompraRequest $request)
         $arraymonto = $request->get('arraymonto');
         $arraytipomovimiento = $request->get('arraytipomovimiento');
 
-        dd($arrayCantidad);
+        
         
         if ($numero_comprobante == 0) {
             $comprobantenomenclatura = Comprobante::where('id', $comprobante_id)->first();
