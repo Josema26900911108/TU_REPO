@@ -23,6 +23,7 @@ use App\Http\Controllers\roleController;
 use App\Http\Controllers\userController;
 use App\Http\Controllers\ventaController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\CashRegisterController;
 use App\Http\Controllers\centroController;
 use App\Http\Controllers\CentrosOrganizacionController;
@@ -282,6 +283,12 @@ Route::get('/php-version-check', function () {
         'gd' => extension_loaded('gd') ? 'GD cargado' : 'GD no está cargado',
     ];
 });
+
+Route::get('/limpiar-todo', function() {
+    \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+    return "Caché del servidor borrada exitosamente";
+});
+
 
 
 Route::post('/arqueocaja/CierreCaja/{arqueocaja}', [ArqueoCajaController::class, 'CierreCaja'])->name('arqueocaja.cierre');

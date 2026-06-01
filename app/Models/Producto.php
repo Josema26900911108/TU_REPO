@@ -60,8 +60,12 @@ class Producto extends Model
 
 public function categorias()
 {
-    // Forzamos a Laravel a usar exactamente la tabla 'categoria_producto'
-    return $this->belongsToMany(Categoria::class, 'categoria_producto')->withTimestamps();
+    return $this->belongsToMany(
+        Categoria::class, 
+        'categoria_producto', // 1. Nombre de la tabla intermedia
+        'producto_id',        // 2. Llave foránea de este modelo (Producto)
+        'categoria_id'        // 3. Llave foránea del modelo a relacionar (Categoría)
+    )->withTimestamps();
 }
 
 
