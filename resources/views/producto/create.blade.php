@@ -184,21 +184,21 @@ function StopScanner() {
                         @enderror
                     </div>
 
-                    <div class="col-md-2">
-                        <div class="form-check form-switch mt-4">
-                            <!-- 1. El hidden envía 0 por defecto (si el checkbox no se marca) -->
-                            <input type="hidden" name="perecedero" value="0">
+<div class="col-md-2">
+    <div class="form-check form-switch mt-4">
+        <!-- 💡 ELIMINA EL INPUT HIDDEN POR COMPLETO -->
 
-                            <!-- 2. El checkbox envía 1 si se marca (sobrescribe al 0) -->
-                            <input class="form-check-input" type="checkbox"
-                                name="perecedero"
-                                id="perecedero"
-                                value="1"
-                                {{ old('perecedero', $producto->perecedero ?? 0) == 1 ? 'checked' : '' }}>
+        <!-- Deja únicamente el checkbox -->
+        <input class="form-check-input" type="checkbox"
+            name="perecedero"
+            id="perecedero"
+            value="1"
+            {{ old('perecedero', $producto->perecedero ?? 0) == 1 ? 'checked' : '' }}>
 
-                            <label class="form-check-label" for="perecedero">¿Es perecedero?</label>
-                        </div>
-                    </div>
+        <label class="form-check-label" for="perecedero">¿Es perecedero?</label>
+    </div>
+</div>
+
 
 
 

@@ -55,7 +55,7 @@ public function rules(): array
         'marca_id'          => 'required|integer|exists:marcas,id',
         'presentacione_id'  => 'required|integer|exists:presentaciones,id',
         'categorias'        => 'required|array', // Aseguramos que sea un array
-        'perecedero'        => 'boolean'
+        'perecedero'        => 'nullable'
     ];
 }
 
