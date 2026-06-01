@@ -245,29 +245,50 @@ if ($request->hasFile('img_path')) {
         //
     }
 
-    public function obtenerCodigoUnicoAjax()
+public function obtenerCodigoUnicoAjax()
 {
     $existe = true;
     $codigoUnico = '';
+    $intentos = 0; // Candado de seguridad para evitar congelar el servidor
 
-    while ($existe) {
-        // Prefijo '20' + 10 dígitos de tiempo
-        $base = "20" . substr((string)intval(microtime(true) * 1000), -10);
+    while ($existe && $intentos < 100) {
+        $intentos++;
+
+        // 1. Tomamos los segundos del servidor (10 dígitos exactos en la época actual)
+        $segundos = (string)time(); 
         
-        // Dígito verificador EAN-13
+        // 2. Prefijo '20' (2 dígitos) + Segundos (10 dígitos) = 12 dígitos matemáticos exactos
+        $base = "20" . $segundos;
+        
+        // Si por alguna razón la cadena no mide 12, la rellenamos con ceros a la derecha
+        $base = str_pad($base, 12, "0", STR_PAD_RIGHT);
+
+        // 3. Calcular el dígito verificador oficial EAN-13
         $suma = 0;
         for ($i = 0; $i < 12; $i++) {
-            $suma += ($i % 2 === 0) ? (int)$base[$i] : (int)$base[$i] * 3;
+            $numero = (int)$base[$i];
+            // Posiciones impares se multiplican por 1, posiciones pares (índices 1, 3, 5...) por 3
+            $suma += ($i % 2 === 0) ? $numero : $numero * 3;
         }
         $digitoVerificador = (10 - ($suma % 10)) % 10;
+        
+        // 4. Código final estructurado de 13 dígitos
         $codigoUnico = $base . $digitoVerificador;
 
-        // Validar contra la BD
-        $existe = Producto::where('codigo', $codigoUnico)->exists(); // Cambia 'codigo_barras' por tu columna real
+        // 5. Validamos contra tu tabla real de productos
+        // REVISTA ESTO: Cambia 'Producto' por tu Modelo y 'codigo_barras' por tu columna real de la BD
+        $existe = Producto::where('codigo', $codigoUnico)->exists();
+    }
+
+    // Desactivamos Debugbar para entregar un JSON completamente limpio
+    if (class_exists('\Barryvdh\Debugbar\Facades\Debugbar')) {
+        \Barryvdh\Debugbar\Facades\Debugbar::disable();
     }
 
     return response()->json(['codigo' => $codigoUnico]);
 }
+
+
 
 
     /**

@@ -219,7 +219,10 @@ Route::post('productos/importar', [compraController::class, 'storeMasivo'])
     ->name('producto.buscarPorCategoria');
 
     Route::get('/producto/{id}', [ProductoController::class, 'shows']);
+    
+    Route::get('/ajax-interno/generar-codigo-barras-unico', [ProductoController::class, 'obtenerCodigoUnicoAjax']);
 
+    Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
 
 // Descargar plantilla Excel
 Route::get('productos/importar/plantilla', [compraController::class, 'descargarPlantilla'])
@@ -426,9 +429,6 @@ Route::get('/exportar-movimientomateriales-excel', [App\Http\Controllers\movimie
     ->name('exportar.movimientomateriales.excel');
 Route::get('/movimientomaterialesTtabla', [movimientomaterialesController::class, 'fetchrelacionmovimientosmat'])->name('fetchrelacionmovimientomateriales');
 
-
-Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
-Route::get('/productos/generar-codigo-unico', [ProductoController::class, 'obtenerCodigoUnicoAjax']);
 
 
 Route::get('/tecnico', [TecnicoController::class, 'index'])->name('tecnico.lista');

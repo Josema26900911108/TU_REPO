@@ -263,17 +263,24 @@ function StopScanner() {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
 <script>
 $('#btn-generar-codigo').on('click', function() {
-    $.ajax({
-        url: '/productos/generar-codigo-unico',
-        type: 'GET',
-        success: function(response) {
-            // Inserta el código generado de forma segura en el input
-            $('#codigo').val(response.codigo);
-        },
-        error: function(xhr) {
-            console.error("Error al generar el código de barras:", xhr);
+$.ajax({
+    url: '/ajax-interno/generar-codigo-barras-unico', // Nueva URL única
+    type: 'GET',
+    success: function(response) {
+        console.log("Respuesta del servidor:", response);
+        
+        // Si el controlador usa la estructura limpia con exit;
+        var objetoJson = (typeof response === 'object') ? response : JSON.parse(response.trim());
+        
+        if (objetoJson && objetoJson.codigo) {
+            $('#codigo').val(objetoJson.codigo);
         }
-    });
+    },
+    error: function(xhr, status, error) {
+        console.error("Error:", xhr.status, xhr.responseText);
+    }
+});
+
 });
 
     </script>
