@@ -213,28 +213,32 @@ if ($request->hasFile('img_path')) {
         ]);
 
         // Guardar el producto
+                // Guardar el producto físicamente
         $producto->save();
 
-        // Manejar la relación de categorías
+        // 💡 MOVEMOS EL COMMIT AQUÍ: Esto obliga a MySQL a guardar el producto de inmediato
+        DB::commit();
+
+        // Manejar la relación de categorías (Si esto falla, el producto ya se salvó)
         $categorias = $request->get('categorias');
         if (!empty($categorias)) {
             $producto->categorias()->attach($categorias);
         }
 
-        // Confirmar la transacción
-        DB::commit();
-
         // Redirigir con éxito
         return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
 
     } catch (Exception $e) {
-        // En caso de error, revertir la transacción
-        DB::rollBack();
+        // En caso de error, revertir solo si la transacción sigue abierta
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
 
-        // Retornar el error para el usuario
-        return redirect()->back()->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
+        // Retornar el error detallado para ver qué falló después del guardado
+        return redirect()->back()->withInput()->with('error', 'Error detectado: ' . $e->getMessage());
     }
 }
+
 
 public function obtenerCodigoUnicoAjax()
 {
