@@ -226,25 +226,34 @@ public function store(StoreCompraRequest $request)
             $cont++;
         }
 
-// 1. Agrupar productos por ID, Fecha, Precio Compra y Precio Venta
 // ==========================================
-// PASO 1: CONSOLIDACIÓN DE PRODUCTOS
+// PASO 1: CONSOLIDACIÓN DE PRODUCTOS (CORREGIDO)
 // ==========================================
 $productosConsolidados = [];
 
 foreach ($arrayProducto_id as $index => $id) {
-    // Normalizar datos
+    // 1. Validar y capturar la cantidad de forma estricta
+    // Si viene vacío o no está definido, forzamos un valor por defecto o evitamos procesar
+    $cantidadOriginal = isset($arrayCantidad[$index]) ? trim($arrayCantidad[$index]) : 0;
+    $cantidadNumerica = intval($cantidadOriginal);
+
+    // Opcional: Si la cantidad de la solicitud es 0 o menor, ignoramos esta fila para evitar basura
+    if ($id <= 0 || $cantidadNumerica <= 0) {
+        continue;
+    }
+
+    // 2. Normalizar el resto de variables
     $fecha   = !empty($arrayFechaVencimiento[$index]) ? $arrayFechaVencimiento[$index] : 'N/A';
-    $pCompra = number_format(floatval($arrayPrecioCompra[$index]), 2, '.', '');
-    $pVenta  = number_format(floatval($arrayPrecioVenta[$index]), 2, '.', '');
+    $pCompra = number_format(floatval($arrayPrecioCompra[$index] ?? 0), 2, '.', '');
+    $pVenta  = number_format(floatval($arrayPrecioVenta[$index] ?? 0), 2, '.', '');
     
-    // Generar la llave única
+    // Generar la llave única asociativa
     $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
 
     if (!isset($productosConsolidados[$key])) {
         $productosConsolidados[$key] = [
-            'id'            => $id,
-            'cantidad'      => 0,
+            'id'            => intval($id),
+            'cantidad'      => 0, // Inicializa en cero para el acumulador
             'precio_compra' => floatval($pCompra),
             'precio_venta'  => floatval($pVenta),
             'impuesto'      => 0,
@@ -252,12 +261,17 @@ foreach ($arrayProducto_id as $index => $id) {
         ];
     }
     
-    // Acumular
-    $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
-    $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index]);
+    // 3. Acumular de forma explícita
+    $productosConsolidados[$key]['cantidad'] += $cantidadNumerica;
+    $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index] ?? 0);
 }
 
+// ⚠️ PRUEBA DE CONTROL DE CALIDAD:
+// Si sigue fallando, descomenta la siguiente línea para matar el proceso y ver qué datos se consolidaron:
+// dd($productosConsolidados);
+
 $productosConsolidados = array_values($productosConsolidados);
+
 
 // ==========================================
 // PASO 2: INSERCIÓN EN BASE DE DATOS
