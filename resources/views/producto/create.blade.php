@@ -143,6 +143,18 @@ function StopScanner() {
     <div class="card">
         <form action="{{ route('productos.store') }}" method="post" enctype="multipart/form-data">
             @csrf
+
+    <!-- 💡 AGREGA ESTE BLOQUE TEMPORALMENTE PARA VER EL ERROR REAL -->
+    @if ($errors->any())
+        <div style="background-color: #f8d7da; color: #721c24; padding: 15px; border: 1px solid #f5c6cb; margin-bottom: 20px; border-radius: 4px;">
+            <strong>No se pudo guardar el producto debido a los siguientes errores:</strong>
+            <ul style="margin-top: 5px;">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
             <div class="card-body text-bg-light">
 
 
