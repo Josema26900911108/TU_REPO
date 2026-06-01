@@ -212,12 +212,16 @@ if ($request->hasFile('img_path')) {
             'perecedero' => $request->perecedero ? 1 : 0
         ]);
 
-        // Guardar el producto
-                // Guardar el producto físicamente
-        $producto->save();
 
         // 💡 MOVEMOS EL COMMIT AQUÍ: Esto obliga a MySQL a guardar el producto de inmediato
+                // ... (Al final de tu bloque try, justo después de guardar)
+        $producto->save();
         DB::commit();
+
+        // Redirigir asegurando el guardado de la sesión antes de salir
+        session()->save(); 
+
+
 
         // Manejar la relación de categorías (Si esto falla, el producto ya se salvó)
         $categorias = $request->get('categorias');
@@ -226,7 +230,7 @@ if ($request->hasFile('img_path')) {
         }
 
         // Redirigir con éxito
-        return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
+                return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
 
     } catch (Exception $e) {
         // En caso de error, revertir solo si la transacción sigue abierta
