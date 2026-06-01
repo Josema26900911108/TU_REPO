@@ -293,9 +293,10 @@ $productosConsolidados = array_values($productosConsolidados);
 
 
 // ==========================================
-// PASO 2: INSERCIÓN EN BASE DE DATOS (CORREGIDO SIN DUPLICIDAD)
+// PASO 2: INSERCIÓN EN BASE DE DATOS (BLINDADO CONTRA CONFIGURACIONES DE BASE DE DATOS)
 // ==========================================
 $posicion = 1;
+$lotesPorActualizar = []; // Arreglo temporal para guardar los IDs y las cantidades reales
 
 foreach ($productosConsolidados as $item) {
     $idLoteGenerado = null;
@@ -309,7 +310,7 @@ foreach ($productosConsolidados as $item) {
         $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
             'producto_id'       => $item['id'],
             'numero_lote'       => $numeroLote,
-            'cantidad'          => $cantidadLote, // Enviamos el valor sumado real
+            'cantidad'          => $cantidadLote, 
             'fecha_vencimiento' => $item['fecha'],
             'fkTienda'          => $fkTienda,
             'compra_id'         => $compra->id,
@@ -317,9 +318,15 @@ foreach ($productosConsolidados as $item) {
             'created_at'        => now(),
             'updated_at'        => now()
         ]);
+
+        // Guardamos la referencia para la actualización en caliente al final del ciclo
+        $lotesPorActualizar[] = [
+            'id'       => $idLoteGenerado,
+            'cantidad' => $cantidadLote
+        ];
     }
 
-    // 1. Al ejecutar este attach, se disparan los Triggers de MySQL y calculan el stock automáticamente
+    // Insertar en detalle de compra (Pivote) -> Esto dispara los Triggers contables
     $compra->productos()->attach([
         $item['id'] => [
             'cantidad'      => $cantidadLote,
@@ -332,9 +339,6 @@ foreach ($productosConsolidados as $item) {
             'Estado'        => 'I'
         ]
     ]);
-
-    // ❌ ELIMINADO: $producto->increment('stock', $cantidadLote);
-    // Ya no hacemos esto en PHP para evitar romper la transacción con el Trigger 2
 
     $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
         ->where('tienda.idTienda', session('user_fkTienda'))
@@ -361,6 +365,18 @@ foreach ($productosConsolidados as $item) {
 
     $posicion++; 
 }
+
+// ==========================================================
+// PASO 3: SOBREESCRITURA DE SEGURIDAD (POST-TRIGGERS)
+// ==========================================================
+// Recorremos los lotes guardados y forzamos el valor real directo por ID primario.
+// Esto se ejecuta después de que todos los triggers terminaron de calcular el stock.
+foreach ($lotesPorActualizar as $loteUpdate) {
+    DB::table('lotesalarma')
+        ->where('id', $loteUpdate['id'])
+        ->update(['cantidad' => $loteUpdate['cantidad']]);
+}
+
 
         DB::commit();
         return redirect()->route('compras.index')->with('success', 'Compra registrada con éxito.');
