@@ -143,18 +143,6 @@ function StopScanner() {
     <div class="card">
         <form action="{{ route('productos.store') }}" method="post" enctype="multipart/form-data">
             @csrf
-
-    <!-- 💡 AGREGA ESTE BLOQUE TEMPORALMENTE PARA VER EL ERROR REAL -->
-    @if ($errors->any())
-        <div style="background-color: #f8d7da; color: #721c24; padding: 15px; border: 1px solid #f5c6cb; margin-bottom: 20px; border-radius: 4px;">
-            <strong>No se pudo guardar el producto debido a los siguientes errores:</strong>
-            <ul style="margin-top: 5px;">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
             <div class="card-body text-bg-light">
 
 
@@ -165,14 +153,12 @@ function StopScanner() {
     <label for="codigo" class="form-label">Código:</label>
     <div class="input-group">
         <input type="text" name="codigo" id="codigo" class="form-control" value="{{old('codigo')}}">
-        <!-- 💡 AGREGA EXPLICITAMENTE type="button" AQUÍ -->
         <button type="button" id="btn-generar-codigo" class="btn btn-secondary">Generar</button>
     </div>
     @error('codigo')
     <small class="text-danger">{{'*'.$message}}</small>
     @enderror
 </div>
-
 
 
                     <!---Nombre---->
@@ -184,21 +170,21 @@ function StopScanner() {
                         @enderror
                     </div>
 
-<div class="col-md-2">
-    <div class="form-check form-switch mt-4">
-        <!-- 💡 ELIMINA EL INPUT HIDDEN POR COMPLETO -->
+                    <div class="col-md-2">
+                        <div class="form-check form-switch mt-4">
+                            <!-- 1. El hidden envía 0 por defecto (si el checkbox no se marca) -->
+                            <input type="hidden" name="perecedero" value="0">
 
-        <!-- Deja únicamente el checkbox -->
-        <input class="form-check-input" type="checkbox"
-            name="perecedero"
-            id="perecedero"
-            value="1"
-            {{ old('perecedero', $producto->perecedero ?? 0) == 1 ? 'checked' : '' }}>
+                            <!-- 2. El checkbox envía 1 si se marca (sobrescribe al 0) -->
+                            <input class="form-check-input" type="checkbox"
+                                name="perecedero"
+                                id="perecedero"
+                                value="1"
+                                {{ old('perecedero', $producto->perecedero ?? 0) == 1 ? 'checked' : '' }}>
 
-        <label class="form-check-label" for="perecedero">¿Es perecedero?</label>
-    </div>
-</div>
-
+                            <label class="form-check-label" for="perecedero">¿Es perecedero?</label>
+                        </div>
+                    </div>
 
 
 
@@ -276,13 +262,10 @@ function StopScanner() {
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
 <script>
-
-function obtenerCodigoBarrasUnico(event) {
-    // 💡 Detiene la recarga física de la página de inmediato
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
+    $('#btn-generar-codigo').on('click', function(e) {
+    // 💡 ESTA LÍNEA ES VITAL: Detiene el comportamiento de recarga del navegador
+    e.preventDefault(); 
+    e.stopPropagation(); 
 
     $.ajax({
         url: '/ajax-interno/generar-codigo-barras-unico',
@@ -292,12 +275,12 @@ function obtenerCodigoBarrasUnico(event) {
             if (datos && datos.codigo) {
                 $('#codigo').val(datos.codigo);
             }
+        },
+        error: function(xhr) {
+            console.error("Error al generar el código:", xhr.responseText);
         }
     });
+});
 
-    return false; // Refuerzo extra de seguridad
-}
-
-
-    </script>
+</script>
 @endpush

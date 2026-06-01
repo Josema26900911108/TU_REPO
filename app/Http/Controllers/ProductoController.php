@@ -212,43 +212,29 @@ if ($request->hasFile('img_path')) {
             'perecedero' => $request->perecedero ? 1 : 0
         ]);
 
-
-        // 💡 MOVEMOS EL COMMIT AQUÍ: Esto obliga a MySQL a guardar el producto de inmediato
-                // ... (Al final de tu bloque try, justo después de guardar)
+        // Guardar el producto
         $producto->save();
-        DB::commit();
 
-        // Redirigir asegurando el guardado de la sesión antes de salir
-        session()->save(); 
-        
-     // 3. Procesamos las categorías de manera segura y aislada
+        // Manejar la relación de categorías
         $categorias = $request->get('categorias');
         if (!empty($categorias)) {
-            try {
-                // Sincroniza los IDs limpiando entradas duplicadas
-                $producto->categorias()->attach($categorias);
-            } catch (\Exception $ex) {
-                // Si la tabla pivote falla en producción, capturamos el error aquí
-                // El producto NO se borrará porque el commit ya se ejecutó arriba
-                \Log::error('Fallo en la tabla intermedia de categorías en la nube: ' . $ex->getMessage());
-                
-                return redirect()->route('productos.index')
-                    ->with('warning', 'Producto creado con éxito, pero hubo un detalle al asociar las categorías. Revisa la base de datos.');
-            }
+            $producto->categorias()->attach($categorias);
         }
 
+        // Confirmar la transacción
+        DB::commit();
+
+        // Redirigir con éxito
         return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
-    } catch (Exception $e) {
-        // En caso de error, revertir solo si la transacción sigue abierta
-        if (DB::transactionLevel() > 0) {
-            DB::rollBack();
-        }
 
-        // Retornar el error detallado para ver qué falló después del guardado
-        return redirect()->back()->withInput()->with('error', 'Error detectado: ' . $e->getMessage());
+    } catch (Exception $e) {
+        // En caso de error, revertir la transacción
+        DB::rollBack();
+
+        // Retornar el error para el usuario
+        return redirect()->back()->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
     }
 }
-
 
 public function obtenerCodigoUnicoAjax()
 {
@@ -292,7 +278,6 @@ public function obtenerCodigoUnicoAjax()
 
     return response()->json(['codigo' => $codigoUnico]);
 }
-
     /**
      * Display the specified resource.
      */
