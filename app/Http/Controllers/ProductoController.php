@@ -220,19 +220,24 @@ if ($request->hasFile('img_path')) {
 
         // Redirigir asegurando el guardado de la sesión antes de salir
         session()->save(); 
-
-                // Redirigir con éxito
-                return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
-
-
-        // Manejar la relación de categorías (Si esto falla, el producto ya se salvó)
+        
+     // 3. Procesamos las categorías de manera segura y aislada
         $categorias = $request->get('categorias');
         if (!empty($categorias)) {
-            $producto->categorias()->attach($categorias);
+            try {
+                // Sincroniza los IDs limpiando entradas duplicadas
+                $producto->categorias()->attach($categorias);
+            } catch (\Exception $ex) {
+                // Si la tabla pivote falla en producción, capturamos el error aquí
+                // El producto NO se borrará porque el commit ya se ejecutó arriba
+                \Log::error('Fallo en la tabla intermedia de categorías en la nube: ' . $ex->getMessage());
+                
+                return redirect()->route('productos.index')
+                    ->with('warning', 'Producto creado con éxito, pero hubo un detalle al asociar las categorías. Revisa la base de datos.');
+            }
         }
 
-
-
+        return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
     } catch (Exception $e) {
         // En caso de error, revertir solo si la transacción sigue abierta
         if (DB::transactionLevel() > 0) {

@@ -276,32 +276,27 @@ function StopScanner() {
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
 <script>
-$('#btn-generar-codigo').on('click', function(e) {
-    // 1. Detiene de golpe cualquier intento del formulario de recargar la página
-    e.preventDefault(); 
-    e.stopPropagation();
+
+function obtenerCodigoBarrasUnico(event) {
+    // 💡 Detiene la recarga física de la página de inmediato
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
 
     $.ajax({
-        // 2. Apunta directo a la ruta del código único (puedes usar tu URL actual)
         url: '/ajax-interno/generar-codigo-barras-unico',
         type: 'GET',
         success: function(response) {
-            console.log("Respuesta del servidor:", response);
-            
-            // Evaluamos la respuesta de forma segura
             var datos = (typeof response === 'object') ? response : JSON.parse(response.trim());
-            
             if (datos && datos.codigo) {
-                // 3. Pintamos el valor en el input
                 $('#codigo').val(datos.codigo);
             }
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al procesar AJAX:", status, error);
-            console.error("Respuesta del servidor:", xhr.responseText);
         }
     });
-});
+
+    return false; // Refuerzo extra de seguridad
+}
 
 
     </script>
