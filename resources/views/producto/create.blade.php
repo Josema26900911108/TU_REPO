@@ -271,7 +271,7 @@ $('#btn-generar-codigo').on('click', function(e) {
 
     $.ajax({
         // 2. Apunta directo a la ruta del código único (puedes usar tu URL actual)
-        url: '/productos/generar-codigo-unico',
+        url: '/ajax-interno/generar-codigo-barras-unico',
         type: 'GET',
         success: function(response) {
             console.log("Respuesta del servidor:", response);
