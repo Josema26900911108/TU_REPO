@@ -263,7 +263,7 @@ if ($request->hasFile('img_path')) {
         $codigoUnico = $base . $digitoVerificador;
 
         // Validar contra la BD
-        $existe = Producto::where('codigo_barras', $codigoUnico)->exists(); // Cambia 'codigo_barras' por tu columna real
+        $existe = Producto::where('codigo', $codigoUnico)->exists(); // Cambia 'codigo_barras' por tu columna real
     }
 
     return response()->json(['codigo' => $codigoUnico]);
