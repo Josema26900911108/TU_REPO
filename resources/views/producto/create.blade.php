@@ -261,8 +261,8 @@ function StopScanner() {
 
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
-<script>
 
+<script>
 $('#btn-generar-codigo').on('click', function(e) {
     // 💡 ESTO DETIENE EL BLOQUEO DEL LECTOR Y EVITA QUE SE RECARGUE LA PÁGINA
     e.preventDefault(); 
@@ -282,6 +282,5 @@ $('#btn-generar-codigo').on('click', function(e) {
         }
     });
 });
-
 </script>
 @endpush

@@ -271,10 +271,6 @@ public function obtenerCodigoUnicoAjax()
         $existe = Producto::where('codigo', $codigoUnico)->exists();
     }
 
-    // Desactivamos Debugbar para entregar un JSON completamente limpio
-    if (class_exists('\Barryvdh\Debugbar\Facades\Debugbar')) {
-        \Barryvdh\Debugbar\Facades\Debugbar::disable();
-    }
 
     return response()->json(['codigo' => $codigoUnico]);
 }
