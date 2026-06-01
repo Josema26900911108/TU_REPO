@@ -266,18 +266,12 @@ $productosConsolidados = array_values($productosConsolidados);
 // 2. Procesar el array consolidado
 $posicion = 1;
 
-foreach ($productosConsolidados as $key => $item) {
+foreach ($productosConsolidados as $item) { // Removemos $key porque no se necesita
     $idLoteGenerado = null;
     $producto = Producto::find($item['id']);
 
-    // 1. Forzar que la cantidad sea un entero válido y capturar el valor real
+    // 1. Capturar directamente la cantidad consolidada del ítem actual
     $cantidadLote = isset($item['cantidad']) ? intval($item['cantidad']) : 0;
-
-    // 2. Validación de seguridad: Si por algún motivo la cantidad sigue en 0, 
-    // buscamos re-mapear usando la llave original si es un array asociativo
-    if ($cantidadLote === 0 && isset($productosConsolidados[$key]['cantidad'])) {
-        $cantidadLote = intval($productosConsolidados[$key]['cantidad']);
-    }
 
     // Crear Lote Único para este grupo consolidado
     if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
@@ -297,7 +291,7 @@ foreach ($productosConsolidados as $key => $item) {
     // Insertar en detalle de compra (Pivote)
     $compra->productos()->attach([
         $item['id'] => [
-            'cantidad'      => $item['cantidad'],
+            'cantidad'      => $cantidadLote, // Usamos la cantidad validada
             'precio_compra' => $item['precio_compra'],
             'precio_venta'  => $item['precio_venta'],
             'impuesto'      => $item['impuesto'],
@@ -309,12 +303,12 @@ foreach ($productosConsolidados as $key => $item) {
     ]);
 
     // Actualizar Stock global
-    $producto->increment('stock', $item['cantidad']);
+    $producto->increment('stock', $cantidadLote);
 
     $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
-    ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
-    ->select('centro.*', 'tienda.nombre as nombre_tienda')
-    ->first();
+        ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
+        ->select('centro.*', 'tienda.nombre as nombre_tienda')
+        ->first();
 
     // Registro en Kardex (Movimientos)
     MovimientoMateriales::create([
@@ -323,17 +317,18 @@ foreach ($productosConsolidados as $key => $item) {
         'fkLotes'               => $idLoteGenerado,
         'clase_movimiento'      => '641',
         'tipo_movimiento'       => 'COMPRA',
-        'cantidad'              => $item['cantidad'],
+        'cantidad'              => $cantidadLote, // Usamos la cantidad validada
         'documento_material'    => 'COM-' . $compra->numero_comprobante,
         'referencia'            => "Comp ID: ||{$compra->id}||",
         'fecha_contabilizacion' => now(),
-        'centro'                => session('centro') ?? $centro->codigo, // Obtener centro de la sesión o asignar uno por defecto
-        'almacen'               => session('centro') ?? $centro->codigo, // Obtener centro de la sesión o asignar uno por defecto
+        'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'), 
+        'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'), 
         'origen_uso'            => 'compra_nacional',
         'unidad_medida_base'    => 'PZA',
         'posicion_documento'    => $posicion++
     ]);
 }
+
 
 
 
