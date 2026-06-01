@@ -9,30 +9,34 @@ class Caracteristica extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['nombre', 'descripcion'];
+    protected $table = 'caracteristicas';
 
-    public function categoria()
+    protected $fillable = ['nombre', 'descripcion', 'estado'];
+
+    // CORREGIDO: Una característica TIENE MUCHAS categorías asociadas (La llave está en categorias)
+    public function categorias()
     {
-        return $this->belongsTo(Categoria::class);
+        return $this->hasMany(Categoria::class, 'caracteristica_id');
     }
 
-    public function marca()
+    // CORREGIDO: Si marcas, presentaciones y cajas siguen la misma lógica, deben ser hasMany o hasOne
+    public function marcas()
     {
-        return $this->belongsTo(Marca::class);
+        return $this->hasMany(Marca::class, 'caracteristica_id');
     }
 
-    public function presentacion()
+    public function presentaciones()
     {
-        return $this->belongsTo(Presentacione::class, 'presentacione_id');
+        return $this->hasMany(Presentacione::class, 'caracteristica_id');
     }
 
-    public function caja()
+    public function cajas()
     {
-        return $this->belongsTo(Cash_registers::class, 'cash_registers_id');
+        return $this->hasMany(Cash_registers::class, 'caracteristica_id');
     }
 
-    public function cajaRegistradora()
+    public function cajasRegistradoras()
     {
-        return $this->belongsTo(CajaRegistradora::class, 'cajaregistradora_id');
+        return $this->hasMany(CajaRegistradora::class, 'caracteristica_id');
     }
 }
