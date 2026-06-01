@@ -206,11 +206,15 @@ return $productos;
 
         return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
 
-    } catch (Exception $e) {
-        DB::rollBack();
+} catch (Exception $e) {
+    DB::rollBack();
 
-        return redirect()->back()->withInput()->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
-    }
+    // Esto te dirá exactamente qué columna o llave foránea falló en la nube
+    dd([
+        'Error BD' => $e->getMessage()
+    ]);
+}
+
 }
 
 
