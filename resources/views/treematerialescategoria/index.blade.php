@@ -2,7 +2,7 @@
 @extends('layouts.app')
 
 
-@section('title', 'Panel')
+@section('title', 'Árbol estructura condicion logita Materiales')
 
 @section('content')
 <meta name="csrf-token" content="{{ csrf_token() }}">

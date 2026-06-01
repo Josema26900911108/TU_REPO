@@ -228,42 +228,63 @@ public function store(StoreCompraRequest $request)
 
 // 1. Agrupar productos por ID, Fecha, Precio Compra y Precio Venta
 $productosConsolidados = [];
+
 foreach ($arrayProducto_id as $index => $id) {
-    $fecha = $arrayFechaVencimiento[$index] ?? 'N/A';
-    $pCompra = $arrayPrecioCompra[$index];
-    $pVenta = $arrayPrecioVenta[$index];
+    // 1. Normalizar los valores para evitar errores de texto/decimales en la llave
+    $fecha   = !empty($arrayFechaVencimiento[$index]) ? $arrayFechaVencimiento[$index] : 'N/A';
+    $pCompra = number_format(floatval($arrayPrecioCompra[$index]), 2, '.', '');
+    $pVenta  = number_format(floatval($arrayPrecioVenta[$index]), 2, '.', '');
     
-    // La llave ahora es una combinación de todos los factores de igualdad
+    // 2. La llave única combinada separa por producto, fecha y precios
     $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
 
+    // 3. Si no existe la combinación exacta, se crea el registro base
     if (!isset($productosConsolidados[$key])) {
         $productosConsolidados[$key] = [
             'id'            => $id,
             'cantidad'      => 0,
-            'precio_compra' => $pCompra,
-            'precio_venta'  => $pVenta,
+            'precio_compra' => floatval($pCompra),
+            'precio_venta'  => floatval($pVenta),
             'impuesto'      => 0,
             'fecha'         => $fecha
         ];
     }
     
-    // Sumamos cantidades e impuestos solo si la llave es idéntica
+    // 4. Suma las cantidades e impuestos sólo si pertenecen a la misma llave
     $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
     $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index]);
 }
 
+// Opcional: Si necesitas resetear los índices numéricos para recorrerlo fácilmente
+$productosConsolidados = array_values($productosConsolidados);  
+    
+    // Sumamos cantidades e impuestos solo si la llave es idéntica
+    $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
+    $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index]);
+
+
 // 2. Procesar el array consolidado
 $posicion = 1;
-foreach ($productosConsolidados as $item) {
+
+foreach ($productosConsolidados as $key => $item) {
     $idLoteGenerado = null;
     $producto = Producto::find($item['id']);
+
+    // 1. Forzar que la cantidad sea un entero válido y capturar el valor real
+    $cantidadLote = isset($item['cantidad']) ? intval($item['cantidad']) : 0;
+
+    // 2. Validación de seguridad: Si por algún motivo la cantidad sigue en 0, 
+    // buscamos re-mapear usando la llave original si es un array asociativo
+    if ($cantidadLote === 0 && isset($productosConsolidados[$key]['cantidad'])) {
+        $cantidadLote = intval($productosConsolidados[$key]['cantidad']);
+    }
 
     // Crear Lote Único para este grupo consolidado
     if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
         $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
             'producto_id'       => $item['id'],
             'numero_lote'       => 'L-' . date('Ymd', strtotime($item['fecha'])).'.'.$compra->id.'.'.($posicion++),
-            'cantidad'          => $item['cantidad'],
+            'cantidad'          => $cantidadLote, // Usamos la variable verificada
             'fecha_vencimiento' => $item['fecha'],
             'fkTienda'          => $fkTienda,
             'compra_id'         => $compra->id,
