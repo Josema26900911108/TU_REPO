@@ -293,73 +293,74 @@ $productosConsolidados = array_values($productosConsolidados);
 
 
 // ==========================================
-// PASO 2: INSERCIÓN EN BASE DE DATOS
+// PASO 2: INSERCIÓN EN BASE DE DATOS (CORREGIDO SIN DUPLICIDAD)
 // ==========================================
-        $posicion = 1;
+$posicion = 1;
 
-        foreach ($productosConsolidados as $item) {
-            $idLoteGenerado = null;
-            $producto = Producto::find($item['id']);
-            $cantidadLote = isset($item['cantidad']) ? intval($item['cantidad']) : 0;
+foreach ($productosConsolidados as $item) {
+    $idLoteGenerado = null;
+    $producto = Producto::find($item['id']);
+    $cantidadLote = isset($item['cantidad']) ? intval($item['cantidad']) : 0;
 
-            if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
-                $fechaFormateada = date('Ymd', strtotime($item['fecha']));
-                $numeroLote = 'L-' . $fechaFormateada . '.' . $compra->id . '.' . $posicion;
+    if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
+        $fechaFormateada = date('Ymd', strtotime($item['fecha']));
+        $numeroLote = 'L-' . $fechaFormateada . '.' . $compra->id . '.' . $posicion;
 
-                $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
-                    'producto_id'       => $item['id'],
-                    'numero_lote'       => $numeroLote,
-                    'cantidad'          => $cantidadLote,
-                    'fecha_vencimiento' => $item['fecha'],
-                    'fkTienda'          => $fkTienda,
-                    'compra_id'         => $compra->id,
-                    'notificado'        => 0,
-                    'created_at'        => now(),
-                    'updated_at'        => now()
-                ]);
-            }
+        $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
+            'producto_id'       => $item['id'],
+            'numero_lote'       => $numeroLote,
+            'cantidad'          => $cantidadLote, // Enviamos el valor sumado real
+            'fecha_vencimiento' => $item['fecha'],
+            'fkTienda'          => $fkTienda,
+            'compra_id'         => $compra->id,
+            'notificado'        => 0,
+            'created_at'        => now(),
+            'updated_at'        => now()
+        ]);
+    }
 
-            $compra->productos()->attach([
-                $item['id'] => [
-                    'cantidad'      => $cantidadLote,
-                    'precio_compra' => $item['precio_compra'],
-                    'precio_venta'  => $item['precio_venta'],
-                    'impuesto'      => $item['impuesto'],
-                    'fkTienda'      => $fkTienda,
-                    'fkLote'        => $idLoteGenerado,
-                    'Naturaleza'    => 'D',
-                    'Estado'        => 'I'
-                ]
-            ]);
+    // 1. Al ejecutar este attach, se disparan los Triggers de MySQL y calculan el stock automáticamente
+    $compra->productos()->attach([
+        $item['id'] => [
+            'cantidad'      => $cantidadLote,
+            'precio_compra' => $item['precio_compra'],
+            'precio_venta'  => $item['precio_venta'],
+            'impuesto'      => $item['impuesto'],
+            'fkTienda'      => $fkTienda,
+            'fkLote'        => $idLoteGenerado,
+            'Naturaleza'    => 'D',
+            'Estado'        => 'I'
+        ]
+    ]);
 
-            if ($producto) {
-                $producto->increment('stock', $cantidadLote);
-            }
+    // ❌ ELIMINADO: $producto->increment('stock', $cantidadLote);
+    // Ya no hacemos esto en PHP para evitar romper la transacción con el Trigger 2
 
-            $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
-                ->where('tienda.idTienda', session('user_fkTienda'))
-                ->select('centro.*', 'tienda.nombre as nombre_tienda')
-                ->first();
+    $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+        ->where('tienda.idTienda', session('user_fkTienda'))
+        ->select('centro.*', 'tienda.nombre as nombre_tienda')
+        ->first();
 
-            MovimientoMateriales::create([
-                'fkTienda'              => $fkTienda,
-                'fkMateriales'          => $item['id'],
-                'fkLotes'               => $idLoteGenerado,
-                'clase_movimiento'      => '641',
-                'tipo_movimiento'       => 'COMPRA',
-                'cantidad'              => $cantidadLote,
-                'documento_material'    => 'COM-' . $compra->numero_comprobante,
-                'referencia'            => "Comp ID: ||{$compra->id}||",
-                'fecha_contabilizacion' => now(),
-                'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'),
-                'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'),
-                'origen_uso'            => 'compra_nacional',
-                'unidad_medida_base'    => 'PZA',
-                'posicion_documento'    => $posicion
-            ]);
+    // Registro en Kardex (Movimientos)
+    MovimientoMateriales::create([
+        'fkTienda'              => $fkTienda,
+        'fkMateriales'          => $item['id'],
+        'fkLotes'               => $idLoteGenerado,
+        'clase_movimiento'      => '641',
+        'tipo_movimiento'       => 'COMPRA',
+        'cantidad'              => $cantidadLote,
+        'documento_material'    => 'COM-' . $compra->numero_comprobante,
+        'referencia'            => "Comp ID: ||{$compra->id}||",
+        'fecha_contabilizacion' => now(),
+        'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'),
+        'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'),
+        'origen_uso'            => 'compra_nacional',
+        'unidad_medida_base'    => 'PZA',
+        'posicion_documento'    => $posicion
+    ]);
 
-            $posicion++; 
-        }
+    $posicion++; 
+}
 
         DB::commit();
         return redirect()->route('compras.index')->with('success', 'Compra registrada con éxito.');
