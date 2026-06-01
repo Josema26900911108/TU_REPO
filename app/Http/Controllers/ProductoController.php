@@ -221,6 +221,8 @@ if ($request->hasFile('img_path')) {
         // Redirigir asegurando el guardado de la sesión antes de salir
         session()->save(); 
 
+                // Redirigir con éxito
+                return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
 
 
         // Manejar la relación de categorías (Si esto falla, el producto ya se salvó)
@@ -229,8 +231,7 @@ if ($request->hasFile('img_path')) {
             $producto->categorias()->attach($categorias);
         }
 
-        // Redirigir con éxito
-                return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
+
 
     } catch (Exception $e) {
         // En caso de error, revertir solo si la transacción sigue abierta
