@@ -227,18 +227,20 @@ public function store(StoreCompraRequest $request)
         }
 
 // 1. Agrupar productos por ID, Fecha, Precio Compra y Precio Venta
+// ==========================================
+// PASO 1: CONSOLIDACIÓN DE PRODUCTOS
+// ==========================================
 $productosConsolidados = [];
 
 foreach ($arrayProducto_id as $index => $id) {
-    // 1. Normalizar los valores para evitar errores de texto/decimales en la llave
+    // Normalizar datos
     $fecha   = !empty($arrayFechaVencimiento[$index]) ? $arrayFechaVencimiento[$index] : 'N/A';
     $pCompra = number_format(floatval($arrayPrecioCompra[$index]), 2, '.', '');
     $pVenta  = number_format(floatval($arrayPrecioVenta[$index]), 2, '.', '');
     
-    // 2. La llave única combinada separa por producto, fecha y precios
+    // Generar la llave única
     $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
 
-    // 3. Si no existe la combinación exacta, se crea el registro base
     if (!isset($productosConsolidados[$key])) {
         $productosConsolidados[$key] = [
             'id'            => $id,
@@ -250,35 +252,31 @@ foreach ($arrayProducto_id as $index => $id) {
         ];
     }
     
-    // 4. Suma las cantidades e impuestos sólo si pertenecen a la misma llave
+    // Acumular
     $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
     $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index]);
 }
 
-// Opcional: Si necesitas resetear los índices numéricos para recorrerlo fácilmente
-$productosConsolidados = array_values($productosConsolidados);  
-    
-    // Sumamos cantidades e impuestos solo si la llave es idéntica
-    $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
-    $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index]);
+$productosConsolidados = array_values($productosConsolidados);
 
-
-// 2. Procesar el array consolidado
+// ==========================================
+// PASO 2: INSERCIÓN EN BASE DE DATOS
+// ==========================================
 $posicion = 1;
 
-foreach ($productosConsolidados as $item) { // Removemos $key porque no se necesita
+foreach ($productosConsolidados as $item) {
     $idLoteGenerado = null;
     $producto = Producto::find($item['id']);
-
-    // 1. Capturar directamente la cantidad consolidada del ítem actual
     $cantidadLote = isset($item['cantidad']) ? intval($item['cantidad']) : 0;
 
-    // Crear Lote Único para este grupo consolidado
     if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
+        $fechaFormateada = date('Ymd', strtotime($item['fecha']));
+        $numeroLote = 'L-' . $fechaFormateada . '.' . $compra->id . '.' . $posicion;
+
         $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
             'producto_id'       => $item['id'],
-            'numero_lote'       => 'L-' . date('Ymd', strtotime($item['fecha'])).'.'.$compra->id.'.'.($posicion++),
-            'cantidad'          => $cantidadLote, // Usamos la variable verificada
+            'numero_lote'       => $numeroLote,
+            'cantidad'          => $cantidadLote,
             'fecha_vencimiento' => $item['fecha'],
             'fkTienda'          => $fkTienda,
             'compra_id'         => $compra->id,
@@ -288,47 +286,47 @@ foreach ($productosConsolidados as $item) { // Removemos $key porque no se neces
         ]);
     }
 
-    // Insertar en detalle de compra (Pivote)
     $compra->productos()->attach([
         $item['id'] => [
-            'cantidad'      => $cantidadLote, // Usamos la cantidad validada
+            'cantidad'      => $cantidadLote,
             'precio_compra' => $item['precio_compra'],
             'precio_venta'  => $item['precio_venta'],
             'impuesto'      => $item['impuesto'],
             'fkTienda'      => $fkTienda,
-            'fkLote'        => $idLoteGenerado, // ID de la tabla lotesalarma
+            'fkLote'        => $idLoteGenerado,
             'Naturaleza'    => 'D',
             'Estado'        => 'I'
         ]
     ]);
 
-    // Actualizar Stock global
-    $producto->increment('stock', $cantidadLote);
+    if ($producto) {
+        $producto->increment('stock', $cantidadLote);
+    }
 
     $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
-        ->where('tienda.idTienda', session('user_fkTienda')) // Filtro importante
+        ->where('tienda.idTienda', session('user_fkTienda'))
         ->select('centro.*', 'tienda.nombre as nombre_tienda')
         ->first();
 
-    // Registro en Kardex (Movimientos)
     MovimientoMateriales::create([
         'fkTienda'              => $fkTienda,
         'fkMateriales'          => $item['id'],
         'fkLotes'               => $idLoteGenerado,
         'clase_movimiento'      => '641',
         'tipo_movimiento'       => 'COMPRA',
-        'cantidad'              => $cantidadLote, // Usamos la cantidad validada
+        'cantidad'              => $cantidadLote,
         'documento_material'    => 'COM-' . $compra->numero_comprobante,
         'referencia'            => "Comp ID: ||{$compra->id}||",
         'fecha_contabilizacion' => now(),
-        'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'), 
-        'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'), 
+        'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'),
+        'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'),
         'origen_uso'            => 'compra_nacional',
         'unidad_medida_base'    => 'PZA',
-        'posicion_documento'    => $posicion++
+        'posicion_documento'    => $posicion
     ]);
-}
 
+    $posicion++; 
+}
 
 
 
