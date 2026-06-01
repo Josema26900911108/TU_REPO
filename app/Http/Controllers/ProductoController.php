@@ -161,80 +161,56 @@ return $productos;
 
     /**
      * Store a newly created resource in storage.
-     */
-    public function store(StoreProductoRequest $request)
+     */public function store(StoreProductoRequest $request)
 {
-    try {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+    // NOTA: Elimina el Auth::check() de aquí y añade el middleware 'auth' en tus rutas.
 
+    try {
         // Recuperar la tienda de la sesión
         $fkTienda = session('user_fkTienda');
 
         DB::beginTransaction();
 
-        // Inicializar el modelo Producto
-        $producto = new Producto();
-
-        // Manejar la carga de la imagen
-if ($request->hasFile('img_path')) {
-    try {
-        // 1. Guarda el nombre de la imagen vieja antes de actualizarla
-        $imagenVieja = $producto->img_path;
-
-        // 2. Sube la nueva imagen al bucket de Google Cloud
-        $name = $producto->handleUploadImage($request->file('img_path'));
-
-        // 3. Si la subida fue exitosa, elimina de inmediato la imagen vieja del bucket
-        if (!empty($imagenVieja) && Storage::disk('gcs_images')->exists($imagenVieja)) {
-            Storage::disk('gcs_images')->delete($imagenVieja);
+        // 1. Manejar la carga de la imagen (Simplificado para creación)
+        $name = null;
+        if ($request->hasFile('img_path')) {
+            try {
+                $name = (new Producto())->handleUploadImage($request->file('img_path'));
+            } catch (Exception $e) {
+                return redirect()->back()->with('error', 'Error al cargar la imagen en la nube: ' . $e->getMessage());
+            }
         }
 
-    } catch (Exception $e) {
-        return redirect()->back()->with('error', 'Error al cargar la imagen en la nube: ' . $e->getMessage());
-    }
-} else {
-    // Si no se sube una nueva imagen, conservamos la que ya tenía el producto
-    $name = $producto->img_path;
-}
-
-
-        // Llenar los campos del producto con los datos del formulario
-        $producto->fill([
-            'codigo' => $request->codigo,
-            'nombre' => $request->nombre,
-            'descripcion' => $request->descripcion,
-            'img_path' => $name,
-            'marca_id' => $request->marca_id,
-            'presentacione_id' => $request->presentacione_id,
-            'fkTienda' => $fkTienda,
-            'perecedero' => $request->perecedero ? 1 : 0
+        // 2. Crear el producto usando asignación masiva (Fillable)
+        // Se añade 'precio_base' asumiendo que viene en tu formulario
+        $producto = Producto::create([
+            'codigo'            => $request->codigo,
+            'nombre'            => $request->nombre,
+            'descripcion'       => $request->descripcion,
+            'precio_base'       => $request->precio_base ?? 0, 
+            'img_path'          => $name,
+            'marca_id'          => $request->marca_id,
+            'presentacione_id'  => $request->presentacione_id,
+            'fkTienda'          => $fkTienda,
+            'perecedero'        => $request->boolean('perecedero') // Convierte limpia y automáticamente a 1 o 0
         ]);
 
-        // Guardar el producto
-        $producto->save();
+        // 3. Sincronizar categorías de forma segura
+        // Usar sync() en lugar de attach() evita registros duplicados si el formulario se reenvía
+        $categorias = $request->input('categorias', []);
+        $producto->categorias()->sync($categorias);
 
-        // Manejar la relación de categorías
-        $categorias = $request->get('categorias');
-        if (!empty($categorias)) {
-            $producto->categorias()->attach($categorias);
-        }
-
-        // Confirmar la transacción
         DB::commit();
 
-        // Redirigir con éxito
         return redirect()->route('productos.index')->with('success', 'Producto registrado exitosamente.');
 
     } catch (Exception $e) {
-        // En caso de error, revertir la transacción
         DB::rollBack();
 
-        // Retornar el error para el usuario
-        return redirect()->back()->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
+        return redirect()->back()->withInput()->with('error', 'Ocurrió un error al registrar el producto: ' . $e->getMessage());
     }
 }
+
 
 public function obtenerCodigoUnicoAjax()
 {

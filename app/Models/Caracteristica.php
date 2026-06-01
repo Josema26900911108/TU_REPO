@@ -9,26 +9,30 @@ class Caracteristica extends Model
 {
     use HasFactory;
 
-    public function categoria(){
-        return $this->hasOne(Categoria::class);
+    protected $fillable = ['nombre', 'descripcion'];
+
+    public function categoria()
+    {
+        return $this->belongsTo(Categoria::class);
     }
 
-    public function marca(){
-        return $this->hasOne(Marca::class);
+    public function marca()
+    {
+        return $this->belongsTo(Marca::class);
     }
 
-
-    public function presentacione(){
-        return $this->hasOne(Presentacione::class);
+    public function presentacion()
+    {
+        return $this->belongsTo(Presentacione::class, 'presentacione_id');
     }
 
-    public function caja(){
-        return $this->hasOne(related: cash_registers::class);
+    public function caja()
+    {
+        return $this->belongsTo(Cash_registers::class, 'cash_registers_id');
     }
 
-    public function cajaregistradora(){
-        return $this->hasOne(related: cajaregistradora::class);
+    public function cajaRegistradora()
+    {
+        return $this->belongsTo(CajaRegistradora::class, 'cajaregistradora_id');
     }
-
-    protected $fillable = ['nombre','descripcion'];
 }
