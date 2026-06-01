@@ -245,6 +245,31 @@ if ($request->hasFile('img_path')) {
         //
     }
 
+    public function obtenerCodigoUnicoAjax()
+{
+    $existe = true;
+    $codigoUnico = '';
+
+    while ($existe) {
+        // Prefijo '20' + 10 dígitos de tiempo
+        $base = "20" . substr((string)intval(microtime(true) * 1000), -10);
+        
+        // Dígito verificador EAN-13
+        $suma = 0;
+        for ($i = 0; $i < 12; $i++) {
+            $suma += ($i % 2 === 0) ? (int)$base[$i] : (int)$base[$i] * 3;
+        }
+        $digitoVerificador = (10 - ($suma % 10)) % 10;
+        $codigoUnico = $base . $digitoVerificador;
+
+        // Validar contra la BD
+        $existe = Producto::where('codigo_barras', $codigoUnico)->exists(); // Cambia 'codigo_barras' por tu columna real
+    }
+
+    return response()->json(['codigo' => $codigoUnico]);
+}
+
+
     /**
      * Show the form for editing the specified resource.
      */

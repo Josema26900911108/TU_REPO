@@ -148,14 +148,18 @@ function StopScanner() {
 
                 <div class="row g-4">
 
-                    <!----Codigo---->
-                    <div class="col-md-4">
-                        <label for="codigo" class="form-label">Código:</label>
-                        <input type="text" name="codigo" id="codigo" class="form-control" value="{{old('codigo')}}">
-                        @error('codigo')
-                        <small class="text-danger">{{'*'.$message}}</small>
-                        @enderror
-                    </div>
+<!----Codigo---->
+<div class="col-md-4">
+    <label for="codigo" class="form-label">Código:</label>
+    <div class="input-group">
+        <input type="text" name="codigo" id="codigo" class="form-control" value="{{old('codigo')}}">
+        <button type="button" id="btn-generar-codigo" class="btn btn-secondary">Generar</button>
+    </div>
+    @error('codigo')
+    <small class="text-danger">{{'*'.$message}}</small>
+    @enderror
+</div>
+
 
                     <!---Nombre---->
                     <div class="col-md-6">
@@ -257,4 +261,20 @@ function StopScanner() {
 
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
+<script>
+$('#btn-generar-codigo').on('click', function() {
+    $.ajax({
+        url: '/productos/generar-codigo-unico',
+        type: 'GET',
+        success: function(response) {
+            // Inserta el código generado de forma segura en el input
+            $('#codigo').val(response.codigo);
+        },
+        error: function(xhr) {
+            console.error("Error al generar el código de barras:", xhr);
+        }
+    });
+});
+
+    </script>
 @endpush

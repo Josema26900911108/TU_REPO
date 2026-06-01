@@ -428,6 +428,7 @@ Route::get('/movimientomaterialesTtabla', [movimientomaterialesController::class
 
 
 Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
+Route::get('/productos/generar-codigo-unico', [ProductoController::class, 'obtenerCodigoUnicoAjax']);
 
 
 Route::get('/tecnico', [TecnicoController::class, 'index'])->name('tecnico.lista');

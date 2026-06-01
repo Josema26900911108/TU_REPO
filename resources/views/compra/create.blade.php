@@ -877,110 +877,110 @@ function agregarProductoScanner(sku) {
     tableBody.empty();
     var comprobanteId = document.getElementById('comprobante_id').value;
 
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detalles/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-            var detalles = response.detalles;
-            var tableBody = $('#detalle_tbody');
-            tableBody.empty();
+    if (comprobanteId) {
+        $.ajax({
+            url: '/compras/detalles/' + comprobanteId + '',
+            type: 'GET',
+            success: function(response) {
+                var detalles = response.detalles;
+                var tableBody = $('#detalle_tbody');
+                tableBody.empty();
 
-            // Iterar sobre los detalles y agregar filas a la tabla
-            $.each(detalles, function(index, detalle) {
+                // Iterar sobre los detalles y agregar filas a la tabla
+                $.each(detalles, function(index, detalle) {
 
-                var row = '<tr>' +
-                    '<td></td>' +
-                    '<td></td>' +
-                    '<td>' + detalle.cuenta_contable_nombre + '</td>' +
-                    '<td class="small-text">N/A</td>' +
-                    '<td><input type="number" class="form-control" value="' + detalle.valorminimo + '"></td>' +
-                    '<td>' + detalle.Naturaleza + '</td>' +
-                    '</tr>';
-                tableBody.append(row);
-                formulas[index]=detalle.formula;
-                monto[index]=detalle.valorminimo;
-                cuenta[index]=detalle.cuenta_contable_nombre;
-                idcuenta[index]=detalle.id;
-                tipo[index]=detalle.Naturaleza;
-                formula=detalle.formuladoc;
+                    var row = '<tr>' +
+                        '<td></td>' +
+                        '<td></td>' +
+                        '<td>' + detalle.cuenta_contable_nombre + '</td>' +
+                        '<td class="small-text">N/A</td>' +
+                        '<td><input type="number" class="form-control" value="' + detalle.valorminimo + '"></td>' +
+                        '<td>' + detalle.Naturaleza + '</td>' +
+                        '</tr>';
+                    tableBody.append(row);
+                    formulas[index]=detalle.formula;
+                    monto[index]=detalle.valorminimo;
+                    cuenta[index]=detalle.cuenta_contable_nombre;
+                    idcuenta[index]=detalle.id;
+                    tipo[index]=detalle.Naturaleza;
+                    formula=detalle.formuladoc;
 
-                sumarArreglosInput(formulas,monto);
+                    sumarArreglosInput(formulas,monto);
 
-            });
+                });
 
-            llenarTablaventas();
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
+                llenarTablaventas();
+            },
+            error: function(xhr, status, error) {
+                console.error("Error al cargar los detalles:", error);
+            }
+        });
+    }
+    }else if (tipoFolioSeleccionado === "A") {
+        var comprobanteId = document.getElementById('comprobante_id').value;
+
+    if (comprobanteId) {
+        $.ajax({
+            url: '/compras/detalles/' + comprobanteId + '',
+            type: 'GET',
+            success: function(response) {
+                var detalles = response.detalles;
+                var tableBody = $('#detalle_tbody');
+                tableBody.empty();
+
+                // Iterar sobre los detalles y agregar filas a la tabla
+                $.each(detalles, function(index, detalle) {
+
+                    var row = '<tr>' +
+                        '<td></td>' +
+                        '<td></td>' +
+                        '<td>' + detalle.cuenta_contable_nombre + '</td>' +
+                        '<td class="small-text">' + detalle.formula + '</td>' +
+                        '<td>' + detalle.valorminimo + '</td>' +
+                        '<td>' + detalle.Naturaleza + '</td>' +
+                        '</tr>';
+                    tableBody.append(row);
+                    formulas[index]=detalle.formula;
+                    monto[index]=detalle.valorminimo;
+                    cuenta[index]=detalle.cuenta_contable_nombre;
+                    idcuenta[index]=detalle.id;
+                    tipo[index]=detalle.Naturaleza;
+                    formula=detalle.formuladoc;
+
+                    sumarArreglos(formulas,monto);
+
+                });
+
+                llenarTablaventas();
+            },
+            error: function(xhr, status, error) {
+                console.error("Error al cargar los detalles:", error);
+            }
+        });
+    }
+    }
+    else if (tipoFolioSeleccionado === "F") {
+
+        var tableBody = $('#detalle_tbody');
+                    formulas=[];
+                    monto=[];
+                    cuenta=[];
+                    idcuenta=[];
+                    tipo=[];
+                    formula=[];
+                    contcc=0;
+        tableBody.empty();
+        const nuevoDiv = crearNuevoDiv();
+
+
+                    // Agregar el nuevo div al contenedor
+                    contenedor.appendChild(nuevoDiv);
+
+                    // Reinicializar el Selectpicker para los nuevos elementos
+                    $(nuevoDiv).find('.selectpicker').selectpicker('refresh');
+
+    }
     });
-}
-}else if (tipoFolioSeleccionado === "A") {
-    var comprobanteId = document.getElementById('comprobante_id').value;
-
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detalles/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-            var detalles = response.detalles;
-            var tableBody = $('#detalle_tbody');
-            tableBody.empty();
-
-            // Iterar sobre los detalles y agregar filas a la tabla
-            $.each(detalles, function(index, detalle) {
-
-                var row = '<tr>' +
-                    '<td></td>' +
-                    '<td></td>' +
-                    '<td>' + detalle.cuenta_contable_nombre + '</td>' +
-                    '<td class="small-text">' + detalle.formula + '</td>' +
-                    '<td>' + detalle.valorminimo + '</td>' +
-                    '<td>' + detalle.Naturaleza + '</td>' +
-                    '</tr>';
-                tableBody.append(row);
-                formulas[index]=detalle.formula;
-                monto[index]=detalle.valorminimo;
-                cuenta[index]=detalle.cuenta_contable_nombre;
-                idcuenta[index]=detalle.id;
-                tipo[index]=detalle.Naturaleza;
-                formula=detalle.formuladoc;
-
-                sumarArreglos(formulas,monto);
-
-            });
-
-            llenarTablaventas();
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
-    });
-}
-}
-else if (tipoFolioSeleccionado === "F") {
-
-    var tableBody = $('#detalle_tbody');
-                formulas=[];
-                monto=[];
-                cuenta=[];
-                idcuenta=[];
-                tipo=[];
-                formula=[];
-                contcc=0;
-    tableBody.empty();
-    const nuevoDiv = crearNuevoDiv();
-
-
-                // Agregar el nuevo div al contenedor
-                contenedor.appendChild(nuevoDiv);
-
-                // Reinicializar el Selectpicker para los nuevos elementos
-                $(nuevoDiv).find('.selectpicker').selectpicker('refresh');
-
-}
-});
 
 $('#comprobante_id').on('change', function() {
 
