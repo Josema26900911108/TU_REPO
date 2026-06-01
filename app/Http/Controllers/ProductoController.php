@@ -198,7 +198,7 @@ return $productos;
         // 3. Sincronizar categorías de forma segura
         // Usar sync() en lugar de attach() evita registros duplicados si el formulario se reenvía
         $categorias = $request->input('categorias', []);
-        dd($categorias); 
+
 
         $producto->categorias()->sync($categorias);
 
