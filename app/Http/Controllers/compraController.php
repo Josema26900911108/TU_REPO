@@ -137,6 +137,8 @@ public function store(StoreCompraRequest $request)
         DB::beginTransaction();
         $fkTienda = session('user_fkTienda');
         $id = auth()->id();
+        
+
 
         // 1. Recuperar los arrays de la petición
         $arrayProducto_id = $request->get('arrayidproducto');
@@ -158,6 +160,8 @@ public function store(StoreCompraRequest $request)
         $arraymonto = $request->get('arraymonto');
         $arraytipomovimiento = $request->get('arraytipomovimiento');
 
+        dd($arrayCantidad);
+        
         if ($numero_comprobante == 0) {
             $comprobantenomenclatura = Comprobante::where('id', $comprobante_id)->first();
 
@@ -288,7 +292,7 @@ foreach ($idsProductos as $index => $id) {
 $productosConsolidados = array_values($productosConsolidados);
 
 
-        // ==========================================
+// ==========================================
 // PASO 2: INSERCIÓN EN BASE DE DATOS
 // ==========================================
         $posicion = 1;
