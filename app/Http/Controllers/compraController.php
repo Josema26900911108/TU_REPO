@@ -131,8 +131,6 @@ public function store(StoreCompraRequest $request)
         if (!Auth::check()) {
             return redirect()->route('login');
         }
-           $productosConsolidados[$key]['cantidad'] += intval($arrayCantidad[$index]);
-
 
         $lockKey = 'submit_venta_' . auth()->id();
 
@@ -140,13 +138,13 @@ public function store(StoreCompraRequest $request)
         $fkTienda = session('user_fkTienda');
         $id = auth()->id();
 
-        // 1. Recuperar los arrays (Incluyendo el nuevo de fecha de vencimiento)
+        // 1. Recuperar los arrays de la petición
         $arrayProducto_id = $request->get('arrayidproducto');
         $arrayCantidad = $request->get('arraycantidad');
         $arrayPrecioCompra = $request->get('arraypreciocompra');
         $arrayPrecioVenta = $request->get('arrayprecioventa');
         $arraysubiva = $request->get('arraysubiva');
-        $arrayFechaVencimiento = $request->get('arrayfecha_vencimiento'); // <--- Recuperado de tu JS
+        $arrayFechaVencimiento = $request->get('arrayfecha_vencimiento');
 
         $tipofolio = $request->get('TipoFolio');
         $total = $request->total ?? 0;
@@ -160,15 +158,15 @@ public function store(StoreCompraRequest $request)
         $arraymonto = $request->get('arraymonto');
         $arraytipomovimiento = $request->get('arraytipomovimiento');
 
-        if($numero_comprobante==0){
-                     $comprobantenomenclatura=Comprobante::where('id',$comprobante_id)->first();
+        if ($numero_comprobante == 0) {
+            $comprobantenomenclatura = Comprobante::where('id', $comprobante_id)->first();
 
-                    $ultimoNumero = Compra::where('fkTienda', $fkTienda)
-                            ->lockForUpdate()
-                            ->count('numero_comprobante');
+            $ultimoNumero = Compra::where('fkTienda', $fkTienda)
+                ->lockForUpdate()
+                ->count('numero_comprobante');
 
-        $numero_comprobante = $ultimoNumero ? $ultimoNumero + 1 : 1;
-        $numero_comprobante=$numero_comprobante.$tipofolio.$comprobantenomenclatura->ClaveVista.$comprobantenomenclatura->id;
+            $numero_comprobante = $ultimoNumero ? $ultimoNumero + 1 : 1;
+            $numero_comprobante = $numero_comprobante . $tipofolio . $comprobantenomenclatura->ClaveVista . $comprobantenomenclatura->id;
         }
 
         // Llenar tabla compras
@@ -177,7 +175,7 @@ public function store(StoreCompraRequest $request)
             'impuesto' => $impuestotal,
             'numero_comprobante' => $numero_comprobante,
             'total' => $total + $impuestotal,
-            'estado' => 2   ,
+            'estado' => 2,
             'fkUserCreate' => $id,
             'fkUserCC' => $id,
             'comprobante_id' => $comprobante_id,
@@ -202,18 +200,17 @@ public function store(StoreCompraRequest $request)
             'TipoMovimiento' => 'C'
         ]);
 
-        // Lógica de nomenclatura de comprobante (Se mantiene igual)
+        // Lógica de nomenclatura de comprobante
         preg_match_all('/\d+/', $numero_comprobante, $coincidencias);
         if (!empty($coincidencias[0])) {
             $primerNumero = $coincidencias[0][0];
             $ultimoNumero = $coincidencias[0][count($coincidencias[0]) - 1];
         } else {
             $primerNumero = ''; $ultimoNumero = '';
-        };
-
+        }
 
         // Llenar DetalleFolio
-        $cuentaArray = count($arrayidcuenta);
+        $cuentaArray = count($arrayidcuenta ?? []);
         $cont = 0;
         while ($cont < $cuentaArray) {
             DetalleFolio::create([
@@ -229,140 +226,124 @@ public function store(StoreCompraRequest $request)
             $cont++;
         }
 
+        // ==========================================
+// PASO 1: RE-ALINEAR ÍNDICES Y CONSOLIDAR
 // ==========================================
-// PASO 1: RE-ALINEAR ÍNDICES Y CONSOLIDAR (SOLUCIÓN DEFINITIVA)
-// ==========================================
-$productosConsolidados = [];
+        $productosConsolidados = [];
 
-// Forzamos a que todos los arreglos de la petición tengan índices limpios (0, 1, 2, 3...)
-$idsProductos = array_values($arrayProducto_id ?? []);
-$cantidades   = array_values($arrayCantidad ?? []);
-$fechas       = array_values($arrayFechaVencimiento ?? []);
-$preciosComp  = array_values($arrayPrecioCompra ?? []);
-$preciosVent  = array_values($arrayPrecioVenta ?? []);
-$impuestos    = array_values($arraysubiva ?? []);
+        $idsProductos = array_values($arrayProducto_id ?? []);
+        $cantidades   = array_values($arrayCantidad ?? []);
+        $fechas       = array_values($arrayFechaVencimiento ?? []);
+        $preciosComp  = array_values($arrayPrecioCompra ?? []);
+        $preciosVent  = array_values($arrayPrecioVenta ?? []);
+        $impuestos    = array_values($arraysubiva ?? []);
 
-// Recorremos usando la nueva estructura indexada secuencialmente
-foreach ($idsProductos as $index => $id) {
-    
-    // Capturar la cantidad usando el índice limpio alineado
-    $cantidadNumerica = isset($cantidades[$index]) ? intval($cantidades[$index]) : 0;
+        foreach ($idsProductos as $index => $id) {
+            $cantidadNumerica = isset($cantidades[$index]) ? intval($cantidades[$index]) : 0;
 
-    // Si el producto no es válido o la cantidad viene en 0, ignoramos la fila
-    if ($id <= 0 || $cantidadNumerica <= 0) {
-        continue;
-    }
+            if ($id <= 0 || $cantidadNumerica <= 0) {
+                continue;
+            }
 
-    // Normalizar el resto de variables con los arreglos limpios
-    $fecha   = !empty($fechas[$index]) ? $fechas[$index] : 'N/A';
-    $pCompra = number_format(floatval($preciosComp[$index] ?? 0), 2, '.', '');
-    $pVenta  = number_format(floatval($preciosVent[$index] ?? 0), 2, '.', '');
-    
-    // Generar llave única
-    $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
+            $fecha   = !empty($fechas[$index]) ? $fechas[$index] : 'N/A';
+            $pCompra = number_format(floatval($preciosComp[$index] ?? 0), 2, '.', '');
+            $pVenta  = number_format(floatval($preciosVent[$index] ?? 0), 2, '.', '');
+            
+            $key = $id . '_' . $fecha . '_' . $pCompra . '_' . $pVenta;
 
-    if (!isset($productosConsolidados[$key])) {
-        $productosConsolidados[$key] = [
-            'id'            => intval($id),
-            'cantidad'      => 0,
-            'precio_compra' => floatval($pCompra),
-            'precio_venta'  => floatval($pVenta),
-            'impuesto'      => 0,
-            'fecha'         => $fecha
-        ];
-    }
-    
-    // Acumular de forma segura
-    $productosConsolidados[$key]['cantidad'] += $cantidadNumerica;
-    $productosConsolidados[$key]['impuesto'] += floatval($impuestos[$index] ?? 0);
-}
+            if (!isset($productosConsolidados[$key])) {
+                $productosConsolidados[$key] = [
+                    'id'            => intval($id),
+                    'cantidad'      => 0,
+                    'precio_compra' => floatval($pCompra),
+                    'precio_venta'  => floatval($pVenta),
+                    'impuesto'      => 0,
+                    'fecha'         => $fecha
+                ];
+            }
+            
+            $productosConsolidados[$key]['cantidad'] += $cantidadNumerica;
+            $productosConsolidados[$key]['impuesto'] += floatval($impuestos[$index] ?? 0);
+        }
 
-$productosConsolidados = array_values($productosConsolidados);
+        $productosConsolidados = array_values($productosConsolidados);
 
-
-
-// ==========================================
+        // ==========================================
 // PASO 2: INSERCIÓN EN BASE DE DATOS
 // ==========================================
-$posicion = 1;
+        $posicion = 1;
 
-foreach ($productosConsolidados as $item) {
-    $idLoteGenerado = null;
-    $producto = Producto::find($item['id']);
-    $cantidadLote = isset($item['cantidad']) ? intval($item['cantidad']) : 0;
+        foreach ($productosConsolidados as $item) {
+            $idLoteGenerado = null;
+            $producto = Producto::find($item['id']);
+            $cantidadLote = isset($item['cantidad']) ? intval($item['cantidad']) : 0;
 
-    if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
-        $fechaFormateada = date('Ymd', strtotime($item['fecha']));
-        $numeroLote = 'L-' . $fechaFormateada . '.' . $compra->id . '.' . $posicion;
+            if ($item['fecha'] != 'N/A' && !empty($item['fecha'])) {
+                $fechaFormateada = date('Ymd', strtotime($item['fecha']));
+                $numeroLote = 'L-' . $fechaFormateada . '.' . $compra->id . '.' . $posicion;
 
-        $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
-            'producto_id'       => $item['id'],
-            'numero_lote'       => $numeroLote,
-            'cantidad'          => $cantidadLote,
-            'fecha_vencimiento' => $item['fecha'],
-            'fkTienda'          => $fkTienda,
-            'compra_id'         => $compra->id,
-            'notificado'        => 0,
-            'created_at'        => now(),
-            'updated_at'        => now()
-        ]);
-    }
+                $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
+                    'producto_id'       => $item['id'],
+                    'numero_lote'       => $numeroLote,
+                    'cantidad'          => $cantidadLote,
+                    'fecha_vencimiento' => $item['fecha'],
+                    'fkTienda'          => $fkTienda,
+                    'compra_id'         => $compra->id,
+                    'notificado'        => 0,
+                    'created_at'        => now(),
+                    'updated_at'        => now()
+                ]);
+            }
 
-    $compra->productos()->attach([
-        $item['id'] => [
-            'cantidad'      => $cantidadLote,
-            'precio_compra' => $item['precio_compra'],
-            'precio_venta'  => $item['precio_venta'],
-            'impuesto'      => $item['impuesto'],
-            'fkTienda'      => $fkTienda,
-            'fkLote'        => $idLoteGenerado,
-            'Naturaleza'    => 'D',
-            'Estado'        => 'I'
-        ]
-    ]);
+            $compra->productos()->attach([
+                $item['id'] => [
+                    'cantidad'      => $cantidadLote,
+                    'precio_compra' => $item['precio_compra'],
+                    'precio_venta'  => $item['precio_venta'],
+                    'impuesto'      => $item['impuesto'],
+                    'fkTienda'      => $fkTienda,
+                    'fkLote'        => $idLoteGenerado,
+                    'Naturaleza'    => 'D',
+                    'Estado'        => 'I'
+                ]
+            ]);
 
-    if ($producto) {
-        $producto->increment('stock', $cantidadLote);
-    }
+            if ($producto) {
+                $producto->increment('stock', $cantidadLote);
+            }
 
-    $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
-        ->where('tienda.idTienda', session('user_fkTienda'))
-        ->select('centro.*', 'tienda.nombre as nombre_tienda')
-        ->first();
+            $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+                ->where('tienda.idTienda', session('user_fkTienda'))
+                ->select('centro.*', 'tienda.nombre as nombre_tienda')
+                ->first();
 
-    MovimientoMateriales::create([
-        'fkTienda'              => $fkTienda,
-        'fkMateriales'          => $item['id'],
-        'fkLotes'               => $idLoteGenerado,
-        'clase_movimiento'      => '641',
-        'tipo_movimiento'       => 'COMPRA',
-        'cantidad'              => $cantidadLote,
-        'documento_material'    => 'COM-' . $compra->numero_comprobante,
-        'referencia'            => "Comp ID: ||{$compra->id}||",
-        'fecha_contabilizacion' => now(),
-        'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'),
-        'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'),
-        'origen_uso'            => 'compra_nacional',
-        'unidad_medida_base'    => 'PZA',
-        'posicion_documento'    => $posicion
-    ]);
+            MovimientoMateriales::create([
+                'fkTienda'              => $fkTienda,
+                'fkMateriales'          => $item['id'],
+                'fkLotes'               => $idLoteGenerado,
+                'clase_movimiento'      => '641',
+                'tipo_movimiento'       => 'COMPRA',
+                'cantidad'              => $cantidadLote,
+                'documento_material'    => 'COM-' . $compra->numero_comprobante,
+                'referencia'            => "Comp ID: ||{$compra->id}||",
+                'fecha_contabilizacion' => now(),
+                'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'),
+                'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'),
+                'origen_uso'            => 'compra_nacional',
+                'unidad_medida_base'    => 'PZA',
+                'posicion_documento'    => $posicion
+            ]);
 
-    $posicion++; 
-}
-
-
+            $posicion++; 
+        }
 
         DB::commit();
-        Cache::forget($lockKey); 
-        return redirect()->route('compras.index')->with('success', 'compra exitosa');
-    } catch (Exception $e) {
+        return redirect()->route('compras.index')->with('success', 'Compra registrada con éxito.');
+
+    } catch (\Exception $e) {
         DB::rollBack();
-        Cache::forget($lockKey); 
-        return response()->json([
-            'error' => $e->getMessage()
-        ], 500);
+        return redirect()->back()->withErrors(['error' => 'Error al guardar la compra: ' . $e->getMessage()])->withInput();
     }
-    
 }
 
 
