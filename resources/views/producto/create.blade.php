@@ -153,12 +153,14 @@ function StopScanner() {
     <label for="codigo" class="form-label">Código:</label>
     <div class="input-group">
         <input type="text" name="codigo" id="codigo" class="form-control" value="{{old('codigo')}}">
+        <!-- 💡 AGREGA EXPLICITAMENTE type="button" AQUÍ -->
         <button type="button" id="btn-generar-codigo" class="btn btn-secondary">Generar</button>
     </div>
     @error('codigo')
     <small class="text-danger">{{'*'.$message}}</small>
     @enderror
 </div>
+
 
 
                     <!---Nombre---->
@@ -262,26 +264,33 @@ function StopScanner() {
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
 <script>
-$('#btn-generar-codigo').on('click', function() {
-$.ajax({
-    url: '/ajax-interno/generar-codigo-barras-unico', // Nueva URL única
-    type: 'GET',
-    success: function(response) {
-        console.log("Respuesta del servidor:", response);
-        
-        // Si el controlador usa la estructura limpia con exit;
-        var objetoJson = (typeof response === 'object') ? response : JSON.parse(response.trim());
-        
-        if (objetoJson && objetoJson.codigo) {
-            $('#codigo').val(objetoJson.codigo);
+$('#btn-generar-codigo').on('click', function(e) {
+    // 1. Detiene de golpe cualquier intento del formulario de recargar la página
+    e.preventDefault(); 
+    e.stopPropagation();
+
+    $.ajax({
+        // 2. Apunta directo a la ruta del código único (puedes usar tu URL actual)
+        url: '/productos/generar-codigo-unico',
+        type: 'GET',
+        success: function(response) {
+            console.log("Respuesta del servidor:", response);
+            
+            // Evaluamos la respuesta de forma segura
+            var datos = (typeof response === 'object') ? response : JSON.parse(response.trim());
+            
+            if (datos && datos.codigo) {
+                // 3. Pintamos el valor en el input
+                $('#codigo').val(datos.codigo);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error("Error al procesar AJAX:", status, error);
+            console.error("Respuesta del servidor:", xhr.responseText);
         }
-    },
-    error: function(xhr, status, error) {
-        console.error("Error:", xhr.status, xhr.responseText);
-    }
+    });
 });
 
-});
 
     </script>
 @endpush
