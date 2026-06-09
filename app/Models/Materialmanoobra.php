@@ -18,7 +18,7 @@ class Materialmanoobra extends Model
     public $incrementing = true; // Si es autoincremental
 
 
-    protected $fillable = ['id', 'SKU', 'Descripcion', 'TIPO', 'unidadmedida','CATEGORIA', 'COSTOPAGO', 'CATEGORIACOBRO','created_at', 'update_at','fkTienda'];
+    protected $fillable = ['id', 'SKU', 'Descripcion', 'TIPO', 'unidadmedida','CATEGORIA', 'COSTOPAGO', 'CATEGORIACOBRO','created_at', 'update_at','fkTienda','centrocostoespecifico'];
 
     public $timestamps = true;
 

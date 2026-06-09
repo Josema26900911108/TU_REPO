@@ -267,6 +267,7 @@ foreach ($idsProductos as $index => $id) {
             'cantidad'      => 0, // Inicializador del acumulador
             'precio_compra' => floatval($pCompra),
             'precio_venta'  => floatval($pVenta),
+            'Naturaleza' => 'D',
             'impuesto'      => 0,
             'fecha'         => $fecha
         ];

@@ -104,7 +104,7 @@
                             </span>
                         </td>
                         <td class="text-end fw-bold text-dark">{{ number_format($item->Cantidad, 2) }}</td>
-                        <td class="text-end fw-bold text-success">${{ number_format($item->COSTOPAGO, 2) }}</td>
+                        <td class="text-end fw-bold text-success">Q{{ number_format($item->COSTOPAGO, 2) }}</td>
                         <td class="text-center"><span class="badge bg-success rounded-circle p-1.5 fs-10" title="Credito / Pago">{{ $item->Naturaleza }}</span></td>
                         <td class="text-center pe-3">
                             <button class="btn btn-light btn-sm border-0 text-muted rounded-circle p-1.5" type="button" data-bs-toggle="dropdown" style="width: 28px; height: 28px;">
@@ -152,7 +152,7 @@
                     <td></td>                     <!-- 4. Descripción -->
                     <td class="text-end text-uppercase fs-11 text-muted">Subtotal:</td> <!-- 5. OBS -->
                     <td class="text-end text-dark">{{ number_format($relacion->sum('Cantidad'), 2) }}</td> <!-- 6. Cantidad -->
-                    <td class="text-end text-success">${{ number_format($relacion->sum('COSTOPAGO'), 2) }}</td> <!-- 7. Pago Dinero -->
+                    <td class="text-end text-success">Q{{ number_format($relacion->sum('COSTOPAGO'), 2) }}</td> <!-- 7. Pago Dinero -->
                     <td></td>                     <!-- 8. Nat. -->
                     <td class="pe-3"></td>        <!-- 9. Acciones -->
                 </tr>

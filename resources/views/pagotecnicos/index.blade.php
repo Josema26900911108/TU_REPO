@@ -281,7 +281,7 @@
                         <th>SKU</th>
                         <th>Descripción Item</th>
                         <th>Cantidad</th>
-                        <th>Costo Pago ($)</th>
+                        <th>Costo Pago (Q)</th>
                         <th>Estatus Pago</th>
                         <th>Naturaleza</th>                        
                         <th>Observaciones</th>

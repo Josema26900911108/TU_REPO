@@ -68,6 +68,7 @@
                         <th>CATEGORIA</th>
                         <th>COSTOPAGO</th>
                         <th>CATEGORIACOBRO</th>
+                        <th>Centro Costo Específico</th>
                         <!------Eliminar producto---->
                         @can('vertienda-producto')
                         <th>Tienda</th>
@@ -99,6 +100,9 @@
                         <td>
                             {{$item->CATEGORIACOBRO}}
                         </td>
+                        <td>
+                            {{$item->centrocostoespecifico}}
+                        </td>                        
                         @can('vertienda-producto')
                         <td>
                             @if($item->fkTienda)

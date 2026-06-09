@@ -398,55 +398,81 @@ public function generarMemoriaFotografica(Request $request)
 
     // 1. Extraer los movimientos planos desde la base de datos a máxima velocidad
     // 1. Extraer los movimientos planos desde la base de datos a máxima velocidad
-    $movimientosRaw = DB::table('movimientomateriales as mm')
-        ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
-        ->leftJoin('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
-        ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
-        ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
-        ->where('mm.fkTienda', session('user_fkTienda'))
-        ->whereIn('ex.Orden', $ordenesEncontradas)
-        ->select([
-            'ex.id as expediente_id',
-            'ex.Orden as orden_tecnica',
-            'ex.virtual',
-            'ex.Status as expediente_status',
-            'ex.Tipo_servicio',
-            'ex.Tipo_orden',
-            'ex.NOMBRECLIENTE',
-            'ex.DIRECCION',
-            'ex.OBS as expediente_obs',
-            'ex.SIGLASCENTRAL',
-            'ex.AREA',
-            'ex.FECHAINSTALACION',
-            'abmamo.nombre as Tecnologia',
-            'mm.ESTATUS as movimiento_estatus',
-            'mm.SKU',
-            'mamo.Descripcion',
-            'mamo.TIPO',
-            'mamo.CATEGORIA',
-            'mm.id as movimiento_id', 
-            'mm.serie',
-            'mm.MAC1',
-            'mm.MAC2',
-            'mm.MAC3',
-            't.nombre as tecnico_nombre', 
-            't.codigo as tecnico_codigo', 
-            't.especialidad as tecnico_esp',
-            'mm.cantidad',
-            // Mantenemos el CASE matemático para el costo
-            DB::raw("CASE 
-                WHEN mamo.SKU IS NULL THEN NULL 
-                WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.COSTOPAGO 
-                ELSE mamo.CATEGORIACOBRO 
-            END AS COSTO"),
-            // Mantenemos el CASE matemático para la unidad de medida
-            DB::raw("CASE 
-                WHEN mamo.SKU IS NULL THEN NULL 
-                WHEN mamo.unidadmedida = '' OR mamo.unidadmedida IS NULL THEN 'UNIDAD' 
-                ELSE mamo.unidadmedida 
-            END AS unidadmedida_auditada")
-        ])
-        ->get();
+$tiendaId = session('user_fkTienda');
+
+$movimientosRaw = DB::table('movimientomateriales as mm')
+    ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
+    ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
+    // 1. Modificamos el LEFT JOIN para abrir el abanico al código específico o al genérico
+    ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
+        $join->on('mm.SKU', '=', 'mamo.SKU')
+             ->where(function ($query) use ($tiendaId) {
+                 $query->whereColumn('mamo.centrocostoespecifico', '=', 't.codigo') // Coincide Técnico
+                       ->orWhere('mamo.centrocostoespecifico', '=', $tiendaId)    // Coincide Tienda
+                       ->orWhereNull('mamo.centrocostoespecifico')               // Aplica para todos (NULL)
+                       ->orWhere('mamo.centrocostoespecifico', '=', '');         // Aplica para todos (Vacío)
+             });
+    })
+    ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
+    ->where('mm.fkTienda', $tiendaId)
+    ->whereIn('ex.Orden', $ordenesEncontradas)
+    ->select([
+        'ex.id as expediente_id',
+        'ex.Orden as orden_tecnica',
+        'ex.virtual',
+        'ex.Status as expediente_status',
+        'ex.Tipo_servicio',
+        'ex.Tipo_orden',
+        'ex.NOMBRECLIENTE',
+        'ex.DIRECCION',
+        'ex.OBS as expediente_obs',
+        'ex.SIGLASCENTRAL',
+        'ex.AREA',
+        'ex.FECHAINSTALACION',
+        'abmamo.nombre as Tecnologia',
+        'mm.ESTATUS as movimiento_estatus',
+        'mm.SKU',
+        'mamo.Descripcion',
+        'mamo.TIPO',
+        'mamo.CATEGORIA',
+        'mm.id as movimiento_id', 
+        'mm.serie',
+        'mm.MAC1',
+        'mm.MAC2',
+        'mm.MAC3',
+        't.nombre as tecnico_nombre', 
+        't.codigo as tecnico_codigo', 
+        't.especialidad as tecnico_esp',
+        'mm.cantidad',
+        // Tu CASE matemático se mantiene idéntico, ya que operará sobre la fila priorizada
+        DB::raw("CASE 
+            WHEN mamo.SKU IS NULL THEN NULL 
+            WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.COSTOPAGO 
+            ELSE mamo.CATEGORIACOBRO 
+        END AS COSTO"),
+        DB::raw("CASE 
+            WHEN mamo.SKU IS NULL THEN NULL 
+            WHEN mamo.unidadmedida = '' OR mamo.unidadmedida IS NULL THEN 'UNIDAD' 
+            ELSE mamo.unidadmedida 
+        END AS unidadmedida_auditada")
+    ])
+    // 2. Obligamos a la BD a ordenar poniendo los códigos específicos arriba y los vacíos abajo
+    ->orderByRaw("CASE 
+        WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
+        WHEN mamo.centrocostoespecifico = ? THEN 2 
+        ELSE 3 
+    END ASC", [$tiendaId])
+    ->get()
+    // 3. Procesamos por cada movimiento individual para eliminar duplicados del catálogo
+    ->groupBy('movimiento_id')
+    ->flatMap(function ($movimientoRows) {
+        // Al usar unique() sobre los criterios clave, se quedará estrictamente con el primero (el específico)
+        // y descartará el genérico sobrante.
+        return $movimientoRows->unique(function ($item) {
+            return $item->SKU . '-' . $item->TIPO . '-' . $item->unidadmedida_auditada . '-' . $item->CATEGORIA;
+        });
+    })
+    ->values();
 
     // 2. Colapsar duplicados usando colecciones de Laravel en memoria RAM
     $movimientos = $movimientosRaw->unique('movimiento_id');
@@ -1765,23 +1791,51 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     $manoObra->Creado_por = $nombreUsuario;
                 }
 
-                $costopagar=Materialmanoobra::where('SKU', $skuActual)->where('fkTienda', $fkTienda)->avg('COSTOPAGO') ?? 0;
+// 1. Obtenemos el código alfanumérico del técnico usando su ID
+$tecnicoCodigo = DB::table('tecnico')
+    ->where('id', $id_tecnico)
+    ->value('codigo') ?? ''; // Si no tiene código, se asume vacío para que no rompa la consulta
 
-                $manoObra->fill([
-                    'fkTienda'       => $fkTienda,
-                    'cantidad'       => $cantidadRequerida,
-                    'CENTRO'         => 'CF',
-                    'ESTATUS'        => 'INSTALADO',
-                    'almacen'        => 'INSTALACION',
-                    'TIPOMOVIMIENTO' => 'INSTALADO',
-                    'Naturaleza'     => 'H',
-                    'Status'         => 'S', 
-                    'Lote'           => 'A000',
-                    'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-', 'COSTO' => $costopagar->COSTOPAGO ?? 0,
-                    'unidadmedida'   => $costopagar->unidadmedida ?? 'UNIDAD',
-                    'Modificado_el'  => $ahora,
-                    'Modificado_por' => $nombreUsuario,
-                ]);
+// 2. Buscamos el registro de MaterialManoObra con la jerarquía de prioridades
+$registroManoObra = Materialmanoobra::where('SKU', $skuActual)
+    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+        $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
+              ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
+              ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Genérico (NULL)
+              ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Genérico (Vacío)
+    })
+    // Ordenamos para que el modelo prioritario quede arriba y sea el que tome first()
+    ->orderByRaw("CASE 
+        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+        WHEN centrocostoespecifico = ? THEN 2
+        ELSE 3 
+    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+    ->first(); // Tomamos el registro específico más óptimo
+
+// 3. Extraemos los valores de forma segura (si no encuentra el SKU, asume 0 y 'UNIDAD')
+$costoFinal = $registroManoObra ? $registroManoObra->COSTOPAGO : 0;
+$unidadFinal = ($registroManoObra && !empty($registroManoObra->unidadmedida)) ? $registroManoObra->unidadmedida : 'UNIDAD';
+
+// 4. Llenamos el modelo con los datos auditados
+$manoObra->fill([
+    'fkTienda'       => $fkTienda,
+    'cantidad'       => $cantidadRequerida,
+    'CENTRO'         => 'CF',
+    'ESTATUS'        => 'INSTALADO',
+    'almacen'        => 'INSTALACION',
+    'TIPOMOVIMIENTO' => 'INSTALADO',
+    'Naturaleza'     => 'H',
+    'Status'         => 'S', 
+    'Lote'           => 'A000',
+    'MAC1'           => '-', 
+    'MAC2'           => '-', 
+    'MAC3'           => '-', 
+    'COSTO'          => $costoFinal,
+    'unidadmedida'   => $unidadFinal,
+    'Modificado_el'  => $ahora,
+    'Modificado_por' => $nombreUsuario,
+]);
+
 
                 $manoObra->save();
                 continue; // Avanza al siguiente SKU del bucle general
@@ -1854,29 +1908,58 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     $manoObraInstalada->Creado_el  = $ahora;
                     $manoObraInstalada->Creado_por = $nombreUsuario;
                 }
-                                // Cálculo seguro del costo a pagar de Mano de Obra (Evita duplicados)
-                        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-                                    ->where('fkTienda', $fkTienda)
-                                    ->select('CATEGORIACOBRO','COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida') // Agrega aquí las columnas que ocupes
-                                    ->latest()
-                                    ->first();   
+// 1. Obtenemos el código alfanumérico del técnico de forma rápida y segura
+$tecnicoCodigo = DB::table('tecnico')
+    ->where('id', $id_tecnico)
+    ->value('codigo') ?? '';
 
-                $manoObraInstalada->fill([
-                    'fkTienda'       => $fkTienda,
-                    'cantidad'       => $cantidadRequerida,
-                    'CENTRO'         => 'CF',
-                    'ESTATUS'        => 'INSTALADO',
-                    'almacen'        => 'TRANSITO_INSTALACION',
-                    'Naturaleza'     => 'H',
-                    'Status'         => 'S', 
-                    'Lote'           => 'A000',
-                    'MAC1' => '-', 'MAC2' => '-', 'MAC3' => '-', 'COSTO' => ($costoUnidad->TIPO === 'MANO DE OBRA') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
+// 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
+$costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+        $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
+              ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
+              ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Genérico (NULL)
+              ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Genérico (Vacío)
+    })
+    ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
+    // Ordenamos prioritariamente: Técnico (1), Tienda (2), Genérico/Otros (3)
+    ->orderByRaw("CASE 
+        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+        WHEN centrocostoespecifico = ? THEN 2
+        ELSE 3 
+    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+    ->latest() // Si hay colisión exacta en el mismo nivel de prioridad, toma el más reciente
+    ->first();
 
-                    'unidadmedida'   => 'UNIDAD',
-                    'Modificado_el'  => $ahora,
-                    'Modificado_por' => $nombreUsuario,
-                ]);
-                $manoObraInstalada->save();                
+// 3. Cálculo seguro del costo basado en el tipo de registro y la protección contra nulos
+$costoFinal = 0;
+if ($costoUnidad) {
+    $costoFinal = ($costoUnidad->CATEGORIA === 'MANO DE OBRA') 
+        ? $costoUnidad->COSTOPAGO 
+        : ($costoUnidad->CATEGORIACOBRO ?? 0);
+}
+
+// 4. Llenamos y guardamos el modelo con los datos auditados
+$manoObraInstalada->fill([
+    'fkTienda'       => $fkTienda,
+    'cantidad'       => $cantidadRequerida,
+    'CENTRO'         => 'CF',
+    'ESTATUS'        => 'INSTALADO',
+    'almacen'        => 'TRANSITO_INSTALACION',
+    'Naturaleza'     => 'H',
+    'Status'         => 'S', 
+    'Lote'           => 'A000',
+    'MAC1'           => '-', 
+    'MAC2'           => '-', 
+    'MAC3'           => '-', 
+    'COSTO'          => $costoFinal,
+    'unidadmedida'   => $costoUnidad->unidadmedida ?? 'UNIDAD', // Tomamos la unidad del catálogo o 'UNIDAD' por defecto
+    'Modificado_el'  => $ahora,
+    'Modificado_por' => $nombreUsuario,
+]);
+
+$manoObraInstalada->save();
+            
 
 
 
@@ -2062,31 +2145,60 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                         
 
                                             // Cálculo seguro del costo a pagar de Mano de Obra (Evita duplicados)
-                        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-                                    ->where('fkTienda', $fkTienda)
-                                    ->select('CATEGORIACOBRO','COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida') // Agrega aquí las columnas que ocupes
-                                    ->latest()
-                                    ->first();       
+// 1. Obtenemos el código alfanumérico del técnico de forma rápida
+$tecnicoCodigo = DB::table('tecnico')
+    ->where('id', $id_tecnico)
+    ->value('codigo') ?? '';
 
-                            // Historial de Movimiento de Servicio (Solo si el estatus es 'S')
-            if($tipoItem==="MO"){
-                        Pagotecnico::updateOrCreate(
-                            [
-                                'Orden'     => $expediente->Orden,
-                                'SKU'       => $skuActual,
-                                'fkTienda'  => $fkTienda,
-                                'fkTecnico' => $id_tecnico,
-                                'Naturaleza'  => 'H',
-                            ], 
-                            [
-                                'Descripcion' => $producto->nombre ?? "Servicio $skuActual",
-                                'OBS'         => 'Pago por servicio tecnico (Mano de Obra)',
-                                'Cantidad'    => $cantidadRequerida,
-                                'COSTOPAGO'   => $cantidadRequerida *  ($costoUnidad->TIPO === 'MANO DE OBRA') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
-                                'Status'      => 'S',
-                            ]
-                        );  
-            }
+// 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
+$costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+        $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
+              ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
+              ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Genérico (NULL)
+              ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Genérico (Vacío)
+    })
+    ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida', 'centrocostoespecifico','CATEGORIA')
+    // Ordenamos prioritariamente: Técnico (1), Tienda (2), Genérico (3)
+    ->orderByRaw("CASE 
+        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+        WHEN centrocostoespecifico = ? THEN 2
+        ELSE 3 
+    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+    ->latest()
+    ->first();
+
+// 3. Historial de Movimiento de Servicio (Solo si el estatus es 'MO')
+if ($tipoItem === "MO") {
+
+    // Calculamos el precio unitario base de forma segura protegiendo contra nulos
+    $precioUnitario = 0;
+    if ($costoUnidad) {
+        $precioUnitario = ($costoUnidad->CATEGORIA === 'MANO DE OBRA') 
+            ? $costoUnidad->COSTOPAGO 
+            : ($costoUnidad->CATEGORIACOBRO ?? 0);
+    }
+
+    // Ejecutamos el updateOrCreate con el cálculo matemático corregido
+    Pagotecnico::updateOrCreate(
+        [
+            'Orden'     => $expediente->Orden,
+            'SKU'       => $skuActual,
+            'fkTienda'  => $fkTienda,
+            'fkTecnico' => $id_tecnico,
+            'Naturaleza' => 'H',
+        ], 
+        [
+            'Descripcion' => $producto->nombre ?? $costoUnidad->Descripcion ?? "Servicio $skuActual",
+            'OBS'         => 'Pago por servicio tecnico (Mano de Obra)',
+            'Cantidad'    => $cantidadRequerida,
+            // Multiplicación limpia y segura entre la cantidad y el precio unitario obtenido
+            'COSTOPAGO'   => $cantidadRequerida * $precioUnitario,
+            'Status'      => 'S',
+        ]
+    );  
+}
+
 
                         $updateData = [
                             'Status'           => 'A',
@@ -2546,20 +2658,62 @@ public function exportarPagoTecnico(Request $request, $naturaleza)
         'fkTecnico', 'Naturaleza', 'Status'
     ]);
 
-    // Insertar las filas
-    foreach ($datos as $item) {
-                                $costoUnidad = Materialmanoobra::where('SKU', $item->SKU)
-                                    ->where('fkTienda', $fkTienda)
-                                    ->select('CATEGORIACOBRO','COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida') // Agrega aquí las columnas que ocupes
-                                    ->latest()
-                                    ->first();     
+// 1. Cargamos todos los códigos de técnicos en un mapa en memoria (Colección asociativa)
+// Esto reduce cientos de consultas SQL a una sola consulta ultrarápida antes del bucle
+$tecnicosCodigos = DB::table('tecnico')
+    ->whereIn('id', collect($datos)->pluck('fkTecnico')->filter()->unique())
+    ->pluck('codigo', 'id')
+    ->toArray();
 
-        fputcsv($handle, [
-            $item->id, $item->Orden, $item->SKU, $item->Descripcion, $item->OBS, $item->Cantidad, 
-             ($costoUnidad->TIPO === 'MANO DE OBRA') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? $item->COSTOPAGO), $item->created_at, $item->updated_at, $item->fkTienda, 
-            $item->fkTecnico, $item->Naturaleza, $item->Status
-        ]);
+// 2. Procesamos e insertamos las filas en el archivo CSV
+foreach ($datos as $item) {
+    
+    // Obtenemos el código del técnico desde nuestro mapa en memoria
+    $tecnicoCodigo = $tecnicosCodigos[$item->fkTecnico] ?? '';
+
+    // 3. Buscamos el costo aplicando de forma idéntica la jerarquía de prioridades
+    $costoUnidad = Materialmanoobra::where('SKU', $item->SKU)
+        ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+            $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
+                  ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
+                  ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Global (NULL)
+                  ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Global (Vacío)
+        })
+        ->select('CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'centrocostoespecifico')
+        ->orderByRaw("CASE 
+            WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+            WHEN centrocostoespecifico = ? THEN 2
+            ELSE 3 
+        END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+        ->latest()
+        ->first();
+
+    // 4. Determinamos el costo final validando de forma segura contra nulos
+    $costoFinal = $item->COSTOPAGO; // Valor por defecto si no existe en el catálogo
+    if ($costoUnidad) {
+        $costoFinal = ($costoUnidad->CATEGORIA === 'MANO DE OBRA') 
+            ? $costoUnidad->COSTOPAGO 
+            : ($costoUnidad->CATEGORIACOBRO ?? $item->COSTOPAGO);
     }
+
+    // 5. Escribimos la fila directamente en el puntero del archivo CSV
+    fputcsv($handle, [
+        $item->id, 
+        $item->Orden, 
+        $item->SKU, 
+        $item->Descripcion, 
+        $item->OBS, 
+        $item->Cantidad, 
+        $costoFinal, // Costo auditado con la prioridad correcta
+        $item->created_at, 
+        $item->updated_at, 
+        $item->fkTienda, 
+        $item->fkTecnico, 
+        $item->Naturaleza, 
+        $item->Status
+    ]);
+}
+
 
     // Leer el contenido generado
     rewind($handle);
@@ -2899,7 +3053,7 @@ public function importarInvTecnico(Request $request)
 
         $fkTienda = session('user_fkTienda') ?? 0;
         // Línea de ejemplo opcional:
-        fputcsv($file, [23450285,1005749,'A','DT',"DA",'JUAN PEREZ','Canton camoja, Huehuetanango, Huehuetenango',"ORDEN QUE SOLO SE AGREGAN CAJAS ADICIONALES",'HUE0301','OC3',"15/06/2025",'1T','I','WTTx']);
+        fputcsv($file, [23450285,1005749,'I','DT',"DA",'JUAN PEREZ','Canton camoja, Huehuetanango, Huehuetenango',"ORDEN QUE SOLO SE AGREGAN CAJAS ADICIONALES",'HUE0301','OC3',"15/06/2025",'1T','I','WTTx']);
 
         fclose($file);
     };

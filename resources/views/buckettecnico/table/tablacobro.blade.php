@@ -121,7 +121,7 @@
             data-descripcion="{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}"
             data-obs="{{ $item->OBS ?? 'Sin observaciones' }}"
             data-cantidad="{{ number_format($item->Cantidad, 2) }}"
-            data-pago="${{ number_format($item->COSTOPAGO, 2) }}"
+            data-pago="Q{{ number_format($item->COSTOPAGO, 2) }}"
             data-status="{{ $item->Status }}"
             data-naturaleza="{{ $item->Naturaleza }}">
         <i class="bi bi-eye me-2 text-primary"></i>Ver detalle

@@ -81,14 +81,14 @@ class materialmanoobraController extends Controller
 
     $idTienda= session('user_fkTienda');
 
-    $columnas = ['SKU','Descripcion','TIPO','unidadmedida','CATEGORIA','COSTOPAGO','CATEGORIACOBRO','fkTienda'];
+    $columnas = ['SKU','Descripcion','TIPO','unidadmedida','CATEGORIA','COSTOPAGO','CATEGORIACOBRO','centrocostoespecifico'];
 
     $callback = function () use ($columnas) {
         $file = fopen('php://output', 'w');
         fputcsv($file, $columnas); // encabezado
 
         // Línea de ejemplo opcional:
-        fputcsv($file, ['663483', 'Ejemplo mano de obra material', 'TE04', 'PZA','MATERIAL',1525.89306122449,1525.89306122449,session('user_fkTienda')]);
+        fputcsv($file, ['663483', 'Ejemplo mano de obra material', 'TE04', 'PZA','MATERIAL',1525.89306122449,1525.89306122449,'D087018 O EN BLANCO SI ES GENERAL']);
 
         fclose($file);
     };
@@ -132,7 +132,8 @@ $idTienda= session('user_fkTienda');
                     'CATEGORIA'  => $data['CATEGORIA'] ?? '',
                     'COSTOPAGO'  => $data['COSTOPAGO'] ?? 0,
                     'CATEGORIACOBRO'  => $data['CATEGORIACOBRO'] ?? 0,
-                    'fkTienda'  => $fkTienda ?? 0
+                    'fkTienda'  => $fkTienda ?? 0,
+                    'centrocostoespecifico'  => $data['centrocostoespecifico'] ?? null
                 ]
             );
         }

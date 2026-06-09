@@ -721,44 +721,75 @@ DB::connection()->disableQueryLog();
                 $naturaleza = 'D'; // Forzar valor contable base si el usuario escribe otra letra
             }
 
-            $obtenervalor= Materialmanoobra::where('SKU', $data['SKU'])->first();
-            $valorcosto=floatval($data['COSTOPAGO'] ?? 0.00);
+$valorcosto = floatval($data['COSTOPAGO'] ?? 0.00);
 
-            if($valorcosto==0){
-                
-            if($obtenervalor->CATEGORIA === 'MANO DE OBRA'){
-                $data['COSTOPAGO'] = $obtenervalor ? floatval($obtenervalor->COSTOPAGO) : 0.00;    
-                } elseif($obtenervalor->CATEGORIA === 'MATERIAL')  {
-                $data['COSTOPAGO'] = $obtenervalor ? floatval($obtenervalor->CATEGORIACOBRO) : 0.00;
-                } else {
-                    $data['COSTOPAGO'] = 0.00; // Valor por defecto si no se encuentra la categoría
-                }
+if ($valorcosto == 0) {
+    // 1. Obtenemos el código alfanumérico del técnico usando su fkTecnico de forma rápida
+    $tecnicoId = intval($data['fkTecnico'] ?? 0);
+    $tecnicoCodigo = '';
+    
+    if ($tecnicoId > 0) {
+        $tecnicoCodigo = DB::table('tecnico')
+            ->where('id', $tecnicoId)
+            ->value('codigo') ?? '';
+    }
 
-            } else{
+    // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
+    $obtenervalor = Materialmanoobra::where('SKU', $data['SKU'])
+        ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+            $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
+                  ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
+                  ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Global (NULL)
+                  ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Global (Vacío)
+        })
+        ->select('CATEGORIACOBRO', 'COSTOPAGO', 'CATEGORIA', 'TIPO', 'centrocostoespecifico')
+        ->orderByRaw("CASE 
+            WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+            WHEN centrocostoespecifico = ? THEN 2
+            ELSE 3 
+        END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+        ->latest()
+        ->first();
 
-                $data['COSTOPAGO'] = isset($data['COSTOPAGO']) ? floatval($data['COSTOPAGO']) : 0;
+    // 3. Evaluamos la categoría o tipo de forma segura (evita errores si el SKU no existe)
+    if ($obtenervalor) {
+        if ($obtenervalor->CATEGORIA === 'MANO DE OBRA' || $obtenervalor->TIPO === 'MANO DE OBRA') {
+            $data['COSTOPAGO'] = floatval($obtenervalor->COSTOPAGO);
+        } elseif ($obtenervalor->CATEGORIA === 'MATERIAL' || $obtenervalor->TIPO === 'MATERIAL') {
+            $data['COSTOPAGO'] = floatval($obtenervalor->CATEGORIACOBRO);
+        } else {
+            // Si tiene otra categoría pero el registro existe, usamos COSTOPAGO por defecto
+            $data['COSTOPAGO'] = floatval($obtenervalor->COSTOPAGO ?? 0.00);
+        }
+    } else {
+        $data['COSTOPAGO'] = 0.00; // Valor por defecto si el SKU no existe en el catálogo
+    }
 
-            }
+} else {
+    // Si ya venía un costo mayor a cero en el archivo, se respeta ese valor
+    $data['COSTOPAGO'] = $valorcosto;
+}
 
-            $status = substr(trim($data['Status'] ?? 'I'), 0, 2); // Garantizar formato varchar(2) máximo
+$status = substr(trim($data['Status'] ?? 'I'), 0, 2);
 
-            // Mapear el lote alineado a las columnas exactas de tu tabla 'pagotecnico'
-            $batchData[] = [
-                'Orden'       => $data['Orden'],
-                'SKU'         => $data['SKU'],
-                'Descripcion' => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'OBS'         => mb_convert_encoding($data['OBS'] ?? 'Importación masiva', 'UTF-8', 'ISO-8859-1'),
-                'Cantidad'    => floatval($data['Cantidad'] ?? 1.00),
-                'COSTOPAGO'   => floatval($data['COSTOPAGO'] ?? 0.00),
-                'fkTienda'    => $fkTienda,
-                'fkTecnico'   => intval($data['fkTecnico'] ?? 0),
-                'Naturaleza'  => $naturaleza,
-                'Status'      => $status,
-                'created_at'  => $now,
-                'updated_at'  => $now,
-            ];
+// Mapear el lote alineado a las columnas exactas de tu tabla 'pagotecnico'
+$batchData[] = [
+    'Orden'       => $data['Orden'],
+    'SKU'         => $data['SKU'],
+    'Descripcion' => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
+    'OBS'         => mb_convert_encoding($data['OBS'] ?? 'Importación masiva', 'UTF-8', 'ISO-8859-1'),
+    'Cantidad'    => floatval($data['Cantidad'] ?? 1.00),
+    'COSTOPAGO'   => floatval($data['COSTOPAGO'] ?? 0.00),
+    'fkTienda'    => $fkTienda,
+    'fkTecnico'   => intval($data['fkTecnico'] ?? 0),
+    'Naturaleza'  => $naturaleza,
+    'Status'      => $status,
+    'created_at'  => $now,
+    'updated_at'  => $now,
+];
 
-            $insertados++;
+$insertados++;
+
 
             // Inserción masiva en transacciones atómicas parciales al alcanzar el tamaño del lote
 if (count($batchData) >= $batchSize) {
