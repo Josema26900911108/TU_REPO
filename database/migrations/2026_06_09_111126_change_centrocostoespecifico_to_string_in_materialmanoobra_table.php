@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('materialmanoobra', function (Blueprint $table) {
+        Schema::table('MaterialManoObra', function (Blueprint $table) {
             // change() modifica el tipo de dato existente a string (VARCHAR) de forma segura
             $table->string('centrocostoespecifico', 255)->nullable()->change();
         });
@@ -22,7 +22,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('materialmanoobra', function (Blueprint $table) {
+        Schema::table('MaterialManoObra', function (Blueprint $table) {
             // En caso de rollback, intentaría volver a entero, aunque se recomienda dejarlo así
             $table->bigInteger('centrocostoespecifico')->nullable()->change();
         });

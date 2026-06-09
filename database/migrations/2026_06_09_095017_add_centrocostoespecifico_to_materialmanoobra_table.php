@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         // Solo intenta crearla si por alguna razón no existiera
-        if (!Schema::hasColumn('materialmanoobra', 'centrocostoespecifico')) {
-            Schema::table('materialmanoobra', function (Blueprint $table) {
+        if (!Schema::hasColumn('MaterialManoObra', 'centrocostoespecifico')) {
+            Schema::table('MaterialManoObra', function (Blueprint $table) {
                 $table->string('centrocostoespecifico', 255)->nullable()->after('fkTienda');
             });
         }
@@ -24,8 +24,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        if (Schema::hasColumn('materialmanoobra', 'centrocostoespecifico')) {
-            Schema::table('materialmanoobra', function (Blueprint $table) {
+        if (Schema::hasColumn('MaterialManoObra', 'centrocostoespecifico')) {
+            Schema::table('MaterialManoObra', function (Blueprint $table) {
                 $table->dropColumn('centrocostoespecifico');
             });
         }
