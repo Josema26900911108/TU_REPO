@@ -117,7 +117,7 @@ public function importarmamo(Request $request)
 
                 if (!$existeCentroOrigen) {
                     $filasRechazadas[] = [
-                        'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
+                        'fila' => $fila, 'SKU' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
                         'motivo' => "El CENTRO_ORIGEN '" . $centroOrigen . "' no pertenece a la organización de esta tienda."
                     ];
                     continue;
@@ -135,7 +135,7 @@ public function importarmamo(Request $request)
 
             if (!$existeCentroDestino) {
                 $filasRechazadas[] = [
-                    'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
+                    'fila' => $fila, 'sku' => $SKU, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
                     'motivo' => "El CENTRO_DESTINO '" . $centroDestino . "' no pertenece a la organización de esta tienda."
                 ];
                 continue;
@@ -148,7 +148,7 @@ public function importarmamo(Request $request)
             
             if (in_array($huellaMovimiento, $registrosEnEsteArchivo)) {
                 $filasRechazadas[] = [
-                    'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
+                    'fila' => $fila, 'SKU' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
                     'motivo' => "Registro duplicado explícito dentro del mismo archivo."
                 ];
                 continue;
@@ -195,7 +195,7 @@ public function importarmamo(Request $request)
 
                     if ($ubicacionRealSerie && $ubicacionRealSerie !== $centroOrigen) {
                         $filasRechazadas[] = [
-                            'fila' => $fila, 'sku' => $sku, 'serie' => $serie, 'cantidad' => $cantidad,
+                            'fila' => $fila, 'SKU' => $sku, 'serie' => $serie, 'cantidad' => $cantidad,
                             'motivo' => "Descuadre: La serie se encuentra activa en el centro '$ubicacionRealSerie'. No puede salir de '$centroOrigen'."
                         ];
                         continue;
@@ -203,7 +203,7 @@ public function importarmamo(Request $request)
 
                     if (!$inventarioOrigen) {
                         $filasRechazadas[] = [
-                            'fila' => $fila, 'sku' => $sku, 'serie' => $serie, 'cantidad' => $cantidad,
+                            'fila' => $fila, 'SKU' => $sku, 'serie' => $serie, 'cantidad' => $cantidad,
                             'motivo' => "La serie no cuenta con inventario disponible en el centro '$centroOrigen'."
                         ];
                         continue;
@@ -214,7 +214,7 @@ public function importarmamo(Request $request)
 
                 if ($stockDisponible < $cantidad) {
                     $filasRechazadas[] = [
-                        'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
+                        'fila' => $fila, 'SKU' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
                         'motivo' => "Stock insuficiente en origen '$centroOrigen' (Disponible: " . number_format($stockDisponible, 2) . ")"
                     ];
                     continue; 

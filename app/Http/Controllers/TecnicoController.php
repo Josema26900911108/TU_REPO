@@ -1607,13 +1607,13 @@ public function InventarioLista(request $request)
                     'id'               => 0,
                     'serie'            => '',
                     'categoria_nombre' => $value['nombre'], 
-                    'sku'              => $value['sku'],
+                    'SKU'              => $value['sku'],
                     'cantidad'         => $value['limite']
                 ];
             }
         } else {
             // Caso Materiales: Buscamos en MovimientoMaterial agrupando por Serie y SKU
-            $skus = collect($detallecomprobante)->pluck('sku')->toArray();
+            $skus = collect($detallecomprobante)->pluck('SKU')->toArray();
             
             $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sku', '=', 'movimientomateriales.SKU')
                 ->where('movimientomateriales.fkTienda', $fkTienda)
