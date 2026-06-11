@@ -1552,8 +1552,7 @@ public function InventarioLista(request $request)
         $idPadre = $request->input('id1'); 
         $idtecnico = $request->input('id2');
         
-        $sqlll = "
-            WITH RECURSIVE nodo_padre AS (
+        $sqlll = "WITH RECURSIVE nodo_padre AS (
                 SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
                 FROM arbolmanoobra
                 WHERE id = ? AND fkTienda = ?    
@@ -1570,7 +1569,7 @@ public function InventarioLista(request $request)
             )
             SELECT DISTINCT
                 am.nombre, 
-                am.sku, 
+                am.SKU AS sku, 
                 am.limite, 
                 am.minimo, 
                 am.fkTienda, 
@@ -1580,13 +1579,14 @@ public function InventarioLista(request $request)
                 am_padre.nombre AS categoria_nombre
             FROM cte_hijos AS r
             JOIN treematerialescategoria AS am 
-                ON TRIM(am.sku) = r.sku_hijo
+                ON TRIM(am.SKU) = r.sku_hijo
                 AND am.fkTienda = ?
             LEFT JOIN treematerialescategoria AS am_padre 
                 ON am.padre_id = am_padre.id;";
 
-        $stmt = $pdo->prepare($sqlll);
-        $stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
+$stmt = $pdo->prepare($sqlll);
+$stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
+
         $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         // Detectar si hay algún registro de tipo MO
