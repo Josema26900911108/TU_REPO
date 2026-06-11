@@ -431,35 +431,26 @@ public function importarmamo(Request $request)
             'filasRechazadas' => $filasRechazadas
         ]);
 
-    } catch (\Illuminate\Database\QueryException $e) {
-        // Asegurar el cierre del puntero del archivo para evitar bloqueos en el servidor
+ } catch (\Illuminate\Database\QueryException $e) {
         if (is_resource($file)) {
             fclose($file);
         }
 
-        // Captura específica para campos sin valor por defecto (Error 1364)
-        if ($e->getCode() == 'HY000' || str_contains($e->getMessage(), '1364')) {
-            return redirect()->back()
-                ->withInput()
-                ->withErrors(['archivo' => 'Error Estructural (1364): La columna ESTATUS o algún campo obligatorio no tiene un valor por defecto asignado en la base de datos o está mal escrito en el código.']);
-        }
-
-        // Retorno para cualquier otra falla de base de datos (Llaves duplicadas, restricciones, etc)
-        return redirect()->back()
+        // 2. RETORNO DE ERROR DE BASE DE DATOS
+        return redirect()->to('movimientomateriales/lista')
             ->withInput()
-            ->withErrors(['archivo' => 'Error en la consulta de base de datos: ' . $e->getMessage()]);
+            ->withErrors(['archivo' => 'Error Estructural (1364): Un campo obligatorio no tiene un valor por defecto en la BD o está mal escrito.']);
 
     } catch (\Exception $e) {
         if (is_resource($file)) {
             fclose($file);
         }
         
-        // Error general de ejecución de PHP
-        return redirect()->back()
+        // 3. RETORNO DE ERROR GENERAL
+        return redirect()->to('movimientomateriales/lista')
             ->withInput()
-            ->withErrors(['archivo' => 'Error crítico en el servidor al procesar el archivo: ' . $e->getMessage()]);
+            ->withErrors(['archivo' => 'Error crítico en el servidor: ' . $e->getMessage()]);
     }
-
 }
 
 
