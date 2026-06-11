@@ -83,7 +83,7 @@
             </tr>
         </thead>
         <tbody>
-            @if($relacion->count() > 0)
+            @if($relacion && $relacion->count() > 0)
                 @foreach ($relacion as $item)
                     <tr class="border-bottom">
                         <td class="ps-3 fw-bold text-dark">
@@ -107,33 +107,34 @@
                         <td class="text-end fw-bold text-success">Q{{ number_format($item->COSTOPAGO, 2) }}</td>
                         <td class="text-center"><span class="badge bg-success rounded-circle p-1.5 fs-10" title="Credito / Pago">{{ $item->Naturaleza }}</span></td>
                         <td class="text-center pe-3">
-                            <button class="btn btn-light btn-sm border-0 text-muted rounded-circle p-1.5" type="button" data-bs-toggle="dropdown" style="width: 28px; height: 28px;">
-                                <i class="bi bi-three-dots-vertical"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 fs-12">
-                                <li>
-                                    <button type="button" 
-                                            class="dropdown-item py-2 btn-ver-detalle" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#modalDetalleTecnico"
-                                            data-orden="{{ $item->Orden }}"
-                                            data-sku="{{ $item->arbolmanoobra->SKU ?? $item->SKU }}"
-                                            data-descripcion="{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}"
-                                            data-obs="{{ $item->OBS ?? 'Sin observaciones' }}"
-                                            data-cantidad="{{ number_format($item->Cantidad, 2) }}"
-                                            data-pago="${{ number_format($item->COSTOPAGO, 2) }}"
-                                            data-status="{{ $item->Status }}"
-                                            data-naturaleza="{{ $item->Naturaleza }}">
-                                        <i class="bi bi-eye me-2 text-primary"></i>Ver detalle
-                                    </button>
-                                </li>
-                            </ul>
+                            <div class="dropdown">
+                                <button class="btn btn-light btn-sm border-0 text-muted rounded-circle p-1.5" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="width: 28px; height: 28px;">
+                                    <i class="bi bi-three-dots-vertical"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 fs-12">
+                                    <li>
+                                        <button type="button" 
+                                                class="dropdown-item py-2 btn-ver-detalle" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#modalDetalleTecnico"
+                                                data-orden="{{ $item->Orden }}"
+                                                data-sku="{{ $item->arbolmanoobra->SKU ?? $item->SKU }}"
+                                                data-descripcion="{{ $item->arbolmanoobra->descripcion ?? $item->Descripcion }}"
+                                                data-obs="{{ $item->OBS ?? 'Sin observaciones' }}"
+                                                data-cantidad="{{ number_format($item->Cantidad, 2) }}"
+                                                data-pago="Q{{ number_format($item->COSTOPAGO, 2) }}"
+                                                data-status="{{ $item->Status }}"
+                                                data-naturaleza="{{ $item->Naturaleza }}">
+                                            <i class="bi bi-eye me-2 text-primary"></i>Ver detalle
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
                         </td>
                     </tr>
                 @endforeach
             @else
                 <tr>
-                    <!-- 9 Columnas exactas garantizadas en el colspan cuando está vacío -->
                     <td colspan="9" class="text-center py-5 text-muted bg-light-subtle">
                         <div class="mb-2 fs-3 text-secondary-subtle"><i class="bi bi-inbox"></i></div>
                         No se encontraron registros de pagos coincidentes.
@@ -141,20 +142,18 @@
                 </tr>
             @endif
         </tbody>
-        
-        @if($relacion->count() > 0)
-            <!-- TFOOT CORREGIDO: 9 Columnas mapeadas de forma explícita sin colspans cruzados complejos -->
+        @if($relacion && $relacion->count() > 0)
             <tfoot class="table-light fw-bold border-top text-muted">
                 <tr>
-                    <td class="ps-3">TOTALES</td> <!-- 1. Orden -->
-                    <td></td>                     <!-- 2. Estatus -->
-                    <td></td>                     <!-- 3. SKU -->
-                    <td></td>                     <!-- 4. Descripción -->
-                    <td class="text-end text-uppercase fs-11 text-muted">Subtotal:</td> <!-- 5. OBS -->
-                    <td class="text-end text-dark">{{ number_format($relacion->sum('Cantidad'), 2) }}</td> <!-- 6. Cantidad -->
-                    <td class="text-end text-success">Q{{ number_format($relacion->sum('COSTOPAGO'), 2) }}</td> <!-- 7. Pago Dinero -->
-                    <td></td>                     <!-- 8. Nat. -->
-                    <td class="pe-3"></td>        <!-- 9. Acciones -->
+                    <td class="ps-3">TOTALES</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td class="text-end text-uppercase fs-11 text-muted">Subtotal:</td>
+                    <td class="text-end text-dark">{{ number_format($relacion->sum('Cantidad'), 2) }}</td>
+                    <td class="text-end text-success">Q{{ number_format($relacion->sum('COSTOPAGO'), 2) }}</td>
+                    <td></td>
+                    <td class="pe-3"></td>
                 </tr>
             </tfoot>
         @endif
