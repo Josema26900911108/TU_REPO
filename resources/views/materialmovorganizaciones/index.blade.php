@@ -54,6 +54,53 @@
         </ol>
     </div>
 
+<!-- Mensaje de Éxito General -->
+@if (session('success'))
+    <div class="alert alert-success" style="margin-bottom: 20px; padding: 15px; border-radius: 4px; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb;">
+        <strong>¡Éxito!</strong> {{ session('success') }}
+    </div>
+@endif
+
+<!-- Bloque de Errores Estructurales o de Validación -->
+@if ($errors->any())
+    <div class="alert alert-danger" style="margin-bottom: 20px; padding: 15px; border-radius: 4px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
+        <strong>Se detuvo la importación:</strong>
+        <ul style="margin-top: 5px; margin-bottom: 0; padding-left: 20px;">
+            @foreach ($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
+
+<!-- Tabla de Filas Rechazadas por Lógica de Negocio (Centros, Duplicados o Stock) -->
+@if (session('filasRechazadas') && count(session('filasRechazadas')) > 0)
+    <div class="card" style="margin-bottom: 20px; border: 1px solid #ffeeba; background-color: #fff3cd; color: #856404; border-radius: 4px; padding: 15px;">
+        <strong style="font-size: 16px;">Filas omitidas/rechazadas en el archivo:</strong>
+        <div style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; background: #fff; color: #333;">
+                <thead>
+                    <tr style="background-color: #ffeeba; color: #856404;">
+                        <th style="padding: 8px; border: 1px solid #ddd;">Fila</th>
+                        <th style="padding: 8px; border: 1px solid #ddd;">SKU</th>
+                        <th style="padding: 8px; border: 1px solid #ddd;">Serie</th>
+                        <th style="padding: 8px; border: 1px solid #ddd;">Motivo del Rechazo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (session('filasRechazadas') as $rechazo)
+                        <tr>
+                            <td style="padding: 6px; border: 1px solid #ddd; font-weight: bold;">{{ $rechazo['fila'] }}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd;">{{ $rechazo['SKU'] ?? $rechazo['sku'] ?? 'N/A' }}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd;">{{ $rechazo['serie'] }}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd; color: #c0392b;">{{ $rechazo['motivo'] }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+@endif
 
 <ul class="nav nav-tabs" id="tecnicoTabs" role="tablist">
     <li class="nav-item" role="presentation">
