@@ -431,15 +431,16 @@ public function importarmamo(Request $request)
             'filasRechazadas' => $filasRechazadas
         ]);
 
- } catch (\Illuminate\Database\QueryException $e) {
+ }   catch (\Illuminate\Database\QueryException $e) {
         if (is_resource($file)) {
             fclose($file);
         }
 
-        // 2. RETORNO DE ERROR DE BASE DE DATOS
+        // Diagnóstico temporal: esto te dirá textualmente "Field 'NOMBRE_CAMPO' doesn't have a default value"
         return redirect()->to('movimientomateriales/lista')
             ->withInput()
-            ->withErrors(['archivo' => 'Error Estructural (1364): Un campo obligatorio no tiene un valor por defecto en la BD o está mal escrito.']);
+            ->withErrors(['archivo' => 'Error de BD: ' . $e->getMessage()]);
+
 
     } catch (\Exception $e) {
         if (is_resource($file)) {
