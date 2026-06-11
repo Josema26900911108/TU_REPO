@@ -1598,16 +1598,16 @@ $stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
             $skusProcesadosMO = [];
 
             foreach ($detallecomprobante as $value) {
-                if (in_array($value['sku'], $skusProcesadosMO)) {
+                if (in_array($value['SKU'], $skusProcesadosMO)) {
                     continue; // Saltar si ya agregamos este SKU de Mano de Obra
                 }
-                $skusProcesadosMO[] = $value['sku'];
+                $skusProcesadosMO[] = $value['SKU'];
 
                 $final[] = [
                     'id'               => 0,
                     'serie'            => '',
                     'categoria_nombre' => $value['nombre'], 
-                    'SKU'              => $value['sku'],
+                    'SKU'              => $value['SKU'],
                     'cantidad'         => $value['limite']
                 ];
             }
