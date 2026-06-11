@@ -1542,7 +1542,7 @@ try {
 
     }
 
-public function InventarioLista(request $request)
+public function InventarioLista(Request $request) // Corregido: 'request' cambiado a 'Request' con R mayúscula
 {
     DB::connection()->disableQueryLog();
 
@@ -1552,25 +1552,26 @@ public function InventarioLista(request $request)
         $idPadre = $request->input('id1'); 
         $idtecnico = $request->input('id2');
         
+        // Consulta SQL con alias 'AS sku' para asegurar compatibilidad con PHP
         $sqlll = "
 WITH RECURSIVE nodo_padre AS (
-    SELECT id, padre_id, nombre, sku, aplicafotografia as apf, Tipo_servicio as TP
+    SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
     FROM arbolmanoobra
     WHERE id = ? AND fkTienda = ?    
     UNION ALL    
-    SELECT a.id, a.padre_id, a.nombre, a.sku, a.aplicafotografia as apf, a.Tipo_servicio as TP
+    SELECT a.id, a.padre_id, a.nombre, a.SKU, a.aplicafotografia as apf, a.Tipo_servicio as TP
     FROM arbolmanoobra a
     INNER JOIN nodo_padre np ON a.padre_id = np.id
     WHERE a.fkTienda = ?
 ),
 cte_hijos AS ( 
-    SELECT id, padre_id, TRIM(nombre) as nombre, TRIM(sku) as sku_hijo, apf, TP 
+    SELECT id, padre_id, TRIM(nombre) as nombre, TRIM(SKU) as sku_hijo, apf, TP 
     FROM nodo_padre 
     WHERE id <> ?
 )
 SELECT DISTINCT
     am.nombre, 
-    am.SKU, -- Corregido a mayúsculas para coincidir con la estructura de la tabla
+    am.SKU AS sku, -- Mapea SKU pero entrega 'sku' en minúsculas a PHP
     am.limite, 
     am.minimo, 
     am.fkTienda, 
@@ -1580,7 +1581,7 @@ SELECT DISTINCT
     am_padre.nombre AS categoria_nombre
 FROM cte_hijos AS r
 JOIN treematerialescategoria AS am 
-    ON TRIM(am.SKU) = r.sku_hijo -- Corregido am.sku a am.SKU
+    ON TRIM(am.SKU) = r.sku_hijo 
     AND am.fkTienda = ?
 LEFT JOIN treematerialescategoria AS am_padre 
     ON am.padre_id = am_padre.id;";
@@ -1593,13 +1594,13 @@ LEFT JOIN treematerialescategoria AS am_padre
         $contieneMO = collect($detallecomprobante)->contains('TP', 'MO');
 
         if ($contieneMO) {
-            // Caso MO: Evitamos duplicados limpiando combinaciones idénticas de SKU
             $final = [];
             $skusProcesadosMO = [];
 
             foreach ($detallecomprobante as $value) {
+                // Ahora lee de forma segura 'sku' gracias al alias del SQL
                 if (in_array($value['sku'], $skusProcesadosMO)) {
-                    continue; // Saltar si ya agregamos este SKU de Mano de Obra
+                    continue; 
                 }
                 $skusProcesadosMO[] = $value['sku'];
 
@@ -1612,41 +1613,40 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ];
             }
         } else {
-            // Caso Materiales: Buscamos en MovimientoMaterial agrupando por Serie y SKU
+            // Caso Materiales: Extrae la llave 'sku' normalizada en minúsculas
             $skus = collect($detallecomprobante)->pluck('sku')->toArray();
             
-            $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sku', '=', 'movimientomateriales.SKU')
+            // Corrección de mayúsculas en las relaciones y selecciones de Eloquent
+            $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.SKU', '=', 'movimientomateriales.SKU') // tmc.sku -> tmc.SKU
                 ->where('movimientomateriales.fkTienda', $fkTienda)
                 ->where('fkTecnico', $idtecnico)
                 ->whereIn('movimientomateriales.SKU', $skus)
-                ->where('movimientomateriales.STATUS', 'I')
+                ->where('movimientomateriales.STATUS', 'I') // Asegura el campo STATUS de la BD
                 ->select(
                     DB::raw('MAX(movimientomateriales.id) as id'), 
                     'movimientomateriales.serie',
                     'movimientomateriales.CENTRO',
                     'tmc.nombre as categoria_nombre',
-                    'tmc.SKU as sku',
-                    
-                    // 📊 Suma directa de la cantidad física de los movimientos
+                    'tmc.SKU as sku', // Entrega el alias final como 'sku'
                     DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 1)) as cantidad')
                 )
                 ->groupBy(
                     'movimientomateriales.serie', 
                     'movimientomateriales.CENTRO', 
                     'tmc.nombre', 
-                    'tmc.sku'
+                    'tmc.SKU' // tmc.sku -> tmc.SKU
                 )
-                // ⚠️ IMPORTANTE: Se cambió a 'cantidad' > 0 ya que hereda el alias simple anterior
                 ->having('cantidad', '>', 0) 
                 ->get();
         }
 
         return response()->json(is_array($final) ? $final : $final->toArray());
 
-    } catch (Exception $e) {
+    } catch (\Exception $e) { // Corregido: Exception -> \Exception con barra invertida para el namespace global
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
+
 
 
     public function update(UpdateTecnicoRequest $request, Tecnico $tecnico)
