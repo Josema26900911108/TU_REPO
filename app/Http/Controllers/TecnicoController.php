@@ -1553,37 +1553,37 @@ public function InventarioLista(request $request)
         $idtecnico = $request->input('id2');
         
         $sqlll = "
-WITH RECURSIVE nodo_padre AS (
-    SELECT id, padre_id, nombre, sku, aplicafotografia as apf, Tipo_servicio as TP
-    FROM arbolmanoobra
-    WHERE id = ? AND fkTienda = ?    
-    UNION ALL    
-    SELECT a.id, a.padre_id, a.nombre, a.sku, a.aplicafotografia as apf, a.Tipo_servicio as TP
-    FROM arbolmanoobra a
-    INNER JOIN nodo_padre np ON a.padre_id = np.id
-    WHERE a.fkTienda = ?
-),
-cte_hijos AS ( 
-    SELECT id, padre_id, TRIM(nombre) as nombre, TRIM(sku) as sku_hijo, apf, TP 
-    FROM nodo_padre 
-    WHERE id <> ?
-)
-SELECT DISTINCT
-    am.nombre, 
-    am.SKU, 
-    am.limite, 
-    am.minimo, 
-    am.fkTienda, 
-    am.padre_id, 
-    r.apf, 
-    r.TP, 
-    am_padre.nombre AS categoria_nombre
-FROM cte_hijos AS r
-JOIN treematerialescategoria AS am 
-    ON TRIM(am.SKU) = r.sku_hijo 
-    AND am.fkTienda = ?
-LEFT JOIN treematerialescategoria AS am_padre 
-    ON am.padre_id = am_padre.id;";
+            WITH RECURSIVE nodo_padre AS (
+                SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
+                FROM arbolmanoobra
+                WHERE id = ? AND fkTienda = ?    
+                UNION ALL    
+                SELECT a.id, a.padre_id, a.nombre, a.SKU, a.aplicafotografia as apf, a.Tipo_servicio as TP
+                FROM arbolmanoobra a
+                INNER JOIN nodo_padre np ON a.padre_id = np.id
+                WHERE a.fkTienda = ?
+            ),
+            cte_hijos AS ( 
+                SELECT id, padre_id, TRIM(nombre) as nombre, TRIM(SKU) as sku_hijo, apf, TP 
+                FROM nodo_padre 
+                WHERE id <> ?
+            )
+            SELECT DISTINCT
+                am.nombre, 
+                am.sku, 
+                am.limite, 
+                am.minimo, 
+                am.fkTienda, 
+                am.padre_id, 
+                r.apf, 
+                r.TP, 
+                am_padre.nombre AS categoria_nombre
+            FROM cte_hijos AS r
+            JOIN treematerialescategoria AS am 
+                ON TRIM(am.sku) = r.sku_hijo
+                AND am.fkTienda = ?
+            LEFT JOIN treematerialescategoria AS am_padre 
+                ON am.padre_id = am_padre.id;";
 
         $stmt = $pdo->prepare($sqlll);
         $stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
