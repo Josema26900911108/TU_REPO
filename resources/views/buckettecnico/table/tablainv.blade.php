@@ -30,7 +30,7 @@
                     <th>COSTO</th>
                     <th>CENTRO</th>
                     <th>TIPO</th>
-                    <th>unidadmedida</th>
+                    <th>Cantidad</th>
                     <th>TIPOMOVIMIENTO</th>
                     <th>Naturaleza</th>
                     <th>Acciones</th>
@@ -52,7 +52,7 @@
                     <td>{{ $item->COSTO }}</td>
                     <td>{{ $item->CENTRO }}</td>
                     <td>{{ $item->TIPO }}</td>
-                    <td>{{ $item->unidadmedida }}</td>
+                    <td>{{ $item->cantidad }}</td>
                     <td>{{ $item->TIPOMOVIMIENTO }}</td>
                     <td>{{ $item->Naturaleza }}</td>
                     <td>
