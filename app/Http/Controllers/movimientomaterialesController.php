@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Arbmanoobra;
 use App\Models\Treematerialescategoria;
+use App\Models\Material_relaciones;
 
 class movimientomaterialesController extends Controller
 {
@@ -135,7 +136,7 @@ public function importarmamo(Request $request)
 
             if (!$existeCentroDestino) {
                 $filasRechazadas[] = [
-                    'fila' => $fila, 'sku' => $SKU, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
+                    'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
                     'motivo' => "El CENTRO_DESTINO '" . $centroDestino . "' no pertenece a la organización de esta tienda."
                 ];
                 continue;
@@ -424,12 +425,41 @@ public function importarmamo(Request $request)
         
         return back()->with('success', $msg);
 
-    } catch (\Exception $e) {
-        if (isset($file)) {
+      // Retorno exitoso si todo el archivo se procesó sin excepciones genéricas
+        return redirect()->back()->with([
+            'success' => "Importación finalizada con éxito. Registros nuevos: $insertadosContador. Omitidos: $instaladosContador.",
+            'filasRechazadas' => $filasRechazadas
+        ]);
+
+    } catch (\Illuminate\Database\QueryException $e) {
+        // Asegurar el cierre del puntero del archivo para evitar bloqueos en el servidor
+        if (is_resource($file)) {
             fclose($file);
         }
-        return back()->with('error', 'Fallo crítico general en la fila ' . $fila . ': ' . $e->getMessage());
+
+        // Captura específica para campos sin valor por defecto (Error 1364)
+        if ($e->getCode() == 'HY000' || str_contains($e->getMessage(), '1364')) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['archivo' => 'Error Estructural (1364): La columna ESTATUS o algún campo obligatorio no tiene un valor por defecto asignado en la base de datos o está mal escrito en el código.']);
+        }
+
+        // Retorno para cualquier otra falla de base de datos (Llaves duplicadas, restricciones, etc)
+        return redirect()->back()
+            ->withInput()
+            ->withErrors(['archivo' => 'Error en la consulta de base de datos: ' . $e->getMessage()]);
+
+    } catch (\Exception $e) {
+        if (is_resource($file)) {
+            fclose($file);
+        }
+        
+        // Error general de ejecución de PHP
+        return redirect()->back()
+            ->withInput()
+            ->withErrors(['archivo' => 'Error crítico en el servidor al procesar el archivo: ' . $e->getMessage()]);
     }
+
 }
 
 
