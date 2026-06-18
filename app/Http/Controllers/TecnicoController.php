@@ -1552,59 +1552,111 @@ public function fillEstructuraMO($id)
 
 
 
-public function InventarioLista(Request $request) 
+public function InventarioLista(Request $request) // Corregido: 'request' cambiado a 'Request' con R mayúscula
 {
     DB::connection()->disableQueryLog();
 
     try {
         $fkTienda = session('user_fkTienda');
+        $pdo = DB::getPdo();
+        $idPadre = $request->input('id1'); 
         $idtecnico = $request->input('id2');
         
-        // 🌟 Esta es la tecnología enviada desde la pantalla (GPON, etc.)
-        $idTecnologiaEnviada = $request->input('id1'); 
+        // Consulta SQL con alias 'AS sku' para asegurar compatibilidad con PHP
+        $sqlll = "
+WITH RECURSIVE nodo_padre AS (
+    SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
+    FROM arbolmanoobra
+    WHERE id = ? AND fkTienda = ?    
+    UNION ALL    
+    SELECT a.id, a.padre_id, a.nombre, a.SKU, a.aplicafotografia as apf, a.Tipo_servicio as TP
+    FROM arbolmanoobra a
+    INNER JOIN nodo_padre np ON a.padre_id = np.id
+    WHERE a.fkTienda = ?
+),
+cte_hijos AS ( 
+    SELECT id, padre_id, TRIM(nombre) as nombre, TRIM(SKU) as sku_hijo, apf, TP 
+    FROM nodo_padre 
+    WHERE id <> ?
+)
+SELECT DISTINCT
+    am.nombre, 
+    am.SKU AS sku, -- Mapea SKU pero entrega 'sku' en minúsculas a PHP
+    am.limite, 
+    am.minimo, 
+    am.fkTienda, 
+    am.padre_id, 
+    r.apf, 
+    r.TP, 
+    am_padre.nombre AS categoria_nombre
+FROM cte_hijos AS r
+JOIN treematerialescategoria AS am 
+    ON TRIM(am.SKU) = r.sku_hijo 
+    AND am.fkTienda = ?
+LEFT JOIN treematerialescategoria AS am_padre 
+    ON am.padre_id = am_padre.id;";
 
-        if (empty($idTecnologiaEnviada)) {
-            return response()->json([]); // Evitamos procesar consultas si no hay tecnología
+        $stmt = $pdo->prepare($sqlll);
+        $stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
+        $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Detectar si hay algún registro de tipo MO
+        $contieneMO = collect($detallecomprobante)->contains('TP', 'MO');
+
+        if ($contieneMO) {
+            $final = [];
+            $skusProcesadosMO = [];
+
+            foreach ($detallecomprobante as $value) {
+                // Ahora lee de forma segura 'sku' gracias al alias del SQL
+                if (in_array($value['sku'], $skusProcesadosMO)) {
+                    continue; 
+                }
+                $skusProcesadosMO[] = $value['sku'];
+
+                $final[] = [
+                    'id'               => 0,
+                    'serie'            => '',
+                    'categoria_nombre' => $value['nombre'], 
+                    'sku'              => $value['sku'],
+                    'cantidad'         => $value['limite']
+                ];
+            }
+        } else {
+            // Caso Materiales: Extrae la llave 'sku' normalizada en minúsculas
+            $skus = collect($detallecomprobante)->pluck('sku')->toArray();
+            
+            // Corrección de mayúsculas en las relaciones y selecciones de Eloquent
+            $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.SKU', '=', 'movimientomateriales.SKU') // tmc.sku -> tmc.SKU
+                ->where('movimientomateriales.fkTienda', $fkTienda)
+                ->where('fkTecnico', $idtecnico)
+                ->whereIn('movimientomateriales.SKU', $skus)
+                ->where('movimientomateriales.STATUS', 'I') // Asegura el campo STATUS de la BD
+                ->select(
+                    DB::raw('MAX(movimientomateriales.id) as id'), 
+                    'movimientomateriales.serie',
+                    'movimientomateriales.CENTRO',
+                    'tmc.nombre as categoria_nombre',
+                    'tmc.SKU as sku', // Entrega el alias final como 'sku'
+                    DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 1)) as cantidad')
+                )
+                ->groupBy(
+                    'movimientomateriales.serie', 
+                    'movimientomateriales.CENTRO', 
+                    'tmc.nombre', 
+                    'tmc.SKU' // tmc.sku -> tmc.SKU
+                )
+                ->having('cantidad', '>', 0) 
+                ->get();
         }
 
-        // 🌟 SOLUCIÓN DEFINITIVA: Vinculamos el inventario real directamente con la tecnología enviada
-        $final = MovimientoMaterial::join('treematerialescategoria as tmc', function($join) use ($fkTienda) {
-                $join->on('tmc.SKU', '=', 'movimientomateriales.SKU')
-                     ->where('tmc.fkTienda', '=', $fkTienda);
-            })
-            // 👉 CRUCIAL: Forzamos el cruce con arbolmaterial usando estrictamente la tecnología recibida
-            ->join('arbolmaterial as am', function($join) use ($idTecnologiaEnviada, $fkTienda) {
-                $join->on('am.SKU', '=', 'movimientomateriales.SKU')
-                     ->where('am.padre_id', '=', $idTecnologiaEnviada) // Filtro estricto por la tecnología actual
-                     ->where('am.fkTienda', '=', $fkTienda);
-            })
-            ->where('movimientomateriales.fkTienda', $fkTienda)
-            ->where('movimientomateriales.fkTecnico', $idtecnico)
-            ->where('movimientomateriales.STATUS', 'I') 
-            ->select(
-                DB::raw('MAX(movimientomateriales.id) as id'), 
-                'movimientomateriales.serie',
-                'movimientomateriales.CENTRO',
-                'tmc.nombre as categoria_nombre',
-                'movimientomateriales.SKU as sku', 
-                // 🌟 Al estar aislado por el JOIN de la tecnología enviada, el SUM() da el valor real exacto (400)
-                DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 0)) as cantidad')
-            )
-            ->groupBy(
-                'movimientomateriales.serie', 
-                'movimientomateriales.CENTRO', 
-                'tmc.nombre', 
-                'movimientomateriales.SKU'
-            )
-            ->having('cantidad', '>', 0) 
-            ->get();
+        return response()->json(is_array($final) ? $final : $final->toArray());
 
-        return response()->json($final);
-
-    } catch (\Exception $e) { 
+    } catch (\Exception $e) { // Corregido: Exception -> \Exception con barra invertida para el namespace global
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
+
 
 
     public function update(UpdateTecnicoRequest $request, Tecnico $tecnico)
