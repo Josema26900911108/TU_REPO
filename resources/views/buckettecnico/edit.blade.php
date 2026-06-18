@@ -1217,7 +1217,7 @@ fill_estructura();
 
 
     // Función para cargar mano de obra (select)
-    function listar_materiales_por_categoria(id) {
+    function fill_manoobra(id) {
         $.ajax({
             url: "{{ url('manoobracategoria') }}/" + id,
             method: "GET",
@@ -1237,12 +1237,20 @@ fill_estructura();
     }
 
     // Función para listar materiales según categoría (idNodo)
-   success: function(materiales) {
+   function listar_materiales_por_categoria(idNodo) {
+    console.log('Listar materiales para categoría con Cid:', idNodo);
+    let id2 = {{ $tecnico->id }};
+    
+    $.ajax({
+        url: "{{ route('inventariolista')}}",
+        data: { id1: idNodo, id2: id2 },
+        method: 'GET',
+success: function(materiales) {
     console.log('Materiales cargados:', materiales);
     
     let materialesArray = Object.values(materiales);
     
-    // 1. Destruimos cualquier residuo del plugin
+    // 1. Destruimos cualquier residuo del plugin usando nuestro nuevo identificador
     $('#itemmanoobraamterial').selectpicker('destroy');
     
     // 2. Limpieza radical del contenedor nativo y reseteo del valor seleccionado
@@ -1251,29 +1259,27 @@ fill_estructura();
     // 3. Insertamos el marcador inicial por defecto
     let optionss = '<option value="" selected>Seleccione un material</option>';
     
-    // 4. Set de control con llave compuesta (SKU + Serie) para evitar duplicados reales
-    let registroFiltroUnico = new Set();
+    // 4. Set de control absoluto en JavaScript para blindar duplicados físicos
+    let seriesFiltroUnico = new Set();
 
     materialesArray.forEach(function(material) {
-        let skuLimpio = material.sku ? material.sku.toString().trim() : '';
         let serieLimpia = material.serie ? material.serie.toString().trim() : '';
 
-        // 🌟 CREACIÓN DE LA HUELLA ÚNICA COMPUESTA
-        let huellaUnica = `${skuLimpio}-${serieLimpia}`;
-
-        // Si la combinación exacta de SKU y Serie ya fue procesada, la ignoramos de inmediato
-        if (registroFiltroUnico.has(huellaUnica)) {
+        // Si la serie ya fue procesada, la ignoramos de inmediato
+        if (serieLimpia !== '' && seriesFiltroUnico.has(serieLimpia)) {
             return; 
         }
-        registroFiltroUnico.add(huellaUnica);
+        if (serieLimpia !== '') {
+            seriesFiltroUnico.add(serieLimpia);
+        }
 
         optionss += `<option value="${material.id}" 
                      data-centro="${material.CENTRO}"
-                     data-sku="${skuLimpio}"
+                     data-sku="${material.sku}"
                      data-stock="${material.cantidad}"
                      data-img="${material.img_path || ''}"
                      data-precio="${material.precio_venta || 0}"
-                     data-detalle="${material.descripcion || ''}">DESCRIP: ${material.categoria_nombre} || SERIE: ${serieLimpia || 'S/N'} || CANTIDAD: ${material.cantidad} || SKU: ${skuLimpio}</option>`;
+                     data-detalle="${material.descripcion || ''}">DESCRIP: ${material.categoria_nombre} || SERIE: ${serieLimpia || 'S/N'} || CANTIDAD: ${material.cantidad} || SKU: ${material.sku}</option>`;
     });
 
     // 5. Inyectamos la estructura HTML limpia de opciones únicas
@@ -1285,10 +1291,17 @@ fill_estructura();
         size: 10
     });
     
-    // 7. Renderizado final 
+    // 7. Renderizado final sin usar 'refresh' (evita bucles de duplicación en eventos)
     $('#itemmanoobraamterial').selectpicker('render');
 },
 
+
+
+        error: function(xhr) {
+            Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
+        }
+    });
+}
 
     function fill_estructura() {
     $.ajax({

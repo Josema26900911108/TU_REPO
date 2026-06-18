@@ -1515,36 +1515,32 @@ try {
         return $output;
     }
 
-public function fillEstructuraMO($id)
-{
-    DB::connection()->disableQueryLog();
+    public function fillEstructuraMO($id)
+    {
+        DB::connection()->disableQueryLog();
 
     try {
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
-        
-        // 🌟 Usamos TRIM para asegurar que los SKUs no tengan espacios ocultos que rompan los cruces
-        $sqlll = '
-            SELECT DISTINCT 
-                TRIM(am.nombre) as nombre, 
-                am.id, 
-                TRIM(am.SKU) as SKU 
-            FROM arbolmaterial as am 
-            WHERE am.padre_id = :id 
-              AND am.fkTienda = :id2
+        $sqlll='
+        SELECT DISTINCT am.nombre, am.id, am.SKU FROM arbolmaterial as am where am.padre_id=:id and am.fkTienda=:id2
         ';
-        
         $stmt = $pdo->prepare($sqlll);
+
         $stmt->execute(['id' => $id, 'id2' => $fkTienda]);
+
+
         $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        return response()->json($detallecomprobante);
 
-    } catch (\Exception $e) { // 🌟 Corregido a \Exception global
-        return response()->json(['error' => $e->getMessage()], 400);
+    return response()->json($detallecomprobante);
+
+            } catch (Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+            DB::rollBack();
+        }
+
     }
-}
-
 
 public function InventarioLista(Request $request) // Corregido: 'request' cambiado a 'Request' con R mayúscula
 {
