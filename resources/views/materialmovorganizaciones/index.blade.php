@@ -112,7 +112,7 @@
 
 </ul>
 
-<div class="tab-content mt-3" id="tecnicoTabsContent">
+<div class="tab-content mt-3" id="tecnicoTabsContent">w
     <div class="tab-pane fade show active" id="datos" role="tabpanel" aria-labelledby="datos-tab">
         <div class="card">
             <div class="card-header">
