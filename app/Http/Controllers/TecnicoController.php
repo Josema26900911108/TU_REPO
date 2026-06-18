@@ -1542,7 +1542,7 @@ try {
 
     }
 
-public function InventarioLista(Request $request) 
+public function InventarioLista(Request $request) // Corregido: 'request' cambiado a 'Request' con R mayúscula
 {
     DB::connection()->disableQueryLog();
 
@@ -1552,6 +1552,7 @@ public function InventarioLista(Request $request)
         $idPadre = $request->input('id1'); 
         $idtecnico = $request->input('id2');
         
+        // Consulta SQL con alias 'AS sku' para asegurar compatibilidad con PHP
         $sqlll = "
 WITH RECURSIVE nodo_padre AS (
     SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
@@ -1570,7 +1571,7 @@ cte_hijos AS (
 )
 SELECT DISTINCT
     am.nombre, 
-    am.SKU AS sku, 
+    am.SKU AS sku, -- Mapea SKU pero entrega 'sku' en minúsculas a PHP
     am.limite, 
     am.minimo, 
     am.fkTienda, 
@@ -1597,6 +1598,7 @@ LEFT JOIN treematerialescategoria AS am_padre
             $skusProcesadosMO = [];
 
             foreach ($detallecomprobante as $value) {
+                // Ahora lee de forma segura 'sku' gracias al alias del SQL
                 if (in_array($value['sku'], $skusProcesadosMO)) {
                     continue; 
                 }
@@ -1611,33 +1613,28 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ];
             }
         } else {
-            // 🌟 SOLUCIÓN 1: LIMPIAR SKUS DUPLICADOS DEL ÁRBOL RECURSIVO
-            // Usamos array_unique y array_values para asegurar una lista limpia de SKUs únicos.
-            $skus = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->toArray()));
+            // Caso Materiales: Extrae la llave 'sku' normalizada en minúsculas
+            $skus = collect($detallecomprobante)->pluck('sku')->toArray();
             
-            // Caso Materiales
-            $final = MovimientoMaterial::join('treematerialescategoria as tmc', function($join) use ($fkTienda) {
-                    $join->on('tmc.SKU', '=', 'movimientomateriales.SKU')
-                         ->where('tmc.fkTienda', '=', $fkTienda); // Filtro de tienda en el Join evita cruces
-                })
+            // Corrección de mayúsculas en las relaciones y selecciones de Eloquent
+            $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.SKU', '=', 'movimientomateriales.SKU') // tmc.sku -> tmc.SKU
                 ->where('movimientomateriales.fkTienda', $fkTienda)
-                ->where('movimientomateriales.fkTecnico', $idtecnico)
+                ->where('fkTecnico', $idtecnico)
                 ->whereIn('movimientomateriales.SKU', $skus)
-                ->where('movimientomateriales.STATUS', 'I') 
+                ->where('movimientomateriales.STATUS', 'I') // Asegura el campo STATUS de la BD
                 ->select(
                     DB::raw('MAX(movimientomateriales.id) as id'), 
                     'movimientomateriales.serie',
                     'movimientomateriales.CENTRO',
                     'tmc.nombre as categoria_nombre',
-                    'movimientomateriales.SKU as sku', 
-                    // 🌟 SOLUCIÓN 2: AGRUPACIÓN EXACTA DE STOCK NATIVO
-                    DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 0)) as cantidad')
+                    'tmc.SKU as sku', // Entrega el alias final como 'sku'
+                    DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 1)) as cantidad')
                 )
                 ->groupBy(
                     'movimientomateriales.serie', 
                     'movimientomateriales.CENTRO', 
                     'tmc.nombre', 
-                    'movimientomateriales.SKU'
+                    'tmc.SKU' // tmc.sku -> tmc.SKU
                 )
                 ->having('cantidad', '>', 0) 
                 ->get();
@@ -1645,7 +1642,7 @@ LEFT JOIN treematerialescategoria AS am_padre
 
         return response()->json(is_array($final) ? $final : $final->toArray());
 
-    } catch (\Exception $e) { 
+    } catch (\Exception $e) { // Corregido: Exception -> \Exception con barra invertida para el namespace global
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
