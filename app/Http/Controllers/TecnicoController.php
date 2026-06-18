@@ -1552,7 +1552,7 @@ public function fillEstructuraMO($id)
 
 
 
-public function InventarioLista(Request $request) // Corregido: 'request' cambiado a 'Request' con R mayúscula
+public function InventarioLista(Request $request) 
 {
     DB::connection()->disableQueryLog();
 
@@ -1581,7 +1581,7 @@ cte_hijos AS (
 )
 SELECT DISTINCT
     am.nombre, 
-    am.SKU AS sku, -- Mapea SKU pero entrega 'sku' en minúsculas a PHP
+    am.SKU AS sku, 
     am.limite, 
     am.minimo, 
     am.fkTienda, 
@@ -1608,7 +1608,6 @@ LEFT JOIN treematerialescategoria AS am_padre
             $skusProcesadosMO = [];
 
             foreach ($detallecomprobante as $value) {
-                // Ahora lee de forma segura 'sku' gracias al alias del SQL
                 if (in_array($value['sku'], $skusProcesadosMO)) {
                     continue; 
                 }
@@ -1623,28 +1622,33 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ];
             }
         } else {
-            // Caso Materiales: Extrae la llave 'sku' normalizada en minúsculas
-            $skus = collect($detallecomprobante)->pluck('sku')->toArray();
+            // 🌟 CORRECCIÓN 1: Aplicamos array_unique y filter para asegurar una lista única de SKUs
+            // Esto destruye los duplicados generados por las múltiples tecnologías del árbol jerárquico
+            $skus = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->filter()->toArray()));
             
-            // Corrección de mayúsculas en las relaciones y selecciones de Eloquent
-            $final = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.SKU', '=', 'movimientomateriales.SKU') // tmc.sku -> tmc.SKU
+            // Caso Materiales
+            $final = MovimientoMaterial::join('treematerialescategoria as tmc', function($join) use ($fkTienda) {
+                    $join->on('tmc.SKU', '=', 'movimientomateriales.SKU')
+                         ->where('tmc.fkTienda', '=', $fkTienda); // Asegura filtrar por tienda dentro del cruce
+                })
                 ->where('movimientomateriales.fkTienda', $fkTienda)
-                ->where('fkTecnico', $idtecnico)
+                ->where('movimientomateriales.fkTecnico', $idtecnico)
                 ->whereIn('movimientomateriales.SKU', $skus)
-                ->where('movimientomateriales.STATUS', 'I') // Asegura el campo STATUS de la BD
+                ->where('movimientomateriales.STATUS', 'I') 
                 ->select(
                     DB::raw('MAX(movimientomateriales.id) as id'), 
                     'movimientomateriales.serie',
                     'movimientomateriales.CENTRO',
                     'tmc.nombre as categoria_nombre',
-                    'tmc.SKU as sku', // Entrega el alias final como 'sku'
-                    DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 1)) as cantidad')
+                    'movimientomateriales.SKU as sku', 
+                    // 🌟 CORRECCIÓN 2: Base 0 en el IFNULL para sumas exactas sobre existencias reales
+                    DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 0)) as cantidad')
                 )
                 ->groupBy(
                     'movimientomateriales.serie', 
                     'movimientomateriales.CENTRO', 
                     'tmc.nombre', 
-                    'tmc.SKU' // tmc.sku -> tmc.SKU
+                    'movimientomateriales.SKU' // Agrupar por la columna nativa del movimiento
                 )
                 ->having('cantidad', '>', 0) 
                 ->get();
@@ -1652,7 +1656,7 @@ LEFT JOIN treematerialescategoria AS am_padre
 
         return response()->json(is_array($final) ? $final : $final->toArray());
 
-    } catch (\Exception $e) { // Corregido: Exception -> \Exception con barra invertida para el namespace global
+    } catch (\Exception $e) { 
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
