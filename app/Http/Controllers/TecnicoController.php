@@ -1622,29 +1622,23 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'cantidad'         => $value['limite']
                 ];
             }
-        } else {
-            // Extraemos la lista de SKUs únicos devueltos por el árbol
+                } else {
+            // 🌟 1. Limpiamos los SKUs que la consulta recursiva encontró para GPON y sus subcategorías
             $skus = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->filter()->toArray()));
             
-            // Caso Materiales: Inventario físico real
-            $query = MovimientoMaterial::join('treematerialescategoria as tmc', function($join) use ($fkTienda) {
-                    $join->on('tmc.SKU', '=', 'movimientomateriales.SKU')
-                         ->where('tmc.fkTienda', '=', $fkTienda);
-                });
-
-            // 🌟 ESCUDO TECNOLÓGICO: Si el frontend envió el id_tecnologia, forzamos un JOIN estricto
-            // para que sume únicamente las piezas mapeadas dentro de la tecnología activa (GPON, etc.)
-            if (!empty($idTecnologiaSelect)) {
-                $query->join('arbolmanoobra as amo_filtro', function($join) use ($idTecnologiaSelect, $fkTienda) {
-                    $join->on('amo_filtro.SKU', '=', 'movimientomateriales.SKU')
-                         ->where('amo_filtro.padre_id', '=', $idTecnologiaSelect) // Filtro por el Select Macro de la pantalla
-                         ->where('amo_filtro.fkTienda', '=', $fkTienda);
-                });
+            // Si la tecnología o sus subcategorías no tienen materiales, devolvemos vacío de inmediato
+            if (empty($skus)) {
+                return response()->json([]);
             }
 
-            $final = $query->where('movimientomateriales.fkTienda', $fkTienda)
+            // 🌟 2. Consultamos el inventario basándonos ÚNICAMENTE en la lista de SKUs válidos de la tecnología
+            $final = MovimientoMaterial::join('treematerialescategoria as tmc', function($join) use ($fkTienda) {
+                    $join->on('tmc.SKU', '=', 'movimientomateriales.SKU')
+                         ->where('tmc.fkTienda', '=', $fkTienda);
+                })
+                ->where('movimientomateriales.fkTienda', $fkTienda)
                 ->where('movimientomateriales.fkTecnico', $idtecnico)
-                ->whereIn('movimientomateriales.SKU', $skus)
+                ->whereIn('movimientomateriales.SKU', $skus) // 🌟 Aquí se limita estrictamente a lo que pertenece a GPON
                 ->where('movimientomateriales.STATUS', 'I') 
                 ->select(
                     DB::raw('MAX(movimientomateriales.id) as id'), 
@@ -1652,18 +1646,19 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'movimientomateriales.CENTRO',
                     'tmc.nombre as categoria_nombre',
                     'movimientomateriales.SKU as sku', 
-                    // SUM nativo y limpio aislado por el JOIN de tu tecnología seleccionada
+                    // 🌟 SUM limpio y nativo sobre la tabla física transaccional
                     DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 0)) as cantidad')
                 )
                 ->groupBy(
                     'movimientomateriales.serie', 
                     'movimientomateriales.CENTRO', 
                     'tmc.nombre', 
-                    'movimientomateriales.SKU'
+                    'movimientomateriales.SKU' // Agrupar por el SKU transaccional colapsa las multiplicaciones
                 )
                 ->having('cantidad', '>', 0) 
                 ->get();
         }
+
 
         return response()->json(is_array($final) ? $final : $final->toArray());
 
