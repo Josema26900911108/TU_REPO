@@ -1622,38 +1622,42 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'cantidad'         => $value['limite']
                 ];
             }
-                } else {
-            // 🌟 1. Limpiamos los SKUs que la consulta recursiva encontró para GPON y sus subcategorías
-            $skus = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->filter()->toArray()));
+                        } else {
+            // 🌟 1. Extraemos la lista limpia de SKUs de la tecnología (GPON/subcategorías)
+            $skusValidos = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->filter()->toArray()));
             
-            // Si la tecnología o sus subcategorías no tienen materiales, devolvemos vacío de inmediato
-            if (empty($skus)) {
+            if (empty($skusValidos)) {
                 return response()->json([]);
             }
 
-            // 🌟 2. Consultamos el inventario basándonos ÚNICAMENTE en la lista de SKUs válidos de la tecnología
-            $final = MovimientoMaterial::join('treematerialescategoria as tmc', function($join) use ($fkTienda) {
-                    $join->on('tmc.SKU', '=', 'movimientomateriales.SKU')
-                         ->where('tmc.fkTienda', '=', $fkTienda);
+            // 🌟 2. Creamos la subconsulta protectora para de-duplicar el catálogo de materiales de la tienda
+            $subconsultaCatalogo = DB::table('treematerialescategoria')
+                ->select('SKU', DB::raw('MIN(nombre) as nombre'))
+                ->where('fkTienda', $fkTienda)
+                ->groupBy('SKU');
+
+            // 🌟 3. Consulta de inventario unida de forma segura a la subconsulta limpia
+            $final = MovimientoMaterial::joinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
+                    $join->on('tmc_unica.SKU', '=', 'movimientomateriales.SKU');
                 })
                 ->where('movimientomateriales.fkTienda', $fkTienda)
                 ->where('movimientomateriales.fkTecnico', $idtecnico)
-                ->whereIn('movimientomateriales.SKU', $skus) // 🌟 Aquí se limita estrictamente a lo que pertenece a GPON
+                ->whereIn('movimientomateriales.SKU', $skusValidos) // Acota los materiales a los SKUs de GPON
                 ->where('movimientomateriales.STATUS', 'I') 
                 ->select(
                     DB::raw('MAX(movimientomateriales.id) as id'), 
                     'movimientomateriales.serie',
                     'movimientomateriales.CENTRO',
-                    'tmc.nombre as categoria_nombre',
+                    'tmc_unica.nombre as categoria_nombre', // Hereda el nombre limpio sin duplicar filas
                     'movimientomateriales.SKU as sku', 
-                    // 🌟 SUM limpio y nativo sobre la tabla física transaccional
+                    // SUM directo y real sobre la tabla física (Dará 400.00 exactos)
                     DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 0)) as cantidad')
                 )
                 ->groupBy(
                     'movimientomateriales.serie', 
                     'movimientomateriales.CENTRO', 
-                    'tmc.nombre', 
-                    'movimientomateriales.SKU' // Agrupar por el SKU transaccional colapsa las multiplicaciones
+                    'tmc_unica.nombre', 
+                    'movimientomateriales.SKU'
                 )
                 ->having('cantidad', '>', 0) 
                 ->get();
