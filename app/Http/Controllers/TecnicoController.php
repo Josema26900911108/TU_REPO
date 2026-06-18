@@ -1523,15 +1523,19 @@ public function fillEstructuraMO($id)
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
         
-        // 🌟 Usamos TRIM para asegurar que los SKUs no tengan espacios ocultos que rompan los cruces
+        // 🌟 Usamos GROUP BY en lugar de DISTINCT para fusionar los SKUs duplicados 
+        // de este ID tecnológico específico (:id)
         $sqlll = '
-            SELECT DISTINCT 
+            SELECT 
                 TRIM(am.nombre) as nombre, 
-                am.id, 
+                MAX(am.id) as id, 
                 TRIM(am.SKU) as SKU 
             FROM arbolmaterial as am 
             WHERE am.padre_id = :id 
               AND am.fkTienda = :id2
+            GROUP BY 
+                TRIM(am.nombre), 
+                TRIM(am.SKU)
         ';
         
         $stmt = $pdo->prepare($sqlll);
@@ -1540,10 +1544,12 @@ public function fillEstructuraMO($id)
 
         return response()->json($detallecomprobante);
 
-    } catch (\Exception $e) { // 🌟 Corregido a \Exception global
+    } catch (\Exception $e) { 
         return response()->json(['error' => $e->getMessage()], 400);
     }
 }
+
+
 
 
 public function InventarioLista(Request $request) // Corregido: 'request' cambiado a 'Request' con R mayúscula
