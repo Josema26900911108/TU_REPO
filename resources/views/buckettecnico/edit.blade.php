@@ -1217,7 +1217,7 @@ fill_estructura();
 
 
     // Función para cargar mano de obra (select)
-    function fill_manoobra(id) {
+    function listar_materiales_por_categoria(id) {
         $.ajax({
             url: "{{ url('manoobracategoria') }}/" + id,
             method: "GET",
