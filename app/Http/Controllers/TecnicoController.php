@@ -1550,8 +1550,6 @@ public function fillEstructuraMO($id)
 }
 
 
-
-
 public function InventarioLista(Request $request) 
 {
     DB::connection()->disableQueryLog();
@@ -1559,7 +1557,7 @@ public function InventarioLista(Request $request)
     try {
         $fkTienda = session('user_fkTienda');
         $pdo = DB::getPdo();
-        $idPadre = $request->input('id1'); 
+        $idPadre = $request->input('id1'); // ID de la tecnología seleccionada (GPON, etc.)
         $idtecnico = $request->input('id2');
         
         // Consulta SQL con alias 'AS sku' para asegurar compatibilidad con PHP
@@ -1622,14 +1620,20 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ];
             }
         } else {
-            // 🌟 CORRECCIÓN 1: Aplicamos array_unique y filter para asegurar una lista única de SKUs
-            // Esto destruye los duplicados generados por las múltiples tecnologías del árbol jerárquico
+            // Extraemos únicamente la lista de SKUs válidos y únicos de esta tecnología
             $skus = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->filter()->toArray()));
             
-            // Caso Materiales
+            // 🌟 REESTRUCTURACIÓN DEL CASO MATERIALES CON FILTRO TECNOLÓGICO ESTRICTO
             $final = MovimientoMaterial::join('treematerialescategoria as tmc', function($join) use ($fkTienda) {
                     $join->on('tmc.SKU', '=', 'movimientomateriales.SKU')
-                         ->where('tmc.fkTienda', '=', $fkTienda); // Asegura filtrar por tienda dentro del cruce
+                         ->where('tmc.fkTienda', '=', $fkTienda);
+                })
+                // 🌟 ESCUDO PROTECTOR: Cruzamos con arbolmanoobra usando estrictamente el ID del nodo padre enviado ($idPadre)
+                // Esto garantiza que el inventario no sume registros de materiales idénticos que estén en otras tecnologías ajenas
+                ->join('arbolmanoobra as amo', function($join) use ($idPadre, $fkTienda) {
+                    $join->on('amo.SKU', '=', 'movimientomateriales.SKU')
+                         ->where('amo.padre_id', '=', $idPadre) 
+                         ->where('amo.fkTienda', '=', $fkTienda);
                 })
                 ->where('movimientomateriales.fkTienda', $fkTienda)
                 ->where('movimientomateriales.fkTecnico', $idtecnico)
@@ -1641,14 +1645,14 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'movimientomateriales.CENTRO',
                     'tmc.nombre as categoria_nombre',
                     'movimientomateriales.SKU as sku', 
-                    // 🌟 CORRECCIÓN 2: Base 0 en el IFNULL para sumas exactas sobre existencias reales
+                    // SUM nativo y puro: Calcula existencias sin mezclas externas
                     DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 0)) as cantidad')
                 )
                 ->groupBy(
                     'movimientomateriales.serie', 
                     'movimientomateriales.CENTRO', 
                     'tmc.nombre', 
-                    'movimientomateriales.SKU' // Agrupar por la columna nativa del movimiento
+                    'movimientomateriales.SKU'
                 )
                 ->having('cantidad', '>', 0) 
                 ->get();
@@ -1660,6 +1664,7 @@ LEFT JOIN treematerialescategoria AS am_padre
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
+
 
 
 
