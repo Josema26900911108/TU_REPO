@@ -1549,6 +1549,112 @@ public function fillEstructuraMO($id)
     }
 }
 
+public function scanMaterialGlobal(Request $request, $sku)
+{
+    DB::connection()->disableQueryLog();
+
+    try {
+        $fkTienda = session('user_fkTienda');
+        $pdo = DB::getPdo();
+        
+        $idManoObra = $request->input('id_manoobra'); 
+        $idtecnico = $request->input('id_tecnico');   
+        $codigoEscaneado = trim($sku);
+
+        if (empty($idManoObra) || empty($codigoEscaneado)) {
+            return response()->json(['error' => 'Parámetros incompletos. Seleccione Mano de Obra.'], 400);
+        }
+
+        // =================================================================
+        // PASO 1: BUSQUEDA PRIORITARIA POR SERIE FISICA
+        // =================================================================
+        $subconsultaCatalogoSerie = DB::table('treematerialescategoria')
+            ->select('SKU', DB::raw('MIN(nombre) as nombre'))
+            ->where('fkTienda', $fkTienda)
+            ->groupBy('SKU');
+
+        $buscarPorSerie = \App\Models\MovimientoMaterial::joinSub($subconsultaCatalogoSerie, 'tmc_unica', function ($join) {
+                $join->on('tmc_unica.SKU', '=', 'movimientomateriales.SKU');
+            })
+            ->where('movimientomateriales.fkTienda', $fkTienda)
+            ->where('movimientomateriales.fkTecnico', $idtecnico)
+            ->where('movimientomateriales.serie', $codigoEscaneado) // Filtro estricto por Serie
+            ->where('movimientomateriales.STATUS', 'I')
+            ->select(
+                'movimientomateriales.id',
+                'movimientomateriales.serie',
+                'movimientomateriales.CENTRO',
+                'tmc_unica.nombre as categoria_nombre',
+                'movimientomateriales.SKU as sku',
+                'movimientomateriales.cantidad'
+            )
+            ->first();
+
+        // Si se encuentra por SERIE, se retorna inmediatamente con bandera de pase directo
+        if ($buscarPorSerie) {
+            return response()->json([
+                'tipo' => 'serie',
+                'data' => $buscarPorSerie
+            ]);
+        }
+
+        // =================================================================
+        // PASO 2: SI NO ES SERIE, BUSCAR COINCIDENCIAS POR SKU EN TU ARBOL
+        // =================================================================
+        $sqlArbol = "
+            SELECT amo.id, amo.nombre, TRIM(amo.SKU) as sku, amo.aplicafotografia 
+            FROM arbolmaterial mat
+            INNER JOIN arbolmanoobra am ON mat.idpivote = am.id
+            INNER JOIN arbolmanoobra amo ON am.id = amo.padre_id
+            WHERE mat.fkTienda = ? AND mat.padre_id = ? AND TRIM(amo.SKU) = ?;";
+
+        $stmt = $pdo->prepare($sqlArbol);
+        $stmt->execute([$fkTienda, $idManoObra, $codigoEscaneado]);
+        $autorizadoEnArbol = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (empty($autorizadoEnArbol)) {
+            return response()->json(['status' => 'no_permitido']); 
+        }
+
+        // Consultar todos los materiales físicos en bodega que tengan este SKU
+        $subconsultaCatalogoSku = DB::table('treematerialescategoria')
+            ->select('SKU', DB::raw('MIN(nombre) as nombre'))
+            ->where('fkTienda', $fkTienda)
+            ->where('SKU', $codigoEscaneado)
+            ->groupBy('SKU');
+
+        $materialesPorSku = \App\Models\MovimientoMaterial::joinSub($subconsultaCatalogoSku, 'tmc_unica', function ($join) {
+                $join->on('tmc_unica.SKU', '=', 'movimientomateriales.SKU');
+            })
+            ->where('movimientomateriales.fkTienda', $fkTienda)
+            ->where('movimientomateriales.fkTecnico', $idtecnico)
+            ->where('movimientomateriales.SKU', $codigoEscaneado)
+            ->where('movimientomateriales.STATUS', 'I')
+            ->select(
+                'movimientomateriales.id',
+                'movimientomateriales.serie',
+                'movimientomateriales.CENTRO',
+                'tmc_unica.nombre as categoria_nombre',
+                'movimientomateriales.SKU as sku',
+                'movimientomateriales.cantidad'
+            )
+            ->get();
+
+        if ($materialesPorSku->isEmpty()) {
+            return response()->json(['status' => 'sin_stock', 'sku' => $codigoEscaneado]);
+        }
+
+        // Retornar lista completa de opciones encontradas para el SKU
+        return response()->json([
+            'tipo' => 'sku',
+            'data' => $materialesPorSku
+        ]);
+
+    } catch (\Exception $e) { 
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
 
 public function InventarioLista(Request $request) 
 {

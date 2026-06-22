@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 <!-- Gijgo (si se usa) -->
 <link href="https://unpkg.com/gijgo@1.9.14/css/gijgo.min.css" rel="stylesheet" type="text/css" />
+<script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
 <style>
 #preview { display: flex; flex-wrap: wrap; margin-top: 10px; gap: 10px; }
 .photo-container { position: relative; display: inline-block; }
@@ -318,6 +319,87 @@
 
 
 </style>
+<style>
+/* 1. Forzar al contenedor principal a ocupar el 100% real de la pantalla móvil */
+.bootstrap-select, 
+.bootstrap-select .dropdown-toggle,
+.select-buscador {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* 2. Transformar el menú desplegable en una estructura de tabla limpia */
+.bootstrap-select .dropdown-menu {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 5px 0 0 0 !important;
+    border: 1px solid #dee2e6 !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15) !important;
+    border-radius: 8px !important;
+    overflow-x: auto !important; /* Permitir scroll horizontal si el texto es muy largo en celulares */
+}
+
+/* Encabezado simulado de tabla dentro del buscador (Opcional, si deseas rotular columnas) */
+.bootstrap-select .dropdown-menu::before {
+    content: "CATÁLOGO DE MATERIALES DISPONIBLES";
+    display: block;
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: bold;
+    font-size: 11px;
+    text-align: center;
+    padding: 8px;
+    border-bottom: 2px solid #dee2e6;
+    letter-spacing: 0.5px;
+}
+
+/* 3. Estilizar los elementos (filas) de la lista como renglones de tabla */
+.bootstrap-select .dropdown-menu li {
+    border-bottom: 1px solid #edf2f7 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Cebra interlineado para identificar filas fácilmente en el camión o ruta */
+.bootstrap-select .dropdown-menu li:nth-child(even) {
+    background-color: #fcfcfc !important;
+}
+
+/* 4. Centrar y dar formato al texto dentro de cada fila */
+.bootstrap-select .dropdown-menu li a {
+    display: block !important;
+    padding: 12px 15px !important;
+    text-align: center !important; /* Centrado absoluto de los datos */
+    color: #2d3748 !important;
+    font-size: 13px !important;
+    font-family: monospace, sans-serif !important; /* Estilo ordenado para SKUs y Series */
+    white-space: normal !important; /* Permitir que el texto salte de línea si la pantalla es chica */
+    word-break: break-word !important;
+}
+
+/* Efecto Hover táctil para móviles al pasar el dedo o seleccionar */
+.bootstrap-select .dropdown-menu li a:hover,
+.bootstrap-select .dropdown-menu li.selected a {
+    background-color: #e2e8f0 !important;
+    color: #1a202c !important;
+    font-weight: bold !important;
+}
+
+/* 5. Ajustar el cuadro de texto del buscador interno (LiveSearch) */
+.bootstrap-select .bs-searchbox {
+    padding: 10px !important;
+    background-color: #ffffff !important;
+}
+
+.bootstrap-select .bs-searchbox .form-control {
+    border-radius: 20px !important;
+    padding: 8px 15px !important;
+    text-align: center !important; /* Centrar también lo que escribe el técnico */
+    border: 1px solid #cbd5e0 !important;
+}
+</style>
+
 @endpush
 
 @section('content')
@@ -387,17 +469,17 @@
                 </div>
             </div>
 
-            <!-- Select Mano de Obra -->
-            <div class="row mb-4">
-                <label for="itemmanoobra" class="col-lg-2 col-form-label">Seleccione Mano de Obra:</label>
-                <div class="col-lg-6">
-                    <select name="itemmanoobra" id="itemmanoobra" class="form-control selectpicker" data-live-search="true" data-size="10">
-                    </select>
-                    @error('itemmanoobra')
-                    <small class="text-danger">{{ '*'.$message }}</small>
-                    @enderror
+                <!-- Select Mano de Obra -->
+                <div class="row mb-4">
+                    <label for="itemmanoobra" class="col-lg-2 col-form-label">Seleccione Mano de Obra:</label>
+                    <div class="col-lg-6">
+                        <select name="itemmanoobra" id="itemmanoobra" class="form-control selectpicker" data-live-search="true" data-size="10">
+                        </select>
+                        @error('itemmanoobra')
+                        <small class="text-danger">{{ '*'.$message }}</small>
+                        @enderror
+                    </div>
                 </div>
-            </div>
 
             <hr class="my-4">
 
@@ -407,19 +489,73 @@
                     Asignado
                 </div>
                 <div class="card-body">
+<div class="card-bt">
+    <!-- Botón Escáner QR -->
+    <button type="button" id="btn-qr" class="btn btn-success">
+        <svg xmlns="http://w3.org" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <rect x="1" y="1" width="4" height="4"/>
+        <rect x="11" y="1" width="4" height="4"/>
+        <rect x="1" y="11" width="4" height="4"/>
+        <rect x="6" y="6" width="1" height="1"/>
+        <rect x="8" y="6" width="1" height="1"/>
+        <rect x="6" y="8" width="1" height="1"/>
+        <rect x="8" y="8" width="1" height="1"/>
+        <rect x="10" y="10" width="1" height="1"/>
+        <rect x="12" y="8" width="1" height="1"/>
+        </svg>
+    </button>
+
+    <!-- Botón Escáner de Barra -->
+    <button type="button" id="btn-barra" class="btn btn-secundary">
+        <svg xmlns="http://w3.org" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <rect x="1" y="2" width="1" height="12"/>
+        <rect x="3" y="2" width="2" height="12"/>
+        <rect x="6" y="2" width="1" height="12"/>
+        <rect x="8" y="2" width="2" height="12"/>
+        <rect x="11" y="2" width="1" height="12"/>
+        <rect x="13" y="2" width="2" height="12"/>
+        </svg>
+    </button>
+
+    <!-- Botón Detener Escáner -->
+    <button type="button" id="btn-stop" class="btn btn-danger">
+        <svg xmlns="http://w3.org" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <rect x="2" y="2" width="12" height="12" rx="2"/>
+        <rect x="5" y="5" width="6" height="6" fill="white"/>
+        </svg>
+    </button>
+</div>
+
+<div id="reader" style="width:100%"></div>
+<div id="readerbarra" style="width:100%"></div>
+
+
+
+                            <!-----SKU---->
+                        <div  class="row mb-3 justify-content-center">
+                            <label for="SKU" class="form-label">SKU:</label>
+                            <input type="text" name="SKU" id="SKU" class="form-control">
+                        </div>
+
                     <input type="hidden" name="nodoSeleccionado" id="nodoSeleccionado">
                     
                     <!-- Seleccione Item -->
-                    <div class="row mb-3 justify-content-center">
-                        <label for="itemmanoobraamterial" class="col-lg-2 col-form-label">Seleccione Item:</label>
-                        <div class="col-lg-6">
-                            <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control select-buscador" data-live-search="true" data-size="10">
-                            </select>
-                            @error('itemmanoobraamterial')
-                            <small class="text-danger">{{ '*'.$message }}</small>
-                            @enderror
-                        </div>
-                    </div>
+<!-- Seleccione Item Optimizado para Pantallas Móviles -->
+<div class="row mb-3 justify-content-center align-items-center">
+    <!-- col-12 en móviles toma el ancho completo para que no se amontone con el texto -->
+    <label for="itemmanoobraamterial" class="col-12 col-lg-2 col-form-label text-center text-lg-end mb-1 mb-lg-0">
+        <strong>Seleccione Item:</strong>
+    </label>
+    <div class="col-12 col-lg-6">
+        <!-- Añadimos 'w-100' para anular la rigidez nativa del componente -->
+        <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control select-buscador w-100" data-live-search="true" data-size="10">
+        </select>
+        @error('itemmanoobraamterial')
+        <small class="text-danger d-block text-center mt-1">{{ '*'.$message }}</small>
+        @enderror
+    </div>
+</div>
+
 
                     <!-- Botón Cámara -->
                     <div class="row mb-3 justify-content-center">
@@ -787,6 +923,7 @@ function prepareForm(estatus, MSJ) {
             
             const formulario = document.getElementById('formulario');
             const formData = new FormData(formulario);
+            
 
             fetch(formulario.action, {
                 method: 'POST',
@@ -803,6 +940,11 @@ function prepareForm(estatus, MSJ) {
                 return data;
             })
             .then(data => {
+
+                if (MSJ === 'S' && window.CLAVE_CACHE_COMBOS) {
+                    localStorage.removeItem(window.CLAVE_CACHE_COMBOS);
+                }
+
                 Swal.fire({
                     title: '¡Completado!',
                     text: data.message || 'La operación se realizó con éxito.',
@@ -823,7 +965,119 @@ function prepareForm(estatus, MSJ) {
     });
 }
 
+function agregarProductoScanner(sku) {
+    if (!sku) return;
 
+    let idManoObraSeleccionada = $('#itemmanoobra').val(); 
+    let idTecnicoAsignado = {{ $tecnico->id }}; 
+
+    if (!idManoObraSeleccionada) {
+        Swal.fire('Atención', 'Por favor, seleccione una Mano de Obra antes de escanear.', 'warning');
+        return;
+    }
+
+    Swal.fire({
+        title: 'Procesando lectura...',
+        text: 'Identificando Serie / SKU: ' + sku,
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
+
+    let urlBase = "{{ route('tecnico.materiales.scan_global', ['sku' => ':sku']) }}";
+    let urlDestino = urlBase.replace(':sku', encodeURIComponent(sku.toString().trim()));
+
+    $.ajax({
+        url: urlDestino,
+        type: 'GET',
+        data: {
+            id_manoobra: idManoObraSeleccionada, 
+            id_tecnico: idTecnicoAsignado
+        },
+        success: function(response) {
+            Swal.close();
+
+            if (!response || response.status === 'no_permitido' || Object.keys(response).length === 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Código no autorizado',
+                    text: 'El código escaneado no corresponde a ninguna Serie o SKU válido para este trabajo.',
+                });
+                return;
+            }
+
+            if (response.status === 'sin_stock') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Sin existencias',
+                    text: 'El SKU ' + response.sku + ' es válido, pero no cuentas con stock en tu bodega móvil.',
+                });
+                return;
+            }
+
+            // =================================================================
+            // CASO A: ES SERIE -> PASA DIRECTO A AÑADIR A LA TABLA
+            // =================================================================
+            if (response.tipo === 'serie') {
+                if (typeof agregarItem === 'function') {
+                    agregarItem(response.data); 
+                }
+                return;
+            }
+
+            // =================================================================
+            // CASO B: ES SKU -> CARGAR Y SELECCIONAR EN EL COMBOBOX
+            // =================================================================
+            if (response.tipo === 'sku') {
+                var $select = $('#itemmanoobraamterial');
+                
+                // Destruir e inicializar limpio el selectpicker
+                $select.selectpicker('destroy');
+                $select.empty();
+
+                let options = '<option value="">Seleccione un material</option>';
+                
+                response.data.forEach(function(material) {
+                    let skuLimpio = material.sku ? material.sku.toString().trim() : '';
+                    let serieLimpia = material.serie ? material.serie.toString().trim() : '';
+
+                    options += `<option value="${material.id}" 
+                                 data-centro="${material.CENTRO}"
+                                 data-sku="${skuLimpio}"
+                                 data-stock="${material.cantidad}">DESCRIP: ${material.categoria_nombre} || SERIE: ${serieLimpia || 'S/N'} || CANTIDAD: ${material.cantidad} || SKU: ${skuLimpio}</option>`;
+                });
+
+                $select.html(options);
+
+                // Auto-seleccionar la primera coincidencia real de SKU encontrada
+                if (response.data.length > 0) {
+                    $select.val(response.data[0].id);
+                }
+
+                // Re-inicializar el componente visual de Bootstrap
+                $select.selectpicker({ liveSearch: true, size: 10 });
+                $select.selectpicker('refresh');
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'SKU Identificado',
+                    text: 'Se han cargado las opciones de este material en el selector de ítems.',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+            }
+        },
+        error: function(xhr) {
+            Swal.fire('Error', 'Fallo al procesar código: ' + xhr.responseText, 'error');
+        }
+    });
+}
+
+
+function agregarProductoScannerCam(sku) {
+    if (typeof agregarProductoScanner === 'function') {
+        agregarProductoScanner(sku);
+    }
+}
 
 // 1. Declarar este array global al inicio de tu archivo JavaScript (fuera de las funciones)
 function eliminarProducto(indice) {
@@ -941,30 +1195,54 @@ function llenaritems() {
 llenaritems();
 
 
-function agregarItem() {
-    let idItem = $('#itemmanoobraamterial').val();
-    let optionText = $('#itemmanoobraamterial option:selected').text();
-    let optionSelected = $('#itemmanoobraamterial option:selected');
-
-    
-
-    
-    if (idItem == '' || optionText == '') return;
-
-    let nameProducto = optionText.split('||')[0].split(': ')[1];
-    let nameserie = optionText.split('||')[1].split(': ')[1];
-    
-    let CENTRO = optionSelected.data('centro');
-    let sku = (optionSelected.data('sku') || '').toString().trim();
-    let cantidad = $('#cantidad').val();
+function agregarItem(datosScanner = null) {
+    let idItem, nameProducto, nameserie, CENTRO, sku;
+    let cantidad = $('#cantidad').val() || 1;
+    let idTecnologia = $('#itemtecnologia').val();
     let ordenActual = "{{ $orden->Orden }}"; 
     let tipoOrden = "{{ $orden->Tipo_servicio }}";  
-    let idTecnologia = $('#itemtecnologia').val();
 
-    if (idItem != '' && nameProducto != undefined && cantidad != '' ) {
+  // =================================================================
+    // MÓDULO DE DISCRIMINACIÓN: ¿Viene del Escáner o del Clic Manual?
+    // =================================================================
+    if (datosScanner) {
+        // Asimilación de datos directo desde tu consulta SQL (Scan Material Global)
+        idItem = datosScanner.id;
+        nameProducto = datosScanner.categoria_nombre;
+        nameserie = datosScanner.serie || 'S/N';
+        CENTRO = datosScanner.CENTRO || 'GENERAL';
+        sku = (datosScanner.sku || '').toString().trim();
+    } else {
+        // Flujo Manual Tradicional desde el Combobox
+        idItem = $('#itemmanoobraamterial').val();
+        let optionText = $('#itemmanoobraamterial option:selected').text();
+        let optionSelected = $('#itemmanoobraamterial option:selected');
+
+        if (idItem == '' || optionText == '') return;
+
+        // =================================================================
+        // [SOLUCIÓN] SEPARACIÓN SEGURA EN DOS PASOS PARA EVITAR EL TYPEERROR
+        // =================================================================
+        // 1. Separamos por las doble barras '||' para obtener cada bloque limpio
+        let bloques = optionText.split('||');
+        
+        // 2. Extraemos el texto después de ': ' en cada bloque de forma segura
+        let parteProducto = bloques[0] ? bloques[0].split(': ') : [];
+        let parteSerie    = bloques[1] ? bloques[1].split(': ') : [];
+
+        nameProducto = parteProducto[1] ? parteProducto[1].trim() : 'N/A';
+        nameserie    = parteSerie[1]    ? parteSerie[1].trim()    : 'S/N';
+        
+        CENTRO       = optionSelected.data('centro') || 'GENERAL';
+        sku          = (optionSelected.data('sku') || '').toString().trim();
+    }
+
+    // =================================================================
+    // PROCESAMIENTO UNIFICADO DE VALIDACIÓN E INSERCIÓN (Sigue igual...)
+    // =================================================================
+    if (idItem != '' && nameProducto != undefined && cantidad != '') {
         if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
 
-            // Mostrar un indicador de carga ligero mientras el AJAX viaja a la nube
             Swal.fire({
                 title: 'Validando material...',
                 text: 'Consultando existencias en el servidor web',
@@ -985,7 +1263,6 @@ function agregarItem() {
                 };
             });
 
-            // 1. CREAMOS EL OBJETO VIRTUAL SIN LAS FOTOS PARA QUE EL AJAX SEA ULTRA LIGERO (VIAJA EN MILISEGUNDOS)
             let nuevoItemVirtual = {
                 index: cont, 
                 idTecnologia: idTecnologia,
@@ -995,12 +1272,11 @@ function agregarItem() {
                 nameserie: nameserie,
                 sku: sku.trim(),
                 CENTRO: CENTRO,
-                photos: [] // <--- ¡CORRECCIÓN CRÍTICA! Iniciamos vacío para no saturar el internet móvil
+                photos: [] 
             };
             
             let listaSimulada = [...allItemsSinFotos, nuevoItemVirtual]; 
 
-            // 3. LLAMADA AJAX PASANDO LA LISTA INTEGRADA (Pesa menos de 1 KB ahora)
             $.ajax({
                 url: "{{ route('tecnico.validar.materiales') }}",
                 type: 'POST',
@@ -1014,9 +1290,8 @@ function agregarItem() {
                     ItemVirtual: nuevoItemVirtual
                 },
                 success: function(response) {
-                    Swal.close(); // Cerramos la alerta de validación inmediatamente
+                    Swal.close(); 
 
-                    // Si el backend detectó problemas en uno o varios registros
                     if (response.status === 'exceso' || response.status === 'falta') {
                         let textoAlertas = response.mensajes.join("\n\n");
                         let tituloAlerta = response.status === 'exceso' ? "⚠️ ALERTAS DE EXCESO DETECTADAS:\n\n" : "💡 SUGERENCIAS DE MATERIAL DETECTADAS:\n\n";
@@ -1026,13 +1301,10 @@ function agregarItem() {
                         }
                     }
 
-                    // 4. PASO CLAVE: Si se aprueba, inyectamos las fotos de la cámara al objeto en memoria local (Sin enviarlas a internet aún)
                     nuevoItemVirtual.photos = [...photosForItem];
-
-                    // 5. Guardamos formalmente en tu arreglo global seguro en memoria
                     allItems.push(nuevoItemVirtual);
 
-                    // 6. SE PINTA EL REGISTRO VISUAL EN LA TABLA AL INSTANTE
+                    // Insertar fila física en la tabla
                     let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
                         '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
                         '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
@@ -1045,10 +1317,21 @@ function agregarItem() {
 
                     $('#detalle_tbody').append(fila);
 
-                    // Limpieza visual y preparación para el siguiente ítem
+                    // Preparar pantalla para el siguiente escaneo ultra rápido
                     photosForItem = [];
                     $('#preview').html('');
                     cont++;
+
+                    $('#cantidad').val(1);
+                    if (document.getElementById("SKU")) {
+                        document.getElementById("SKU").value = "";
+                        document.getElementById("SKU").focus(); // Devolver foco al lector
+                    }
+                    
+                    $('#itemmanoobraamterial').val('');
+                    if (typeof $('#itemmanoobraamterial').selectpicker === 'function') {
+                        $('#itemmanoobraamterial').selectpicker('refresh');
+                    }
                 },
                 error: function(xhr) {
                     Swal.fire('Error', 'No se pudo validar el material: ' + xhr.responseText, 'error');
@@ -1060,8 +1343,6 @@ function agregarItem() {
         }
     }
 }
-
-
 
 
 function validarRelacionMateriales() {
@@ -1160,25 +1441,49 @@ $(document).ready(function () {
                 agregarItem();
             });
 
+window.CLAVE_CACHE_COMBOS = "combos_orden_{{ $orden->Orden }}";
 
-    // Inicializas los selectpicker
-    $('#itemtecnologia, #itemmanoobra').selectpicker();
-fill_estructura();
-    // Evento para llenar mano de obra según tecnología
-    $("#itemtecnologia").off('change').on('change', function () {
-        const valor = $(this).val();
-        if (valor) {
-            fill_manoobra(valor);
-        }
-    });
+// Guardar de forma aislada la Tecnología
+window.guardarSeleccionActualTecnologia = function() {
+    try {
+        var selectTecnologia = document.getElementById('itemtecnologia');
+        if (!selectTecnologia || !selectTecnologia.value) return;
 
-    // Evento para llenar árbol según mano de obra seleccionada
-    $("#itemmanoobra").off('change').on('change', function () {
-        const valor = $(this).val();
-        if (valor) {
-            fill_treeview(valor);
-        }
-    });
+        // Leer lo que ya existía previamente en el navegador
+        var datosExistentes = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS)) || {};
+        
+        // Modificar ÚNICAMENTE tecnología, respetando la mano de obra vieja si existía
+        datosExistentes.tecnologia = selectTecnologia.value;
+        datosExistentes.actualizadoEn = Date.now();
+
+        localStorage.setItem(window.CLAVE_CACHE_COMBOS, JSON.stringify(datosExistentes));
+    } catch (error) {
+        console.error("Error guardando tecnología:", error);
+    }
+};
+
+// Guardar de forma aislada la Mano de Obra
+window.guardarSeleccionActualManoObra = function() {
+    try {
+        var selectManoObra = document.getElementById('itemmanoobra');
+        
+        // CRÍTICO: Si el combo está vacío porque apenas se está cargando el AJAX, 
+        // NO guardamos nada para no borrar la memoria previa del técnico
+        if (!selectManoObra || !selectManoObra.value) return;
+
+        var datosExistentes = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS)) || {};
+        
+        // Modificar ÚNICAMENTE mano de obra, respetando la tecnología actual
+        datosExistentes.manoObra = selectManoObra.value;
+        datosExistentes.actualizadoEn = Date.now();
+
+        localStorage.setItem(window.CLAVE_CACHE_COMBOS, JSON.stringify(datosExistentes));
+    } catch (error) {
+        console.error("Error guardando mano de obra:", error);
+    }
+};
+
+
 
     // Función que llena el árbol y configura el evento de selección de nodo
     function fill_treeview(id) {
@@ -1215,26 +1520,99 @@ fill_estructura();
         });
     }
 
+function fill_manoobra(id) {
+    $.ajax({
+        url: "{{ url('manoobracategoria') }}/" + id,
+        method: "GET",
+        success: function (data) {
+            var $select = $('#itemmanoobra');
+            $select.empty();
+            
+            let optionss = `<option value="" disabled selected>Seleccione una opción</option>`;
+            data.forEach(function (manoobra) {
+                optionss += `<option value="${manoobra.id}">${manoobra.nombre}</option>`;
+            });
+            
+            // 1. Inyectar HTML al DOM nativo de forma inmediata
+            $select.html(optionss);
 
-    // Función para cargar mano de obra (select)
-    function fill_manoobra(id) {
-        $.ajax({
-            url: "{{ url('manoobracategoria') }}/" + id,
-            method: "GET",
-            success: function (data) {
-                $('#itemmanoobra').selectpicker('destroy');
-                let optionss = `<option value="" disabled selected>Seleccione una opción</option>`;
-                data.forEach(function (manoobra) {
-                    optionss += `<option value="${manoobra.id}">${manoobra.nombre}</option>`;
-                });
-                $('#itemmanoobra').html(optionss);
-                $('#itemmanoobra').selectpicker();
-            },
-            error: function (xhr) {
-                Swal.fire('Error', 'Hubo un problema al cargar las opciones: ' + xhr.responseText, 'error');
+            // 2. Comprobar y meter la caché instantáneamente antes de pintar la UI
+            try {
+                var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS));
+                if (cache && cache.manoObra) {
+                    var existeOp = $select.find('option[value="' + cache.manoObra + '"]').length > 0;
+                    if (existeOp) {
+                        $select.val(cache.manoObra);
+                    }
+                }
+            } catch (e) { 
+                console.warn(e); 
             }
-        });
+
+            // 3. Inicializar o refrescar la interfaz visual en un único paso atómico
+            if ($select.hasClass('selectpicker') || $select.data('selectpicker')) {
+                $select.selectpicker('refresh');
+            } else {
+                $select.selectpicker();
+            }
+
+            // 4. Lanzar la cascada hacia el árbol
+            if ($select.val()) {
+                $select.trigger('change');
+            }
+        },
+        error: function (xhr) {
+            Swal.fire('Error', 'Hubo un problema al cargar las opciones: ' + xhr.responseText, 'error');
+        }
+    });
+}
+
+    // Inicializas los selectpicker
+    $('#itemtecnologia, #itemmanoobra').selectpicker();
+fill_estructura();
+    // Evento para llenar mano de obra según tecnología
+// Vinculación segura de eventos change
+$("#itemtecnologia").off('change').on('change', function () {
+    const valor = $(this).val();
+    if (valor) {
+        fill_manoobra(valor);
+        window.guardarSeleccionActualTecnologia(); 
     }
+});
+
+$("#itemmanoobra").off('change').on('change', function () {
+    const valor = $(this).val();
+    if (valor) {
+        fill_treeview(valor);
+        window.guardarSeleccionActualManoObra(); 
+    }
+});
+
+// ENTRADA ULTRA RÁPIDA: Sincronización instantánea al cargar la página
+(function() {
+    try {
+        var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS));
+        var $selectTec = $('#itemtecnologia');
+        
+        if (cache && cache.tecnologia && $selectTec.length) {
+            // Inyectar el valor directamente en el DOM nativo antes de que bootstrap actúe
+            $selectTec.val(cache.tecnologia);
+
+            // Si la librería ya se creó, refrescamos. Si no, escuchamos su creación para meter el valor
+            if ($selectTec.data('selectpicker')) {
+                $selectTec.selectpicker('refresh');
+                $selectTec.trigger('change');
+            } else {
+                $selectTec.one('rendered.bs.select', function() {
+                    $selectTec.selectpicker('val', cache.tecnologia);
+                    $selectTec.trigger('change');
+                });
+            }
+        }
+    } catch (error) {
+        console.warn("Error en arranque ultra rápido:", error);
+    }
+})();
 
  function listar_materiales_por_categoria(idNodo) {
     console.log('Listar materiales para categoría con Cid:', idNodo);
@@ -1651,6 +2029,199 @@ window.addEventListener('scroll', () => {
 }, { passive: true }); // passive: true optimiza el rendimiento del scroll en celulares
 
 
+    // Variables para detectar si es lector de barras
+let scanner = null;
+let escaneando = false;
+let lastInputTime = 0;
+
+document.getElementById("SKU").addEventListener("keydown", function (e) {
+
+    // Registrar tiempo entre teclas
+    const now = Date.now();
+    const delta = now - lastInputTime;
+    lastInputTime = now;
+
+    // Si presiona ENTER
+    if (e.key === "Enter") {
+        e.preventDefault();
+
+        let sku = this.value.trim();
+
+        // Si no hay nada, solo limpiar y enfocar
+        if (sku === "") {
+            this.focus();
+            return;
+        }
+
+        // Detectar si fue lector de código de barras:
+        // Si la escritura fue demasiado rápida (<80ms por tecla)
+        const isScanner = delta < 80;
+        const cantidades = $("#cantidad").val();
+
+
+        if (isScanner) {
+            // Caso lector de código de barras
+            if(cantidades===1 || cantidades===""){
+                $("#cantidad").val(1);
+            }
+            $("#SKU").val("");     // limpiar
+            $("#SKU").focus();     // regresar el foco
+            agregarProductoScanner(sku);
+        } else {
+            // Caso ingreso manual con teclado
+            $("#cantidad").val(sku);  // copiar número del SKU a cantidad
+            $("#SKU").val("");        // limpiar
+            $("#SKU").focus();        // regresar el foco
+        }
+    }
+});
+
+
+    function round(num, decimales = 2) {
+        var signo = (num >= 0 ? 1 : -1);
+        num = num * signo;
+        if (decimales === 0) //con 0 decimales
+            return signo * Math.round(num);
+        // round(x * 10 ^ decimales)
+        num = num.toString().split('e');
+        num = Math.round(+(num[0] + 'e' + (num[1] ? (+num[1] + decimales) : decimales)));
+        // x * 10 ^ (-decimales)
+        num = num.toString().split('e');
+        return signo * (num[0] + 'e' + (num[1] ? (+num[1] - decimales) : -decimales));
+    }
+
+
+
+window.iniciarScanner = function(tipo = "barra") {
+    if (escaneando) return;
+
+    let elementoLector = tipo === "barra" ? "readerbarra" : "reader";
+    scanner = new Html5Qrcode(elementoLector);
+    escaneando = true;
+
+    scanner.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: tipo === "barra" ? { width: 250, height: 150 } : 250
+        },
+        (codigo) => {
+            console.log("Código ver:", codigo);
+            window.StopScanner();
+            
+            if (typeof agregarProductoScanner === 'function') {
+                agregarProductoScanner(codigo);
+            }
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Se ha seleccionado un producto',
+                text: 'Código: ' + codigo,
+            });
+        },
+        (error) => { /* Ignorar errores de enfoque */ }
+    );
+};
+
+window.StopScanner = function() {
+    if (!scanner || !escaneando) return;
+
+    scanner.stop()
+    .then(() => {
+        console.log("Scanner detenido");
+        escaneando = false;
+        scanner = null;
+    })
+    .catch(err => {
+        console.error("Error al detener:", err);
+    });
+};
+
+// Delegación de eventos e interactividad segura
+document.addEventListener("DOMContentLoaded", function() {
+    var btnQr = document.getElementById('btn-qr');
+    var btnBarra = document.getElementById('btn-barra');
+    var btnStop = document.getElementById('btn-stop');
+
+    if (btnQr) {
+        btnQr.addEventListener('click', function(e) {
+            e.preventDefault();
+            window.iniciarScanner('qr');
+        });
+    }
+
+    if (btnBarra) {
+        btnBarra.addEventListener('click', function(e) {
+            e.preventDefault();
+            window.iniciarScanner('barra');
+        });
+    }
+
+    if (btnStop) {
+        btnStop.addEventListener('click', function(e) {
+            e.preventDefault();
+            window.StopScanner();
+        });
+    }
+});
+
+
+// Polling asíncrono para contrarrestar retrasos de renderizado por Debugbar
+(function() {
+    var intentos = 0;
+    var maxIntentos = 100; // Límite de 5 segundos de espera activa
+
+    var verificadorInicial = setInterval(function() {
+        intentos++;
+        var $selectTecnologia = $('#itemtecnologia');
+        
+        // Verificar si el select existe y ya posee opciones renderizadas más allá de la vacía
+        if ($selectTecnologia.length && $selectTecnologia.find('option').length > 1) {
+            clearInterval(verificadorInicial); // Detener el bucle inmediatamente
+            
+            try {
+                var cacheGuardada = localStorage.getItem(window.CLAVE_CACHE_COMBOS);
+                if (!cacheGuardada) return;
+
+                var datos = JSON.parse(cacheGuardada);
+                if (datos.tecnologia) {
+                    // Forzar asignación mediante método nativo selectpicker
+                    $selectTecnologia.selectpicker('val', datos.tecnologia);
+                    $selectTecnologia.trigger('change');
+                }
+            } catch (error) {
+                console.warn("Fallo el arranque asíncrono:", error);
+            }
+        }
+
+        // Evitar bucle infinito si el elemento no se encuentra en la vista
+        if (intentos >= maxIntentos) {
+            clearInterval(verificadorInicial);
+        }
+    }, 50); // Comprobación ultra rápida cada 50 milisegundos
+})();
+
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        try {
+            var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS));
+            var $selectTec = $('#itemtecnologia');
+            
+            if (cache && cache.tecnologia && $selectTec.length) {
+                // Forzar el primer combo usando el método oficial de la librería
+                $selectTec.selectpicker('val', cache.tecnologia);
+                $selectTec.trigger('change'); 
+            }
+        } catch (error) {
+            console.warn("Error en arranque inicial:", error);
+        }
+    }, 200); 
+});
+// Evitar que los botones de control del escáner gatillen el envío del formulario
+$(".card-bt button").off('click').on('click', function(e) {
+    e.preventDefault();
+});
 
 </script>
+
 @endpush

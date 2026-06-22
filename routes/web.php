@@ -480,6 +480,8 @@ Route::get('/tecnicoinvtabla', [TecnicoController::class, 'fetchrelacioninv'])->
 Route::get('/tecnologiacategoria', [TecnicoController::class, 'fillEstructura'])->name('tecnologiaarb');
 Route::get('/manoobracategoria/{id}', [TecnicoController::class, 'fillEstructuraMO'])->name('manoobrarb');
 Route::get('/inventariolista', [TecnicoController::class, 'InventarioLista'])->name('inventariolista');
+Route::get('/tecnico/materiales/scan-global/{sku}', [TecnicoController::class, 'scanMaterialGlobal'])->name('tecnico.materiales.scan_global');
+
 
 Route::get('/inventariolistadetalle', [TecnicoController::class, 'obtenerdetalless'])->name('inventariolistadetalles');
 
