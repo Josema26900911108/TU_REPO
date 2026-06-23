@@ -148,12 +148,12 @@ public function importarMAMO(Request $request)
                 [
                     'SKU' => trim($data['SKU']),
                     'centrocostoespecifico' => !empty($data['centrocostoespecifico']) ? trim($data['centrocostoespecifico']) : null,
-                    'fkTienda' => $fkTienda ?? 0
+                    'fkTienda' => $fkTienda ?? 0,
+                    'TIPO'           => trim($data['TIPO'] ?? '')
                 ],
                 [
                     'SKU'            => trim($data['SKU']),
                     'Descripcion'    => trim($data['Descripcion']),
-                    'TIPO'           => trim($data['TIPO'] ?? ''),
                     'unidadmedida'   => trim($data['unidadmedida'] ?? ''),
                     'CATEGORIA'      => trim($data['CATEGORIA'] ?? ''),
                     'COSTOPAGO'      => (float) ($data['COSTOPAGO'] ?? 0),
