@@ -1040,7 +1040,7 @@ $(document).on('click', '#tabla_materiales_container a[href*="page="]', function
     let url = $(this).attr('href');
     let page = new URL(url, window.location.origin).searchParams.get('page') || 1;
     console.log('Paginación datos, página:', page);
-    fillRelacion(page);
+    fillRelacionAsignada(page);
 });
 
 $(document).on('click', '#tabla_materialesinv_container a[href*="page="]', function (e) {
