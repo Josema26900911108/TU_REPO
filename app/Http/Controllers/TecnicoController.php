@@ -3310,55 +3310,56 @@ return response()->json($detallecomprobante);
 }
 
     }
-
-    public function fetchrelacion(Request $request)
+public function fetchrelacion(Request $request)
 {
     DB::connection()->disableQueryLog();
-    try{
-                        if(!Auth::check()){
+    try {
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
 
-                    $Estatus = session('user_estatus');
-                    $fkTienda = session('user_fkTienda');
-                    $idtecnico= $request->input('id');
-                    $fechain=$request->input('fechain');
-                    $fechafin=$request->input('fechafin');
+        $Estatus = session('user_estatus');
+        $fkTienda = session('user_fkTienda');
+        $idtecnico = $request->input('id');
+        
+        // 1. Capturar y formatear las fechas con las horas límite
+        $fechain = $request->input('fechain') ? $request->input('fechain') . ' 00:00:00' : null;
+        $fechafin = $request->input('fechafin') ? $request->input('fechafin') . ' 23:59:59' : null;
 
-                    if(isset($fechain) or isset($fechafin)){
-                if ($Estatus == 'ER') {
+        // 2. Usar 'and' para verificar que ambas fechas existan antes de filtrar
+        if ($fechain && $fechafin) {
+            if ($Estatus == 'ER') {
+                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
+                    ->where('fkTecnico', $request->input('id'))
+                    ->whereBetween('FECHAINSTALACION', [$fechain, $fechafin])
+                    ->where('ESTATUS', 'I')
+                    ->paginate(10);
+            } else {
+                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
+                    ->where('fkTecnico', $idtecnico)
+                    ->whereBetween('FECHAINSTALACION', [$fechain, $fechafin])
+                    ->where('ESTATUS', 'I')
+                    ->paginate(10);
+            }
+        } else {
+            if ($Estatus == 'ER') {
+                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
+                    ->where('fkTecnico', $request->input('id'))
+                    ->paginate(10);
+            } else {
+                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
+                    ->where('fkTecnico', $idtecnico)
+                    ->paginate(10);
+            }
+        }
 
-            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$request->input('id'))
-            ->whereBetween('FECHAINSTALACION',[$fechain, $fechafin])
-            ->where('ESTATUS','I')
-            ->paginate(10);
-
-                } else {
-            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)
-            ->whereBetween('FECHAINSTALACION',[$fechain, $fechafin])
-            ->where('ESTATUS','I')
-            ->paginate(10);
-                };
-                    }else{
-                if ($Estatus == 'ER') {
-            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$request->input('id'))->paginate(10);
-                } else {
-            $relacion=Expedientetecnico::where('fkTienda',$fkTienda)->where('fkTecnico',$idtecnico)->paginate(10);
-                };
-                    }
-
-
-
-
-
-    if ($request->ajax()) {
-        return view('buckettecnico.table.tabla', compact('relacion'))->render();
+        if ($request->ajax()) {
+            return view('buckettecnico.table.tabla', compact('relacion'))->render();
+        }
+        
+    } catch (Exception $e) {
+        return view('tecnico.index', ['Error' => $e->getMessage()]);
     }
-    }catch(Exception $e){
-    return view('tecnico.index', compact('relacion','Error: '.$e->getMessage()));
-    }
-
-
 }
 
     public function obtenerdetalles(string $sql, array $parametros)
