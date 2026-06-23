@@ -1171,15 +1171,19 @@ function llenaritems() {
                 }
 
                 // Construcción segura de la fila
-                let fila = '<tr id="fila' + index + '" data-index="' + index + '">' +
-                    '<td><input type="hidden" name="arrayiditem[]" value="' + material.id + '">' + material.id + '</td>' +
-                    '<td><input type="hidden" name="arraycantidad[]" value="' + material.cantidad + '">' + material.cantidad + '</td>' +
-                    '<td><input type="hidden" name="arraynameProducto[]" value="' + material.Descripcion + '">' + material.Descripcion + '</td>' +
-                    '<td><input type="hidden" name="arraysku[]" value="' + material.sku + '">' + material.sku + '</td>' +
-                    '<td><input type="hidden" name="arrayserie[]" value="' + material.serie + '">' + material.serie + '</td>' +
-                    '<td><input type="hidden" name="arrayidTecnologia[]" value="' + material.fkTecnologiaarbol + '">' + material.fkTecnologiaarbol + '</td>' +
-                    '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                    '</tr>';
+let fila = '<tr id="fila' + index + '" data-index="' + index + '">' +
+    '<td><input type="hidden" name="arrayiditem[]" value="' + material.id + '">' + material.id + '</td>' +
+    '<td><input type="hidden" name="arraycantidad[]" value="' + material.cantidad + '">' + material.cantidad + '</td>' +
+    // 1. Añadida clase 'copiar-celda' a Descripción
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + material.Descripcion + '">' + material.Descripcion + '</td>' +
+    // 2. Añadida clase 'copiar-celda' a SKU
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + material.sku + '">' + material.sku + '</td>' +
+    // 3. Añadida clase 'copiar-celda' a Serie
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + material.serie + '">' + material.serie + '</td>' +
+    '<td><input type="hidden" name="arrayidTecnologia[]" value="' + material.fkTecnologiaarbol + '">' + material.fkTecnologiaarbol + '</td>' +
+    '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+    '</tr>';
+
                 
                 $('#detalle_tbody').append(fila);
                 allItems.push(material);
@@ -1194,6 +1198,33 @@ function llenaritems() {
 
 
 llenaritems();
+
+$(document).ready(function() {
+    // Escucha el evento de doble clic (dblclick) en cualquier celda con la clase .copiar-celda
+    $(document).on('dblclick', '.copiar-celda', function() {
+        // Obtiene el texto visible de la celda (excluyendo el valor del input hidden)
+        let textoACopiar = $(this).text().trim();
+
+        if (textoACopiar) {
+            // Copia el contenido de forma segura al portapapeles usando la API nativa del navegador
+            navigator.clipboard.writeText(textoACopiar).then(function() {
+                // Pequeño efecto visual temporal para avisar al usuario que se copió
+                let celda = $(this);
+                let colorOriginal = celda.css('background-color');
+                
+                // Parpadeo verde de éxito
+                celda.css('background-color', '#d4edda'); 
+                setTimeout(function() {
+                    celda.css('background-color', colorOriginal);
+                }, 400);
+
+                console.log('Copiado con éxito: ' + textoACopiar);
+            }.bind(this)).catch(function(err) {
+                console.error('Error al intentar copiar el texto: ', err);
+            });
+        }
+    });
+});
 
 
 function agregarItem(datosScanner = null) {
@@ -1306,15 +1337,19 @@ function agregarItem(datosScanner = null) {
                     allItems.push(nuevoItemVirtual);
 
                     // Insertar fila física en la tabla
-                    let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
-                        '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
-                        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-                        '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
-                        '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
-                        '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
-                        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + idTecnologia + '">' + idTecnologia + '</td>' +
-                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                        '</tr>';
+let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
+    '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
+    '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
+    // 1. Añadida clase 'copiar-celda' a Nombre de Producto
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
+    // 2. Añadida clase 'copiar-celda' a SKU
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
+    // 3. Añadida clase 'copiar-celda' a Serie
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
+    '<td><input type="hidden" name="arrayidTecnologia[]" value="' + idTecnologia + '">' + idTecnologia + '</td>' +
+    '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+    '</tr>';
+
 
                     $('#detalle_tbody').append(fila);
 
@@ -1410,15 +1445,19 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
     let optionSelectedtec = $('#itemtecnologia').val();
     allItems.push(item); // Sincroniza el listado en memoria
 
-    let fila = '<tr id="fila' + cont + '">' +
+let fila = '<tr id="fila' + cont + '">' +
         '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
         '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-        '<td><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
-        '<td><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
-        '<td><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
+        // 1. Clase 'copiar-celda' agregada a Nombre de Producto
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
+        // 2. Clase 'copiar-celda' agregada a SKU
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
+        // 3. Clase 'copiar-celda' agregada a Serie
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
         '<td><input type="hidden" name="arrayidTecnologia[]" value="' + optionSelectedtec + '">' + optionSelectedtec + '</td>' +
         '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
         '</tr>';
+
 
     $('#detalle_tbody').append(fila);
 
