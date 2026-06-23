@@ -758,7 +758,7 @@
 
 <script>
     // 1. Capturamos la orden actual de forma segura desde Laravel Blade
-    const ordenActualCache = "{{ $orden->id ?? $orden->Orden }}";
+    const ordenActualCache = "{{ $orden->Orden }}";
 
     // 2. La llave ahora es única por cada orden de trabajo
     const llaveCache = 'cache_materiales_' + ordenActualCache;
