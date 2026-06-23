@@ -877,7 +877,6 @@ $('#btnOk').click(function() {
     $('#btnRetry').hide();
     $(this).text("✅ Fotos Guardadas").prop('disabled', true);
 });
-
 function prepareForm(estatus, MSJ) {
     document.getElementById('estatus_input').value = estatus;
 
@@ -910,16 +909,13 @@ function prepareForm(estatus, MSJ) {
         // SANITIZACIÓN SEMÁNTICA DE NOMBRES EN MAYÚSCULAS (MÓDULO AUDITORÍA)
         // =================================================================
         item.photos.forEach((photo, pidx) => {
-            // 1. Forzar a cadenas de texto en MAYÚSCULAS limpias
             let nombreLimpio = photo.name ? photo.name.toUpperCase().trim() : 'EVIDENCIA_FOTO';
-            
-            // 2. Normalización opcional: Si la foto contiene un espacio o guion, asegura la legibilidad para SQL
             nombreLimpio = nombreLimpio.replace(/[\s\u00A0]+/g, ' ');
 
             $('<input>').attr({
                 type: 'hidden',
                 name: `items[${idx}][names][${pidx}]`,
-                value: nombreLimpio // Inyecta el nombre estandarizado (Ej: "ANTENA DTH.JPG")
+                value: nombreLimpio
             }).appendTo('#formulario');
         });
 
@@ -927,16 +923,14 @@ function prepareForm(estatus, MSJ) {
         // INYECCIÓN DE LA LLAVE TECNOLÓGICA DE LA FOTOGRAFÍA
         // =================================================================
         item.photos.forEach((photo, pidx) => {
-            // Lee el fkTecnologia que inyectamos previamente en el photosForItem.push
             let idTecnologiaFoto = photo.fkTecnologia ?? 0;
 
             $('<input>').attr({
                 type: 'hidden',
                 name: `items[${idx}][fkTecnologia][${pidx}]`,
-                value: idTecnologiaFoto // Inyecta el ID numérico (Ej: 3 o 15)
+                value: idTecnologiaFoto
             }).appendTo('#formulario');
         });
-
     });
 
     itemsEliminados.forEach((id, idx) => {
@@ -988,7 +982,6 @@ function prepareForm(estatus, MSJ) {
             const formulario = document.getElementById('formulario');
             const formData = new FormData(formulario);
             
-
             fetch(formulario.action, {
                 method: 'POST',
                 body: formData,
@@ -1005,8 +998,21 @@ function prepareForm(estatus, MSJ) {
             })
             .then(data => {
 
-                if (MSJ === 'S' && window.CLAVE_CACHE_COMBOS) {
-                    localStorage.removeItem(window.CLAVE_CACHE_COMBOS);
+                // ====================================================================
+                // ESTRATEGIA DE DESTRUCCIÓN DE CACHÉ EXCLUSIVA AL CERRAR LA ORDEN
+                // ====================================================================
+                if (MSJ === 'S') {
+                    // 1. Borramos la tabla de materiales de esta orden
+                    if (typeof llaveCache !== 'undefined') {
+                        localStorage.removeItem(llaveCache);
+                    }
+                    // 2. Borramos las selecciones de los comboboxes de esta orden
+                    if (window.CLAVE_CACHE_COMBOS) {
+                        localStorage.removeItem(window.CLAVE_CACHE_COMBOS);
+                    }
+                    console.log("Caché local de la orden eliminada de forma exitosa por cierre.");
+                } else {
+                    console.log("Operación parcial: Se conserva la caché local para futuras ediciones.");
                 }
 
                 Swal.fire({
@@ -1079,22 +1085,57 @@ function agregarProductoScanner(sku) {
             }
 
             // =================================================================
-            // CASO A: ES SERIE -> PASA DIRECTO A AÑADIR A LA TABLA
+            // CASO A: ES SERIE -> PASA DIRECTO A AÑADIR A LA TABLA Y STORAGE
             // =================================================================
             if (response.tipo === 'serie') {
                 if (typeof agregarItem === 'function') {
+                    // agregarItem se encargará de validar, inyectar el HTML y ejecutar
+                    // localStorage.setItem(llaveCache, ...) automáticamente
                     agregarItem(response.data); 
                 }
                 return;
             }
 
             // =================================================================
-            // CASO B: ES SKU -> CARGAR Y SELECCIONAR EN EL COMBOBOX
+            // CASO B: ES SKU -> SE AGREGA AUTOMÁTICAMENTE CON CANTIDAD 1 O PASA AL SELECTOR
             // =================================================================
             if (response.tipo === 'sku') {
+                // Opción Sugerida: Si deseas que los SKU se carguen directo a la tabla con cantidad 1 al escanear,
+                // puedes invocar la función aislada que construimos antes, la cual ya tiene integrado el LocalStorage:
+                if (response.data && response.data.length > 0) {
+                    let primerMaterial = response.data[0];
+                    let skuLimpio = primerMaterial.sku ? primerMaterial.sku.toString().trim() : '';
+                    let serieLimpia = primerMaterial.serie ? primerMaterial.serie.toString().trim() : 'S/N';
+                    
+                    // Asignamos una cantidad por defecto de 1 para la carga ultra rápida por escáner
+                    let cantidadPorDefecto = 1; 
+
+                    if (typeof procederAAgregarFila === 'function') {
+                        // procederAAgregarFila inserta la celda física en '#detalle_tbody'
+                        // y actualiza inmediatamente la caché bajo la variable 'llaveCache'
+                        procederAAgregarFila(
+                            primerMaterial.id, 
+                            primerMaterial.categoria_nombre, 
+                            cantidadPorDefecto, 
+                            serieLimpia, 
+                            skuLimpio
+                        );
+
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'SKU Agregado',
+                            text: 'El material se ha cargado directamente a la lista de utilizados.',
+                            timer: 1500,
+                            showConfirmButton: false
+                        });
+                        return; // Terminamos aquí si se carga directo
+                    }
+                }
+
+                // ====================================================================
+                // FLUJO ALTERNATIVO (Por si falla la inserción directa): Carga el Combo
+                // ====================================================================
                 var $select = $('#itemmanoobraamterial');
-                
-                // Destruir e inicializar limpio el selectpicker
                 $select.selectpicker('destroy');
                 $select.empty();
 
@@ -1112,22 +1153,12 @@ function agregarProductoScanner(sku) {
 
                 $select.html(options);
 
-                // Auto-seleccionar la primera coincidencia real de SKU encontrada
                 if (response.data.length > 0) {
                     $select.val(response.data[0].id);
                 }
 
-                // Re-inicializar el componente visual de Bootstrap
                 $select.selectpicker({ liveSearch: true, size: 10 });
                 $select.selectpicker('refresh');
-
-                Swal.fire({
-                    icon: 'success',
-                    title: 'SKU Identificado',
-                    text: 'Se han cargado las opciones de este material en el selector de ítems.',
-                    timer: 1500,
-                    showConfirmButton: false
-                });
             }
         },
         error: function(xhr) {
@@ -1158,13 +1189,13 @@ function eliminarProducto(indice) {
         // Si el usuario confirma, procedemos con la eliminación
         if (result.isConfirmed) {
             
-            // 2. Buscar el ID real de la base de datos antes de limpiar el arreglo en memoria
+            // 2. Buscar el objeto del ítem en memoria antes de limpiar el arreglo
             let itemABorrar = allItems.find(function(item) {
                 return item.index == indice;
             });
 
-            // 3. Si el ítem tiene un ID válido (ya existía en la base de datos), lo registramos para el backend
-            if (itemABorrar && itemABorrar.id) {
+            // 3. VALIDACIÓN DE SEGURIDAD: Comprobar que el objeto exista y tenga un ID de BD válido
+            if (itemABorrar && typeof itemABorrar.id !== 'undefined' && itemABorrar.id) {
                 // Asegúrate de que el array 'itemsEliminados' esté declarado globalmente arriba en tu archivo
                 if (typeof itemsEliminados !== 'undefined') {
                     itemsEliminados.push(itemABorrar.id);
@@ -1186,7 +1217,6 @@ function eliminarProducto(indice) {
             // ====================================================================
             localStorage.setItem(llaveCache, JSON.stringify(allItems));
 
-
             // 5. Eliminar la fila visual y sus fotos
             $('#fila' + indice).remove();
             $(`input[name^='arrayfotos[${indice}]']`).remove();
@@ -1203,10 +1233,13 @@ function eliminarProducto(indice) {
     });
 }
 
-
-
 function llenaritems() {
     let id = "{{ $id3 ?? 0 }}";
+
+    // ====================================================================
+    // LA CLAVE: Forzar la lectura de la caché exclusiva de esta orden antes de evaluar
+    // ====================================================================
+    allItems = JSON.parse(localStorage.getItem(llaveCache)) || [];
 
     // 1. SI YA EXISTE CACHÉ LOCAL: Restaurar datos del técnico de inmediato sin hacer AJAX
     if (allItems.length > 0) {
@@ -1216,7 +1249,7 @@ function llenaritems() {
         allItems.forEach(function(material) {
             renderizarFilaHTML(material);
         });
-        console.log("Datos del técnico restaurados exitosamente desde localStorage.");
+        console.log("Datos de la orden " + ordenActualCache + " restaurados exitosamente desde localStorage.");
         return; // Detiene la función aquí para no sobreescribir con el AJAX
     }
 
@@ -1254,7 +1287,7 @@ function llenaritems() {
                 allItems.push(material);
             });
 
-            // Guardar la carga inicial en el almacenamiento local del dispositivo
+            // Guardar la carga inicial en el almacenamiento local del dispositivo usando la llave dinámica
             localStorage.setItem(llaveCache, JSON.stringify(allItems));
         },
         error: function(xhr) {
@@ -1262,7 +1295,6 @@ function llenaritems() {
         }
     });
 }
-
 // Función auxiliar para renderizar el HTML dinámico de tus filas
 function renderizarFilaHTML(material) {
     let fila = '<tr id="fila' + material.index + '" data-index="' + material.index + '">' +
@@ -1507,10 +1539,9 @@ function agregarItem(datosScanner = null) {
                     allItems.push(nuevoItemVirtual);
 
                     // =================================================================
-                    // PERSISTENCIA: Guardar el nuevo artículo en el LocalStorage
+                    // PERSISTENCIA CORREGIDA: Se removieron las comillas de llaveCache
                     // =================================================================
-                    
-                    localStorage.setItem('llaveCache', JSON.stringify(allItems));
+                    localStorage.setItem(llaveCache, JSON.stringify(allItems));
 
                     // Insertar fila física en la tabla
                     let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
@@ -1551,7 +1582,6 @@ function agregarItem(datosScanner = null) {
         }
     }
 }
-
 
 
 function validarRelacionMateriales() {
