@@ -659,35 +659,51 @@
     </div>
 </div>
 
-<!-- Modal de Bootstrap -->
+<!-- Modal de Bootstrap Fullscreen Real -->
 <div class="modal fade" id="modalFirma" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modalFirmaLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title" id="modalFirmaLabel"><i class="fas fa-signature me-2"></i> Firma del Cliente</h5>
+    <!-- modal-fullscreen elimina bordes; m-0 quita márgenes; w-100 y h-100 fuerzan el tamaño total -->
+    <div class="modal-dialog modal-fullscreen m-0 w-100 h-100" style="max-width: 100%;">
+        <!-- min-vh-100 asegura el alto total del dispositivo; border-0 y rounded-0 quitan estilos de tarjeta -->
+        <div class="modal-content min-vh-100 border-0 rounded-0 d-flex flex-column">
+            
+            <!-- Cabecera del modal (Fija arriba) -->
+            <div class="modal-header bg-dark text-white border-0 rounded-0 py-3">
+                <h5 class="modal-title" id="modalFirmaLabel">
+                    <i class="fas fa-signature me-2"></i> Firma del Cliente
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body bg-light text-center">
-                <p class="small text-muted mb-2">Por favor, firme dentro del recuadro:</p>
-                <!-- Lienzo del Canvas -->
-                <div class="wrapper-canvas border rounded bg-white shadow-sm" style="position: relative; width: 100%; height: 250px;">
+            
+            <!-- Cuerpo del modal (Ocupa todo el espacio central disponible) -->
+            <!-- flex-grow-1 estira el contenedor; p-2 minimiza espacios internos -->
+            <div class="modal-body bg-light text-center d-flex flex-column flex-grow-1 p-2">
+                <p class="small text-muted mb-2">Por favor, firme dentro del recuadro blanco:</p>
+                
+                <!-- Contenedor del Canvas estirado al máximo con flex-grow-1 -->
+                <div class="wrapper-canvas border rounded bg-white shadow-sm flex-grow-1 w-100" style="position: relative;">
+                    <!-- El canvas se adapta dinámicamente al 100% de este contenedor -->
                     <canvas id="canvasFirma" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; cursor: crosshair;"></canvas>
                 </div>
             </div>
-            <div class="modal-footer d-flex justify-content-between">
-                <button type="button" class="btn btn-secondary" id="btnLimpiarFirma">
+            
+            <!-- Pie del modal (Fijo abajo) -->
+            <div class="modal-footer d-flex justify-content-between border-0 rounded-0 bg-white py-3">
+                <button type="button" class="btn btn-secondary btn-lg" id="btnLimpiarFirma">
                     <i class="fas fa-eraser me-1"></i> Limpiar
                 </button>
                 <div>
-                    <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-success" id="btnGuardarFirma">
+                    <button type="button" class="btn btn-outline-secondary btn-lg me-2" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success btn-lg" id="btnGuardarFirma">
                         <i class="fas fa-check me-1"></i> Confirmar Firma
                     </button>
                 </div>
             </div>
+
         </div>
     </div>
 </div>
+
+
 
         </div>
 <input type="hidden" name="estatus" id="estatus_input" value="">
@@ -1341,30 +1357,56 @@ $(document).ready(function() {
     });
 });
 
-    const canvas = document.getElementById('canvasFirma');
-    
-    // 2. LA CLAVE: Buscar la clase en el objeto global del navegador
-    const ClassFirma = window.SignaturePad || SignaturePad;
+const canvas = document.getElementById('canvasFirma');
 
-    if (canvas && typeof ClassFirma !== 'undefined') {
-        signaturePad = new ClassFirma(canvas, {
-            minWidth: 1.5,
-            maxWidth: 4,
-            penColor: 'rgb(0, 0, 0)'
-        });
-        console.log("SignaturePad V5 inicializado con éxito.");
-    } else {
-        console.error("No se encontró el elemento canvas o la librería SignaturePad.");
-    }
+// 1. Buscar la clase en el objeto global del navegador
+const ClassFirma = window.SignaturePad || SignaturePad;
 
-       // Ajustar el lienzo al tamaño del contenedor cada vez que se abra el modal
-    $('#modalFirma').on('shown.bs.modal', function () {
-        const ratio = Math.max(window.devicePixelRatio || 1, 1);
-        canvas.width = canvas.offsetWidth * ratio;
-        canvas.height = canvas.offsetHeight * ratio;
-        canvas.getContext("2d").scale(ratio, ratio);
-        signaturePad.clear(); // Limpieza obligatoria para recalcular coordenadas de mouse/touch
+if (canvas && typeof ClassFirma !== 'undefined') {
+    // Inicialización base
+    signaturePad = new ClassFirma(canvas, {
+        minWidth: 1.5,
+        maxWidth: 4,
+        penColor: 'rgb(0, 0, 0)'
     });
+    console.log("SignaturePad V5 inicializado con éxito.");
+} else {
+    console.error("No se encontró el elemento canvas o la librería SignaturePad.");
+}
+
+// 2. Función optimizada para ajustar el lienzo sin desfasar el trazo
+function resizeCanvas() {
+    if (!canvas || !signaturePad) return;
+
+    // Guardamos la firma actual temporalmente en memoria para no perderla al redimensionar
+    const data = signaturePad.toData();
+
+    // CLAVE: Para evitar desfases en móviles, ajustamos la resolución interna directamente 
+    // al tamaño del contenedor CSS en lugar de multiplicar por devicePixelRatio.
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    // Limpiamos y recalculamos los límites internos de SignaturePad
+    signaturePad.clear(); 
+
+    // Restauramos la firma previa adaptada al nuevo tamaño
+    if (data.length > 0) {
+        signaturePad.fromData(data);
+    }
+}
+
+// 3. Ajustar el lienzo cuando el modal se abra por completo
+$('#modalFirma').on('shown.bs.modal', function () {
+    resizeCanvas();
+});
+
+// 4. RESPONSIVO: Ajustar si el usuario gira la pantalla (móvil/tablet) o cambia el tamaño de ventana
+$(window).on('resize orientationchange', function() {
+    // Solo redimensionamos si el modal está visible en pantalla
+    if ($('#modalFirma').is(':visible')) {
+        resizeCanvas();
+    }
+});
 
     // Botón para limpiar el trazo
     $('#btnLimpiarFirma').on('click', function() {
