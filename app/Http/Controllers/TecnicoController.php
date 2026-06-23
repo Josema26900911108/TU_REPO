@@ -3366,7 +3366,6 @@ public function fetchrelacion(Request $request)
 public function guardarFirmaRapida(Request $request)
 {
     try {
-        // 1. Validar parámetros de entrada
         $request->validate([
             'id' => 'required|exists:expedientetecnico,id',
             'firma_base64' => 'required'
@@ -3375,39 +3374,56 @@ public function guardarFirmaRapida(Request $request)
         $expediente = Expedientetecnico::findOrFail($request->input('id'));
 
         if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
+            
+            // 1. Obtener la cadena de texto Base64 que envía el JavaScript
             $image_data = $request->input('firma_base64');
             
-            // 2. Decodificar la imagen del lienzo
+            // 2. Limpiar el encabezado y decodificar el texto a datos binarios de imagen
             $image_split = explode(',', $image_data);
-            $image_base64 = base64_decode($image_split[1]);
+            $image_base64 = base64_decode($image_split[1]); 
 
-            // 3. Estructurar ruta dentro de Google Cloud
-            $nombreArchivo = 'firmas/orden_' . $expediente->Orden . '_' . time() . '.png';
-            $discoGoogle = 'gcs'; // Tu disco de Google Cloud configurado en Laravel
+            // 3. Inicializar Intervention Image V3 igual que en tu función base
+            $manager = new ImageManager(new Driver());
 
-            // 4. Subir el archivo al Bucket
-            Storage::disk($discoGoogle)->put($nombreArchivo, $image_base64, 'public');
+            // Leemos los datos binarios directamente de la memoria
+            $image = $manager->read($image_base64)
+                             ->resize(800, 800, function ($constraint) {
+                                 $constraint->aspectRatio();
+                                 $constraint->upsize();
+                             });
 
-            // 5. Obtener la URL e insertarla en la base de datos de inmediato
-            $urlPublicaGoogle = Storage::disk($discoGoogle)->url($nombreArchivo);
+            // 4. Definir nombre y ruta virtual Fuera de las otras carpetas
+            // Esto creará una carpeta llamada "firmas" en la raíz de tu Bucket
+            $filename = 'firma_orden_' . $expediente->Orden . '_' . time() . '.webp';
+            $path = 'firmas/' . $filename; 
             
-            $expediente->firma_cliente = $urlPublicaGoogle;
-            $expediente->save(); // Registra el cambio en la base de datos sin alterar estatus
+            $webpEncoder = new WebpEncoder(quality: 80);
 
-            // 6. Retornar la URL generada al JavaScript para que la pinte en pantalla
+            // 5. Guardar en Google Cloud Storage usando tu disco 'gcs_images'
+            Storage::disk('gcs_images')->put($path, (string) $image->encode($webpEncoder));
+
+            // 6. Obtener la URL pública del archivo en Google Cloud
+            $urlPublicaGoogle = Storage::disk('gcs_images')->url($path);
+
+            // 7. Guardar la URL final en tu base de datos y actualizar
+            $expediente->firma_cliente = $urlPublicaGoogle;
+            $expediente->save(); 
+
             return response()->json([
                 'status' => 'success',
-                'message' => 'Firma almacenada con éxito.',
+                'message' => 'Firma procesada y guardada en la carpeta firmas con éxito.',
                 'url' => $urlPublicaGoogle
             ]);
         }
 
-        return response()->json(['status' => 'error', 'message' => 'No se recibieron datos de firma.'], 400);
+        return response()->json(['status' => 'error', 'message' => 'No se recibieron datos de la firma.'], 400);
 
     } catch (\Exception $e) {
         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
     }
 }
+
+
     public function obtenerdetalles(string $sql, array $parametros)
     {
         DB::connection()->disableQueryLog();
