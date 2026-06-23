@@ -16,6 +16,9 @@
 <!-- Gijgo (si se usa) -->
 <link href="https://unpkg.com/gijgo@1.9.14/css/gijgo.min.css" rel="stylesheet" type="text/css" />
 <script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
+<!-- Enlace oficial de jsDelivr Versión 5 compatible con jQuery y Celulares -->
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@5.1.3/dist/signature_pad.umd.min.js" crossorigin="anonymous"></script>
+
 <style>
 #preview { display: flex; flex-wrap: wrap; margin-top: 10px; gap: 10px; }
 .photo-container { position: relative; display: inline-block; }
@@ -639,6 +642,53 @@
                     @enderror
                 </div>
             </div>
+
+            <!-- Botón para abrir el Modal de Firma -->
+<div class="row mb-4">
+    <div class="col-lg-6 offset-lg-2">
+        <button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#modalFirma">
+            <i class="fas fa-pen me-2"></i> Capturar Firma del Cliente
+        </button>
+        <!-- Vista previa de la firma una vez capturada -->
+        <div id="vistaPreviaFirma" class="mt-3 text-center d-none">
+            <small class="text-muted d-block mb-1">Firma Cargada:</small>
+            <img id="imgFirma" src="" class="img-thumbnail" style="max-height: 120px;">
+        </div>
+        <!-- Input Oculto para enviar la firma en Base64 a Laravel -->
+        <input type="hidden" name="firma_base64" id="firma_base64">
+    </div>
+</div>
+
+<!-- Modal de Bootstrap -->
+<div class="modal fade" id="modalFirma" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="modalFirmaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="modalFirmaLabel"><i class="fas fa-signature me-2"></i> Firma del Cliente</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body bg-light text-center">
+                <p class="small text-muted mb-2">Por favor, firme dentro del recuadro:</p>
+                <!-- Lienzo del Canvas -->
+                <div class="wrapper-canvas border rounded bg-white shadow-sm" style="position: relative; width: 100%; height: 250px;">
+                    <canvas id="canvasFirma" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; cursor: crosshair;"></canvas>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-secondary" id="btnLimpiarFirma">
+                    <i class="fas fa-eraser me-1"></i> Limpiar
+                </button>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary me-2" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" id="btnGuardarFirma">
+                        <i class="fas fa-check me-1"></i> Confirmar Firma
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
         </div>
 <input type="hidden" name="estatus" id="estatus_input" value="">
     <input type="hidden" name="id_tecnico" id="id_tecnico" value="{{ $tecnico->id }}">
@@ -707,11 +757,16 @@
 
 
 <script>
-    let cont = 1;
+    // 1. Intentar recuperar los materiales guardados en la caché del navegador
+    let allItems = JSON.parse(localStorage.getItem('cache_materiales_tecnico')) || [];
+
+    // 2. Control dinámico del contador correlativo para evitar duplicar IDs HTML
+    let cont = allItems.length > 0 ? Math.max(...allItems.map(i => i.index || 1)) + 1 : 1;
+
+    // 3. Variables de control de fotos y periféricos (Inician limpias por cada sesión)
     let photosForItem = []; // fotos del ítem actual
-    let allItems = [];      // todos los ítems agregados
     let stream;
-    let itemsEliminados = [];
+    let itemsEliminados = []; // Arreglo para registrar los IDs que el backend debe borrar
 
 
 // Iniciar cámara trasera y adaptar visualización
@@ -1080,8 +1135,6 @@ function agregarProductoScannerCam(sku) {
         agregarProductoScanner(sku);
     }
 }
-
-// 1. Declarar este array global al inicio de tu archivo JavaScript (fuera de las funciones)
 function eliminarProducto(indice) {
     // Lanzamos la alerta de confirmación antes de alterar cualquier dato o el DOM
     Swal.fire({
@@ -1089,13 +1142,13 @@ function eliminarProducto(indice) {
         text: "El elemento se quitará de la lista actual de materiales utilizados.",
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#dc3545', // Rojo Bootstrap danger (acción de borrar)
+        confirmButtonColor: '#dc3545', // Rojo Bootstrap danger
         cancelButtonColor: '#6c757d',  // Gris Bootstrap secondary
         confirmButtonText: 'Sí, eliminar',
         cancelButtonText: 'Cancelar',
         allowOutsideClick: false
     }).then((result) => {
-        // Si el usuario confirma, procedemos con toda tu lógica original
+        // Si el usuario confirma, procedemos con la eliminación
         if (result.isConfirmed) {
             
             // 2. Buscar el ID real de la base de datos antes de limpiar el arreglo en memoria
@@ -1105,24 +1158,32 @@ function eliminarProducto(indice) {
 
             // 3. Si el ítem tiene un ID válido (ya existía en la base de datos), lo registramos para el backend
             if (itemABorrar && itemABorrar.id) {
-                itemsEliminados.push(itemABorrar.id);
+                // Asegúrate de que el array 'itemsEliminados' esté declarado globalmente arriba en tu archivo
+                if (typeof itemsEliminados !== 'undefined') {
+                    itemsEliminados.push(itemABorrar.id);
+                }
                 
-                // Agregamos el input oculto al formulario (usando el ID real de tu formulario '#formulario')
+                // Agregamos el input oculto al formulario
                 $('#formulario').append(
                     '<input type="hidden" name="arrayEliminados[]" value="' + itemABorrar.id + '">'
                 );
             }
 
-            // 4. Tu lógica original: Eliminar el elemento del arreglo global en memoria
+            // 4. Eliminar el elemento del arreglo global en memoria
             allItems = allItems.filter(function(item) {
                 return item.index != indice;
             });
 
-            // 5. Tu lógica original: Eliminar la fila visual y sus fotos
+            // ====================================================================
+            // LA CLAVE: Actualizar el localStorage con la lista de items restante
+            // ====================================================================
+            localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
+
+            // 5. Eliminar la fila visual y sus fotos
             $('#fila' + indice).remove();
             $(`input[name^='arrayfotos[${indice}]']`).remove();
 
-            // Opcional: Pequeña notificación de éxito que se cierra sola en 1.5 segundos
+            // Notificación de éxito que se cierra sola en 1.5 segundos
             Swal.fire({
                 title: 'Eliminado',
                 text: 'El material ha sido removido de la lista.',
@@ -1135,62 +1196,58 @@ function eliminarProducto(indice) {
 }
 
 
+
 function llenaritems() {
     let id = "{{ $id3 ?? 0 }}";
 
+    // 1. SI YA EXISTE CACHÉ LOCAL: Restaurar datos del técnico de inmediato sin hacer AJAX
+    if (allItems.length > 0) {
+        $('#detalle_tbody').empty();
+        $("input[name^='items[']").remove();
+        
+        allItems.forEach(function(material) {
+            renderizarFilaHTML(material);
+        });
+        console.log("Datos del técnico restaurados exitosamente desde localStorage.");
+        return; // Detiene la función aquí para no sobreescribir con el AJAX
+    }
+
+    // 2. SI NO HAY CACHÉ: Realizar consulta AJAX inicial para traer los ítems base
     $.ajax({
         url: "{{ route('inventariolistadetalles') }}",
         method: 'GET',
         data: { parametros: id },
         success: function(response) {
-            // 1. Limpieza inicial obligatoria
             $('#detalle_tbody').empty();
             allItems = [];
             $("input[name^='items[']").remove();
 
-            // Conjunto temporal para rastrear IDs ya renderizados en este ciclo
             let idsProcesados = {};
 
             response.forEach(function(material, index) {
-                // CORRECCIÓN ANTIDUPLICADOS: Si el ID ya fue pintado en este llamado, lo ignora
-                if (idsProcesados[material.id]) {
-                    return; // Salta al siguiente elemento sin duplicar en la vista
-                }
-                
-                // Si ya existe un elemento físico con este ID en la tabla por otra petición asíncrona, lo ignora
-                if ($('#detalle_tbody').find(`input[value='${material.id}']`).length > 0) {
-                    return;
-                }
+                if (idsProcesados[material.id]) return;
+                if ($('#detalle_tbody').find(`input[value='${material.id}']`).length > 0) return;
 
-                // Registramos el ID para proteger el ciclo actual
                 idsProcesados[material.id] = true;
-
-                // Sincronización de propiedades internas
-                material.index = index;
-                if (!material.photos) {
-                    material.photos = [];
-                }
-
-                // Construcción segura de la fila
-let fila = '<tr id="fila' + index + '" data-index="' + index + '">' +
-        '<td><input type="hidden" name="arrayiditem[]" value="' + material.id + '">' + material.id + '</td>' +
-        // Corregido: Se cambió 'cantidad' por 'material.cantidad' para leer el objeto correctamente
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + material.cantidad + '">' + material.cantidad + '</td>' +
-        // Descripción / Nombre del Producto
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + material.Descripcion + '">' + material.Descripcion + '</td>' +
-        // SKU
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + material.sku + '">' + material.sku + '</td>' +
-        // Serie
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + material.serie + '">' + material.serie + '</td>' +
-        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + material.fkTecnologiaarbol + '">' + material.fkTecnologiaarbol + '</td>' +
-        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-        '</tr>';
-
-
                 
-                $('#detalle_tbody').append(fila);
+                // Formatear propiedades del ítem base
+                material.index = index;
+                if (!material.photos) material.photos = [];
+                
+                // Asegurar compatibilidad de propiedades
+                material.cantidad = material.cantidad || 0;
+                material.Descripcion = material.Descripcion || '';
+                material.sku = material.sku || '';
+                material.serie = material.serie || '';
+                material.fkTecnologiaarbol = material.fkTecnologiaarbol || '';
+
+                // Insertar en la vista y en el arreglo de persistencia
+                renderizarFilaHTML(material);
                 allItems.push(material);
             });
+
+            // Guardar la carga inicial en el almacenamiento local del dispositivo
+            localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
         },
         error: function(xhr) {
             Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
@@ -1198,9 +1255,24 @@ let fila = '<tr id="fila' + index + '" data-index="' + index + '">' +
     });
 }
 
+// Función auxiliar para renderizar el HTML dinámico de tus filas
+function renderizarFilaHTML(material) {
+    let fila = '<tr id="fila' + material.index + '" data-index="' + material.index + '">' +
+        '<td><input type="hidden" name="arrayiditem[]" value="' + material.id + '">' + material.id + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + material.cantidad + '">' + material.cantidad + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + material.Descripcion + '">' + material.Descripcion + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + material.sku + '">' + material.sku + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + material.serie + '">' + material.serie + '</td>' +
+        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + material.fkTecnologiaarbol + '">' + material.fkTecnologiaarbol + '</td>' +
+        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + material.index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+        '</tr>';
+
+    $('#detalle_tbody').append(fila);
+}
 
 
 llenaritems();
+let signaturePad;
 
 $(document).ready(function() {
     // Escucha el evento de doble clic (dblclick) en cualquier celda con la clase .copiar-celda
@@ -1229,6 +1301,100 @@ $(document).ready(function() {
     });
 });
 
+    const canvas = document.getElementById('canvasFirma');
+    
+    // 2. LA CLAVE: Buscar la clase en el objeto global del navegador
+    const ClassFirma = window.SignaturePad || SignaturePad;
+
+    if (canvas && typeof ClassFirma !== 'undefined') {
+        signaturePad = new ClassFirma(canvas, {
+            minWidth: 1.5,
+            maxWidth: 4,
+            penColor: 'rgb(0, 0, 0)'
+        });
+        console.log("SignaturePad V5 inicializado con éxito.");
+    } else {
+        console.error("No se encontró el elemento canvas o la librería SignaturePad.");
+    }
+
+       // Ajustar el lienzo al tamaño del contenedor cada vez que se abra el modal
+    $('#modalFirma').on('shown.bs.modal', function () {
+        const ratio = Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        canvas.getContext("2d").scale(ratio, ratio);
+        signaturePad.clear(); // Limpieza obligatoria para recalcular coordenadas de mouse/touch
+    });
+
+    // Botón para limpiar el trazo
+    $('#btnLimpiarFirma').on('click', function() {
+        signaturePad.clear();
+    });
+
+    // Botón para confirmar y subir la firma por AJAX independiente
+    $('#btnGuardarFirma').on('click', function() {
+        if (signaturePad.isEmpty()) {
+            Swal.fire('Atención', 'Por favor, el cliente debe firmar antes de confirmar.', 'warning');
+            return;
+        }
+
+        // Extraer la imagen en formato Base64 antes de alterar el DOM
+        const dataURL = signaturePad.toDataURL('image/png');
+        const expedienteId = "{{ $orden->id }}"; 
+
+        // ====================================================================
+        // SOLUCIÓN AL ARIA-HIDDEN: Cierre inmediato y remoción de foco activo
+        // ====================================================================
+        $(this).blur(); // Quita el foco del botón actual
+        $('#modalFirma').modal('hide'); // Oculta el modal de inmediato para liberar la pantalla
+
+        // Mostrar pantalla de carga fija en la página principal
+        Swal.fire({
+            title: 'Subiendo firma...',
+            text: 'Guardando imagen de seguridad en Google Cloud Storage',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        // Petición AJAX independiente (No altera el estatus de la orden)
+        $.ajax({
+            url: "{{ route('tecnico.guardar.firma.rapida') }}",
+            type: 'POST',
+            data: {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                id: expedienteId,
+                firma_base64: dataURL
+            },
+            success: function(response) {
+                Swal.close(); 
+
+                if (response.status === 'success') {
+                    // Actualizar la miniatura de la vista previa en la página
+                    $('#imgFirma').attr('src', response.url);
+                    $('#vistaPreviaFirma').removeClass('d-none');
+                    $('#firma_base64').val(response.url);
+
+                    Swal.fire({
+                        title: '¡Firma Guardada!',
+                        text: 'La firma se subió correctamente a Google Cloud.',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                } else {
+                    // Si el controlador reporta un fallo interno, reabrimos el modal para que no pierda el trazo
+                    $('#modalFirma').modal('show');
+                    Swal.fire('Error', 'No se pudo procesar la firma: ' + response.message, 'error');
+                }
+            },
+            error: function(xhr) {
+                Swal.close();
+                // Si la red falla por completo, reabrimos el modal de firma de seguridad
+                $('#modalFirma').modal('show');
+                Swal.fire('Error de Servidor', 'Hubo un problema de conexión al subir la firma.', 'error');
+            }
+        });
+    });
 
 function agregarItem(datosScanner = null) {
     let idItem, nameProducto, nameserie, CENTRO, sku;
@@ -1237,31 +1403,23 @@ function agregarItem(datosScanner = null) {
     let ordenActual = "{{ $orden->Orden }}"; 
     let tipoOrden = "{{ $orden->Tipo_servicio }}";  
 
-  // =================================================================
+    // =================================================================
     // MÓDULO DE DISCRIMINACIÓN: ¿Viene del Escáner o del Clic Manual?
     // =================================================================
     if (datosScanner) {
-        // Asimilación de datos directo desde tu consulta SQL (Scan Material Global)
         idItem = datosScanner.id;
         nameProducto = datosScanner.categoria_nombre;
         nameserie = datosScanner.serie || 'S/N';
         CENTRO = datosScanner.CENTRO || 'GENERAL';
         sku = (datosScanner.sku || '').toString().trim();
     } else {
-        // Flujo Manual Tradicional desde el Combobox
         idItem = $('#itemmanoobraamterial').val();
         let optionText = $('#itemmanoobraamterial option:selected').text();
         let optionSelected = $('#itemmanoobraamterial option:selected');
 
         if (idItem == '' || optionText == '') return;
 
-        // =================================================================
-        // [SOLUCIÓN] SEPARACIÓN SEGURA EN DOS PASOS PARA EVITAR EL TYPEERROR
-        // =================================================================
-        // 1. Separamos por las doble barras '||' para obtener cada bloque limpio
         let bloques = optionText.split('||');
-        
-        // 2. Extraemos el texto después de ': ' en cada bloque de forma segura
         let parteProducto = bloques[0] ? bloques[0].split(': ') : [];
         let parteSerie    = bloques[1] ? bloques[1].split(': ') : [];
 
@@ -1273,7 +1431,7 @@ function agregarItem(datosScanner = null) {
     }
 
     // =================================================================
-    // PROCESAMIENTO UNIFICADO DE VALIDACIÓN E INSERCIÓN (Sigue igual...)
+    // PROCESAMIENTO UNIFICADO DE VALIDACIÓN E INSERCIÓN
     // =================================================================
     if (idItem != '' && nameProducto != undefined && cantidad != '') {
         if (parseInt(cantidad) > 0 && (cantidad % 1 == 0)) {
@@ -1288,24 +1446,25 @@ function agregarItem(datosScanner = null) {
             let allItemsSinFotos = allItems.map(item => {
                 return {
                     index: item.index,
-                    idTecnologia: idTecnologia,
-                    idItem: item.idItem,
-                    nameProducto: item.nameProducto,
+                    idTecnologia: item.fkTecnologiaarbol || idTecnologia,
+                    idItem: item.id,
+                    nameProducto: item.Descripcion,
                     cantidad: item.cantidad,
-                    nameserie: item.nameserie,
+                    nameserie: item.serie,
                     sku: item.sku,
                     CENTRO: item.CENTRO
                 };
             });
 
+            // Sincronización de nombres de llaves idéntica a llenaritems()
             let nuevoItemVirtual = {
                 index: cont, 
-                idTecnologia: idTecnologia,
-                idItem: idItem,
-                nameProducto: nameProducto,
+                id: idItem,                 // Mapeado a 'id'
+                Descripcion: nameProducto,  // Mapeado a 'Descripcion'
                 cantidad: parseFloat(cantidad),
-                nameserie: nameserie,
+                serie: nameserie,           // Mapeado a 'serie'
                 sku: sku.trim(),
+                fkTecnologiaarbol: idTecnologia, // Mapeado a 'fkTecnologiaarbol'
                 CENTRO: CENTRO,
                 photos: [] 
             };
@@ -1339,21 +1498,21 @@ function agregarItem(datosScanner = null) {
                     nuevoItemVirtual.photos = [...photosForItem];
                     allItems.push(nuevoItemVirtual);
 
-                    // Insertar fila física en la tabla
-let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
-    '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
-    // Cantidad ahora incluye la función de copiado por doble clic
-    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-    // Nombre de Producto
-    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
-    // SKU
-    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
-    // Serie
-    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
-    '<td><input type="hidden" name="arrayidTecnologia[]" value="' + idTecnologia + '">' + idTecnologia + '</td>' +
-    '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-    '</tr>';
+                    // =================================================================
+                    // PERSISTENCIA: Guardar el nuevo artículo en el LocalStorage
+                    // =================================================================
+                    localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
 
+                    // Insertar fila física en la tabla
+                    let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
+                        '<td><input type="hidden" name="arrayiditem[]" value="' + nuevoItemVirtual.id + '">' + nuevoItemVirtual.id + '</td>' +
+                        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + nuevoItemVirtual.cantidad + '">' + nuevoItemVirtual.cantidad + '</td>' +
+                        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + nuevoItemVirtual.Descripcion + '">' + nuevoItemVirtual.Descripcion + '</td>' +
+                        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + nuevoItemVirtual.sku + '">' + nuevoItemVirtual.sku + '</td>' +
+                        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + nuevoItemVirtual.serie + '">' + nuevoItemVirtual.serie + '</td>' +
+                        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + nuevoItemVirtual.fkTecnologiaarbol + '">' + nuevoItemVirtual.fkTecnologiaarbol + '</td>' +
+                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+                        '</tr>';
 
                     $('#detalle_tbody').append(fila);
 
@@ -1365,7 +1524,7 @@ let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
                     $('#cantidad').val(1);
                     if (document.getElementById("SKU")) {
                         document.getElementById("SKU").value = "";
-                        document.getElementById("SKU").focus(); // Devolver foco al lector
+                        document.getElementById("SKU").focus(); 
                     }
                     
                     $('#itemmanoobraamterial').val('');
@@ -1383,6 +1542,7 @@ let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
         }
     }
 }
+
 
 
 function validarRelacionMateriales() {
@@ -1435,37 +1595,44 @@ function validarRelacionMateriales() {
 }
 
 
-
 // Función aislada para realizar la inserción visual y limpieza de interfaz
 function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
+    let optionSelectedtec = $('#itemtecnologia').val();
+
+    // Homologación de propiedades idéntica a llenaritems() y agregarItem()
     let item = {
-        idItem,
-        nameProducto,
-        cantidad,
-        nameserie,
+        index: cont,
+        id: idItem,                         // Mapeado a 'id'
+        Descripcion: nameProducto,          // Mapeado a 'Descripcion'
+        cantidad: parseFloat(cantidad),
+        serie: nameserie,                   // Mapeado a 'serie'
+        sku: sku ? sku.trim() : '',
+        fkTecnologiaarbol: optionSelectedtec, // Mapeado a 'fkTecnologiaarbol'
         photos: [...photosForItem]
     };
     
-    let optionSelectedtec = $('#itemtecnologia').val();
-    allItems.push(item); // Sincroniza el listado en memoria
+    // 1. Sincroniza el listado global en memoria viva
+    allItems.push(item); 
 
-let fila = '<tr id="fila' + cont + '">' +
-        '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-        // 1. Clase 'copiar-celda' agregada a Nombre de Producto
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
-        // 2. Clase 'copiar-celda' agregada a SKU
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + sku + '">' + sku + '</td>' +
-        // 3. Clase 'copiar-celda' agregada a Serie
-        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + nameserie + '">' + nameserie + '</td>' +
-        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + optionSelectedtec + '">' + optionSelectedtec + '</td>' +
+    // ====================================================================
+    // LA CLAVE: Guardar el nuevo estado de la tabla de forma inmediata
+    // ====================================================================
+    localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
+
+    // 2. Construcción de tu fila HTML interactiva y con soporte de copiado
+    let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
+        '<td><input type="hidden" name="arrayiditem[]" value="' + item.id + '">' + item.id + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + item.cantidad + '">' + item.cantidad + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + item.Descripcion + '">' + item.Descripcion + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraysku[]" value="' + item.sku + '">' + item.sku + '</td>' +
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arrayserie[]" value="' + item.serie + '">' + item.serie + '</td>' +
+        '<td><input type="hidden" name="arrayidTecnologia[]" value="' + item.fkTecnologiaarbol + '">' + item.fkTecnologiaarbol + '</td>' +
         '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
         '</tr>';
 
-
     $('#detalle_tbody').append(fila);
 
-    // Limpiar fotos y cámara para siguiente ítem
+    // Limpiar fotos y cámara para siguiente ítem (Tu código original)
     photosForItem = [];
     $('#preview').html('');
     $('#video').show();

@@ -3362,6 +3362,52 @@ public function fetchrelacion(Request $request)
     }
 }
 
+
+public function guardarFirmaRapida(Request $request)
+{
+    try {
+        // 1. Validar parámetros de entrada
+        $request->validate([
+            'id' => 'required|exists:expedientetecnico,id',
+            'firma_base64' => 'required'
+        ]);
+
+        $expediente = Expedientetecnico::findOrFail($request->input('id'));
+
+        if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
+            $image_data = $request->input('firma_base64');
+            
+            // 2. Decodificar la imagen del lienzo
+            $image_split = explode(',', $image_data);
+            $image_base64 = base64_decode($image_split[1]);
+
+            // 3. Estructurar ruta dentro de Google Cloud
+            $nombreArchivo = 'firmas/orden_' . $expediente->Orden . '_' . time() . '.png';
+            $discoGoogle = 'gcs'; // Tu disco de Google Cloud configurado en Laravel
+
+            // 4. Subir el archivo al Bucket
+            Storage::disk($discoGoogle)->put($nombreArchivo, $image_base64, 'public');
+
+            // 5. Obtener la URL e insertarla en la base de datos de inmediato
+            $urlPublicaGoogle = Storage::disk($discoGoogle)->url($nombreArchivo);
+            
+            $expediente->firma_cliente = $urlPublicaGoogle;
+            $expediente->save(); // Registra el cambio en la base de datos sin alterar estatus
+
+            // 6. Retornar la URL generada al JavaScript para que la pinte en pantalla
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Firma almacenada con éxito.',
+                'url' => $urlPublicaGoogle
+            ]);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'No se recibieron datos de firma.'], 400);
+
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+}
     public function obtenerdetalles(string $sql, array $parametros)
     {
         DB::connection()->disableQueryLog();

@@ -18,7 +18,7 @@ class Expedientetecnico extends Model
     public $incrementing = true; // Si es autoincremental
 
 
-    protected $fillable = ['id','fkTienda','Orden','virtual','Status','Tipo_servicio','Tipo_orden','NOMBRECLIENTE','DIRECCION','OBS','SIGLASCENTRAL','AREA','FECHAINSTALACION','fkTecnico','AUTORIZA','ESTATUS','TECNOLOGIA','created_at','updated_at'];
+    protected $fillable = ['id','fkTienda','Orden','virtual','Status','Tipo_servicio','Tipo_orden','NOMBRECLIENTE','DIRECCION','OBS','SIGLASCENTRAL','AREA','FECHAINSTALACION','fkTecnico','AUTORIZA','ESTATUS','TECNOLOGIA','created_at','updated_at','firma_cliente'];
 
     public $timestamps = true;
 

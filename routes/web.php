@@ -481,6 +481,8 @@ Route::get('/tecnologiacategoria', [TecnicoController::class, 'fillEstructura'])
 Route::get('/manoobracategoria/{id}', [TecnicoController::class, 'fillEstructuraMO'])->name('manoobrarb');
 Route::get('/inventariolista', [TecnicoController::class, 'InventarioLista'])->name('inventariolista');
 Route::get('/tecnico/materiales/scan-global/{sku}', [TecnicoController::class, 'scanMaterialGlobal'])->name('tecnico.materiales.scan_global');
+Route::post('/tecnico/guardar-firma-rapida', [TecnicoController::class, 'guardarFirmaRapida'])->name('tecnico.guardar.firma.rapida');
+
 
 
 Route::get('/inventariolistadetalle', [TecnicoController::class, 'obtenerdetalless'])->name('inventariolistadetalles');
