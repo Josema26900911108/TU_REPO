@@ -354,6 +354,7 @@
     letter-spacing: 0.5px;
 }
 
+
 /* 3. Estilizar los elementos (filas) de la lista como renglones de tabla */
 .bootstrap-select .dropdown-menu li {
     border-bottom: 1px solid #edf2f7 !important;
@@ -461,7 +462,7 @@
             <div class="row mb-4">
                 <label for="itemtecnologia" class="col-lg-2 col-form-label">Seleccione Tecnología:</label>
                 <div class="col-lg-6">
-                    <select name="itemtecnologia" id="itemtecnologia" class="form-control selectpicker" data-live-search="true" data-size="10">
+                    <select name="itemtecnologia" id="itemtecnologia" class="form-control selectpicker" data-live-search="true" data-size="10" content="CATALOGO DE TECNOLOGIA">
                     </select>
                     @error('itemtecnologia')
                     <small class="text-danger">{{ '*'.$message }}</small>
@@ -1585,6 +1586,7 @@ $("#itemmanoobra").off('change').on('change', function () {
     if (valor) {
         fill_treeview(valor);
         window.guardarSeleccionActualManoObra(); 
+        $(this).selectpicker('render');
     }
 });
 
