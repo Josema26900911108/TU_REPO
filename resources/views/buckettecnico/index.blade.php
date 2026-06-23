@@ -861,29 +861,37 @@ $(document).ready(function(){
         setTimeout(() => tabActions[activeTabId](), 400);
     }
 
-    // Observer para detectar cuando se carga el input #globalSearch
-    const searchObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.addedNodes.length) {
-                mutation.addedNodes.forEach(function(node) {
-                    if (node.nodeType === 1) {
-                        if (node.matches && node.matches('#globalSearch')) {
-                            console.log('globalSearch detectado por MutationObserver');
-                            setupSearchInput(node);
-                        }
-                        if (node.querySelectorAll) {
-                            node.querySelectorAll('#globalSearch').forEach(function(input) {
-                                console.log('globalSearch encontrado en hijos');
-                                setupSearchInput(input);
-                            });
-                        }
-                    }
-                });
-            }
-        });
-    });
+// Variable global para almacenar el input si el observer lo encuentra antes de tiempo
+let pendingSearchInput = null;
 
-    // Observar el contenedor de inventario
+// Observer para detectar cuando se carga el input #globalSearch
+const searchObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+        if (mutation.addedNodes.length) {
+            mutation.addedNodes.forEach(function(node) {
+                if (node.nodeType === 1) {
+                    if (node.matches && node.matches('#globalSearch')) {
+                        console.log('globalSearch detectado directamente por MutationObserver');
+                        pendingSearchInput = node; // Guardar referencia
+                        setupSearchInput(node);
+                    }
+                    if (node.querySelectorAll) {
+                        node.querySelectorAll('#globalSearch').forEach(function(input) {
+                            console.log('globalSearch encontrado en hijos por MutationObserver');
+                            pendingSearchInput = input; // Guardar referencia
+                            setupSearchInput(input);
+                        });
+                    }
+                }
+            });
+        }
+    });
+});
+
+// Iniciar la observación en el documento completo
+searchObserver.observe(document.body, { childList: true, subtree: true });
+
+// Observar el contenedor de inventario
     const inventarioContainer = document.getElementById('tabla_materialesinv_container');
     if (inventarioContainer) {
         searchObserver.observe(inventarioContainer, {
