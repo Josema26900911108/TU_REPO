@@ -540,7 +540,7 @@ window.fillRelacionInv = function(page = 1) {
 
 
 // También hacer fillRelacion global para que sea accesible
-window.fillRelacionAsignada = function(page = 1) {
+window.fillRelacionAsig = function(page = 1) {
     console.log('fillRelacion llamado con página:', page);
     var select = document.getElementById("tecnicoid");
     var fechain = $('#fechaincio').val();
@@ -817,7 +817,7 @@ $(document).ready(function(){
     const tabActions = {
         'datos': function() {
             console.log('🔄 Ejecutando fillRelacion para Ordenes');
-            fillRelacionAsignada(1);
+            fillRelacionAsig(1);
             // Configurar eventos de fecha
             setupFechaEvents();
         },
@@ -1040,7 +1040,7 @@ $(document).on('click', '#tabla_materiales_container a[href*="page="]', function
     let url = $(this).attr('href');
     let page = new URL(url, window.location.origin).searchParams.get('page') || 1;
     console.log('Paginación datos, página:', page);
-    fillRelacionAsignada(page);
+    fillRelacion(page);
 });
 
 $(document).on('click', '#tabla_materialesinv_container a[href*="page="]', function (e) {
@@ -1101,8 +1101,8 @@ function fillRelacionAsignada(page) {
 setTimeout(function() {
                 initDataTable('#datatablesSimpleAsig', '#globalSearchAsig');
             }, 300);
-            error: function(xhr) {
         },
+        error: function(xhr) {
             Swal.fire('Error', 'Hubo un problema al actualizar: ' + xhr.responseText, 'error');
         }
     });
