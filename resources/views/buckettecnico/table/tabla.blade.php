@@ -148,7 +148,7 @@
 
     </div>
 
-<!-- Reemplaza tu contenedor actual por este -->
 <div class="d-flex justify-content-center mt-4">
-    {!! $relacion->links('pagination::bootstrap-5') !!}
+    {!! $relacion->links() !!}
 </div>
+
