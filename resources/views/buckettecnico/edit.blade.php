@@ -1173,7 +1173,7 @@ function llenaritems() {
                 // Construcción segura de la fila
 let fila = '<tr id="fila' + index + '" data-index="' + index + '">' +
     '<td><input type="hidden" name="arrayiditem[]" value="' + material.id + '">' + material.id + '</td>' +
-            '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + 
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
     // 1. Añadida clase 'copiar-celda' a Descripción
     '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + material.Descripcion + '">' + material.Descripcion + '</td>' +
     // 2. Añadida clase 'copiar-celda' a SKU
@@ -1339,7 +1339,7 @@ function agregarItem(datosScanner = null) {
                     // Insertar fila física en la tabla
 let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
     '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
-            '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + 
+    '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
     // 1. Añadida clase 'copiar-celda' a Nombre de Producto
     '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
     // 2. Añadida clase 'copiar-celda' a SKU
@@ -1447,7 +1447,7 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
 
 let fila = '<tr id="fila' + cont + '">' +
         '<td><input type="hidden" name="arrayiditem[]" value="' + idItem + '">' + idItem + '</td>' +
-                '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + 
+        '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
         // 1. Clase 'copiar-celda' agregada a Nombre de Producto
         '<td class="copiar-celda" style="cursor: pointer;" title="Doble clic para copiar"><input type="hidden" name="arraynameProducto[]" value="' + nameProducto + '">' + nameProducto + '</td>' +
         // 2. Clase 'copiar-celda' agregada a SKU
