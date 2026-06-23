@@ -757,11 +757,18 @@
 
 
 <script>
-    // 1. Intentar recuperar los materiales guardados en la caché del navegador
-    let allItems = JSON.parse(localStorage.getItem('cache_materiales_tecnico')) || [];
+    // 1. Capturamos la orden actual de forma segura desde Laravel Blade
+    const ordenActualCache = "{{ $orden->id ?? $orden->Orden }}";
 
-    // 2. Control dinámico del contador correlativo para evitar duplicar IDs HTML
+    // 2. La llave ahora es única por cada orden de trabajo
+    const llaveCache = 'cache_materiales_' + ordenActualCache;
+
+    // 3. Declaramos allItems leyendo la llave exclusiva de esta orden
+    let allItems = JSON.parse(localStorage.getItem(llaveCache)) || [];
+
+    // 4. Control dinámico del contador para esta orden específica
     let cont = allItems.length > 0 ? Math.max(...allItems.map(i => i.index || 1)) + 1 : 1;
+
 
     // 3. Variables de control de fotos y periféricos (Inician limpias por cada sesión)
     let photosForItem = []; // fotos del ítem actual
@@ -1177,7 +1184,8 @@ function eliminarProducto(indice) {
             // ====================================================================
             // LA CLAVE: Actualizar el localStorage con la lista de items restante
             // ====================================================================
-            localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
+            localStorage.setItem(llaveCache, JSON.stringify(allItems));
+
 
             // 5. Eliminar la fila visual y sus fotos
             $('#fila' + indice).remove();
@@ -1247,7 +1255,7 @@ function llenaritems() {
             });
 
             // Guardar la carga inicial en el almacenamiento local del dispositivo
-            localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
+            localStorage.setItem(llaveCache, JSON.stringify(allItems));
         },
         error: function(xhr) {
             Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
@@ -1501,7 +1509,8 @@ function agregarItem(datosScanner = null) {
                     // =================================================================
                     // PERSISTENCIA: Guardar el nuevo artículo en el LocalStorage
                     // =================================================================
-                    localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
+                    
+                    localStorage.setItem('llaveCache', JSON.stringify(allItems));
 
                     // Insertar fila física en la tabla
                     let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
@@ -1617,7 +1626,7 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
     // ====================================================================
     // LA CLAVE: Guardar el nuevo estado de la tabla de forma inmediata
     // ====================================================================
-    localStorage.setItem('cache_materiales_tecnico', JSON.stringify(allItems));
+    localStorage.setItem(llaveCache, JSON.stringify(allItems));
 
     // 2. Construcción de tu fila HTML interactiva y con soporte de copiado
     let fila = '<tr id="fila' + cont + '" data-index="' + cont + '">' +
