@@ -613,11 +613,12 @@
                     <table class="table table-hover table-bordered w-100">
                         <thead class="table-text text-white bg-secondary">
                             <tr>
-                                <th></th>
+                                <th>ID</th>
                                 <th class="text-white">Cantidad</th>
                                 <th class="text-white">Descripción</th>
                                 <th class="text-white">SKU</th>
                                 <th class="text-white">SERIE</th>
+                                <th class="text-white">ID TEC</th>
                                 <th class="text-white">Acciones</th>
                             </tr>
                         </thead>
