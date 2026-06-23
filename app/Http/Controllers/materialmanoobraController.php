@@ -95,57 +95,84 @@ class materialmanoobraController extends Controller
 
     return response()->stream($callback, 200, $headers);
 }
-
 public function importarMAMO(Request $request)
 {
-      DB::connection()->disableQueryLog();
-        if (!Auth::check()) {
-            return redirect()->route('login');
-        }
+    DB::connection()->disableQueryLog();
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
 
     $fkTienda = session('user_fkTienda');
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
     ]);
 
-    $file = fopen($request->file('archivo')->getRealPath(), 'r');
-    $encabezado = fgetcsv($file); // leer encabezados
-$idTienda= session('user_fkTienda');
+    // 1. Leer el archivo binario completo de forma segura
+    $realPath = $request->file('archivo')->getRealPath();
+    $fileData = file_get_contents($realPath);
+
+    // 2. DETECCIÓN Y CONVERSIÓN DE CODIFICACIÓN GLOBAL (Evita rotura de caracteres y llaves)
+    $encoding = mb_detect_encoding($fileData, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+    if ($encoding !== 'UTF-8') {
+        $fileData = mb_convert_encoding($fileData, 'UTF-8', $encoding);
+    }
+
+    // 3. Crear un stream de memoria temporal con los datos ya normalizados en UTF-8
+    $file = fopen('php://temp', 'r+');
+    fwrite($file, $fileData);
+    rewind($file);
+
+    // 4. Leer el encabezado limpio (Ya en UTF-8)
+    $encabezado = fgetcsv($file); 
+    
+    // Quitar espacios residuales o caracteres extraños ocultos en las llaves del encabezado
+    $encabezado = array_map(function($val) {
+        return trim(preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $val));
+    }, $encabezado);
+
     DB::beginTransaction();
 
     try {
         while (($linea = fgetcsv($file)) !== false) {
+            // Unir columnas con llaves de encabezado
             $data = array_combine($encabezado, $linea);
 
-            // Validar campos mínimos
-            if (!isset($data['Descripcion']) || !isset($data['SKU']) || !isset($data['unidadmedida']) || !isset($data['CATEGORIA']) || !isset($data['COSTOPAGO']) || !isset($data['CATEGORIACOBRO']) ) continue;
+            // Validar campos mínimos obligatorios
+            if (!isset($data['Descripcion']) || !isset($data['SKU']) || !isset($data['unidadmedida']) || 
+                !isset($data['CATEGORIA']) || !isset($data['COSTOPAGO']) || !isset($data['CATEGORIACOBRO'])) {
+                continue; 
+            }
 
-            $descripcion = mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1');
-            // Insertar o actualizar
+            // Insertar o actualizar de forma atómica en tu tabla MySQL
             Materialmanoobra::updateOrCreate(
-                ['SKU' => $data['SKU']],
                 [
-                    'SKU'    => $data['SKU'],
-                    'Descripcion'    => $descripcion ?? '',
-                    'TIPO'  => $data['TIPO'] ?? '',
-                    'unidadmedida'  => $data['unidadmedida'] ?? '',
-                    'CATEGORIA'  => $data['CATEGORIA'] ?? '',
-                    'COSTOPAGO'  => $data['COSTOPAGO'] ?? 0,
-                    'CATEGORIACOBRO'  => $data['CATEGORIACOBRO'] ?? 0,
-                    'fkTienda'  => $fkTienda ?? 0,
-                    'centrocostoespecifico'  => $data['centrocostoespecifico'] ?? null
+                    'SKU' => trim($data['SKU']),
+                    'centrocostoespecifico' => !empty($data['centrocostoespecifico']) ? trim($data['centrocostoespecifico']) : null,
+                    'fkTienda' => $fkTienda ?? 0
+                ],
+                [
+                    'SKU'            => trim($data['SKU']),
+                    'Descripcion'    => trim($data['Descripcion']),
+                    'TIPO'           => trim($data['TIPO'] ?? ''),
+                    'unidadmedida'   => trim($data['unidadmedida'] ?? ''),
+                    'CATEGORIA'      => trim($data['CATEGORIA'] ?? ''),
+                    'COSTOPAGO'      => (float) ($data['COSTOPAGO'] ?? 0),
+                    'CATEGORIACOBRO' => (float) ($data['CATEGORIACOBRO'] ?? 0)
                 ]
             );
         }
 
         DB::commit();
+        fclose($file);
         return back()->with('success', 'Mano de Obra o Materiales importados correctamente.');
 
     } catch (\Exception $e) {
         DB::rollBack();
-        return back()->with('error', 'Error al importar: ' . $e->getMessage());
+        fclose($file);
+        return back()->with('error', 'Error al importar registros: ' . $e->getMessage());
     }
 }
+
     public function store(StorePersonaRequest $request)
     {
         try {
