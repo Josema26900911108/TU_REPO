@@ -947,7 +947,8 @@ if (!empty($alertasDetectadas)) {
 public function AutomataValidarMamo(Request $request)
 {
     if(!Auth::check()) return redirect()->route('login');
-        prevent_timeout_and_optimize();
+            $this->prevent_timeout_and_optimize();
+
 
     $procesados = []; $rastro = [];
     $limite = $request->input('Orden', 10);
