@@ -2263,9 +2263,10 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         
         // Conversión limpia a JPEG de alta fidelidad (unos 450 KB finales)
         const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.80);
-        
+        const itemname = $('#itemmanoobraamterial').find(':selected').text().trim();
+
         const categoriafoto = $('#categoriafoto').val();
-        const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_'.$tecnico->descripcion }}" + categoriafoto;
+        const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_'.$tecnico->descripcion }}" + categoriafoto + '_' + itemname.replace(/\s+/g, '_');
         const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
         const idTecnologiaUnificado = $('#itemtecnologia').val();
 
