@@ -924,6 +924,43 @@ searchObserver.observe(document.body, { childList: true, subtree: true });
         }, 500);
     }
 
+    // Asegúrate de que esta función esté declarada ARRIBA en tu archivo JS
+function setupSearchInput(search) {
+    // Forzamos a que 'search' sea un objeto jQuery válido para medir su .length
+    const $searchInput = $(search);
+
+    if ($searchInput.length && dataTableInstance) {
+        console.log('Conectando globalSearch con DataTable');
+
+        $searchInput.off('keyup.dtSearch');
+
+        $searchInput.on('keyup.dtSearch', function() {
+            const searchValue = $(this).val().trim();
+            console.log('Búsqueda realizada:', searchValue);
+
+            dataTableInstance.search(searchValue).draw();
+
+            setTimeout(() => {
+                const totalFiltradas = dataTableInstance.rows({ search: 'applied' }).count();
+                if (totalFiltradas === 0 && searchValue !== '') {
+                    console.log('NO HAY RESULTADOS para:', searchValue);
+                    $('.dataTables_empty').show();
+                }
+            }, 100);
+        });
+
+        if (typeof currentSearchValue !== 'undefined' && currentSearchValue) {
+            $searchInput.val(currentSearchValue);
+            dataTableInstance.search(currentSearchValue).draw();
+            console.log('Valor de búsqueda restaurado:', currentSearchValue);
+        }
+    } else {
+        // Este log ahora mostrará datos reales gracias a $searchInput
+        console.log('No se puede conectar. Input detectado (Length):', $searchInput.length, '| DataTable Lista:', !!dataTableInstance);
+    }
+}
+
+
     // Event handlers para fechas
     $('#fechaincio').change(function(){
         var fechain = $(this).val();

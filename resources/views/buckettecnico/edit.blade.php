@@ -2008,10 +2008,45 @@ $("#itemmanoobra").off('change').on('change', function () {
 // Removemos el arranque automático de la cámara al iniciar la página
 // El control se activa únicamente al presionar el botón
 
-// Evento 1: El botón bonito activa el input de captura nativa oculto
+// Reemplaza tu Evento 1 con este código validado:
 $('#btnAbrirCamaraNativa').click(function() {
-    $('#inputCamaraNativa').click();
+    // 1. Obtener los selectores
+    var selectItem = $('#itemmanoobraamterial');
+    var selectCategoria = $('#categoriafoto');
+    var tieneError = false;
+
+    // 2. Validar Campo "Seleccione Item"
+    if (selectItem.val() === "" || selectItem.val() === null) {
+        selectItem.addClass('is-invalid'); // Borde rojo
+        tieneError = true;
+    } else {
+        selectItem.removeClass('is-invalid');
+    }
+
+    // 3. Validar Campo "Categoría Foto"
+    if (selectCategoria.val() === "" || selectCategoria.val() === null) {
+        selectCategoria.addClass('is-invalid'); // Borde rojo
+        tieneError = true;
+    } else {
+        selectCategoria.removeClass('is-invalid');
+    }
+
+    // 4. Decisión final
+    if (tieneError) {
+        alert("Por favor, llene los campos obligatorios antes de activar la cámara.");
+    } else {
+        // Si todo está correcto, activa el input oculto
+        $('#inputCamaraNativa').click();
+    }
 });
+
+// Quitar el borde rojo automáticamente cuando el usuario seleccione una opción
+$('#itemmanoobraamterial, #categoriafoto').change(function() {
+    if ($(this).val() !== "") {
+        $(this).removeClass('is-invalid');
+    }
+});
+
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
