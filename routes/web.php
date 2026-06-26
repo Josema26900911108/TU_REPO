@@ -482,7 +482,7 @@ Route::get('/manoobracategoria/{id}', [TecnicoController::class, 'fillEstructura
 Route::get('/inventariolista', [TecnicoController::class, 'InventarioLista'])->name('inventariolista');
 Route::get('/tecnico/materiales/scan-global/{sku}', [TecnicoController::class, 'scanMaterialGlobal'])->name('tecnico.materiales.scan_global');
 Route::post('/tecnico/guardar-firma-rapida', [TecnicoController::class, 'guardarFirmaRapida'])->name('tecnico.guardar.firma.rapida');
-Route::post('/expediente/guardar-foto-flotante', [ExpedienteController::class, 'guardarFotografiaAjax'])
+Route::post('/expediente/guardar-foto-flotante', [TecnicoController::class, 'guardarFotografiaAjax'])
      ->name('expediente.guardar_foto_ajax');
 
 
