@@ -568,29 +568,33 @@
                                 📸 Activar Cámara Nativa
                             </button>
                             <input type="file" id="inputCamaraNativa" accept="image/jpeg, image/jpg" capture="environment" style="display: none;">
-                            <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" style="display:none;">
-                                <option value="ANTES">ANTES</option>
-                                <option value="DESPUES">DESPUES</option>
-                                <option value="poste antes">poste antes</option>
-                                <option value="poste despues">poste despues</option>
-                                <option value="anillo postes">anillo postes</option>
-                                <option value="conectividad">conectividad</option>
-                                <option value="SERIE">SERIE</option>
-                                <option value="PANORAMICA">PANORAMICA</option>
-                                <option value="MURO">MURO</option>
-                                <option value="TECHO">TECHO</option>
-                                <option value="ESQUINA">ESQUINA</option>
-                                <option value="ENTRE_CABLES">ENTRE CABLES</option>
-                                <option value="POSTE">POSTE</option>
-                                <option value="ANTENA">ANTENA</option>
-                                <option value="ANTENA_WTTx">ANTENA WTTx</option>
-                                <option value="MASTIL_WTTx">MASTIL WTTx</option>
-                                <option value="MASTIL_DTH">MASTIL DTH</option>
-                                <option value="STB">STB</option>
-                                <option value="OTT">OTT</option>
-                                <option value="ONT">ONT</option>
-                                <option value="SWITCH">SWITCH</option>
-                            </select>
+                          <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" title="-- Seleccione una Categoría --" style="display:none;">
+    <!-- Opción por defecto vacía que fuerza la selección -->
+    <option value="" selected disabled>-- Seleccione una Categoría --</option>
+    
+    <option value="ANTES">ANTES</option>
+    <option value="DESPUES">DESPUES</option>
+    <option value="poste antes">poste antes</option>
+    <option value="poste despues">poste despues</option>
+    <option value="anillo postes">anillo postes</option>
+    <option value="conectividad">conectividad</option>
+    <option value="SERIE">SERIE</option>
+    <option value="PANORAMICA">PANORAMICA</option>
+    <option value="MURO">MURO</option>
+    <option value="TECHO">TECHO</option>
+    <option value="ESQUINA">ESQUINA</option>
+    <option value="ENTRE_CABLES">ENTRE CABLES</option>
+    <option value="POSTE">POSTE</option>
+    <option value="ANTENA">ANTENA</option>
+    <option value="ANTENA_WTTx">ANTENA WTTx</option>
+    <option value="MASTIL_WTTx">MASTIL WTTx</option>
+    <option value="MASTIL_DTH">MASTIL DTH</option>
+    <option value="STB">STB</option>
+    <option value="OTT">OTT</option>
+    <option value="ONT">ONT</option>
+    <option value="SWITCH">SWITCH</option>
+</select>
+
                             <div id="preview" class="mt-2"></div>
                         </div>
                     </div>
