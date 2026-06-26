@@ -767,21 +767,21 @@
 </div>
 
 @endsection
-{{-- Inyectar los Estilos CSS en el Head de forma limpia --}}
-@push('styles')
+
+<!-- ESTILOS VISUALES DEL BOTÓN FLOTANTE -->
 <style>
     .btn-flotante-camara {
         position: fixed;
-        bottom: 25px;       /* Distancia desde la parte inferior de la pantalla */
+        bottom: 25px;       /* Distancia desde la parte inferior */
         right: 25px;        /* Distancia desde la derecha */
-        width: 65px;        /* Tamaño optimizado para pulsaciones táctiles */
+        width: 65px;        /* Tamaño cómodo para pantallas móviles */
         height: 65px;
-        background-color: #198754; /* Verde de Bootstrap */
+        background-color: #198754; /* Verde success de Bootstrap */
         color: white;
         border: none;
         border-radius: 50%; /* Botón circular */
-        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3); /* Sombra para dar relieve */
-        z-index: 9999;      /* Forzar que flote encima de todo */
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3); /* Sombra de relieve */
+        z-index: 9999;      /* Fuerza a que flote sobre todo el contenido */
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -804,15 +804,12 @@
         font-size: 14px;
     }
 </style>
-@endpush
 
-{{-- Inyectar el botón HTML al final del layout sin romper la estructura --}}
-@push('body-scripts')
+<!-- BOTÓN FLOTANTE HTML -->
 <button id="btnGuardarFotoContinuar" type="button" class="btn-flotante-camara" title="Guardar Foto y Agregar Otra">
     <span class="icono-camara">📸</span>
     <span class="icono-disquete">💾</span>
 </button>
-@endpush
 
 @push('js')
 <!-- jQuery -->
@@ -1481,7 +1478,7 @@ $(document).ready(function() {
         // Ejecuta la lectura del archivo como URL de datos (Base64)
         lector.readAsDataURL(archivoFoto);
     });
-    
+
     // Escucha el evento de doble clic (dblclick) en cualquier celda con la clase .copiar-celda
     $(document).on('dblclick', '.copiar-celda', function() {
         // Obtiene el texto visible de la celda (excluyendo el valor del input hidden)
