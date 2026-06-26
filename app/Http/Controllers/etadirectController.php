@@ -943,59 +943,33 @@ if (!empty($alertasDetectadas)) {
 }
 
 
+
 public function AutomataValidarMamo(Request $request)
 {
     if(!Auth::check()) return redirect()->route('login');
-    
-    // 1. Ampliar el tiempo de ejecución máximo para este proceso pesado (Evita el 504)
-    ini_set('max_execution_time', 120); // 2 minutos máximo de tolerancia
+        prevent_timeout_and_optimize();
 
-    $procesados = []; 
-    $rastro = [];
+    $procesados = []; $rastro = [];
     $limite = $request->input('Orden', 10);
-    $fkTienda = session('user_fkTienda');
-
-    // Fechas formateadas de forma segura
-    $fechaInicio = Carbon::parse($request->fechaincio)->startOfDay();
-    $fechaFin = Carbon::parse($request->fechafin)->endOfDay();
     
-    // Obtenemos las órdenes dentro del rango
-    $mamoorden = Eta::whereBetween('created_at', [$fechaInicio, $fechaFin])
-        ->where('fkTienda', $fkTienda)
-        ->select('Orden')
-        ->groupBy('Orden')
-        ->limit($limite)
-        ->pluck('Orden') // Convertimos a un array plano de IDs de órdenes directamente
-        ->toArray();
+    $mamoorden = Eta::whereBetween('created_at', [
+            Carbon::parse($request->fechaincio)->startOfDay(),
+            Carbon::parse($request->fechafin)->endOfDay()
+        ])
+        ->where('fkTienda', session('user_fkTienda'))->select('Orden')->groupBy('Orden')->limit($limite)->get();
 
-    if (empty($mamoorden)) {
-        // Retornar un CSV vacío o redirección si no hay datos para procesar
-        return response()->json(['message' => 'No hay órdenes en el rango de fechas seleccionado.'], 404);
-    }
+    foreach($mamoorden as $ordenitem) {
+        $items = DB::table('ETA')->select('TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
+                 ->where('fkTienda', session('user_fkTienda'))
+                 ->where('Orden', $ordenitem->Orden)->groupBy('TIPO_DE_SERVICIO', 'SKU', 'CENTRO')->get();
 
-    // 2. OPTIMIZACIÓN CRÍTICA: Traemos todos los items de un solo golpe usando whereIn
-    // Esto reduce drásticamente las consultas a la BD de "N consultas" a solo 1 consulta masiva.
-    $allItems = DB::table('ETA')
-        ->select('Orden', 'TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
-        ->where('fkTienda', $fkTienda)
-        ->whereIn('Orden', $mamoorden)
-        ->groupBy('Orden', 'TIPO_DE_SERVICIO', 'SKU', 'CENTRO')
-        ->get()
-        ->groupBy('Orden'); // Agrupamos en memoria por número de orden
-
-    // 3. Procesamos los datos agrupados en memoria (Ultra rápido)
-    foreach ($mamoorden as $ordenId) {
-        if (isset($allItems[$ordenId])) {
-            foreach ($allItems[$ordenId] as $item) {
-                $this->ejecutarLogicaInterna($ordenId, $item, $procesados, $rastro);
-            }
+        foreach ($items as $item) {
+            $this->ejecutarLogicaInterna($ordenitem->Orden, $item, $procesados, $rastro);
         }
     }
 
-    // Retorno limpio del CSV
     return $this->descargarCSV($this->quitarDuplicadosPorOrdenYSKU($procesados), 'validaciones_lote.csv');
 }
-
 
 public function AutomataValidarMamoOrden(Request $request)
 {
