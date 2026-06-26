@@ -766,6 +766,11 @@
     </div>
 </div>
 
+<button type="button" id="btnLimpiarSincronizar" class="btn btn-warning">
+    <i class="fa-solid fa-rotate"></i> Limpiar Caché y Sincronizar
+</button>
+
+
 @endsection
 
 <!-- ESTILOS VISUALES DEL BOTÓN FLOTANTE -->
@@ -845,6 +850,31 @@
     let stream;
     let itemsEliminados = []; // Arreglo para registrar los IDs que el backend debe borrar
 
+    $('#btnLimpiarSincronizar').click(function(e) {
+    e.preventDefault();
+    
+    // Mostramos una alerta estética antes de limpiar
+    Swal.fire({
+        title: '¿Re-sincronizar datos?',
+        text: "Se limpiará la memoria local del navegador para descargar la información más reciente del servidor.",
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Sí, sincronizar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Ejecutamos la limpieza inteligente (Opción 1)
+            if (typeof llaveCache !== 'undefined') localStorage.removeItem(llaveCache);
+            if (typeof llaveCache !== 'undefined') localStorage.removeItem(llaveCache + '_timestamp');
+            if (window.CLAVE_CACHE_COMBOS) localStorage.removeItem(window.CLAVE_CACHE_COMBOS);
+            
+            // Recargamos la ventana
+            window.location.reload();
+        }
+    });
+});
 
 // Iniciar cámara trasera y adaptar visualización
 async function startCamera() {
