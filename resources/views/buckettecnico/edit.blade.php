@@ -1307,6 +1307,21 @@ function agregarProductoScanner(sku) {
 
                 $select.html(options);
 
+                // Inyectamos las opciones limpias
+$select.html(options); //
+
+// Si el servidor devolvió registros, pre-seleccionamos el primero de forma segura
+if (response.data.length > 0) {
+    $select.val(response.data[0].id); //
+}
+
+// Inicializamos el selectpicker en un paso único atómico sin usar 'refresh' sobre un elemento destruido
+$select.selectpicker({ 
+    liveSearch: true, 
+    size: 10 
+});
+
+
                 if (response.data.length > 0) {
                     $select.val(response.data[0].id);
                 }
@@ -2130,28 +2145,32 @@ $("#itemmanoobra").off('change').on('change', function () {
 // ENTRADA ULTRA RÁPIDA: Sincronización instantánea al cargar la página
 (function() {
     try {
-        var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS));
-        var $selectTec = $('#itemtecnologia');
+        var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS)); //
+        var $selectTec = $('#itemtecnologia'); //
         
         if (cache && cache.tecnologia && $selectTec.length) {
-            // Inyectar el valor directamente en el DOM nativo antes de que bootstrap actúe
-            $selectTec.val(cache.tecnologia);
-
-            // Si la librería ya se creó, refrescamos. Si no, escuchamos su creación para meter el valor
+            // Destruimos cualquier residuo previo del plugin para evitar duplicidad de texto
             if ($selectTec.data('selectpicker')) {
-                $selectTec.selectpicker('refresh');
-                $selectTec.trigger('change');
-            } else {
-                $selectTec.one('rendered.bs.select', function() {
-                    $selectTec.selectpicker('val', cache.tecnologia);
-                    $selectTec.trigger('change');
-                });
+                $selectTec.selectpicker('destroy');
             }
+            
+            // Inyectamos el valor en el elemento nativo
+            $selectTec.val(cache.tecnologia);
+            
+            // Inicializamos de cero el componente gráfico de forma limpia
+            $selectTec.selectpicker({
+                liveSearch: true,
+                size: 10
+            });
+            
+            // Disparamos el cambio para que cargue el combo de mano de obra secuencialmente
+            $selectTec.trigger('change'); //
         }
     } catch (error) {
-        console.warn("Error en arranque ultra rápido:", error);
+        console.warn("Error en arranque ultra rápido:", error); //
     }
-})();
+})(); // Asegúrate de cerrar el bloque correctamente con () en lugar de ()0:
+
 
  function listar_materiales_por_categoria(idNodo) {
     console.log('Listar materiales para categoría con Cid:', idNodo);
