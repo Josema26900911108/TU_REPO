@@ -1407,7 +1407,7 @@ $('#btnGuardarFotoContinuar').click(function() {
         tieneError = true;
     }
 
-    // 3. VALIDACIÓN: Verificar que haya un archivo listo en el componente de la cámara
+    // 3. VALIDACIÓN: Verificar que haya un archivo en la cámara
     if (!inputCamara || !inputCamara.files || inputCamara.files.length === 0) {
         alert("Por favor, active la cámara y tome una foto antes de presionar guardar.");
         tieneError = true;
@@ -1415,73 +1415,95 @@ $('#btnGuardarFotoContinuar').click(function() {
 
     if (tieneError) return;
 
-    // 4. PROCESAR LOCALMENTE: Leer el archivo e inyectarlo en tu estructura 'allItems'
-    var idItemElegido = selectItem.val(); // El id de tecnología o del ítem
+    var idItemElegido = selectItem.val();
     var categoriaElegida = selectCategoria.val();
     var archivoFoto = inputCamara.files[0];
-    
     var lector = new FileReader();
 
-    // Efecto visual de procesamiento corto en el botón flotante
+    // Bloquear botón flotante con animación de carga
     var $btn = $(this);
     $btn.prop('disabled', true).css('background-color', '#6c757d').html('⏳');
 
     lector.onloadend = function() {
-        var stringBase64 = lector.result; // El formato data:image/jpeg;base64,... que usa tu prepareForm
+        var stringBase64 = lector.result;
 
-        // 5. Buscar el ítem correspondiente dentro de tu arreglo global 'allItems'
-        // Nota: Asegúrate de que 'item.id' coincida con 'idItemElegido' o adáptalo a tu propiedad llave (ej. item.fkTecnologia)
-        var itemEncontrado = allItems.find(function(item) {
-            return item.id == idItemElegido; 
-        });
-
-        if (!itemEncontrado) {
-            // Si el ítem no existe en el array local aún, creamos su cascarón estructural
-            itemEncontrado = {
-                id: idItemElegido,
-                cantidad: 1, // o el valor de tu input de cantidad
-                photos: []
-            };
-            allItems.push(itemEncontrado);
-        }
-
-        // 6. Introducir la nueva foto con la estructura que lee tu función 'prepareForm'
-        itemEncontrado.photos.push({
-            data: stringBase64,
-            name: categoriaElegida,
-            fkTecnologia: idItemElegido
-        });
-
-        // 7. Renderizar miniatura visual en tu div #preview para confirmación del técnico
-        var vistaMiniatura = `
-            <div class="img-preview-container d-inline-block position-relative m-1" style="width: 80px; height: 80px; border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
-                <img src="${stringBase64}" style="width: 100%; height: 100%; object-fit: cover;">
-                <span class="badge bg-dark position-absolute bottom-0 start-0 w-100 text-center" style="font-size: 9px; opacity: 0.8;">${categoriaElegida}</span>
-            </div>
-        `;
-        $('#preview').append(vistaMiniatura);
-
-        // 8. LIMPIEZA AUTOMÁTICA DEL VISOR PARA LA SIGUIENTE FOTO
-        $('#inputCamaraNativa').val(''); // El input de la cámara se vacía, eliminando el bloqueo que tenías.
+        // 4. CONSTRUCCIÓN EXCLUSIVA DE FORM-DATA PARA FOTOS
+        var formData = new FormData();
         
-        // Resetear visualmente la categoría para obligarlo a elegir en la siguiente captura
-        if (selectCategoria.hasClass('selectpicker')) {
-            selectCategoria.val('').selectpicker('refresh');
-        } else {
-            selectCategoria.val('');
-        }
+        // Mapeamos los datos de las variables de entorno de Blade de tu sistema
+        var nroOrden = "{{ $expediente->Orden ?? '' }}";
+        var idTienda = "{{ $fkTienda ?? '' }}";
 
-        // Restablecer el botón flotante a su estado normal verde
-        $btn.prop('disabled', false).css('background-color', '#198754')
-            .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
+        // Parámetros individuales estructurados para tu función del controlador
+        formData.append('photo_base64', stringBase64);
+        formData.append('photo_name', categoriaElegida);
+        formData.append('orden', nroOrden);
+        formData.append('fkTienda', idTienda);
+        formData.append('fkTecnologia', idItemElegido);
         
-        alert("Fotografía añadida localmente a la lista. Recuerde presionar 'Agregar' o guardar los cambios generales para sincronizar con el servidor.");
+        // Token CSRF obligatorio de Laravel
+        formData.append('_token', "{{ csrf_token() }}");
+
+        // 5. ENVÍO EXCLUSIVO MEDIANTE FETCH (AJAX)
+        fetch("{{ route('expediente.guardar_foto_ajax') }}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(async response => {
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Error al procesar la fotografía en el servidor.');
+            }
+            return data;
+        })
+        .then(data => {
+            // Animación de éxito nativa con SweetAlert de tu proyecto
+            Swal.fire({
+                title: '¡Foto Registrada!',
+                text: data.message || 'La fotografía se subió exclusivamente a la nube.',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+            // 6. RENDERIZAR MINIATURA EN TU DIV #preview
+            var vistaMiniatura = `
+                <div class="img-preview-container d-inline-block position-relative m-1" style="width: 80px; height: 80px; border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
+                    <img src="${stringBase64}" style="width: 100%; height: 100%; object-fit: cover;">
+                    <span class="badge bg-dark position-absolute bottom-0 start-0 w-100 text-center" style="font-size: 9px; opacity: 0.8;">${categoriaElegida}</span>
+                </div>
+            `;
+            $('#preview').append(vistaMiniatura);
+
+            // 7. LIMPIEZA DEL ENTORNO PARA LA SIGUIENTE FOTO
+            $('#inputCamaraNativa').val(''); // Resetea el visor de la cámara
+
+            if (selectCategoria.hasClass('selectpicker')) {
+                selectCategoria.val('').selectpicker('refresh');
+            } else {
+                selectCategoria.val('');
+            }
+        })
+        .catch(error => {
+            Swal.fire({
+                title: 'Error de Envío',
+                text: error.message,
+                icon: 'error',
+                confirmButtonColor: '#dc3545'
+            });
+        })
+        .finally(function() {
+            // Restablecer el botón flotante original
+            $btn.prop('disabled', false).css('background-color', '#198754')
+                .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
+        });
     };
 
-    // Ejecutar la conversión binaria a string Base64
     lector.readAsDataURL(archivoFoto);
 });
-
 
 
     // Escucha el evento de doble clic (dblclick) en cualquier celda con la clase .copiar-celda
