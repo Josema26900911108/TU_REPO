@@ -947,7 +947,17 @@ if (!empty($alertasDetectadas)) {
 public function AutomataValidarMamo(Request $request)
 {
     if(!Auth::check()) return redirect()->route('login');
-            $this->prevent_timeout_and_optimize();
+
+        // ====================================================================
+    // INYECTAR OPTIMIZACIÓN DIRECTAMENTE AQUÍ (Evita declarar funciones externas)
+    // ====================================================================
+    ini_set('max_execution_time', 3600); // Permite correr por 1 hora exacta (3600 segundos)
+    ini_set('memory_limit', '1024M');    // Eleva el límite de memoria a 1GB
+    set_time_limit(3600);
+    
+    // Desactiva el log de queries en la base de datos para no colapsar la memoria RAM
+    \DB::connection()->disableQueryLog();
+    // ====================================================================
 
 
     $procesados = []; $rastro = [];
