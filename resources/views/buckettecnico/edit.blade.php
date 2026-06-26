@@ -2071,45 +2071,46 @@ function fill_manoobra(id) {
         url: "{{ url('manoobracategoria') }}/" + id, //
         method: "GET", //
         success: function (data) {
-            var $select = $('#itemmanoobra'); //
+            var $select = $('#itemitemmanoobra'); //
             
-            // 1. Limpieza absoluta del contenedor nativo para EVITAR DUPLICADOS
+            // PASO CRÍTICO 1: Destruir completamente el selectpicker existente para borrar la UI duplicada vieja
+            if ($select.data('selectpicker')) {
+                $select.selectpicker('destroy'); //
+            }
+            
+            // PASO CRÍTICO 2: Limpieza absoluta de los datos nativos
             $select.empty(); //
             
-            // Insertamos el marcador inicial por defecto
             let optionss = '<option value="" disabled>Seleccione una opción</option>'; //
             
-            // Construimos el bloque de opciones limpio
+            // Evitamos duplicar datos de base controlando la inserción en un bloque unificado
             data.forEach(function (manoobra) { //
                 optionss += '<option value="' + manoobra.id + '">' + manoobra.nombre + '</option>'; //
             });
             
-            // Inyectamos el HTML al DOM nativo inmediatamente
+            // Inyectamos el listado limpio
             $select.html(optionss); //
 
-            // 2. Comprobar y meter la caché instantáneamente con prioridad
+            // PASO CRÍTICO 3: Recuperar y asignar de caché antes de inicializar la UI estéticamente
             try {
                 var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS)); //
                 if (cache && cache.manoObra) {
                     var existeOp = $select.find('option[value="' + cache.manoObra + '"]').length > 0; //
                     if (existeOp) {
-                        $select.val(cache.manoObra); // Asigna el valor guardado en caché
+                        $select.val(cache.manoObra); // Asignamos el ID limpio
                     }
                 }
             } catch (e) {
                 console.warn(e); //
             }
 
-            // 3. Inicializar o refrescar la interfaz visual de Bootstrap Selectpicker
-            if ($select.hasClass('selectpicker') || $select.data('selectpicker')) {
-                $select.selectpicker('refresh'); // Refresca el plugin gráfico sin duplicar texto
-            } else {
-                $select.selectpicker(); //
-            }
+            // PASO CRÍTICO 4: Inicialización limpia desde cero con un paso atómico puro
+            $select.selectpicker({
+                liveSearch: true,
+                size: 10
+            });
 
-            // 4. CORRECCIÓN CRÍTICA: Solo lanzar la cascada si el usuario interactuó manualmente.
-            // Al quitar el trigger automático durante la sincronización pasiva,
-            // evitamos que se deseleccione el combo superior y que se limpie la pantalla.
+            // Evitamos disparar cascadas masivas si estamos ejecutando una sincronización pasiva
             if ($select.val() && !$select.data('sincronizando')) {
                 $select.trigger('change'); //
             }
@@ -2119,6 +2120,7 @@ function fill_manoobra(id) {
         }
     });
 }
+
 
     // Inicializas los selectpicker
     $('#itemtecnologia, #itemmanoobra').selectpicker();
