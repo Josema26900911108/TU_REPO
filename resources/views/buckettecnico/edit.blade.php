@@ -893,7 +893,31 @@ $('#btnCapture').click(function() {
     const timestamp = Date.now();
     const photoName = `foto_${timestamp}.png`;
     const categoriafoto = $('#categoriafoto').val();
-    const itemname = $('#itemmanoobraamterial').find(':selected').text().trim();
+const textoCompleto = $('#itemmanoobraamterial').find(':selected').text().trim();
+
+// 2. Variables por defecto por si falla la búsqueda
+let descripcionLimpia = "MATERIAL";
+let serieLimpia = "SIN_SERIE";
+
+// 3. Expresión regular para extraer la descripción
+const matchDescrip = textoCompleto.match(/DESCRIP:\s*(.*?)\s*\|\|/i);
+if (matchDescrip && matchDescrip[1]) {
+    descripcionLimpia = matchDescrip[1].trim();
+}
+
+// 4. Expresión regular para extraer la serie
+const matchSerie = textoCompleto.match(/SERIE:\s*(.*?)\s*\|\|/i);
+if (matchSerie && matchSerie[1]) {
+    serieLimpia = matchSerie[1].trim();
+}
+
+// 5. Concatenar el nombre extendido usando los datos extraídos limpios
+const categoriafoto = $('#categoriafoto').val();
+let nombreFotoGenerado = "{{ $orden->Orden . '_' . $tecnico->codigo . '_' }}" + categoriafoto + "_" + descripcionLimpia + "_" + serieLimpia;
+
+// 6. Sanitización final obligatoria para el ERP y GCS
+itemname = nombreFotoGenerado.toUpperCase().replace(/[^A-Za-z0-9\-]/g, '_').replace(/_+/g, '_');
+
 
     const idTecnologiaUnificado = $('#itemtecnologia').val();
 
@@ -2263,7 +2287,32 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         
         // Conversión limpia a JPEG de alta fidelidad (unos 450 KB finales)
         const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.80);
-        const itemname = $('#itemmanoobraamterial').find(':selected').text().trim();
+        // 1. Obtener el texto completo de la opción seleccionada
+const textoCompleto = $('#itemmanoobraamterial').find(':selected').text().trim();
+
+// 2. Variables por defecto por si falla la búsqueda
+let descripcionLimpia = "MATERIAL";
+let serieLimpia = "SIN_SERIE";
+
+// 3. Expresión regular para extraer la descripción
+const matchDescrip = textoCompleto.match(/DESCRIP:\s*(.*?)\s*\|\|/i);
+if (matchDescrip && matchDescrip[1]) {
+    descripcionLimpia = matchDescrip[1].trim();
+}
+
+// 4. Expresión regular para extraer la serie
+const matchSerie = textoCompleto.match(/SERIE:\s*(.*?)\s*\|\|/i);
+if (matchSerie && matchSerie[1]) {
+    serieLimpia = matchSerie[1].trim();
+}
+
+// 5. Concatenar el nombre extendido usando los datos extraídos limpios
+const categoriafoto = $('#categoriafoto').val();
+let nombreFotoGenerado = "{{ $orden->Orden . '_' . $tecnico->codigo . '_' }}" + categoriafoto + "_" + descripcionLimpia + "_" + serieLimpia;
+
+// 6. Sanitización final obligatoria para el ERP y GCS
+itemname = nombreFotoGenerado.toUpperCase().replace(/[^A-Za-z0-9\-]/g, '_').replace(/_+/g, '_');
+
 
         const categoriafoto = $('#categoriafoto').val();
         const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_'.$tecnico->descripcion }}" + categoriafoto + '_' + itemname.replace(/\s+/g, '_');
