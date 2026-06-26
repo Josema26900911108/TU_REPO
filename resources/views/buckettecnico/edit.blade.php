@@ -543,7 +543,6 @@
 
                     <input type="hidden" name="nodoSeleccionado" id="nodoSeleccionado">
                     
-                    <!-- Seleccione Item -->
 <!-- Seleccione Item Optimizado para Pantallas Móviles -->
 <div class="row mb-3 justify-content-center align-items-center">
     <!-- col-12 en móviles toma el ancho completo para que no se amontone con el texto -->
@@ -553,12 +552,20 @@
     <div class="col-12 col-lg-6">
         <!-- Añadimos 'w-100' para anular la rigidez nativa del componente -->
         <select name="itemmanoobraamterial" id="itemmanoobraamterial" class="form-control select-buscador w-100" data-live-search="true" data-size="10">
+            <!-- Opción inicial vacía para forzar la selección -->
+            <option value="" selected disabled>-- Seleccione un ítem obligatorio --</option>
         </select>
+
+        <!-- Mensaje de error personalizado para JavaScript -->
+        <small id="error-item-js" class="text-danger d-none d-block text-center mt-1"></small>
+
+        <!-- Mensaje de error de validación del servidor (Laravel) -->
         @error('itemmanoobraamterial')
         <small class="text-danger d-block text-center mt-1">{{ '*'.$message }}</small>
         @enderror
     </div>
 </div>
+
 
 
                     <!-- Botón Cámara -->
@@ -2008,54 +2015,59 @@ $("#itemmanoobra").off('change').on('change', function () {
 }
 });
 
-
 $('#btnAbrirCamaraNativa').click(function() {
-    // 1. Obtener elementos y limpiar errores previos
     var selectItem = $('#itemmanoobraamterial');
-    var selectCategoria = $('#categoriafoto');
-    
-    var errorItem = $('#error-item');
-    var errorCategoria = $('#error-categoria');
-    
+    var errorItemJS = $('#error-item-js');
     var tieneError = false;
 
-    // 2. Validar "Seleccione Item"
-    if (selectItem.val() === "" || selectItem.val() === null) {
-        // Mensaje personalizado
-        errorItem.text('* Por favor, elija un ítem de la lista antes de continuar.').removeClass('d-none');
+    // 1. Contar cuántas opciones válidas tiene el select (excluyendo la opción vacía inicial)
+    var totalOpciones = selectItem.find('option').not('[disabled]').length;
+
+    if (totalOpciones === 0) {
+        // CASO A: El combo está vacío porque no se ha seleccionado nada en el árbol
+        errorItemJS.text('* Primero debe seleccionar un nodo en el árbol para cargar los ítems disponibles.').removeClass('d-none');
         
-        // Forzar borde rojo en Bootstrap Selectpicker
-        selectItem.closest('.bootstrap-select').addClass('is-invalid').css('border', '1px solid #dc3545'); 
+        // Resaltar visualmente el componente
+        selectItem.closest('.col-12').find('.dropdown-toggle, .form-control').addClass('is-invalid').css('border', '1px solid #dc3545');
         tieneError = true;
+
+    } else if (selectItem.val() === "" || selectItem.val() === null) {
+        // CASO B: Los ítems ya existen, pero el usuario olvidó seleccionar uno
+        errorItemJS.text('* Por favor, elija un ítem de la lista antes de activar la cámara.').removeClass('d-none');
+        
+        selectItem.closest('.col-12').find('.dropdown-toggle, .form-control').addClass('is-invalid').css('border', '1px solid #dc3545');
+        tieneError = true;
+
     } else {
-        errorItem.addClass('d-none').text('');
-        selectItem.closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
+        // CASO C: Todo está correcto
+        errorItemJS.addClass('d-none').text('');
+        selectItem.closest('.col-12').find('.dropdown-toggle, .form-control').removeClass('is-invalid').css('border', '');
     }
 
-    // 3. Validar "Categoría Foto"
+    // Validación de categoría (se mantiene igual)
+    var selectCategoria = $('#categoriafoto');
+    var errorCategoria = $('#error-categoria'); // Asegúrate de tener este id en tu html de categoría
+    
     if (selectCategoria.val() === "" || selectCategoria.val() === null) {
-        // Mensaje personalizado
-        errorCategoria.text('* Debe seleccionar la categoría de la fotografía (ej. ANTES/DESPUES).').removeClass('d-none');
-        
-        // Forzar borde rojo en Bootstrap Selectpicker
-        selectCategoria.closest('.bootstrap-select').addClass('is-invalid').css('border', '1px solid #dc3545');
+        errorCategoria.text('* Debe seleccionar la categoría de la fotografía.').removeClass('d-none');
+        selectCategoria.closest('.col-12, .bootstrap-select').find('.dropdown-toggle, .form-control').addClass('is-invalid').css('border', '1px solid #dc3545');
         tieneError = true;
     } else {
         errorCategoria.addClass('d-none').text('');
-        selectCategoria.closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
+        selectCategoria.closest('.col-12, .bootstrap-select').find('.dropdown-toggle, .form-control').removeClass('is-invalid').css('border', '');
     }
 
-    // 4. Activar cámara solo si el formulario está limpio
+    // Disparar cámara si no hay errores
     if (!tieneError) {
         $('#inputCamaraNativa').click();
     }
 });
 
-// Limpieza de errores en tiempo real cuando el usuario corrige la selección
+// Limpieza de estilos al cambiar el select
 $('#itemmanoobraamterial').change(function() {
     if ($(this).val() !== "") {
-        $('#error-item').addClass('d-none').text('');
-        $(this).closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
+        $('#error-item-js').addClass('d-none').text('');
+        $(this).closest('.col-12').find('.dropdown-toggle, .form-control').removeClass('is-invalid').css('border', '');
     }
 });
 
