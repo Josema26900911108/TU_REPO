@@ -1386,98 +1386,101 @@ let signaturePad;
 
 $(document).ready(function() {
 
-      $('#btnGuardarFotoContinuar').click(function() {
-        var selectItem = $('#itemmanoobraamterial');
-        var selectCategoria = $('#categoriafoto');
-        var inputCamara = document.getElementById('inputCamaraNativa');
-        var tieneError = false;
+$('#btnGuardarFotoContinuar').click(function() {
+    var selectItem = $('#itemmanoobraamterial');
+    var selectCategoria = $('#categoriafoto');
+    
+    // Obtener el elemento de forma nativa y limpia
+    var inputCamara = document.getElementById('inputCamaraNativa');
+    var tieneError = false;
 
-        // 1. VALIDACIÓN: Verificar si hay ítems cargados desde el árbol
-        var totalOpciones = selectItem.find('option').not('[disabled]').length;
-        if (totalOpciones === 0) {
-            $('#error-item-js').text('* Primero debe seleccionar un nodo en el árbol.').removeClass('d-none');
-            tieneError = true;
-        } else if (selectItem.val() === "" || selectItem.val() === null) {
-            $('#error-item-js').text('* Por favor, elija un ítem de la lista.').removeClass('d-none');
-            tieneError = true;
-        }
+    // 1. VALIDACIÓN: Verificar si hay ítems cargados desde el árbol
+    var totalOpciones = selectItem.find('option').not('[disabled]').length;
+    if (totalOpciones === 0) {
+        $('#error-item-js').text('* Primero debe seleccionar un nodo en el árbol.').removeClass('d-none');
+        tieneError = true;
+    } else if (selectItem.val() === "" || selectItem.val() === null) {
+        $('#error-item-js').text('* Por favor, elija un ítem de la lista.').removeClass('d-none');
+        tieneError = true;
+    }
 
-        // 2. VALIDACIÓN: Verificar que se haya elegido una categoría de foto
-        if (selectCategoria.val() === "" || selectCategoria.val() === null) {
-            $('#error-categoria').text('* Debe seleccionar la categoría de la fotografía.').removeClass('d-none');
-            tieneError = true;
-        }
+    // 2. VALIDACIÓN: Verificar que se haya elegido una categoría de foto
+    if (selectCategoria.val() === "" || selectCategoria.val() === null) {
+        $('#error-categoria').text('* Debe seleccionar la categoría de la fotografía.').removeClass('d-none');
+        tieneError = true;
+    }
 
-        // 3. VALIDACIÓN: Verificar que realmente se haya tomado o seleccionado una foto
-        if (inputCamara.files.length === 0) {
-            alert("Por favor, active la cámara y tome una foto antes de guardar.");
-            tieneError = true;
-        }
+    // 3. VALIDACIÓN MÓVIL BLINDADA: Validar existencia del input y de archivos cargados
+    if (!inputCamara || !inputCamara.files || inputCamara.files.length === 0) {
+        alert("Por favor, active la cámara y tome una foto antes de guardar.");
+        tieneError = true;
+    }
 
-        // Si hay algún error en las validaciones, detenemos el proceso
-        if (tieneError) return;
+    // Si hay algún error en las validaciones, detenemos el proceso de inmediato
+    if (tieneError) return;
 
-        // 4. PROCESAR IMAGEN: Convertir el archivo capturado a Base64
-        var archivoFoto = inputCamara.files[0];
-        var lector = new FileReader();
+    // 4. PROCESAR IMAGEN: Convertir el archivo capturado a Base64
+    var archivoFoto = inputCamara.files[0];
+    var lector = new FileReader();
 
-        // Animación de carga visual en el botón flotante mientras procesa
-        var $btn = $(this);
-        $btn.prop('disabled', true).css('background-color', '#6c757d').html('⏳');
+    // Animación de carga visual en el botón flotante mientras procesa
+    var $btn = $(this);
+    $btn.prop('disabled', true).css('background-color', '#6c757d').html('⏳');
 
-        lector.onloadend = function() {
-            var stringBase64 = lector.result; // Aquí está la cadena completa data:image/jpeg;base64,...
+    lector.onloadend = function() {
+        var stringBase64 = lector.result; // Cadena completa data:image/jpeg;base64,...
 
-            // 5. OBTENER VARIABLES DE ENTORNO (Sustituir con tus variables reales de Laravel)
-            var nroOrden = "{{ $expediente->Orden ?? '' }}";  // Inyectado desde Blade
-            var idTienda = "{{ $fkTienda ?? '' }}";          // Inyectado desde Blade
-            var idTecnologia = selectItem.val();             // El valor del ítem elegido
+        // 5. OBTENER VARIABLES DE ENTORNO
+        var nroOrden = "{{ $expediente->Orden ?? '' }}";  // Inyectado desde Blade
+        var idTienda = "{{ $fkTienda ?? '' }}";          // Inyectado desde Blade
+        var idTecnologia = selectItem.val();             // El valor del ítem elegido
 
-            // 6. ENVIAR POR AJAX AL CONTROLADOR
-            $.ajax({
-                url: "{{ route('expediente.guardar_foto_ajax') }}", // Tu ruta de Laravel
-                type: 'POST',
-                data: {
-                    _token: "{{ csrf_token() }}", // Token de seguridad obligatorio
-                    photo_base64: stringBase64,
-                    photo_name: selectCategoria.val(),
-                    orden: nroOrden,
-                    fkTienda: idTienda,
-                    fkTecnologia: idTecnologia
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert("¡Fotografía guardada con éxito!");
+        // 6. ENVIAR POR AJAX AL CONTROLADOR
+        $.ajax({
+            url: "{{ route('expediente.guardar_foto_ajax') }}", // Tu ruta de Laravel
+            type: 'POST',
+            data: {
+                _token: "{{ csrf_token() }}", // Token de seguridad obligatorio
+                photo_base64: stringBase64,
+                photo_name: selectCategoria.val(),
+                orden: nroOrden,
+                fkTienda: idTienda,
+                fkTecnologia: idTecnologia
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert("¡Fotografía guardada con éxito!");
 
-                        // 7. LIMPIEZA: Dejar todo listo para la siguiente fotografía
-                        $('#inputCamaraNativa').val(''); // Vacía el input de la cámara
-                        $('#preview').html('');          // Limpia la vista previa si tenías una
+                    // 7. LIMPIEZA: Dejar todo listo para la siguiente fotografía
+                    $('#inputCamaraNativa').val(''); // Vacía el input de la cámara
+                    $('#preview').html('');          // Limpia la vista previa si tenías una
 
-                        // Resetear la categoría seleccionada para forzar una nueva elección
-                        if (selectCategoria.hasClass('selectpicker')) {
-                            selectCategoria.val('').selectpicker('refresh');
-                        } else {
-                            selectCategoria.val('');
-                        }
+                    // Resetear la categoría seleccionada para forzar una nueva elección
+                    if (selectCategoria.hasClass('selectpicker')) {
+                        selectCategoria.val('').selectpicker('refresh');
                     } else {
-                        alert("Error: " + response.message);
+                        selectCategoria.val('');
                     }
-                },
-                error: function(xhr) {
-                    alert("Ocurrió un error al subir la fotografía al servidor.");
-                    console.error(xhr.responseText);
-                },
-                complete: function() {
-                    // Restablecer el diseño original del botón flotante
-                    $btn.prop('disabled', false).css('background-color', '#198754')
-                        .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
+                } else {
+                    alert("Error: " + response.message);
                 }
-            });
-        };
+            },
+            error: function(xhr) {
+                alert("Ocurrió un error al subir la fotografía al servidor.");
+                console.error(xhr.responseText);
+            },
+            complete: function() {
+                // Restablecer el diseño original del botón flotante
+                $btn.prop('disabled', false).css('background-color', '#198754')
+                    .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
+            }
+        });
+    };
 
-        // Ejecuta la lectura del archivo como URL de datos (Base64)
-        lector.readAsDataURL(archivoFoto);
-    });
+    // Ejecuta la lectura del archivo como URL de datos (Base64)
+    lector.readAsDataURL(archivoFoto);
+});
+
 
     // Escucha el evento de doble clic (dblclick) en cualquier celda con la clase .copiar-celda
     $(document).on('dblclick', '.copiar-celda', function() {
