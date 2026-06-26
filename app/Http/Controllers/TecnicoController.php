@@ -2431,6 +2431,75 @@ if ($tipoItem === "MO") {
 }
 
 
+public function guardarFotografiaAjax(Request $request)
+{
+    // 1. Validar la entrada de datos por seguridad
+    $request->validate([
+        'photo_base64' => 'required|string',
+        'photo_name'   => 'required|string',
+        'orden'        => 'required|string',
+        'fkTienda'     => 'required',
+        'fkTecnologia' => 'nullable'
+    ]);
+
+    try {
+        $photoBase64 = $request->input('photo_base64');
+        $photoName   = $request->input('photo_name'); // Ej: "ANTES", "DESPUES"
+        $orden       = $request->input('orden');
+        $fkTienda    = $request->input('fkTienda');
+        $idtec       = $request->input('fkTecnologia', 0);
+
+        // 2. Validar formato y decodificar el Base64
+        if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
+            $extension = strtolower($typeMatch[1]); 
+            $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
+
+            if (!$fileData) {
+                return response()->json(['success' => false, 'message' => 'Error al decodificar Base64.'], 400);
+            }
+
+            // 3. Sanitizar nombres utilizando tu misma lógica limpia
+            $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $photoName);
+            $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
+            $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
+
+            // Generar el nombre de archivo final único
+            $fileName = trim($nombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
+            $gcsPath  = "fotos/ordenes/{$orden}/{$fileName}";
+
+            // 4. Subir a Google Cloud Storage
+            Storage::disk('gcs_images')->put($gcsPath, $fileData, 'public');
+            $urlFotografia = Storage::disk('gcs_images')->url($gcsPath);
+
+            // 5. Registrar en la Base de Datos
+            $nuevaFoto = Expedientefotograficotecnico::create([
+                'fkTienda'     => $fkTienda,
+                'Orden'        => $orden,
+                'fotografia'   => $urlFotografia, 
+                'fkTecnologia' => $idtec,
+            ]);
+
+            // Liberar memoria inmediatamente
+            unset($fileData); 
+
+            return response()->json([
+                'success' => true, 
+                'message' => 'Fotografía agregada con éxito.',
+                'url'     => $urlFotografia
+            ]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Formato de imagen no válido.'], 400);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false, 
+            'message' => 'Error interno en el servidor.',
+            'error'   => $e->getMessage()
+        ], 500);
+    }
+}
+
     public function fetchrelacionTecnico(Request $request)
 {
     try{

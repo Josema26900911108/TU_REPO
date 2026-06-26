@@ -767,6 +767,52 @@
 </div>
 
 @endsection
+{{-- Inyectar los Estilos CSS en el Head de forma limpia --}}
+@push('styles')
+<style>
+    .btn-flotante-camara {
+        position: fixed;
+        bottom: 25px;       /* Distancia desde la parte inferior de la pantalla */
+        right: 25px;        /* Distancia desde la derecha */
+        width: 65px;        /* Tamaño optimizado para pulsaciones táctiles */
+        height: 65px;
+        background-color: #198754; /* Verde de Bootstrap */
+        color: white;
+        border: none;
+        border-radius: 50%; /* Botón circular */
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3); /* Sombra para dar relieve */
+        z-index: 9999;      /* Forzar que flote encima de todo */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        cursor: pointer;
+        transition: transform 0.2s ease, background-color 0.2s ease;
+    }
+
+    /* Comportamiento al presionar el botón en el celular */
+    .btn-flotante-camara:hover, .btn-flotante-camara:active {
+        transform: scale(1.1);
+        background-color: #157347;
+    }
+
+    .btn-flotante-camara .icono-camara {
+        margin-bottom: -4px;
+    }
+    .btn-flotante-camara .icono-disquete {
+        font-size: 14px;
+    }
+</style>
+@endpush
+
+{{-- Inyectar el botón HTML al final del layout sin romper la estructura --}}
+@push('body-scripts')
+<button id="btnGuardarFotoContinuar" type="button" class="btn-flotante-camara" title="Guardar Foto y Agregar Otra">
+    <span class="icono-camara">📸</span>
+    <span class="icono-disquete">💾</span>
+</button>
+@endpush
 
 @push('js')
 <!-- jQuery -->
@@ -1342,6 +1388,100 @@ llenaritems();
 let signaturePad;
 
 $(document).ready(function() {
+
+      $('#btnGuardarFotoContinuar').click(function() {
+        var selectItem = $('#itemmanoobraamterial');
+        var selectCategoria = $('#categoriafoto');
+        var inputCamara = document.getElementById('inputCamaraNativa');
+        var tieneError = false;
+
+        // 1. VALIDACIÓN: Verificar si hay ítems cargados desde el árbol
+        var totalOpciones = selectItem.find('option').not('[disabled]').length;
+        if (totalOpciones === 0) {
+            $('#error-item-js').text('* Primero debe seleccionar un nodo en el árbol.').removeClass('d-none');
+            tieneError = true;
+        } else if (selectItem.val() === "" || selectItem.val() === null) {
+            $('#error-item-js').text('* Por favor, elija un ítem de la lista.').removeClass('d-none');
+            tieneError = true;
+        }
+
+        // 2. VALIDACIÓN: Verificar que se haya elegido una categoría de foto
+        if (selectCategoria.val() === "" || selectCategoria.val() === null) {
+            $('#error-categoria').text('* Debe seleccionar la categoría de la fotografía.').removeClass('d-none');
+            tieneError = true;
+        }
+
+        // 3. VALIDACIÓN: Verificar que realmente se haya tomado o seleccionado una foto
+        if (inputCamara.files.length === 0) {
+            alert("Por favor, active la cámara y tome una foto antes de guardar.");
+            tieneError = true;
+        }
+
+        // Si hay algún error en las validaciones, detenemos el proceso
+        if (tieneError) return;
+
+        // 4. PROCESAR IMAGEN: Convertir el archivo capturado a Base64
+        var archivoFoto = inputCamara.files[0];
+        var lector = new FileReader();
+
+        // Animación de carga visual en el botón flotante mientras procesa
+        var $btn = $(this);
+        $btn.prop('disabled', true).css('background-color', '#6c757d').html('⏳');
+
+        lector.onloadend = function() {
+            var stringBase64 = lector.result; // Aquí está la cadena completa data:image/jpeg;base64,...
+
+            // 5. OBTENER VARIABLES DE ENTORNO (Sustituir con tus variables reales de Laravel)
+            var nroOrden = "{{ $expediente->Orden ?? '' }}";  // Inyectado desde Blade
+            var idTienda = "{{ $fkTienda ?? '' }}";          // Inyectado desde Blade
+            var idTecnologia = selectItem.val();             // El valor del ítem elegido
+
+            // 6. ENVIAR POR AJAX AL CONTROLADOR
+            $.ajax({
+                url: "{{ route('expediente.guardar_foto_ajax') }}", // Tu ruta de Laravel
+                type: 'POST',
+                data: {
+                    _token: "{{ csrf_token() }}", // Token de seguridad obligatorio
+                    photo_base64: stringBase64,
+                    photo_name: selectCategoria.val(),
+                    orden: nroOrden,
+                    fkTienda: idTienda,
+                    fkTecnologia: idTecnologia
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert("¡Fotografía guardada con éxito!");
+
+                        // 7. LIMPIEZA: Dejar todo listo para la siguiente fotografía
+                        $('#inputCamaraNativa').val(''); // Vacía el input de la cámara
+                        $('#preview').html('');          // Limpia la vista previa si tenías una
+
+                        // Resetear la categoría seleccionada para forzar una nueva elección
+                        if (selectCategoria.hasClass('selectpicker')) {
+                            selectCategoria.val('').selectpicker('refresh');
+                        } else {
+                            selectCategoria.val('');
+                        }
+                    } else {
+                        alert("Error: " + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    alert("Ocurrió un error al subir la fotografía al servidor.");
+                    console.error(xhr.responseText);
+                },
+                complete: function() {
+                    // Restablecer el diseño original del botón flotante
+                    $btn.prop('disabled', false).css('background-color', '#198754')
+                        .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
+                }
+            });
+        };
+
+        // Ejecuta la lectura del archivo como URL de datos (Base64)
+        lector.readAsDataURL(archivoFoto);
+    });
+    
     // Escucha el evento de doble clic (dblclick) en cualquier celda con la clase .copiar-celda
     $(document).on('dblclick', '.copiar-celda', function() {
         // Obtiene el texto visible de la celda (excluyendo el valor del input hidden)
