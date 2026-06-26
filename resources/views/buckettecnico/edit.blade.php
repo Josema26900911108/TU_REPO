@@ -1385,124 +1385,104 @@ llenaritems();
 let signaturePad;
 
 $(document).ready(function() {
+
 $('#btnGuardarFotoContinuar').click(function() {
     var selectItem = $('#itemmanoobraamterial');
     var selectCategoria = $('#categoriafoto');
-    var inputCamara = document.getElementById('inputCamaraNativa');
-    var tieneError = false;
-
-    // 1. VALIDACIÓN: Verificar ítems del árbol
-    var totalOpciones = selectItem.find('option').not('[disabled]').length;
-    if (totalOpciones === 0) {
-        $('#error-item-js').text('* Primero debe seleccionar un nodo en el árbol.').removeClass('d-none');
-        tieneError = true;
-    } else if (selectItem.val() === "" || selectItem.val() === null) {
-        $('#error-item-js').text('* Por favor, elija un ítem de la lista.').removeClass('d-none');
-        tieneError = true;
+    
+    // 1. VALIDACIÓN: Verificar que se haya seleccionado un ítem
+    if (selectItem.val() === "" || selectItem.val() === null) {
+        alert("Por favor, elija un ítem de la lista para saber a qué elemento corresponden las fotos.");
+        return;
     }
 
-    // 2. VALIDACIÓN: Verificar categoría de la fotografía
-    if (selectCategoria.val() === "" || selectCategoria.val() === null) {
-        $('#error-categoria').text('* Debe seleccionar la categoría de la fotografía.').removeClass('d-none');
-        tieneError = true;
+    // 2. VALIDACIÓN DE ARREGLO DE FOTOS: Verificar si hay imágenes en tu variable real
+    if (typeof photosForItem === 'undefined' || photosForItem.length === 0) {
+        alert("No se encontraron fotografías capturadas para guardar en este momento. Use el botón azul primero.");
+        return;
     }
 
-    // 3. VALIDACIÓN: Verificar que haya un archivo en la cámara
-    if (!inputCamara || !inputCamara.files || inputCamara.files.length === 0) {
-        alert("Por favor, active la cámara y tome una foto antes de presionar guardar.");
-        tieneError = true;
-    }
-
-    if (tieneError) return;
-
-    var idItemElegido = selectItem.val();
-    var categoriaElegida = selectCategoria.val();
-    var archivoFoto = inputCamara.files[0];
-    var lector = new FileReader();
-
-    // Bloquear botón flotante con animación de carga
+    // Bloquear botón flotante de forma visual compacta (Estilo móvil)
     var $btn = $(this);
     $btn.prop('disabled', true).css('background-color', '#6c757d').html('⏳');
 
-    lector.onloadend = function() {
-        var stringBase64 = lector.result;
+    // Muestra el cargador SweetAlert nativo de tu app
+    Swal.fire({
+        title: 'Guardando evidencias...',
+        text: 'Subiendo fotografías exclusivamente a Google Cloud Storage',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+    });
 
-        // 4. CONSTRUCCIÓN EXCLUSIVA DE FORM-DATA PARA FOTOS
-        var formData = new FormData();
-        
-        // Mapeamos los datos de las variables de entorno de Blade de tu sistema
-        var nroOrden = "{{ $expediente->Orden ?? '' }}";
-        var idTienda = "{{ $fkTienda ?? '' }}";
+    // 3. CONSTRUCCIÓN DE FORM-DATA EXCLUSIVO PARA ENVIAR EL LOTE DE IMÁGENES
+    var formData = new FormData();
+    
+    // Variables de control requeridas por tu backend
+    formData.append('orden', "{{ $expediente->Orden ?? ($orden->Orden ?? '') }}");
+    formData.append('fkTienda', "{{ $fkTienda ?? '' }}");
+    formData.append('_token', "{{ csrf_token() }}");
 
-        // Parámetros individuales estructurados para tu función del controlador
-        formData.append('photo_base64', stringBase64);
-        formData.append('photo_name', categoriaElegida);
-        formData.append('orden', nroOrden);
-        formData.append('fkTienda', idTienda);
-        formData.append('fkTecnologia', idItemElegido);
-        
-        // Token CSRF obligatorio de Laravel
-        formData.append('_token', "{{ csrf_token() }}");
+    // Recorremos tu arreglo real 'photosForItem' y lo empaquetamos idéntico a tu prepareForm
+    photosForItem.forEach(function(photo) {
+        formData.append('photos[]', photo.data);          // Cadena Base64 optimizada
+        formData.append('names[]', photo.name);            // Nombre generado para el ERP
+        formData.append('iditemsTecnologia[]', photo.fkTecnologia ?? '0');
+    });
 
-        // 5. ENVÍO EXCLUSIVO MEDIANTE FETCH (AJAX)
-        fetch("{{ route('expediente.guardar_foto_ajax') }}", {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(async response => {
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.message || 'Error al procesar la fotografía en el servidor.');
-            }
-            return data;
-        })
-        .then(data => {
-            // Animación de éxito nativa con SweetAlert de tu proyecto
-            Swal.fire({
-                title: '¡Foto Registrada!',
-                text: data.message || 'La fotografía se subió exclusivamente a la nube.',
-                icon: 'success',
-                timer: 1500,
-                showConfirmButton: false
-            });
-
-            // 6. RENDERIZAR MINIATURA EN TU DIV #preview
-            var vistaMiniatura = `
-                <div class="img-preview-container d-inline-block position-relative m-1" style="width: 80px; height: 80px; border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
-                    <img src="${stringBase64}" style="width: 100%; height: 100%; object-fit: cover;">
-                    <span class="badge bg-dark position-absolute bottom-0 start-0 w-100 text-center" style="font-size: 9px; opacity: 0.8;">${categoriaElegida}</span>
-                </div>
-            `;
-            $('#preview').append(vistaMiniatura);
-
-            // 7. LIMPIEZA DEL ENTORNO PARA LA SIGUIENTE FOTO
-            $('#inputCamaraNativa').val(''); // Resetea el visor de la cámara
-
-            if (selectCategoria.hasClass('selectpicker')) {
-                selectCategoria.val('').selectpicker('refresh');
-            } else {
-                selectCategoria.val('');
-            }
-        })
-        .catch(error => {
-            Swal.fire({
-                title: 'Error de Envío',
-                text: error.message,
-                icon: 'error',
-                confirmButtonColor: '#dc3545'
-            });
-        })
-        .finally(function() {
-            // Restablecer el botón flotante original
-            $btn.prop('disabled', false).css('background-color', '#198754')
-                .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
+    // 4. ENVÍO ASÍNCRONO DIRECTO AL CONTROLADOR
+    fetch("{{ route('expediente.guardar_foto_ajax') }}", {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(async response => {
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Error al almacenar las fotografías en el servidor.');
+        }
+        return data;
+    })
+    .then(data => {
+        // Alerta de éxito integrada
+        Swal.fire({
+            title: '¡Evidencias Guardadas!',
+            text: data.message || 'Fotografías guardadas exitosamente en la nube.',
+            icon: 'success'
         });
-    };
 
-    lector.readAsDataURL(archivoFoto);
+        // 5. LIMPIEZA DE CONTEXTO: Vaciamos el array local para la siguiente tanda de fotos
+        photosForItem = [];
+        
+        // Obtener el índice del contenedor para refrescar la visualización vacía
+        const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0;
+        if (typeof mostrarFotos === 'function') {
+            mostrarFotos(indiceActual); // Esto limpiará el contenedor de vistas previas automáticamente
+        } else {
+            $('#preview').html('');
+        }
+
+        // Resetear visualmente el selector de categorías
+        if (selectCategoria.hasClass('selectpicker')) {
+            selectCategoria.val('').selectpicker('refresh');
+        } else {
+            selectCategoria.val('');
+        }
+    })
+    .catch(error => {
+        Swal.fire({
+            title: 'Error de Sincronización',
+            text: error.message,
+            icon: 'error',
+            confirmButtonColor: '#dc3545'
+        });
+    })
+    .finally(function() {
+        // Devolver el botón flotante a su estado original (Verde circular)
+        $btn.prop('disabled', false).css('background-color', '#198754')
+            .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
+    });
 });
 
 
