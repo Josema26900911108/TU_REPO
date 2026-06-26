@@ -866,15 +866,68 @@
     }).then((result) => {
         if (result.isConfirmed) {
             // Ejecutamos la limpieza inteligente (Opción 1)
-            if (typeof llaveCache !== 'undefined') localStorage.removeItem(llaveCache);
-            if (typeof llaveCache !== 'undefined') localStorage.removeItem(llaveCache + '_timestamp');
-            if (window.CLAVE_CACHE_COMBOS) localStorage.removeItem(window.CLAVE_CACHE_COMBOS);
-            
+       actualizarSoloTablaMateriales();      
             // Recargamos la ventana
             window.location.reload();
         }
     });
 });
+
+function actualizarSoloTablaMateriales() {
+    // 1. Marcamos los selectores para que no gatillen eventos de limpieza en cadena
+    $('#itemtecnologia, #itemmanoobra').data('sincronizando', true);
+
+    // 2. Guardamos los valores que el usuario tiene seleccionados actualmente en la pantalla
+    let valorTecnologiaActual = $('#itemtecnologia').val();
+    let valorManoObraActual = $('#itemmanoobra').val();
+
+    // 3. Ejecutamos la consulta limpia de la caché o BD para rehacer la tabla de materiales
+    let id = "{{ $id3 ?? 0 }}"; //
+    
+    $.ajax({
+        url: "{{ route('inventariolistadetalles') }}", //
+        method: 'GET', //
+        data: { parametros: id }, //
+        success: function(response) { //
+            // Vaciamos única y exclusivamente el cuerpo de la tabla de materiales utilizados
+            $('#detalle_tbody').empty(); //
+            $("input[name^='items[']").remove(); //
+            allItems = []; //
+            
+            let idsProcesados = {}; //
+            response.forEach(function(material, index) { //
+                if (idsProcesados[material.id]) return; //
+                if ($('#detalle_tbody').find("input[value='" + material.id + "']").length > 0) return; //
+                idsProcesados[material.id] = true; //
+                
+                material.index = index; //
+                if (!material.photos) material.photos = []; //
+                material.cantidad = material.cantidad || 0; //
+                material.Descripcion = material.Descripcion || ""; //
+                material.sku = material.sku || ""; //
+                material.serie = material.serie || ""; //
+                material.fkTecnologiaarbol = material.fkTecnologiaarbol || ""; //
+                
+                // Renderizamos la fila en la tabla sin tocar los selectores superiores
+                renderizarFilaHTML(material); //
+                allItems.push(material); //
+            });
+            
+            // Guardamos el estado limpio en el almacenamiento local
+            localStorage.setItem(llaveCache, JSON.stringify(allItems)); //
+
+            // 4. RESTAURACIÓN DE SELECTORES: Devolvemos sus valores exactos previos a la actualización
+            $('#itemtecnologia').val(valorTecnologiaActual).selectpicker('refresh');
+            $('#itemmanoobra').val(valorManoObraActual).selectpicker('refresh');
+
+            // Liberamos la bandera de sincronización
+            $('#itemtecnologia, #itemmanoobra').data('sincronizando', false);
+            
+            console.log("Tabla de materiales actualizada con éxito. Selectores preservados.");
+        }
+    });
+}
+
 
 // Iniciar cámara trasera y adaptar visualización
 async function startCamera() {
@@ -2000,47 +2053,54 @@ window.guardarSeleccionActualManoObra = function() {
 
 function fill_manoobra(id) {
     $.ajax({
-        url: "{{ url('manoobracategoria') }}/" + id,
-        method: "GET",
+        url: "{{ url('manoobracategoria') }}/" + id, //
+        method: "GET", //
         success: function (data) {
-            var $select = $('#itemmanoobra');
-            $select.empty();
+            var $select = $('#itemmanoobra'); //
             
-            let optionss = `<option value="" disabled selected>Seleccione una opción</option>`;
-            data.forEach(function (manoobra) {
-                optionss += `<option value="${manoobra.id}">${manoobra.nombre}</option>`;
+            // 1. Limpieza absoluta del contenedor nativo para EVITAR DUPLICADOS
+            $select.empty(); //
+            
+            // Insertamos el marcador inicial por defecto
+            let optionss = '<option value="" disabled>Seleccione una opción</option>'; //
+            
+            // Construimos el bloque de opciones limpio
+            data.forEach(function (manoobra) { //
+                optionss += '<option value="' + manoobra.id + '">' + manoobra.nombre + '</option>'; //
             });
             
-            // 1. Inyectar HTML al DOM nativo de forma inmediata
-            $select.html(optionss);
+            // Inyectamos el HTML al DOM nativo inmediatamente
+            $select.html(optionss); //
 
-            // 2. Comprobar y meter la caché instantáneamente antes de pintar la UI
+            // 2. Comprobar y meter la caché instantáneamente con prioridad
             try {
-                var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS));
+                var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS)); //
                 if (cache && cache.manoObra) {
-                    var existeOp = $select.find('option[value="' + cache.manoObra + '"]').length > 0;
+                    var existeOp = $select.find('option[value="' + cache.manoObra + '"]').length > 0; //
                     if (existeOp) {
-                        $select.val(cache.manoObra);
+                        $select.val(cache.manoObra); // Asigna el valor guardado en caché
                     }
                 }
-            } catch (e) { 
-                console.warn(e); 
+            } catch (e) {
+                console.warn(e); //
             }
 
-            // 3. Inicializar o refrescar la interfaz visual en un único paso atómico
+            // 3. Inicializar o refrescar la interfaz visual de Bootstrap Selectpicker
             if ($select.hasClass('selectpicker') || $select.data('selectpicker')) {
-                $select.selectpicker('refresh');
+                $select.selectpicker('refresh'); // Refresca el plugin gráfico sin duplicar texto
             } else {
-                $select.selectpicker();
+                $select.selectpicker(); //
             }
 
-            // 4. Lanzar la cascada hacia el árbol
-            if ($select.val()) {
-                $select.trigger('change');
+            // 4. CORRECCIÓN CRÍTICA: Solo lanzar la cascada si el usuario interactuó manualmente.
+            // Al quitar el trigger automático durante la sincronización pasiva,
+            // evitamos que se deseleccione el combo superior y que se limpie la pantalla.
+            if ($select.val() && !$select.data('sincronizando')) {
+                $select.trigger('change'); //
             }
         },
-        error: function (xhr) {
-            Swal.fire('Error', 'Hubo un problema al cargar las opciones: ' + xhr.responseText, 'error');
+        error: function (xhr) { //
+            Swal.fire('Error', 'Hubo un problema al cargar las opciones: ' + xhr.responseText, 'error'); //
         }
     });
 }
