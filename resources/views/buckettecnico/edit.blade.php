@@ -2071,46 +2071,48 @@ function fill_manoobra(id) {
         url: "{{ url('manoobracategoria') }}/" + id, //
         method: "GET", //
         success: function (data) {
-            var $select = $('#itemitemmanoobra'); //
+            // USAMOS EL ID COINCIDENTE DE TU PÁGINA 41 (O ajústalo al de tu Blade)
+            var $select = $('#itemmanoobra'); //
             
-            // PASO CRÍTICO 1: Destruir completamente el selectpicker existente para borrar la UI duplicada vieja
+            // 1. DESTRUCCIÓN SEGURA: Limpiamos la capa visual defectuosa de Bootstrap
             if ($select.data('selectpicker')) {
                 $select.selectpicker('destroy'); //
             }
             
-            // PASO CRÍTICO 2: Limpieza absoluta de los datos nativos
+            // 2. VACIADO DEL DOM NATIVO: Evita que las filas se acumulen y se dupliquen
             $select.empty(); //
             
+            // 3. ARMADO DE CONTENIDO: Insertamos solo la opción por defecto inicial
             let optionss = '<option value="" disabled>Seleccione una opción</option>'; //
             
-            // Evitamos duplicar datos de base controlando la inserción en un bloque unificado
+            // Recorremos la respuesta limpia del servidor
             data.forEach(function (manoobra) { //
                 optionss += '<option value="' + manoobra.id + '">' + manoobra.nombre + '</option>'; //
             });
             
-            // Inyectamos el listado limpio
+            // Inyectamos las nuevas opciones limpias al elemento nativo
             $select.html(optionss); //
 
-            // PASO CRÍTICO 3: Recuperar y asignar de caché antes de inicializar la UI estéticamente
+            // 4. VERIFICACIÓN DE CACHÉ: Evaluamos si hay registros guardados localmente antes de pintar
             try {
                 var cache = JSON.parse(localStorage.getItem(window.CLAVE_CACHE_COMBOS)); //
                 if (cache && cache.manoObra) {
                     var existeOp = $select.find('option[value="' + cache.manoObra + '"]').length > 0; //
                     if (existeOp) {
-                        $select.val(cache.manoObra); // Asignamos el ID limpio
+                        $select.val(cache.manoObra); // Restaura el valor sin duplicar
                     }
                 }
             } catch (e) {
                 console.warn(e); //
             }
 
-            // PASO CRÍTICO 4: Inicialización limpia desde cero con un paso atómico puro
+            // 5. RENDERIZADO FINAL ATÓMICO: Inicializamos el selectpicker limpio en un solo paso
             $select.selectpicker({
                 liveSearch: true,
                 size: 10
             });
 
-            // Evitamos disparar cascadas masivas si estamos ejecutando una sincronización pasiva
+            // Evitamos disparar alertas o borrados accidentales si estamos sincronizando
             if ($select.val() && !$select.data('sincronizando')) {
                 $select.trigger('change'); //
             }
@@ -2120,6 +2122,7 @@ function fill_manoobra(id) {
         }
     });
 }
+
 
 
 // Destruimos cualquier inicialización automática previa del HTML para evitar el doble texto
