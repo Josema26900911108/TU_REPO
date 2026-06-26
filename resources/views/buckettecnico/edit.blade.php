@@ -594,7 +594,7 @@
     <option value="ONT">ONT</option>
     <option value="SWITCH">SWITCH</option>
 </select>
-
+<small id="error-categoria" class="text-danger d-none mt-1"></small>
                             <div id="preview" class="mt-2"></div>
                         </div>
                     </div>
@@ -2009,45 +2009,60 @@ $("#itemmanoobra").off('change').on('change', function () {
 });
 
 
-// Removemos el arranque automático de la cámara al iniciar la página
-// El control se activa únicamente al presionar el botón
-
-// Reemplaza tu Evento 1 con este código validado:
 $('#btnAbrirCamaraNativa').click(function() {
-    // 1. Obtener los selectores
+    // 1. Obtener elementos y limpiar errores previos
     var selectItem = $('#itemmanoobraamterial');
     var selectCategoria = $('#categoriafoto');
+    
+    var errorItem = $('#error-item');
+    var errorCategoria = $('#error-categoria');
+    
     var tieneError = false;
 
-    // 2. Validar Campo "Seleccione Item"
+    // 2. Validar "Seleccione Item"
     if (selectItem.val() === "" || selectItem.val() === null) {
-        selectItem.addClass('is-invalid'); // Borde rojo
+        // Mensaje personalizado
+        errorItem.text('* Por favor, elija un ítem de la lista antes de continuar.').removeClass('d-none');
+        
+        // Forzar borde rojo en Bootstrap Selectpicker
+        selectItem.closest('.bootstrap-select').addClass('is-invalid').css('border', '1px solid #dc3545'); 
         tieneError = true;
     } else {
-        selectItem.removeClass('is-invalid');
+        errorItem.addClass('d-none').text('');
+        selectItem.closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
     }
 
-    // 3. Validar Campo "Categoría Foto"
+    // 3. Validar "Categoría Foto"
     if (selectCategoria.val() === "" || selectCategoria.val() === null) {
-        selectCategoria.addClass('is-invalid'); // Borde rojo
+        // Mensaje personalizado
+        errorCategoria.text('* Debe seleccionar la categoría de la fotografía (ej. ANTES/DESPUES).').removeClass('d-none');
+        
+        // Forzar borde rojo en Bootstrap Selectpicker
+        selectCategoria.closest('.bootstrap-select').addClass('is-invalid').css('border', '1px solid #dc3545');
         tieneError = true;
     } else {
-        selectCategoria.removeClass('is-invalid');
+        errorCategoria.addClass('d-none').text('');
+        selectCategoria.closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
     }
 
-    // 4. Decisión final
-    if (tieneError) {
-        alert("Por favor, llene los campos obligatorios antes de activar la cámara.");
-    } else {
-        // Si todo está correcto, activa el input oculto
+    // 4. Activar cámara solo si el formulario está limpio
+    if (!tieneError) {
         $('#inputCamaraNativa').click();
     }
 });
 
-// Quitar el borde rojo automáticamente cuando el usuario seleccione una opción
-$('#itemmanoobraamterial, #categoriafoto').change(function() {
+// Limpieza de errores en tiempo real cuando el usuario corrige la selección
+$('#itemmanoobraamterial').change(function() {
     if ($(this).val() !== "") {
-        $(this).removeClass('is-invalid');
+        $('#error-item').addClass('d-none').text('');
+        $(this).closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
+    }
+});
+
+$('#categoriafoto').change(function() {
+    if ($(this).val() !== "") {
+        $('#error-error-categoria').addClass('d-none').text('');
+        $(this).closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
     }
 });
 
