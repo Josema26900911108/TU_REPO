@@ -2122,9 +2122,21 @@ function fill_manoobra(id) {
 }
 
 
-    // Inicializas los selectpicker
-    $('#itemtecnologia, #itemmanoobra').selectpicker();
-fill_estructura();
+// Destruimos cualquier inicialización automática previa del HTML para evitar el doble texto
+$('#itemtecnologia, #itemmanoobra').each(function() {
+    if ($(this).data('selectpicker')) {
+        $(this).selectpicker('destroy');
+    }
+});
+
+// Inicializamos manualmente controlando los parámetros desde JavaScript
+$('#itemtecnologia, #itemmanoobra').selectpicker({
+    liveSearch: true,
+    size: 10
+});
+
+fill_estructura(); //
+
     // Evento para llenar mano de obra según tecnología
 // Vinculación segura de eventos change
 $("#itemtecnologia").off('change').on('change', function () {
