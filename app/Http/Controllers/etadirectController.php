@@ -956,7 +956,7 @@ public function AutomataValidarMamo(Request $request)
     set_time_limit(3600);
     
     // Desactiva el log de queries en la base de datos para no colapsar la memoria RAM
-    \DB::connection()->disableQueryLog();
+    DB::connection()->disableQueryLog();
     // ====================================================================
 
 
