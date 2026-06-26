@@ -2430,71 +2430,88 @@ if ($tipoItem === "MO") {
     }
 }
 
-
 public function guardarFotografiaAjax(Request $request)
 {
-    // 1. Validar la entrada de datos por seguridad
+    // 1. Modificar Validación para aceptar Arreglos (Arrays)
     $request->validate([
-        'photo_base64' => 'required|string',
-        'photo_name'   => 'required|string',
-        'orden'        => 'required|string',
-        'fkTienda'     => 'required',
-        'fkTecnologia' => 'nullable'
+        'photos'              => 'required|array',
+        'photos.*'            => 'required|string', // Cada elemento del array debe ser Base64
+        'names'               => 'required|array',
+        'names.*'             => 'required|string', // Cada nombre generado
+        'iditemsTecnologia'   => 'required|array',
+        'orden'               => 'required|string',
+        'fkTienda'            => 'required',
     ]);
 
     try {
-        $photoBase64 = $request->input('photo_base64');
-        $photoName   = $request->input('photo_name'); // Ej: "ANTES", "DESPUES"
-        $orden       = $request->input('orden');
-        $fkTienda    = $request->input('fkTienda');
-        $idtec       = $request->input('fkTecnologia', 0);
+        // Obtener variables generales de la petición
+        $photosArray      = $request->input('photos', []);
+        $namesArray       = $request->input('names', []);
+        $iditemsTecnologia = $request->input('iditemsTecnologia', []);
+        
+        $orden            = $request->input('orden');
+        $fkTienda         = $request->input('fkTienda');
+        
+        $fotosGuardadasContador = 0;
 
-        // 2. Validar formato y decodificar el Base64
-        if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
-            $extension = strtolower($typeMatch[1]); 
-            $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
+        // 2. Iterar el lote de imágenes mediante un foreach
+        foreach ($photosArray as $i => $photoBase64) {
+            
+            // Validar formato y decodificar el Base64 de forma individual
+            if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
+                $extension = strtolower($typeMatch[1]); 
+                $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
 
-            if (!$fileData) {
-                return response()->json(['success' => false, 'message' => 'Error al decodificar Base64.'], 400);
+                if ($fileData) {
+                    // Extraer los datos correspondientes al índice actual del bucle
+                    $photoName = $namesArray[$i] ?? 'EVIDENCIA_FOTO';
+                    $idtec     = $iditemsTecnologia[$i] ?? 0;
+
+                    // 3. Sanitizar nombres (Tu lógica limpia exacta)
+                    $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $photoName);
+                    $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
+                    $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
+
+                    // Generar nombre de archivo único para evitar colisiones en GCS
+                    $fileName = trim($nombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
+                    $gcsPath  = "fotos/ordenes/{$orden}/{$fileName}";
+
+                    // 4. Subir de forma independiente a Google Cloud Storage
+                    Storage::disk('gcs_images')->put($gcsPath, $fileData, 'public');
+                    $urlFotografia = Storage::disk('gcs_images')->url($gcsPath);
+
+                    // 5. Registrar registro único en la Base de Datos
+                    Expedientefotograficotecnico::create([
+                        'fkTienda'     => $fkTienda,
+                        'Orden'        => $orden,
+                        'fotografia'   => $urlFotografia, 
+                        'fkTecnologia' => $idtec,
+                    ]);
+
+                    // Liberar memoria ram de este archivo inmediatamente en el ciclo
+                    unset($fileData); 
+                    $fotosGuardadasContador++;
+                }
             }
+        }
 
-            // 3. Sanitizar nombres utilizando tu misma lógica limpia
-            $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $photoName);
-            $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
-            $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
-
-            // Generar el nombre de archivo final único
-            $fileName = trim($nombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
-            $gcsPath  = "fotos/ordenes/{$orden}/{$fileName}";
-
-            // 4. Subir a Google Cloud Storage
-            Storage::disk('gcs_images')->put($gcsPath, $fileData, 'public');
-            $urlFotografia = Storage::disk('gcs_images')->url($gcsPath);
-
-            // 5. Registrar en la Base de Datos
-            $nuevaFoto = Expedientefotograficotecnico::create([
-                'fkTienda'     => $fkTienda,
-                'Orden'        => $orden,
-                'fotografia'   => $urlFotografia, 
-                'fkTecnologia' => $idtec,
-            ]);
-
-            // Liberar memoria inmediatamente
-            unset($fileData); 
-
+        // Retornar respuesta de éxito si se procesó al menos una imagen
+        if ($fotosGuardadasContador > 0) {
             return response()->json([
                 'success' => true, 
-                'message' => 'Fotografía agregada con éxito.',
-                'url'     => $urlFotografia
+                'message' => "Se almacenaron ({$fotosGuardadasContador}) fotografías con éxito en la nube de forma exclusiva."
             ]);
         }
 
-        return response()->json(['success' => false, 'message' => 'Formato de imagen no válido.'], 400);
+        return response()->json([
+            'success' => false, 
+            'message' => 'Ninguna imagen pudo ser procesada correctamente o el formato Base64 era inválido.'
+        ], 400);
 
     } catch (\Exception $e) {
         return response()->json([
             'success' => false, 
-            'message' => 'Error interno en el servidor.',
+            'message' => 'Error crítico interno en el servidor.',
             'error'   => $e->getMessage()
         ], 500);
     }
