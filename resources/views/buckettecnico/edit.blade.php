@@ -477,7 +477,7 @@
                 <div class="row mb-4">
                     <label for="itemmanoobra" class="col-lg-2 col-form-label">Seleccione Mano de Obra:</label>
                     <div class="col-lg-6">
-                        <select name="itemmanoobra" id="itemmanoobra" class="form-control" data-live-search="true" data-size="10">
+                        <select name="itemmanoobra" id="itemmanoobra" class="form-control selectpicker" data-live-search="true" data-size="10">
                         </select>
                         @error('itemmanoobra')
                         <small class="text-danger">{{ '*'.$message }}</small>
@@ -2122,21 +2122,9 @@ function fill_manoobra(id) {
 }
 
 
-// Destruimos cualquier inicialización automática previa del HTML para evitar el doble texto
-$('#itemtecnologia, #itemmanoobra').each(function() {
-    if ($(this).data('selectpicker')) {
-        $(this).selectpicker('destroy');
-    }
-});
-
-// Inicializamos manualmente controlando los parámetros desde JavaScript
-$('#itemtecnologia, #itemmanoobra').selectpicker({
-    liveSearch: true,
-    size: 10
-});
-
-fill_estructura(); //
-
+    // Inicializas los selectpicker
+    $('#itemtecnologia, #itemmanoobra').selectpicker();
+fill_estructura();
     // Evento para llenar mano de obra según tecnología
 // Vinculación segura de eventos change
 $("#itemtecnologia").off('change').on('change', function () {
