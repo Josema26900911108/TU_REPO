@@ -893,12 +893,13 @@ $('#btnCapture').click(function() {
     const timestamp = Date.now();
     const photoName = `foto_${timestamp}.png`;
     const categoriafoto = $('#categoriafoto').val();
-    const itemname = $('#itemmanoobraamterial').text();
+    const itemname = $('#itemmanoobraamterial').find(':selected').text().trim();
+
     const idTecnologiaUnificado = $('#itemtecnologia').val();
 
 
 
-    photosForItem.push({ name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}"+categoriafoto, data: dataUrl, fkTecnologia: idTecnologiaUnificado });
+    photosForItem.push({ name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}"+categoriafoto+"_"+itemname, data: dataUrl, fkTecnologia: idTecnologiaUnificado });
     mostrarFotos();
 
     $('#btnOk').show();
@@ -2264,7 +2265,7 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.80);
         
         const categoriafoto = $('#categoriafoto').val();
-        const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto;
+        const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_'.$tecnico->descripcion }}" + categoriafoto;
         const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
         const idTecnologiaUnificado = $('#itemtecnologia').val();
 
