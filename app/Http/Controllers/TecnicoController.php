@@ -2440,7 +2440,6 @@ public function guardarFotografiaAjax(Request $request)
         'names.*'             => 'required|string', // Cada nombre generado
         'iditemsTecnologia'   => 'required|array',
         'orden'               => 'required|string',
-        'fkTienda'            => 'required',
     ]);
 
     try {
@@ -2450,7 +2449,7 @@ public function guardarFotografiaAjax(Request $request)
         $iditemsTecnologia = $request->input('iditemsTecnologia', []);
         
         $orden            = $request->input('orden');
-        $fkTienda         = $request->input('fkTienda');
+        $fkTienda         = session('user_fkTienda');
         
         $fotosGuardadasContador = 0;
 
