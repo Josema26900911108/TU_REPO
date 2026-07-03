@@ -807,7 +807,7 @@ $(document).on('keyup input', '#globalSearchAsig', function() {
             console.log('Error: La tabla ' + tablaSelector + ' no es una DataTable activa.');
         }
 
-    }, 500); // Puedes ajustar los 500ms (ej. 700ms si quieres que espere un poco más)
+    }, 1000); // Puedes ajustar los 500ms (ej. 700ms si quieres que espere un poco más)
 });
 
        // Mapeo de pestañas a funciones
