@@ -795,6 +795,8 @@ $(document).on('keyup input', '#globalSearchAsig', function() {
     searchTimeout = setTimeout(function() {
         console.log('El usuario dejó de escribir. Ejecutando búsqueda...');
 
+        fillRelacionAsignada(1);
+
         // Si estás usando la Opción B (Búsqueda en servidor/AJAX), debes descomentar la siguiente línea:
         // fillRelacionAsignada(1); return;
 
