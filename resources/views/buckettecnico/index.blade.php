@@ -1162,14 +1162,6 @@ function fillRelacionAsignada(page) {
     });
 }
 
-// Event delegation remoto vinculado directamente a tu AJAX
-$(document).on('keyup input', '#globalSearchAsig', function() {
-    console.log('Filtrando universo de datos desde la base de datos...');
-    
-    // Forzamos a reiniciar la consulta remota posicionando al usuario en la página 1 del filtro
-    fillRelacionAsignada(1); 
-});
-
 
 function fillRelacionCobro(page) {
     var select = document.getElementById("tecnicoid");
