@@ -457,50 +457,25 @@ function initDataTable(tablasss,search) {
     }
 }
 
-function connectSearchInput(search) {
-    if ($().length && dataTableInstance) {
-        console.log('Conectando globalSearch con DataTable');
+function connectSearchInput(searchSelector) {
+    var $searchInput = $(searchSelector);
 
-        // Limpiar eventos previos
-        $(search).off('keyup.'+search);
+    if ($searchInput.length && dataTableInstance) {
+        // Desvinculamos cualquier evento previo para evitar ejecuciones duplicadas
+        $searchInput.off('keyup input');
 
-        // Conectar evento keyup - VERSIÓN MEJORADA
-        $(search).on('keyup.'+search, function() {
-            const searchValue = $(this).val().trim();
-            console.log('Búsqueda realizada:', searchValue);
+        // Escuchamos cuando el usuario escribe en tu input personalizado
+        $searchInput.on('keyup input', function () {
+            var query = this.value;
 
-            // VERIFICACIÓN: Ver el estado actual
-            console.log('Filas totales antes:', dataTableInstance.rows().count());
-            console.log('Filas visibles antes:', dataTableInstance.rows({ search: 'applied' }).count());
-
-            // Aplicar búsqueda en DataTable - FORMA CORRECTA
-            dataTableInstance
-                .search(searchValue)
-                .draw();
-
-            // VERIFICACIÓN: Ver el estado después
-            setTimeout(() => {
-                console.log('Filas totales después:', dataTableInstance.rows().count());
-                console.log('Filas visibles después:', dataTableInstance.rows({ search: 'applied' }).count());
-                console.log('Info de página:', dataTableInstance.page.info());
-
-                // Si no hay resultados, forzar mensaje
-                if (dataTableInstance.rows({ search: 'applied' }).count() === 0 && searchValue !== '') {
-                    console.log('NO HAY RESULTADOS para:', searchValue);
-                    // Forzar mostrar mensaje de "no results"
-                    $('.dataTables_empty').show();
-                }
-            }, 100);
+            // LLAMADA CLAVE: Buscamos en toda la memoria interna de la tabla
+            // '.draw()' redibuja la paginación de manera global automática
+            dataTableInstance.search(query).draw();
+            
+            console.log('Búsqueda global ejecutada para:', query);
         });
-
-        // Si hay valor guardado, aplicarlo
-        if (currentSearchValue) {
-            $(search).val(currentSearchValue);
-            dataTableInstance.search(currentSearchValue).draw();
-            console.log('Valor de búsqueda restaurado:', currentSearchValue);
-        }
     } else {
-        console.log('No se puede conectar: globalSearch:', $(search).length, 'dataTableInstance:', !!dataTableInstance);
+        console.log('No se pudo conectar el input. Selector:', searchSelector);
     }
 }
 
@@ -804,14 +779,28 @@ $(document).ready(function(){
         }
     });
 
-            // Event delegation para el input de búsqueda (por si se carga dinámicamente)
-    $(document).on('keyup', '#globalSearchAsig', function() {
-        console.log('Evento keyup en globalSearchAsig');
-        currentSearchValue = $(this).val();
-        if (dataTableInstance && $.fn.DataTable.isDataTable('#datatablesSimpleAsig')) {
-            dataTableInstance.search(currentSearchValue).draw();
-        }
-    });
+// Event delegation robusto para el input de búsqueda
+$(document).on('keyup input', '#globalSearchAsig', function() {
+    console.log('Evento keyup/input detectado en globalSearchAsig');
+    
+    var currentSearchValue = $(this).val();
+    var tablaSelector = '#datatablesSimpleAsig';
+
+    // 1. Verificamos si la tabla realmente está inicializada como DataTable
+    if ($.fn.DataTable.isDataTable(tablaSelector)) {
+        
+        // 2. Forzamos la obtención de la instancia activa y real directamente del DOM
+        var table = $(tablaSelector).DataTable();
+        
+        // 3. Limpiamos cualquier filtro de columna previo y aplicamos la búsqueda global
+        table.search(currentSearchValue).draw();
+        
+        console.log('Búsqueda API ejecutada globalmente con éxito: ' + currentSearchValue);
+    } else {
+        console.log('Error: La tabla ' + tablaSelector + ' no es una DataTable activa en este momento.');
+    }
+});
+
 
        // Mapeo de pestañas a funciones
     const tabActions = {
