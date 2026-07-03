@@ -778,29 +778,37 @@ $(document).ready(function(){
             dataTableInstance.search(currentSearchValue).draw();
         }
     });
+// Variable global para almacenar el temporizador del Debounce
+var searchTimeout = null;
 
-// Event delegation robusto para el input de búsqueda
+// Event delegation robusto para el input de búsqueda con Antirrebote (Debounce)
 $(document).on('keyup input', '#globalSearchAsig', function() {
-    console.log('Evento keyup/input detectado en globalSearchAsig');
+    console.log('Tecla presionada en globalSearchAsig...');
     
     var currentSearchValue = $(this).val();
     var tablaSelector = '#datatablesSimpleAsig';
 
-    // 1. Verificamos si la tabla realmente está inicializada como DataTable
-    if ($.fn.DataTable.isDataTable(tablaSelector)) {
-        
-        // 2. Forzamos la obtención de la instancia activa y real directamente del DOM
-        var table = $(tablaSelector).DataTable();
-        
-        // 3. Limpiamos cualquier filtro de columna previo y aplicamos la búsqueda global
-        table.search(currentSearchValue).draw();
-        
-        console.log('Búsqueda API ejecutada globalmente con éxito: ' + currentSearchValue);
-    } else {
-        console.log('Error: La tabla ' + tablaSelector + ' no es una DataTable activa en este momento.');
-    }
-});
+    // 1. Cancelamos el temporizador anterior si el usuario sigue escribiendo rápido
+    clearTimeout(searchTimeout);
 
+    // 2. Iniciamos una nueva espera de 500 milisegundos (medio segundo)
+    searchTimeout = setTimeout(function() {
+        console.log('El usuario dejó de escribir. Ejecutando búsqueda...');
+
+        // Si estás usando la Opción B (Búsqueda en servidor/AJAX), debes descomentar la siguiente línea:
+        // fillRelacionAsignada(1); return;
+
+        // Si estás usando la búsqueda local de DataTables, se ejecuta este bloque:
+        if ($.fn.DataTable.isDataTable(tablaSelector)) {
+            var table = $(tablaSelector).DataTable();
+            table.search(currentSearchValue).draw();
+            console.log('Búsqueda API ejecutada globalmente con éxito: ' + currentSearchValue);
+        } else {
+            console.log('Error: La tabla ' + tablaSelector + ' no es una DataTable activa.');
+        }
+
+    }, 500); // Puedes ajustar los 500ms (ej. 700ms si quieres que espere un poco más)
+});
 
        // Mapeo de pestañas a funciones
     const tabActions = {
