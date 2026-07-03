@@ -2430,6 +2430,17 @@ if ($tipoItem === "MO") {
     }
 }
 
+public function bajaorden(Request $request, $etadirect){
+    $orden = Expedientetecnico::findOrFail($etadirect);
+    $orden->ESTATUS = 'B';
+    $orden->Status = 'A';
+    $orden->save();
+
+    // CAMBIA ESTA LÍNEA: Redirige directo a la ruta del listado
+    return redirect()->route('tecnico.index')->with('success', 'Orden dada de baja correctamente.');
+}
+
+
 public function guardarFotografiaAjax(Request $request)
 {
     // 1. Modificar Validación para aceptar Arreglos (Arrays)

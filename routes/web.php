@@ -420,6 +420,9 @@ Route::get('/pagotecnico/formato-pago', [PagotecnicoController::class, 'descarga
 Route::get('/pagotecnico/exportar', [PagotecnicoController::class, 'exportarExcel'])->name('pagotecnico.exportar');
 Route::post('/extraccion-masiva', [TecnicoController::class, 'extraccionMasiva'])
     ->name('pagotecnico.extraccion-masiva');
+Route::get('/tecnicos', [TecnicoController::class, 'index'])->name('tecnico.index');
+Route::post('/tecnico/bajaorden/{etadirect}', [TecnicoController::class, 'bajaorden'])->name('tecnico.bajaorden'); 
+
 
 Route::post('/memoria-fotografica', [TecnicoController::class, 'generarMemoriaFotografica'])
     ->name('pagotecnico.memoria-fotografica');    
