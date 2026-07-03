@@ -1113,27 +1113,31 @@ function mostrarNombreINVENTARIO(input) {
     document.getElementById('nombre-archivoinv').textContent = nombre;
 }
 
-// Otras funciones AJAX (NO duplicadas)
 function fillRelacionAsignada(page) {
     var select = document.getElementById("tecnicoid");
     var fechain = $('#fechaincio').val();
     var fechafin = $('#fechafin').val();
+    
+    // CAPTURAMOS LO QUE EL USUARIO TIENE ESCRITO AL MOMENTO DE ACTUALIZAR
+    var q = $('#globalSearchAsig').val() || ''; 
 
     let id = null;
-    if (select !== null) {
-        id = select.options[select.selectedIndex].value;
-    } else {
-        id = "{{ $tecnico->id ?? '' }}";
-    }
+    if (select !== null) { id = select.options[select.selectedIndex].value; } 
+    else { id = "{{ $tecnico->id ?? '' }}"; }
 
     $.ajax({
         url: "{{ route('fetchtabla') }}",   
         method: 'GET',
-        data: { id : id, fechain : fechain, fechafin : fechafin, page: page },
+        // 2. LE ENVIAMOS LA BÚSQUEDA A LARAVEL (q: q)
+        data: { id : id, fechain : fechain, fechafin : fechafin, page: page, q: q },
         success: function(data) {
             $('#tabla_materiales_container').html(data);
-setTimeout(function() {
+            
+            setTimeout(function() {
                 initDataTable('#datatablesSimpleAsig', '#globalSearchAsig');
+                
+                // 3. Volvemos a poner el foco y el texto en el input tras recargar el HTML
+                $('#globalSearchAsig').val(q).focus(); 
             }, 300);
         },
         error: function(xhr) {

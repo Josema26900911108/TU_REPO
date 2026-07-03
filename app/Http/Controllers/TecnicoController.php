@@ -3429,23 +3429,23 @@ public function fetchrelacion(Request $request)
                     ->where('fkTecnico', $request->input('id'))
                     ->whereBetween('FECHAINSTALACION', [$fechain, $fechafin])
                     ->where('ESTATUS', 'I')
-                    ->paginate(10);
+                    ->paginate(); 
             } else {
                 $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
                     ->where('fkTecnico', $idtecnico)
                     ->whereBetween('FECHAINSTALACION', [$fechain, $fechafin])
                     ->where('ESTATUS', 'I')
-                    ->paginate(10);
+                    ->paginate();
             }
         } else {
             if ($Estatus == 'ER') {
                 $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
                     ->where('fkTecnico', $request->input('id'))
-                    ->paginate(10);
+                    ->paginate();
             } else {
                 $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
                     ->where('fkTecnico', $idtecnico)
-                    ->paginate(10);
+                    ->paginate();
             }
         }
 
