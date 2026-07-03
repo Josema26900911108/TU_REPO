@@ -1117,27 +1117,35 @@ function fillRelacionAsignada(page) {
     var select = document.getElementById("tecnicoid");
     var fechain = $('#fechaincio').val();
     var fechafin = $('#fechafin').val();
-
-    // CAPTURAMOS EL TEXTO DEL BUSCADOR
+    
+    // Capturamos en tiempo real el valor que el usuario tiene escrito en tu input
     var textoBuscar = $('#globalSearchAsig').val() || ''; 
 
     let id = null;
-    if (select !== null) { id = select.options[select.selectedIndex].value; } 
-    else { id = "{{ $tecnico->id ?? '' }}"; }
+    if (select !== null) {
+        id = select.options[select.selectedIndex].value;
+    } else {
+        id = "{{ $tecnico->id ?? '' }}";
+    }
 
     $.ajax({
         url: "{{ route('fetchtabla') }}",   
         method: 'GET',
-        // ENVIAMOS EL PARÁMETRO 'search' HACIA LARAVEL
+        // Pasamos el parámetro 'search' con el contenido textual hacia Laravel
         data: { id : id, fechain : fechain, fechafin : fechafin, page: page, search: textoBuscar },
         success: function(data) {
             $('#tabla_materiales_container').html(data);
-
+            
             setTimeout(function() {
                 initDataTable('#datatablesSimpleAsig', '#globalSearchAsig');
-
-                // Devolvemos el cursor y el texto al input tras reemplazar el HTML
-                $('#globalSearchAsig').val(textoBuscar).focus(); 
+                
+                // Mantenemos el foco en el input y restauramos el cursor al final del texto escrito
+                var $search = $('#globalSearchAsig');
+                $search.val(textoBuscar).focus();
+                
+                // Pequeño truco para posicionar el cursor al final de la palabra tras la recarga HTML
+                var strLength = $search.val().length * 2;
+                $search()[0].setSelectionRange(strLength, strLength);
             }, 300);
         },
         error: function(xhr) {
@@ -1145,6 +1153,14 @@ function fillRelacionAsignada(page) {
         }
     });
 }
+
+// Event delegation remoto vinculado directamente a tu AJAX
+$(document).on('keyup input', '#globalSearchAsig', function() {
+    console.log('Filtrando universo de datos desde la base de datos...');
+    
+    // Forzamos a reiniciar la consulta remota posicionando al usuario en la página 1 del filtro
+    fillRelacionAsignada(1); 
+});
 
 
 function fillRelacionCobro(page) {
