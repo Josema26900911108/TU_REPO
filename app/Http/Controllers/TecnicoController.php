@@ -3418,36 +3418,42 @@ public function fetchrelacion(Request $request)
         $fkTienda = session('user_fkTienda');
         $idtecnico = $request->input('id');
         
-        // 1. Capturar y formatear las fechas con las horas límite
+        // Capturar fechas y el nuevo término de búsqueda global
         $fechain = $request->input('fechain') ? $request->input('fechain') . ' 00:00:00' : null;
         $fechafin = $request->input('fechafin') ? $request->input('fechafin') . ' 23:59:59' : null;
+        $searchTerm = $request->input('search'); // <--- NUEVO: Captura el texto de búsqueda
 
-        // 2. Usar 'and' para verificar que ambas fechas existan antes de filtrar
+        // Inicializamos el query builder base aplicando los alcances obligatorios de tienda y técnico
+        $fkTecnicoFiltro = ($Estatus == 'ER') ? $request->input('id') : $idtecnico;
+        
+        $query = Expedientetecnico::where('fkTienda', $fkTienda)
+            ->where('fkTecnico', $fkTecnicoFiltro)
+            ->where('ESTATUS', 'I');
+
+        // Condición de Fechas
         if ($fechain && $fechafin) {
-            if ($Estatus == 'ER') {
-                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
-                    ->where('fkTecnico', $request->input('id'))
-                    ->whereBetween('FECHAINSTALACION', [$fechain, $fechafin])
-                    ->where('ESTATUS', 'I')
-                    ->paginate(); 
-            } else {
-                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
-                    ->where('fkTecnico', $idtecnico)
-                    ->whereBetween('FECHAINSTALACION', [$fechain, $fechafin])
-                    ->where('ESTATUS', 'I')
-                    ->paginate();
-            }
-        } else {
-            if ($Estatus == 'ER') {
-                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
-                    ->where('fkTecnico', $request->input('id'))
-                    ->paginate();
-            } else {
-                $relacion = Expedientetecnico::where('fkTienda', $fkTienda)
-                    ->where('fkTecnico', $idtecnico)
-                    ->paginate();
-            }
+            $query->whereBetween('FECHAINSTALACION', [$fechain, $fechafin]);
         }
+
+        // NUEVO: Filtro de Búsqueda Avanzada en el Servidor
+        $query->when($searchTerm, function ($q) use ($searchTerm) {
+            $q->where(function ($subQuery) use ($searchTerm) {
+                $subQuery->where('Orden', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('virtual', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('Status', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('Tipo_servicio', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('Tipo_orden', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('NOMBRECLIENTE', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('DIRECCION', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('OBS', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('SIGLASCENTRAL', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('AREA', 'LIKE', "%{$searchTerm}%")
+                         ->orWhere('AUTORIZA', 'LIKE', "%{$searchTerm}%");
+            });
+        });
+
+        // Ejecutamos la paginación final estructurada
+        $relacion = $query->paginate(15);
 
         if ($request->ajax()) {
             return view('buckettecnico.table.tabla', compact('relacion'))->render();

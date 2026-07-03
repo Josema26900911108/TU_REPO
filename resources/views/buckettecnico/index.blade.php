@@ -1117,9 +1117,9 @@ function fillRelacionAsignada(page) {
     var select = document.getElementById("tecnicoid");
     var fechain = $('#fechaincio').val();
     var fechafin = $('#fechafin').val();
-    
-    // CAPTURAMOS LO QUE EL USUARIO TIENE ESCRITO AL MOMENTO DE ACTUALIZAR
-    var q = $('#globalSearchAsig').val() || ''; 
+
+    // CAPTURAMOS EL TEXTO DEL BUSCADOR
+    var textoBuscar = $('#globalSearchAsig').val() || ''; 
 
     let id = null;
     if (select !== null) { id = select.options[select.selectedIndex].value; } 
@@ -1128,16 +1128,16 @@ function fillRelacionAsignada(page) {
     $.ajax({
         url: "{{ route('fetchtabla') }}",   
         method: 'GET',
-        // 2. LE ENVIAMOS LA BÚSQUEDA A LARAVEL (q: q)
-        data: { id : id, fechain : fechain, fechafin : fechafin, page: page, q: q },
+        // ENVIAMOS EL PARÁMETRO 'search' HACIA LARAVEL
+        data: { id : id, fechain : fechain, fechafin : fechafin, page: page, search: textoBuscar },
         success: function(data) {
             $('#tabla_materiales_container').html(data);
-            
+
             setTimeout(function() {
                 initDataTable('#datatablesSimpleAsig', '#globalSearchAsig');
-                
-                // 3. Volvemos a poner el foco y el texto en el input tras recargar el HTML
-                $('#globalSearchAsig').val(q).focus(); 
+
+                // Devolvemos el cursor y el texto al input tras reemplazar el HTML
+                $('#globalSearchAsig').val(textoBuscar).focus(); 
             }, 300);
         },
         error: function(xhr) {
@@ -1145,6 +1145,7 @@ function fillRelacionAsignada(page) {
         }
     });
 }
+
 
 function fillRelacionCobro(page) {
     var select = document.getElementById("tecnicoid");
