@@ -70,7 +70,7 @@
                                 <div class="vr"></div>
                             </div>
                             <div>
-                                @can('eliminar-eta')
+                                @can('eliminar-orden')
                                 <!-- Botón que abre el modal -->
                                 <button type="button" 
                                         title="Eliminar" 

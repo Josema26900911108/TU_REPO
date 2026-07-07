@@ -163,6 +163,7 @@ class PermissionSeeder extends Seeder
             'editar-materialmanoobra',
             'crear-materialmanoobra',
             'eliminar-materialmanoobra',
+            'eliminar-orden',
 
             //APP ETA
             'ver-eta',
