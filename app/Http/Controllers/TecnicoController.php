@@ -100,6 +100,26 @@ class TecnicoController extends Controller
         return view('tecnico.index', compact('tecnicos'));
     }
 
+public function InsertarMaterialesTecnico($id)
+{
+    // 1. Validar que el usuario esté autenticado
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+
+    // 2. Validar que el técnico exista
+    $tecnico = Tecnico::find($id);
+    if (!$tecnico) {
+        return back()->with('error', 'El técnico especificado no existe.');
+    }
+
+    // 3. Obtener los materiales asociados al técnico
+    $materiales = MovimientoMateriales::where('fkTecnico', $id)->get();
+
+    // 4. Retornar la vista con los materiales del técnico
+    return view('trasladarmateria', compact('tecnico', 'materiales'));
+
+}
 public function generarMemoriaFotografica(Request $request)
 {
     // 1. Validar la existencia del archivo cargado
@@ -2430,14 +2450,29 @@ if ($tipoItem === "MO") {
     }
 }
 
-public function bajaorden(Request $request, $etadirect){
+public function bajaorden(Request $request, $etadirect)
+{
+    // 1. Validamos que el motivo haya sido redactado de forma obligatoria
+    $request->validate([
+        'motivo' => 'required|string|max:500'
+    ]);
+
+    // 2. Buscamos el expediente técnico correspondiente
     $orden = Expedientetecnico::findOrFail($etadirect);
     $orden->ESTATUS = 'B';
     $orden->Status = 'A';
+    
+    // 3. CAPTURA DEL TEXTAREA: Guardamos el string en la columna correspondiente
+    // Reemplaza 'MOTIVO_BAJA' por el nombre exacto de la columna en tu base de datos
+    $orden->OBS = $request->input('motivo'); 
+    
     $orden->save();
 
-    // CAMBIA ESTA LÍNEA: Redirige directo a la ruta del listado
-    return redirect()->route('tecnico.index')->with('success', 'Orden dada de baja correctamente.');
+    // 4. Cargamos de nuevo el listado según hayamos configurado el sistema
+    $tecnicos = Tecnico::all(); 
+
+    return view('tecnico.index', compact('tecnicos'))
+        ->with('success', 'Orden dada de baja con motivo registrado exitosamente.');
 }
 
 

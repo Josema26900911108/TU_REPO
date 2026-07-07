@@ -121,27 +121,38 @@
         </div>
     </div>
 
-    <!-- Modal de confirmación Baja Orden -->
-    <div class="modal fade" id="confirmModal-{{$item->id}}" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
+   <!-- Modal de confirmación Baja Orden -->
+<div class="modal fade" id="confirmModal-{{$item->id}}" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <!-- Formulario envuelve todo el contenido interno para que los botones y textos envíen la información correctamente -->
+            <form action="{{ route('tecnico.bajaorden', ['etadirect' => $item->id]) }}" method="POST">
+                @csrf
+                
                 <div class="modal-header">
                     <h1 class="modal-title fs-5" id="exampleModalLabel">Mensaje de confirmación</h1>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
+                
                 <div class="modal-body">
-                     ¿Seguro que quieres pasar a estatus no trabaje de la orden?
+                    <p class="mb-3">¿Seguro que quieres pasar a estatus no trabaje de la orden?</p>
+                    
+                    <!-- El textarea se posiciona aquí para mantener un diseño visual correcto -->
+                    <div class="mb-2">
+                        <label class="form-label fw-bold fs-12">Motivo de la baja:</label>
+                        <textarea name="motivo" class="form-control" rows="3" placeholder="Ingrese detalladamente el motivo de la baja..." required></textarea>
+                    </div>
                 </div>
+                
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                    <form action="{{ route('tecnico.bajaorden', ['etadirect' => $item->id]) }}" method="POST" class="d-inline">
-                        @csrf
-                        <button type="submit" class="btn btn-danger">Confirmar</button>
-                    </form>
+                    <button type="submit" class="btn btn-danger">Confirmar</button>
                 </div>
-            </div>
+            </form>
         </div>
     </div>
+</div>
+
 @endforeach
 
 <div class="d-flex justify-content-center mt-4">

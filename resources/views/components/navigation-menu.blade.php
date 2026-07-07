@@ -283,6 +283,14 @@
                 </a>
                 @endcan
 
+                @can('ver-existenciasap')
+                <a class="nav-link" href="{{ route('stocksap.index') }}">
+                    <!-- CAMBIO: fa-boxes-stacked -->
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+                    Cargar Existencias Sap
+                </a>
+                @endcan
+
                 @can('ver-movimientomateriales')
                 <a class="nav-link" href="{{ route('movimientomateriales.lista') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-dolly"></i></div>

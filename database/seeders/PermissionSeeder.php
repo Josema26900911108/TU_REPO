@@ -176,6 +176,10 @@ class PermissionSeeder extends Seeder
             'editar-documentosap',
             'crear-documentosap',
             'eliminar-documentosap',
+
+            //existencias sap
+            'ver-existenciasap',
+            'vertienda-producto',
             //movimientos materiales
             'ver-movimientomateriales',
             'editar-movimientomateriales',

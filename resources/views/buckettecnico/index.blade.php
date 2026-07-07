@@ -58,6 +58,15 @@
 
 
 <ul class="nav nav-tabs" id="tecnicoTabs" role="tablist">
+
+        @can('crear-venta')
+    <div class="mb-4">
+        <a href="{{route('tecnico.insertarmateriales', ['id' => $tecnico->id ?? $idtecnico])}}">
+            <button type="button" class="btn btn-primary">Añadir nuevo registro</button>
+        </a>
+    </div>
+    @endcan
+
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="datos-tab" data-bs-toggle="tab" data-bs-target="#datos" type="button" role="tab">
             Ordenes Asignadas

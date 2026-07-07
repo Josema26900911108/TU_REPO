@@ -11,15 +11,15 @@ use App\Http\Requests\UpdateClienteRequest;
 use App\Http\Requests\StoreClienteExistenteRequest;
 use App\Models\Cliente;
 use App\Models\User;
-use App\Models\Documento;
+use App\Models\DocumentoSap;
 use App\Models\Persona;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-
-
-class documentosapController extends Controller
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Carbon\Carbon;
+class DocumentoSapController extends Controller
 {
     public function __construct()
     {
@@ -31,27 +31,157 @@ class documentosapController extends Controller
 
     }
 
-    public function index()
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+public function index(Request $request)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
 
+    $fkTienda = session('user_fkTienda');
+    $Estatus = session('user_estatus');
+
+    // Cambiamos a get() para cargar todos los datos en la memoria de JS de una sola vez
+    $query = DocumentoSap::select('DocumentoSAP.*', 'tienda.Nombre as nombre_tienda')
+        ->leftJoin('tienda', 'DocumentoSAP.fkTienda', '=', 'tienda.idTienda');
+
+    if ($Estatus != 'ER') {
+        $query->where('DocumentoSAP.fkTienda', $fkTienda);
+    }
+
+    // OPTIMIZACIÓN: get() elimina las recargas de página lentas
+    $documentos = $query->get();
+
+    return view('documento.index', compact('documentos'));
+}
+
+    /**
+     * Importador masivo nativo mediante lectura de archivos CSV
+     */
+    public function importar(Request $request)
+    {
+        DB::connection()->disableQueryLog();
+        if (!Auth::check()) return redirect()->route('login');
 
         $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
 
-                if ($Estatus == 'ER') {
+        $request->validate([
+            'archivo' => 'required|file|mimes:csv,txt|max:10240',
+        ]);
 
-                    $materialmanoobra = Materialmanoobra::all();
+        $file = fopen($request->file('archivo')->getRealPath(), 'r');
+        $encabezado = fgetcsv($file); 
 
-                } else {
-                    $materialmanoobra = Materialmanoobra::where('fkTienda',$fkTienda)->get();
+        DB::beginTransaction();
+        $fila = 1;
+
+        try {
+          
+        DocumentoSap::where('fkTienda', $fkTienda)->delete();
+
+        while (($linea = fgetcsv($file)) !== false) {
+                $fila++;
+                $data = array_combine($encabezado, $linea);
+
+                // Validación de campo crítico
+                if (empty($data['numero_documento'])) continue;
+
+                $numDoc = trim($data['numero_documento']);
+                
+                // Formatear Fecha
+                $fechaCont = null;
+                if (!empty($data['fecha_contabilizacion_sap'])) {
+                    try {
+                        $fechaCont = Carbon::parse($data['fecha_contabilizacion_sap'])->toDateString();
+                    } catch (\Exception $e) {
+                        $fechaCont = now()->toDateString();
+                    }
                 }
 
+                // Buscar si el documento ya se encuentra registrado para actualizar o crear
+                $docExistente = DocumentoSap::where('numero_documento', $numDoc)
+                ->when(!empty($data['serie']), function($query) use ($data) {
+                    return $query->where('serie', trim($data['serie']));
+                })
+                ->when(!empty($data['SKU']), function($query) use ($data) {
+                    return $query->where('SKU', trim($data['SKU']));
+                })
+                ->when(!empty($data['cantidad_sap']), function($query) use ($data) {
+                    return $query->where('cantidad_sap', trim($data['cantidad_sap']));
+                })
+                ->first();
 
+                if ($docExistente) {
+                    $docExistente->update([
+                        'referencia_sap'               => $data['referencia_sap'] ?? $docExistente->referencia_sap,
+                        'texto_clase_movimiento_sap'   => $data['texto_clase_movimiento_sap'] ?? $docExistente->texto_clase_movimiento_sap,
+                        'unidad_medida_base_sap'       => $data['unidad_medida_base_sap'] ?? $docExistente->unidad_medida_base_sap,
+                        'fecha_contabilizacion_sap'    => $fechaCont ?? $docExistente->fecha_contabilizacion_sap,
+                        'cantidad_sap'                 => $data['cantidad_sap'] ?? $docExistente->cantidad_sap,
+                        'clase_movimiento_sap'         => $data['clase_movimiento_sap'] ?? $docExistente->clase_movimiento_sap,
+                        'centro_sap'                   => $data['centro_sap'] ?? $docExistente->centro_sap,
+                        'Naturaleza'                   => $data['Naturaleza'] ?? $docExistente->Naturaleza,
+                        'Status'                       => $data['Status'] ?? $docExistente->Status,
+                        'serie'                        => $data['serie'] ?? $docExistente->serie,
+                        'fkTienda'                     => $fkTienda,
+                        'SKU'                          => $data['SKU'] ?? $docExistente->SKU,
+                    ]);
+                } else {
+                    DocumentoSap::create([
+                        'numero_documento'             => $numDoc,
+                        'referencia_sap'               => $data['referencia_sap'] ?? null,
+                        'texto_clase_movimiento_sap'   => $data['texto_clase_movimiento_sap'] ?? null,
+                        'unidad_medida_base_sap'       => $data['unidad_medida_base_sap'] ?? null,
+                        'fecha_contabilizacion_sap'    => $fechaCont,
+                        'cantidad_sap'                 => $data['cantidad_sap'] ?? '0',
+                        'clase_movimiento_sap'         => $data['clase_movimiento_sap'] ?? null,
+                        'centro_sap'                   => $data['centro_sap'] ?? null,
+                        'fkTienda'                     => $fkTienda,
+                        'Naturaleza'                   => $data['Naturaleza'] ?? 'E',
+                        'Status'                       => $data['Status'] ?? 'AC',
+                        'serie'                        => $data['serie'] ?? null,
+                        'SKU'                          => $data['SKU'] ?? null,
+                    ]);
+                }
+            }
 
-        return view('materialmanoobra.index', compact('materialmanoobra'));
+            fclose($file);
+            DB::commit();
+            return back()->with('success', 'Documentos SAP procesados e importados correctamente.');
+
+        } catch (Exception $e) {
+            DB::rollBack();
+            if (isset($file)) fclose($file);
+            Log::error('Error al importar Documentos SAP: ' . $e->getMessage());
+            return back()->with('error', 'Error en la fila ' . $fila . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Descarga de plantilla CSV estructurada
+     */
+    public function descargarFormato()
+    {
+        $headers = [
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Content-type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename=plantilla_documento_sap.csv',
+            'Expires' => '0',
+            'Pragma' => 'public'
+        ];
+
+        $columns = [
+            'numero_documento', 'referencia_sap', 'texto_clase_movimiento_sap', 
+            'unidad_medida_base_sap', 'fecha_contabilizacion_sap', 'cantidad_sap', 
+            'clase_movimiento_sap', 'centro_sap', 'Naturaleza', 'Status', 'SKU', 'serie'
+        ];  
+
+        $callback = function() use ($columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns); 
+            fclose($file);
+        };
+
+        return new StreamedResponse($callback, 200, $headers);
     }
 
     public function show($id)

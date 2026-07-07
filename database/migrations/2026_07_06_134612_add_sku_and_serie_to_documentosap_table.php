@@ -1,0 +1,29 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('DocumentoSAP', function (Blueprint $table) {
+            $table->string('SKU')->nullable()->after('numero_documento');
+            $table->string('serie')->nullable()->after('SKU');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('DocumentoSAP', function (Blueprint $table) {
+            $table->dropColumn(['SKU', 'serie']);
+        });
+    }
+};

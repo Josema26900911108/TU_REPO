@@ -422,6 +422,7 @@ Route::post('/extraccion-masiva', [TecnicoController::class, 'extraccionMasiva']
     ->name('pagotecnico.extraccion-masiva');
 Route::get('/tecnicos', [TecnicoController::class, 'index'])->name('tecnico.index');
 Route::post('/tecnico/bajaorden/{etadirect}', [TecnicoController::class, 'bajaorden'])->name('tecnico.bajaorden'); 
+Route::get('/tecn/materiales/{id}', [TecnicoController::class, 'InsertarMaterialesTecnico'])->name('tecnico.insertarmateriales');
 
 
 Route::post('/memoria-fotografica', [TecnicoController::class, 'generarMemoriaFotografica'])
@@ -439,7 +440,20 @@ Route::get('/exportar-movimientomateriales-excel', [App\Http\Controllers\movimie
     ->name('exportar.movimientomateriales.excel');
 Route::get('/movimientomaterialesTtabla', [movimientomaterialesController::class, 'fetchrelacionmovimientosmat'])->name('fetchrelacionmovimientomateriales');
 
+use App\Http\Controllers\MaterialSapController;
 
+// Ruta para procesar la subida del archivo CSV
+Route::post('/material-sap/importar', [MaterialSapController::class, 'importarExistenciaSap'])->name('material.importarmamo');
+
+// Ruta para descargar el layout/formato vacío
+Route::get('/material-sap/descargar-formato', [MaterialSapController::class, 'descargarFormatoExistenciaSap'])->name('material.formatomamo');
+Route::post('/stocksap/importar',[MaterialSapController::class,'importaExistenciaSaprMAMO'])->name('stocksap.importar');
+Route::get('/stocksap/exportarformato',[MaterialSapController::class,'descargarFormatoExistenciaSap'])->name('stocksap.exportarformato');
+Route::get('/stocksap/lista',[MaterialSapController::class,'index'])->name('stocksap.index');
+
+Route::get('/documento-sap', [DocumentoSapController::class, 'index'])->name('documentosap.index');
+Route::post('/documento-sap/importar', [DocumentoSapController::class, 'importar'])->name('documentosap.importar');
+Route::get('/documento-sap/descargar-formato', [DocumentoSapController::class, 'descargarFormato'])->name('documentosap.formato');
 
 Route::get('/tecnico', [TecnicoController::class, 'index'])->name('tecnico.lista');
 
