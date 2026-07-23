@@ -49,15 +49,15 @@ public function creating(MovimientoMateriales $movimiento)
         
         // 1. LÓGICA PARA MATERIAL SERIADO (Equipos/Instalaciones)
         if ($producto->es_seriado) { 
-            // Aquí validarías que el movimiento traiga el número de serie
-            // usualmente en una tabla pivote o campo 'referencia_seriado'
-            if (!$movimiento->referencia_sap) throw new \Exception("Material seriado requiere Serie.");
+            if (!$movimiento->referencia_sap) {
+                throw new \Exception("Material seriado requiere Serie.");
+            }
         }
 
         // 2. LÓGICA PARA PERECEDEROS / LOTES (Alimentos/Químicos)
         elseif ($producto->perecedero == 1) {
             if (is_null($movimiento->fkLotes)) {
-                // Selección automática FIFO si el descuento/venta no especificó uno
+                // Selección automática FIFO
                 $lote = Lotesalarma::where('producto_id', $producto->id)
                     ->where('cantidad', '>=', $movimiento->cantidad)
                     ->where('estado', 'disponible')
@@ -70,9 +70,11 @@ public function creating(MovimientoMateriales $movimiento)
         }
 
         // 3. LÓGICA PARA MISCELÁNEOS (Stock General)
-        // Se valida contra el stock general del producto sin importar lotes o series
-        if ($producto->stock < $movimiento->cantidad) {
-            throw new \Exception("Stock insuficiente general para {$producto->nombre}.");
+        // CAMBIO: Ahora es un 'else'. Solo evalúa productos comunes sin lote ni serie.
+        else {
+            if ($producto->stock < $movimiento->cantidad) {
+                throw new \Exception("Stock insuficiente general para {$producto->nombre}.");
+            }
         }
     }
 }

@@ -848,45 +848,43 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
     }
 }
 
+
 public function obtenerCodigoUnicoAjax()
 {
     $existe = true;
     $codigoUnico = '';
-    $intentos = 0; // Candado de seguridad para evitar congelar el servidor
+    $intentos = 0; 
 
     while ($existe && $intentos < 100) {
         $intentos++;
 
-        // 1. Tomamos los segundos del servidor (10 dígitos exactos en la época actual)
-        $segundos = (string)time(); 
+        // SOLUCIÓN VULNERABILIDAD 2: microtime(true) evita colisiones en el mismo segundo
+        $microtiempo = microtime(true);
+        $segundos = sprintf("%010d", (int)$microtiempo); 
+        $milisegundos = sprintf("%02d", ($microtiempo - (int)$microtiempo) * 100);
         
-        // 2. Prefijo '20' (2 dígitos) + Segundos (10 dígitos) = 12 dígitos matemáticos exactos
-        $base = "20" . $segundos;
-        
-        // Si por alguna razón la cadena no mide 12, la rellenamos con ceros a la derecha
+        // Prefijo '20' (2 digitos) + 8 digitos tiempo + 2 digitos milisegundos = 12 dígitos exactos
+        $base = "20" . substr($segundos, 4, 6) . $milisegundos;
         $base = str_pad($base, 12, "0", STR_PAD_RIGHT);
 
-        // 3. Calcular el dígito verificador oficial EAN-13
+        // Calcular el dígito verificador oficial EAN-13
         $suma = 0;
         for ($i = 0; $i < 12; $i++) {
             $numero = (int)$base[$i];
-            // Posiciones impares se multiplican por 1, posiciones pares (índices 1, 3, 5...) por 3
             $suma += ($i % 2 === 0) ? $numero : $numero * 3;
         }
         $digitoVerificador = (10 - ($suma % 10)) % 10;
-        
-        // 4. Código final estructurado de 13 dígitos
         $codigoUnico = $base . $digitoVerificador;
 
-        // 5. Validamos contra tu tabla real de productos
-        // REVISTA ESTO: Cambia 'Producto' por tu Modelo y 'codigo_barras' por tu columna real de la BD
-        $existe = Producto::where('codigo', $codigoUnico)->exists();
+        $existe = DB::table('productos')->where('codigo', $codigoUnico)->exists();
     }
 
+    if ($intentos >= 100) {
+        return response()->json(['status' => 'error', 'message' => 'No se pudo generar un código único.'], 500);
+    }
 
     return response()->json(['codigo' => $codigoUnico]);
 }
-
 
 // =========================================================================
 // SECCIÓN 1: CONFIGURACIÓN DE CABECERAS HTTP Y COLUMNAS EXACTAS DEL EXCEL
