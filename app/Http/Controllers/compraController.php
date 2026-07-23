@@ -728,7 +728,7 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
             'updated_at'         => now()
         ]);
 
-        $folioId = DB::table('folio')->insertGetId([
+        $folioId = DB::table('Folio')->insertGetId([
             'descripcion'          => 'Compra masiva n.' . $compraId . ' mediante comprobante ' . ($comprobante->defauldoc ?? 'Asiento de Compra'),
             'cabecera'             => 'Asiento de Compra Masiva Automatizado (DC)',
             'EstatusContable'      => 'C',
@@ -737,7 +737,7 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
             'fkUsuario'            => $idUsuario,
             'fkComprobante'        => $comprobante_id,
             'idOrigen'             => $compraId,
-            'TipoMovimiento'       => 'C',
+            'TipoMovimiento'       => 'A',
             'fkTienda'             => $fkTienda,
             'created_at'           => now(),
             'updated_at'           => now()
@@ -753,7 +753,7 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
                 $montoContableFinal = floatval($reglaContable->valorminimo ?? 0);
             }
 
-            DB::table('detallefolio')->insert([
+            DB::table('DetalleFolio')->insert([
                 'Monto'             => $montoContableFinal,
                 'Naturaleza'        => $reglaContable->Naturaleza, 
                 'fkCuenetaContable' => $reglaContable->fkCuentaContable,
