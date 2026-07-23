@@ -724,7 +724,6 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
             'comprobante_id'     => $comprobante_id,
             'proveedore_id'      => $proveedor_id,
             'fkTienda'           => $fkTienda,
-            'ClaveVista'         => $comprobante->ClaveVista,
             'created_at'         => now(),
             'updated_at'         => now()
         ]);
