@@ -18,7 +18,7 @@ return new class extends Migration
             // Relación externa (llave foránea)
             $table->foreignId('tienda_id')
                   ->nullable()
-                  ->constrained('tiendas')
+                  ->constrained('tienda')
                   ->onDelete('cascade');
             
             // Índices para búsquedas de alta velocidad
