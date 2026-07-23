@@ -11,35 +11,37 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Verifica si la tabla ya existe antes de intentar crearla
-        if (!Schema::hasTable('materialexistentesap')) {
-            Schema::create('materialexistentesap', function (Blueprint $table) {
-                $table->bigIncrements('id'); 
-                
-                $table->unsignedBigInteger('fkTienda')->nullable()->index(); // ⚡ Índice para filtros por Tienda
-                $table->string('serie')->nullable()->index(); // ⚡ Índice crucial: Las series deben buscarse al instante
-                $table->string('SKU')->nullable()->index();   // ⚡ Índice para búsquedas rápidas de materiales
-                $table->string('almacen')->nullable();
-                $table->string('Lote')->nullable()->index();  // ⚡ Índice para trazabilidad de lotes SAP
-                $table->string('MAC1')->nullable()->index();  // ⚡ Índice para validación de hardware
-                $table->string('MAC2')->nullable();
-                $table->string('MAC3')->nullable();
-                $table->string('ESTATUS')->nullable();
-                $table->double('COSTO', 12, 2)->nullable(); // 💡 Optimización: Ampliado a (12,2) por si entran montos grandes de inventario
-                $table->string('CENTRO')->nullable()->index(); // ⚡ Índice: Evita colapsos en tus consultas GROUP BY de autómatas
-                $table->date('Modificado_el')->nullable();
-                $table->string('Modificado_por')->nullable();
-                $table->date('Creado_el')->nullable();
-                $table->string('Creado_por')->nullable();
-                $table->string('TIPO')->nullable();
-                $table->string('unidadmedida')->nullable();
-                $table->string('TIPOMOVIMIENTO')->nullable();
-                $table->timestamps(); 
+        Schema::create('materialexistentesap', function (Blueprint $table) {
+            $table->id(); // Convención moderna de Laravel (BigIncrements implícito)
+            
+            // Relación externa limpia y tipada correctamente
+            $table->foreignId('fkTienda')
+                  ->nullable()
+                  ->constrained('tienda')
+                  ->onDelete('cascade');
+            
+            // Campos indexados para búsquedas de alta velocidad
+            $table->string('serie')->nullable()->index(); 
+            $table->string('SKU')->nullable()->index();   
+            $table->string('Lote')->nullable()->index();  
+            $table->string('MAC1')->nullable()->index();  
+            $table->string('CENTRO')->nullable()->index(); 
 
-                // Restricción de integridad referencial
-                $table->foreign('fkTienda')->references('id')->on('tienda')->onDelete('cascade');
-            });
-        }
+            // Campos informativos y técnicos
+            $table->string('almacen')->nullable();
+            $table->string('MAC2')->nullable();
+            $table->string('MAC3')->nullable();
+            $table->string('ESTATUS')->nullable();
+            $table->decimal('COSTO', 12, 2)->nullable(); // Reemplazado double por decimal (mayor precisión financiera)
+            $table->string('TIPO')->nullable();
+            $table->string('unidadmedida')->nullable();
+            $table->string('TIPOMOVIMIENTO')->nullable();
+
+            // Auditoría (Se eliminaron duplicados y se usa la convención de Laravel)
+            $table->string('Modificado_por')->nullable();
+            $table->string('Creado_por')->nullable();
+            $table->timestamps(); 
+        });
     }
 
     /**
