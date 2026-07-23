@@ -78,23 +78,22 @@
                         <!-----Producto---->
                         <div class="col-12">
 
-<select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
-
+<select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true">
+    <option value="" disabled selected>Selecciona un producto</option>
     @foreach($productos as $producto)
         <option value="{{ $producto->id }}"
-                data-img="{{ $producto->img_path }}"
                 data-stock="{{ $producto->stock }}"
                 data-precio="{{ $producto->precio_venta }}" 
                 data-lote="{{ $producto->numero_lote ?? 'N/A' }}"
                 data-vence="{{ $producto->fecha_vencimiento ?? 'N/A' }}"
                 data-cantidadlote="{{ $producto->cantidad_lote ?? 'N/A' }}"
-                data-reglas="{{ json_encode($producto->reglas_json) ?? 'N/A' }}"
-                data-detalle="{{ $producto->descripcion }}">
+                data-detalle="{{ $producto->descripcion }}"
+                data-reglas="{{ json_encode($producto->reglasPrecios) }}"> <!-- 🔥 Colección de múltiples reglas -->
             {{ $producto->nombre }} - {{ $producto->stock }}
         </option>
     @endforeach
-
 </select>
+
 
 <div class="mt-2">
     <small class="text-primary font-weight-bold" id="info_lote_guia"></small>
@@ -394,10 +393,125 @@
         let formula='';
         totalMASIVA = 0;
         let formulaEvaluadaiva='';
+        let promocionesAceptadas = {};
 
     //Constantes
     const impuesto = 12;
+
+function evaluarReglasPrecio(reglasColeccion, cantidadLlevada, precioOriginal) {
+    let resultado = {
+        precioOriginal: parseFloat(precioOriginal),
+        cantNum: parseInt(cantidadLlevada, 10),
+        precioFinalBase: parseFloat(precioOriginal),
+        descuentosEfectivoAcumulados: 0,
+        unidadesRegaloAcumuladas: 0,
+        propuestasPorFamilia: {} // 👈 Aquí se guardará de forma dinámica cada familia de reglas
+    };
+
+    if (!reglasColeccion || reglasColeccion === 'N/A' || reglasColeccion.length === 0) {
+        return resultado;
+    }
+
+    let reglas = (typeof reglasColeccion === 'string') ? JSON.parse(reglasColeccion) : reglasColeccion;
+    let cantNum = resultado.cantNum;
+    let ahoraMilli = new Date().getTime(); 
+
+    // 1. Filtrar las reglas vigentes en este instante por fecha y hora real
+    let reglasVigentes = reglas.filter(r => {
+        if (!r.fecha_inicio && !r.fecha_fin) return true;
+        let inicioMilli = r.fecha_inicio ? new Date(r.fecha_inicio).getTime() : 0;
+        let finMilli = r.fecha_fin ? new Date(r.fecha_fin).getTime() : 9999999999999;
+        return ahoraMilli >= inicioMilli && ahoraMilli <= finMilli;
+    });
+
+    if (reglasVigentes.length === 0) return resultado;
+
+    // 2. AGRUPACIÓN DINÁMICA POR FAMILIA (Agrupa por el string exacto de 'tipo_regla')
+    let familiasAgrupadas = {};
+    $.each(reglasVigentes, function(index, regla) {
+        let tipo = regla.tipo_regla;
+        if (!familiasAgrupadas[tipo]) {
+            familiasAgrupadas[tipo] = [];
+        }
+        familiasAgrupadas[tipo].push(regla);
+    });
+
+    // 3. PROCESAR CADA FAMILIA RESPETANDO LA ESCALA DE AUTORIDAD (Mayor volumen requerido domina)
+    $.each(familiasAgrupadas, function(tipoFamilia, listadoReglas) {
+        // Ordenar de mayor a menor cantidad mínima requerida
+        listadoReglas.sort((a, b) => parseInt(b.cantidad_minima, 10) - parseInt(a.cantidad_minima, 10));
+        
+        // Buscar cuál regla de esta familia específica cumple con el volumen del carrito
+        let reglaDominante = null;
+        for (let r of listadoReglas) {
+            if (cantNum >= (parseInt(r.cantidad_minima, 10) || 0)) {
+                reglaDominante = r;
+                break; // Cortamos: la de mayor volumen toma el mando de esta familia
+            }
+        }
+
+        // Si esta familia tiene una regla calificada para la cantidad actual, creamos su propuesta dinámica
+        if (reglaDominante) {
+            let min = parseInt(reglaDominante.cantidad_minima, 10) || 0;
+            let beneficio = parseFloat(reglaDominante.valor_beneficio);
+            let precioBase = parseFloat(precioOriginal);
+
+            let propuesta = {
+                reglaId: reglaDominante.id,
+                nombre: reglaDominante.nombre,
+                tipo_regla: tipoFamilia,
+                tipo_beneficio: reglaDominante.tipo_beneficio,
+                requiereConfirmacion: parseInt(reglaDominante.requiere_confirmacion, 10) || 0,
+                // Valores candidatos calculados
+                precioCalculado: precioBase,
+                descuentoEfectivoCalculado: 0,
+                regalosCalculados: 0,
+                mensaje: ""
+            };
+
+            // Matemática adaptativa según el comportamiento de la familia
+            if (tipoFamilia === 'escala_cantidad' || tipoFamilia === 'combo_mixto') {
+                if (reglaDominante.tipo_beneficio === 'precio_fijo' || reglaDominante.tipo_beneficio === 'precio_fijo_rebajado') {
+                    propuesta.precioCalculado = (beneficio > precioBase) ? round(beneficio / min) : beneficio;
+                } else if (reglaDominante.tipo_beneficio === 'porcentaje') {
+                    propuesta.precioCalculado = precioBase - (precioBase * (beneficio / 100));
+                }
+                propuesta.mensaje = `Modificar precio unitario a $${propuesta.precioCalculado.toFixed(2)}`;
+            }
+            else if (tipoFamilia === 'descuento_fijo') {
+                if (reglaDominante.tipo_beneficio === 'precio_fijo' || reglaDominante.tipo_beneficio === 'precio_fijo_rebajado') {
+                    // Actúa como precio cerrado por bloques, altera preferencialmente el precio unitario base
+                    propuesta.precioCalculado = round(beneficio / min);
+                    propuesta.mensaje = `Precio Cerrado de paquete: Ajustar precio a $${propuesta.precioCalculado.toFixed(2)}`;
+                } else {
+                    propuesta.descuentoEfectivoCalculado = (reglaDominante.tipo_beneficio === 'porcentaje') ? round((precioBase * cantNum) * (beneficio / 100)) : beneficio;
+                    propuesta.mensaje = `Oferta Directa: Restar -$${propuesta.descuentoEfectivoCalculado.toFixed(2)} al subtotal`;
+                }
+            }
+            else if (tipoFamilia === 'bonificacion') {
+                let paso = parseInt(reglaDominante.cantidad_paso, 10) || min;
+                let bloques = Math.floor(cantNum / paso);
+                if (bloques > 0) {
+                    propuesta.regalosCalculados = bloques * 1;
+                    propuesta.mensaje = `Bonificación: Otorgar ${propuesta.regalosCalculados} unidad(es) GRATIS`;
+                }
+            }
+            // 💡 EXTENSIBLE: Si en el futuro agregas un tipo_regla llamado 'cupon_promocional', simplemente
+            // agregas un "else if (tipoFamilia === 'cupon_promocional')" aquí dentro para procesar su matemática.
+
+            // Guardamos la propuesta final usando el nombre de la familia como la llave del objeto
+            resultado.propuestasPorFamilia[tipoFamilia] = propuesta;
+        }
+    });
+
+    return resultado;
+}
+
+
+
     $(document).ready(function() {
+
+
 
 
     $('#producto_id').selectpicker();
@@ -581,8 +695,10 @@ function actualizarClientes() {
     });
 }
 
-$('#btn_agregar').click(function() {
-    agregarProducto();
+// $('#btn_agregar').click(function() {    agregarProducto(); });
+
+$('#btn_agregar').off('click').on('click', function(e) {
+    agregarProducto(e);
 });
 
 $('#btnCancelarCompra').click(function() {
@@ -802,110 +918,502 @@ error: function(xhr) {
 
     });
 });
+function CalcularFormula(formulalocal, montoA) {
+    // 1. Validar que la fórmula exista y no sea nula/indefinida
+    if (!formulalocal || formulalocal === "" || formulalocal === "0") {
+        return 0; 
+    }
 
-    function CalcularFormula(formulalocal, montoA) {
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluadaiva = formulalocal.replace(/A/g, montoA);
-            // Evaluar la fórmula usando math.js
-            resultadoiva = math.evaluate(formulaEvaluadaiva);
-            // Redondear el resultado a 2 decimales
+    try {
+        // Reemplazar "A" en la fórmula con el valor de la variable A
+        formulaEvaluadaiva = formulalocal.replace(/A/g, montoA);
+        
+        // Evaluar la fórmula usando math.js
+        resultadoiva = math.evaluate(formulaEvaluadaiva);
+        
+        // 2. Asegurar que math.js haya devuelto un número antes de formatear decimales
+        if (resultadoiva !== undefined && resultadoiva !== null && !isNaN(resultadoiva)) {
             resultadoiva = parseFloat(resultadoiva.toFixed(2));
             return resultadoiva;
+        }
+        
+        return 0;
+    } catch (error) {
+        console.error("Error al evaluar la expresión matemática:", error);
+        return 0;
     }
-
-    function agregarProducto() {
-        let dataProducto = document.getElementById('producto_id').value.split('-');
-        //Obtener valores de los campos
-        let idProducto = dataProducto[0];
-        let nameProducto = $('#producto_id').find('option:selected').text();
-
-if(nameProducto) {
-    // Do something with the selected product name
-} else {
-    console.log("Producto no seleccionado");
 }
 
-        let cantidad = $('#cantidad').val();
-        let precioVenta = parseFloat($('#precio_venta').val());
-        let descuento = $('#descuento').val();
-        let stock = $('#stock').val();
-        var comprobante = document.getElementById('comprobante_id').value;
+function agregarProducto(e) {
+    if (e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }
 
-        if (comprobante === "") {
-            alert("Por favor, seleccione un comprobante.");
-            return false; // Detiene la ejecución de la función
-                    }
+    let rawValue = document.getElementById('producto_id').value;
+    if (!rawValue || rawValue === "") {
+        showModal('Seleccione un producto primero');
+        return false;
+    }
 
-        if (descuento == '') {
-            descuento = 0;
+    // 1. Extraer el ID numérico puro como un entero base 10
+    let dataProducto = rawValue.split('-');
+    let idProducto = parseInt(dataProducto[0], 10).toString(); 
+    
+    let optionActiva = $('#producto_id').find('option:selected');
+    let nameProducto = optionActiva.text().split(' - ')[0].trim(); // Solo el nombre limpio
+
+    let cantidadInput = $('#cantidad').val();
+    let precioVentaInput = $('#precio_venta').val();
+    let stockInput = $('#stock').val();
+    var comprobante = document.getElementById('comprobante_id').value;
+
+    if (comprobante === "") {
+        alert("Por favor, seleccione un comprobante.");
+        return false; 
+    }
+
+    let cantNum = parseInt(cantidadInput, 10);
+    let precioBase = parseFloat(precioVentaInput);
+    let stockNum = parseInt(stockInput, 10);
+
+    if (isNaN(cantNum) || cantNum <= 0) {
+        showModal('Ingrese una cantidad válida mayor a 0');
+        return false;
+    }
+
+    // 2. Buscar si el ID ya existe en el carrito
+    let indexExiste = producto.indexOf(idProducto);
+
+    if (indexExiste !== -1) {
+        let nuevaCantidadTotal = parseInt(Cantidad[indexExiste], 10) + cantNum;
+        if (nuevaCantidadTotal > stockNum) {
+            showModal('La cantidad acumulada supera el stock disponible');
+            return false;
         }
+        Cantidad[indexExiste] = nuevaCantidadTotal; // Suma y acumula en la misma fila
+    } else {
+        if (cantNum > stockNum) {
+            showModal('La cantidad supera el stock disponible');
+            return false;
+        }
+        // Insertar registro nuevo
+        producto.push(idProducto);
+        nombre.push(nameProducto);
+        Cantidad.push(cantNum);
+        precioventa.push(precioBase);
+        Descuento.push(0);
+        subtotal.push(0);
+        subiva.push(0);
+    }
 
-        //Validaciones
-        //1.Para que los campos no esten vacíos
-        if (idProducto != '' && cantidad != '') {
+    // Ejecutar recálculo masivo centralizado
+    recalcularYRedibujarVenta();
+    limpiarCampos();
+}
 
-            //2. Para que los valores ingresados sean los correctos
-            if (parseInt(cantidad) > 0 && (cantidad % 1 == 0) && parseFloat(descuento) >= 0) {
 
-                //3. Para que la cantidad no supere el stock
-                if (parseInt(cantidad) <= parseInt(stock)) {
-                    //Calcular valores
 
-                    subtotal[cont] = round(cantidad * precioVenta - descuento);
-                    sumas += cantidad;
-                    total+=subtotal[cont];
 
-                    sumadocdb=round(total);
-                    subiva[cont]=CalcularFormula(formula,subtotal[cont]);
-                    resultadoiva=CalcularFormula(formula,total);
-                    IVA = resultadoiva;
-                    //Crear la fila
-                    let fila = '<tr id="fila' + cont + '">' +
-                        '<th>' + (cont + 1) + '</th>' +
-                        '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
-                        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-                        '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVenta + '">' + precioVenta + '</td>' +
-                        '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
-                        '<td><input type="hidden" name="arraydescuento[]" value="' + descuento + '">' + descuento + '</td>' +
-                        '<td>' + subtotal[cont] + '</td>' +
-                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                        '</tr>';
+// ─── FUNCIÓN AUXILIAR AISLADA: Renderiza la fila final en la tabla ───
+function ejecutarInsercionTabla(idProducto, nameProducto, cantNum, precioUnidad, descuentoAplicado, stockNum) {
+    if (cantNum <= stockNum) {
+        let subtotalFila = round((cantNum * precioUnidad) - descuentoAplicado);
+        if (subtotalFila < 0) subtotalFila = 0;
 
-                    //Acciones después de añadir la fila
-                    $('#tabla_detalle_tbody').append(fila);
-                    limpiarCampos();
+        subtotal[cont] = subtotalFila;
+        sumas += cantNum;
+        total += subtotalFila;
+        sumadocdb = round(total);
+        
+        subiva[cont] = CalcularFormula(formula, subtotalFila);
+        resultadoiva = CalcularFormula(formula, total);
+        IVA = resultadoiva;
 
-                    disableButtons();
+        let fila = '<tr id="fila' + cont + '">' +
+            '<th>' + (cont + 1) + '</th>' +
+            '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
+            '<td><input type="hidden" name="arraycantidad[]" value="' + cantNum + '">' + cantNum + '</td>' +
+            '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioUnidad + '">' + precioUnidad + '</td>' +
+            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
+            '<td><input type="hidden" name="arraydescuento[]" value="' + descuentoAplicado + '">' + descuentoAplicado + '</td>' +
+            '<td>' + subtotalFila + '</td>' +
+            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+            '</tr>';
 
-                    resultadoiva = resultadoiva.toFixed(2);
+        $('#tabla_detalle_tbody').append(fila);
+        limpiarCampos();
+        disableButtons();
 
-            producto[cont]=idProducto;
-            Cantidad[cont]=cantidad;
-            precioventa[cont]=parseFloat(precioVenta);
-            nombre[cont]=nameProducto;
-            cantidadarticulos+=parseInt(Cantidad[cont],15);
-            Descuento[cont]=descuento;
-            cont++;
-            sumarArreglos(formulas,monto);
+        producto[cont] = idProducto;
+        Cantidad[cont] = cantNum;
+        precioventa[cont] = precioUnidad;
+        nombre[cont] = nameProducto;
+        cantidadarticulos += cantNum;
+        Descuento[cont] = descuentoAplicado;
+        cont++;
+        
+        sumarArreglos(formulas, monto);
 
-                    //Mostrar los campos calculados
-                    $('#sumas').html(sumas);
-                    $('#IVA').html(IVA);
-                    $('#total').html(total);
-                    $('#subiva').val(subiva);
-                    $('#impuesto').val(IVA);
-                    $('#inputTotal').val(total);
-                } else {
-                    showModal('Cantidad incorrecta');
+        $('#sumas').html(sumas);
+        $('#IVA').html(IVA);
+        $('#total').html(total.toFixed(2));
+        $('#subiva').val(subiva);
+        $('#impuesto').val(IVA);
+        $('#inputTotal').val(total);
+    } else {
+        showModal('Cantidad incorrecta: Supera el stock disponible');
+    }
+}
+
+
+
+function agregarProductoScanner(sku) {
+    let dataProducto = "";
+    let idProducto = 0;
+    let nameProducto = "";
+
+    var comprobanteId = sku;
+    if (comprobanteId) {
+        $.ajax({
+            url: '/compras/detallesSCAN/' + comprobanteId + '',
+            type: 'GET',
+            success: function(response) {
+                if (!response || response.length === 0) {
+                    console.warn("No se encontró producto.");
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'El producto no se encuentra disponible',
+                        text: 'Código: ' + comprobanteId,
+                    });
+                    return;
                 }
 
-            } else {
-                showModal('Valores incorrectos');
-            }
+                var detalle = response;
+                let idProductos = detalle.producto_id;
+                let seleccionable = idProductos + "-" + detalle.existencia + "-" + detalle.precio_venta;
+                dataProducto = seleccionable;
+                idProducto = detalle.producto_id;
+                nameProducto = detalle.producto_nombre;
 
+                // Sincronizar el selectpicker
+                $("#producto_id option").each(function () {
+                    let v = $(this).val();
+                    if (v.startsWith(seleccionable)) {
+                        $("#producto_id").val(v).change();
+                        $('#producto_id').selectpicker('refresh');
+                        return false; 
+                    }
+                });
+                
+                $('#precio_venta').val(detalle.precio_venta);
+                $('#stock').val(detalle.existencia);
+
+                let precioVentaBase = parseFloat(detalle.precio_venta);
+                let stockMax = parseInt(detalle.existencia, 10);
+                var comprobante = document.getElementById('comprobante_id').value;
+
+                if (comprobante === "") {
+                    alert("Por favor, seleccione un comprobante.");
+                    return false; 
+                }
+
+                // ─── LÓGICA DE ACUMULACIÓN INTELIGENTE ───
+                // Buscamos si el ID de este producto ya está en el carrito
+                let indexExiste = producto.indexOf(idProducto);
+                let cantidadAProcesar = 1; // Por defecto el escáner suma de 1 en 1
+
+                if (indexExiste !== -1) {
+                    // Si ya existe, calculamos cuánto tendría acumulado en total
+                    cantidadAProcesar = parseInt(Cantidad[indexExiste], 10) + 1;
+                    
+                    if (cantidadAProcesar > stockMax) {
+                        showModal('No hay suficiente stock para seguir acumulando este producto');
+                        return false;
+                    }
+
+                    // Actualizamos temporalmente el arreglo de cantidades antes del recálculo
+                    Cantidad[indexExiste] = cantidadAProcesar;
+                } else {
+                    // Si es un producto nuevo en esta venta, lo inicializamos en los arreglos
+                    producto.push(idProducto);
+                    nombre.push(nameProducto.split(' - ')[0].trim());
+                    Cantidad.push(1);
+                    precioventa.push(precioVentaBase);
+                    Descuento.push(0);
+                    subtotal.push(precioVentaBase);
+                    subiva.push(0);
+                }
+
+                // ─── RECALCULAR Y REDIBUJAR TODA LA TABLA ───
+                recalcularYRedibujarVenta();
+                limpiarCampos();
+            },
+            error: function(xhr, status, error) {
+                console.error("Error en el flujo del escáner:", error);
+            }
+        });
+    }
+}
+
+function recalcularYRedibujarVenta() {
+    var tableBody = $('#tabla_detalle_tbody');
+    tableBody.empty(); // Limpiar contenedor físico de la vista
+
+    sumas = 0;
+    total = 0;
+    cantidadarticulos = 0;
+    cont = 0; 
+
+    let pausarPorConfirmacion = false;
+
+    $.each(producto, function(index, idProd) {
+        if (!idProd || idProd === "" || pausarPorConfirmacion) return; 
+
+        let cantAcumulada = parseInt(Cantidad[index], 10);
+        let precioBase = parseFloat(precioventa[index]);
+        let nameProd = nombre[index];
+
+        let optionItem = $("#producto_id option").filter(function() {
+            let optVal = $(this).val() ? $(this).val().toString().trim() : "";
+            return optVal === idProd || optVal.startsWith(idProd + "-");
+        });
+        let reglasColeccion = optionItem.data('reglas') || [];
+
+        // 1. Obtener el mapa dinámico de propuestas del motor
+        let analisis = evaluarReglasPrecio(reglasColeccion, cantAcumulada, precioBase);
+        
+        // 2. Inicializar las variables contables base de consolidación de cascada
+        let precioUnitarioCascada = precioBase;
+        let descuentosEfectivoCascada = 0;
+        let unidadesRegaloCascada = 0;
+        let tagsPromosAplicadas = [];
+
+        // 3. RECORRER E INTERCEPTAR DINÁMICAMENTE CADA FAMILIA CALIFICADA
+        $.each(analisis.propuestasPorFamilia, function(nombreFamilia, datosPropuesta) {
+            if (pausarPorConfirmacion) return false; 
+
+            let tokenDecision = idProd + "_" + nombreFamilia + "_" + cantAcumulada;
+
+            if (datosPropuesta.requiereConfirmacion === 1) {
+                if (promocionesAceptadas[tokenDecision] === undefined) {
+                    pausarPorConfirmacion = true;
+                    
+                    Swal.fire({
+                        title: 'Confirmar Promoción',
+                        html: `Se detectó un beneficio para la familia <b>${nombreFamilia}</b>:<br><b>${datosPropuesta.mensaje}</b> por la regla <b>${datosPropuesta.nombre}</b>.<br>¿Desea aplicarlo a la venta?`,
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonColor: '#198754',
+                        cancelButtonColor: '#dc3545',
+                        confirmButtonText: 'Sí, aplicar',
+                        cancelButtonText: 'No, precio regular',
+                        allowOutsideClick: false
+                    }).then((result) => {
+                        promocionesAceptadas[tokenDecision] = !!result.isConfirmed; 
+                        recalcularYRedibujarVenta(); 
+                    });
+                    return false; 
+                }
+                
+                if (promocionesAceptadas[tokenDecision] === true) {
+                    inyectarBeneficioAFase(datosPropuesta);
+                }
+            } else {
+                inyectarBeneficioAFase(datosPropuesta);
+            }
+        });
+
+        function inyectarBeneficioAFase(prop) {
+            if (prop.precioCalculado < precioUnitarioCascada) {
+                precioUnitarioCascada = prop.precioCalculado;
+            }
+            descuentosEfectivoCascada += prop.descuentoEfectivoCalculado;
+            // 🔥 CORREGIDO: Asignación directa del volumen de regalos determinado en la Fase 3 del motor
+            unidadesRegaloCascada = prop.regalosCalculados > 0 ? prop.regalosCalculados : unidadesRegaloCascada;
+            
+            tagsPromosAplicadas.push(prop.nombre);
         }
 
+        if (pausarPorConfirmacion) return false; 
+
+        // =========================================================================
+        // 📊 CONSOLIDACIÓN NETO EN CASCADA COMPUESTA CORREGIDA
+        // =========================================================================
+        let costoTotalOrdinarioLista = precioBase * cantAcumulada;
+        
+        let unidadesACobrarNetas = cantAcumulada - unidadesRegaloCascada;
+        if (unidadesACobrarNetas < 0) unidadesACobrarNetas = 0;
+
+        let subtotalCalculadoRenglon = round(unidadesACobrarNetas * precioUnitarioCascada) - descuentosEfectivoCascada;
+        if (subtotalCalculadoRenglon < 0) subtotalCalculadoRenglon = 0;
+
+        let descuentoTotalAhorrado = round(costoTotalOrdinarioLista - subtotalCalculadoRenglon);
+        let precioVisualProrrateado = round(subtotalCalculadoRenglon / cantAcumulada);
+
+        // Guardar en arreglos de memoria contable locales
+        subtotal[index] = subtotalCalculadoRenglon;
+        Descuento[index] = descuentoTotalAhorrado;
+        subiva[index] = CalcularFormula(formula, subtotalCalculadoRenglon);
+
+        sumas += cantAcumulada;
+        total += subtotalCalculadoRenglon;
+        cantidadarticulos += cantAcumulada;
+
+        let nombreVisualCelda = nameProd;
+        if (tagsPromosAplicadas.length > 0) {
+            nombreVisualCelda += ` <small class="text-success d-block font-weight-bold">✓ Promo: ${tagsPromosAplicadas.join(' + ')}</small>`;
+        }
+
+        // Renderizado del renglón en la tabla HTML
+        let fila = '<tr id="fila' + cont + '">' +
+            '<th>' + (cont + 1) + '</th>' +
+            '<td><input type="hidden" name="arrayidproducto[]" value="' + idProd + '">' + nombreVisualCelda + '</td>' +
+            '<td><input type="hidden" name="arraycantidad[]" value="' + cantAcumulada + '">' + cantAcumulada + '</td>' +
+            '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioUnitarioCascada + '">' + precioUnitarioCascada + '</td>' +
+            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[index] + '">' + subiva[index] + '</td>' +
+            '<td><input type="hidden" name="arraydescuento[]" value="' + descuentoTotalAhorrado + '">' + descuentoTotalAhorrado + '</td>' +
+            '<td>' + subtotalCalculadoRenglon.toFixed(2) + '</td>' +
+            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+            '</tr>';
+
+        tableBody.append(fila);
+        cont++; 
+    });
+
+    if (pausarPorConfirmacion) return; 
+
+    // Renderizar contadores finales unificados del pie de la tabla
+    IVA = CalcularFormula(formula, total);
+
+    $('#sumas').html(sumas);
+    $('#IVA').html(IVA);
+    $('#total').html(total.toFixed(2));
+    $('#subiva').val(subiva);
+    $('#impuesto').val(IVA);
+    $('#inputTotal').val(total);
+
+    sumarArreglos(formulas, monto);
+    disableButtons();
+}
+
+
+function agregarProductoScannerCam(sku) {
+    let dataProducto = "";
+    let idProducto = 0;
+    let nameProducto = "";
+
+    var comprobanteId = sku;
+    if (comprobanteId) {
+        $.ajax({
+            url: '/compras/detallesSCAN/' + comprobanteId + '',
+            type: 'GET',
+            success: function(response) {
+                if (!response || response.length === 0) {
+                    console.warn("No se encontró producto.");
+                    return;
+                }
+
+                var detalle = response[0];
+                let idProductos = detalle.producto_id;
+                let seleccionable = idProductos + "-" + detalle.existencia + "-" + detalle.precio_venta;
+                dataProducto = seleccionable;
+                idProducto = detalle.producto_id;
+                nameProducto = detalle.producto_nombre;
+
+                $("#producto_id option").each(function () {
+                    let v = $(this).val();
+                    if (v.startsWith(seleccionable)) {
+                        $("#producto_id").val(v).change();
+                        $('#producto_id').selectpicker('refresh');
+                        return false; 
+                    }
+                });
+
+                $('#precio_venta').val(detalle.precio_venta);
+                $('#stock').val(detalle.existencia);
+
+                let cantidad = parseInt($('#cantidad').val()) || 1; 
+                let precioVenta = parseFloat(detalle.precio_venta);
+                let stock = parseInt(detalle.existencia);
+                var comprobante = document.getElementById('comprobante_id').value;
+
+                if (comprobante === "") {
+                    alert("Por favor, seleccione un comprobante.");
+                    return false;
+                }
+
+                if (idProducto != '' && cantidad > 0) {
+                    if (cantidad <= stock) {
+                        
+                        // Extraer reglas dinámicas desde la opción activa del selectpicker
+                        let reglasColeccion = $('#producto_id').find('option:selected').data('reglas') || [];
+                        let reglaEfectiva = evaluarReglasPrecio(reglasColeccion, cantidad, precioVenta);
+
+                        // Asignación directa limpia sin duplicar variables con let
+                        let descuento = reglaEfectiva.descuentoTotal;
+                        let precioVentaFinal = reglaEfectiva.precioFinal;
+
+                        if (reglaEfectiva.mensaje !== "") {
+                            showModal(reglaEfectiva.mensaje, 'success'); 
+                        }
+
+                        subtotal[cont] = round(cantidad * precioVentaFinal - descuento);
+                        if (subtotal[cont] < 0) subtotal[cont] = 0;
+
+                        sumas += cantidad;
+                        total += subtotal[cont];
+                        sumadocdb = round(total);
+
+                        subiva[cont] = CalcularFormula(formula, subtotal[cont]);
+                        resultadoiva = CalcularFormula(formula, total);
+                        IVA = resultadoiva;
+
+                        let fila = '<tr id="fila' + cont + '">' +
+                            '<th>' + (cont + 1) + '</th>' +
+                            '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
+                            '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
+                            '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVentaFinal + '">' + precioVentaFinal + '</td>' +
+                            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
+                            '<td><input type="hidden" name="arraydescuento[]" value="' + descuento + '">' + descuento + '</td>' +
+                            '<td>' + subtotal[cont] + '</td>' +
+                            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+                            '</tr>';
+
+                        $('#tabla_detalle_tbody').append(fila);
+                        limpiarCampos();
+                        disableButtons();
+
+                        resultadoiva = resultadoiva.toFixed(2);
+
+                        producto[cont] = idProducto;
+                        Cantidad[cont] = cantidad;
+                        precioventa[cont] = parseFloat(precioVentaFinal);
+                        nombre[cont] = nameProducto;
+                        cantidadarticulos += cantidad;
+                        Descuento[cont] = descuento;
+                        cont++;
+                        
+                        sumarArreglos(formulas, monto);
+
+                        $('#sumas').html(sumas);
+                        $('#IVA').html(IVA);
+                        $('#total').html(total);
+                        $('#subiva').val(subiva);
+                        $('#impuesto').val(IVA);
+                        $('#inputTotal').val(total);
+                    } else {
+                        showModal('Cantidad incorrecta');
+                    }
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error("Error al cargar los detalles:", error);
+            }
+        });
     }
+}
+
 
 function ProductoSelect(idProducto) {
     $('#producto_id').selectpicker('val', idProducto.toString());
@@ -913,300 +1421,20 @@ function ProductoSelect(idProducto) {
 }
 
 
+function eliminarProducto(indice) {
+    // Remover el elemento directamente de todos los arreglos usando su posición
+    producto.splice(indice, 1);
+    nombre.splice(indice, 1);
+    Cantidad.splice(indice, 1);
+    precioventa.splice(indice, 1);
+    Descuento.splice(indice, 1);
+    subtotal.splice(indice, 1);
+    subiva.splice(indice, 1);
 
-      function agregarProductoScanner(sku) {
-        let dataProducto = "";
-        //Obtener valores de los campos
-        let idProducto = 0;
-        let nameProducto = "";
-
-        var comprobanteId = sku;
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detallesSCAN/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-
-                if (!response || response.length === 0) {
-                    console.warn("Nose encontró producto.");
-
-                                        Swal.fire({
-    icon: 'warning',
-    title: 'El producto no se encuentra dentro de la lista de disponibles producto',
-    text: 'Codigo: ' + comprobanteId,
-
-});
-                    return;
-                }
-
-            var detalle = response[0];
-
-                let idProductos = detalle.producto_id;
-                let seleccionable = idProductos + "-" +detalle.existencia+"-"+detalle.precio_venta;
-                dataProducto = seleccionable;
-                idProducto = detalle.producto_id;
-                nameProducto = detalle.producto_nombre;
-
-                $("#producto_id option").each(function () {
-                    let v = $(this).val();
-                    if (v.startsWith(seleccionable)) {
-                        $("#producto_id").val(v).change();
-                        $('#producto_id').selectpicker('refresh');
-                        return false; // salir del each
-                    }
-                });
-                $('#precio_venta').val(detalle.precio_venta);
-                $('#stock').val(detalle.existencia);
-
-                if(nameProducto) {
-    // Do something with the selected product name
-} else {
-    console.log("Producto no seleccionado");
+    // 🔥 Volver a ejecutar el motor para que redibuje la tabla limpia con los que quedan
+    recalcularYRedibujarVenta();
 }
 
-        let cantidad = $('#cantidad').val();
-        let precioVenta = detalle.precio_venta;
-        let descuento = $('#descuento').val();
-        let stock = detalle.existencia;
-        var comprobante = document.getElementById('comprobante_id').value;
-
-        if (comprobante === "") {
-            alert("Por favor, seleccione un comprobante.");
-            return false; // Detiene la ejecución de la función
-                    }
-
-        if (descuento == '') {
-            descuento = 0;
-        }
-
-        //Validaciones
-        //1.Para que los campos no esten vacíos
-        if (idProducto != '' && cantidad != '') {
-
-            //2. Para que los valores ingresados sean los correctos
-            if (parseInt(cantidad) > 0 && (cantidad % 1 == 0) && parseFloat(descuento) >= 0) {
-
-                //3. Para que la cantidad no supere el stock
-                if (parseInt(cantidad) <= parseInt(stock)) {
-                    //Calcular valores
-
-                    subtotal[cont] = round(cantidad * precioVenta - descuento);
-                    sumas += cantidad;
-                    total+=subtotal[cont];
-
-                    sumadocdb=round(total);
-                    subiva[cont]=CalcularFormula(formula,subtotal[cont]);
-                    resultadoiva=CalcularFormula(formula,total);
-                    IVA = resultadoiva;
-                    //Crear la fila
-                    let fila = '<tr id="fila' + cont + '">' +
-                        '<th>' + (cont + 1) + '</th>' +
-                        '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
-                        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-                        '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVenta + '">' + precioVenta + '</td>' +
-                        '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
-                        '<td><input type="hidden" name="arraydescuento[]" value="' + descuento + '">' + descuento + '</td>' +
-                        '<td>' + subtotal[cont] + '</td>' +
-                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                        '</tr>';
-
-                    //Acciones después de añadir la fila
-                    $('#tabla_detalle_tbody').append(fila);
-                    limpiarCampos();
-
-                    disableButtons();
-
-                    resultadoiva = resultadoiva.toFixed(2);
-
-            producto[cont]=idProducto;
-            Cantidad[cont]=cantidad;
-            precioventa[cont]=parseFloat(precioVenta);
-            nombre[cont]=nameProducto;
-            cantidadarticulos+=parseInt(Cantidad[cont],15);
-            Descuento[cont]=descuento;
-            cont++;
-            sumarArreglos(formulas,monto);
-
-                    //Mostrar los campos calculados
-                    $('#sumas').html(sumas);
-                    $('#IVA').html(IVA);
-                    $('#total').html(total);
-                    $('#subiva').val(subiva);
-                    $('#impuesto').val(IVA);
-                    $('#inputTotal').val(total);
-                } else {
-                    showModal('Cantidad incorrecta');
-                }
-
-            } else {
-                showModal('Valores incorrectos');
-            }
-
-        }
-
-
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
-    });
-}
-
-    }
-
-      function agregarProductoScannerCam(sku) {
-        let dataProducto = "";
-        //Obtener valores de los campos
-        let idProducto = 0;
-        let nameProducto = "";
-
-        var comprobanteId = sku;
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detallesSCAN/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-
-                if (!response || response.length === 0) {
-                    console.warn("No se encontró producto.");
-                    return;
-                }
-
-            var detalle = response[0];
-
-                let idProductos = detalle.producto_id;
-                let seleccionable = idProductos + "-" +detalle.existencia+"-"+detalle.precio_venta;
-                dataProducto = seleccionable;
-                idProducto = detalle.producto_id;
-                nameProducto = detalle.producto_nombre;
-
-                $("#producto_id option").each(function () {
-                    let v = $(this).val();
-                    if (v.startsWith(seleccionable)) {
-                        $("#producto_id").val(v).change();
-                        $('#producto_id').selectpicker('refresh');
-                        return false; // salir del each
-                    }
-                });
-                $('#precio_venta').val(detalle.precio_venta);
-                $('#stock').val(detalle.existencia);
-
-                if(nameProducto) {
-    // Do something with the selected product name
-} else {
-    console.log("Producto no seleccionado");
-}
-
-        let cantidad = $('#cantidad').val();
-        let precioVenta = detalle.precio_venta;
-        let descuento = $('#descuento').val();
-        let stock = detalle.existencia;
-        var comprobante = document.getElementById('comprobante_id').value;
-
-        if (comprobante === "") {
-            alert("Por favor, seleccione un comprobante.");
-            return false; // Detiene la ejecución de la función
-                    }
-
-        if (descuento == '') {
-            descuento = 0;
-        }
-
-        //Validaciones
-        //1.Para que los campos no esten vacíos
-        if (idProducto != '' && cantidad != '') {
-
-            //2. Para que los valores ingresados sean los correctos
-            if (parseInt(cantidad) > 0 && (cantidad % 1 == 0) && parseFloat(descuento) >= 0) {
-
-                //3. Para que la cantidad no supere el stock
-                if (parseInt(cantidad) <= parseInt(stock)) {
-                    //Calcular valores
-
-                    subtotal[cont] = round(cantidad * precioVenta - descuento);
-                    sumas += cantidad;
-                    total+=subtotal[cont];
-
-                    sumadocdb=round(total);
-                    subiva[cont]=CalcularFormula(formula,subtotal[cont]);
-                    resultadoiva=CalcularFormula(formula,total);
-                    IVA = resultadoiva;
-                    //Crear la fila
-                    let fila = '<tr id="fila' + cont + '">' +
-                        '<th>' + (cont + 1) + '</th>' +
-                        '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
-                        '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-                        '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVenta + '">' + precioVenta + '</td>' +
-                        '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
-                        '<td><input type="hidden" name="arraydescuento[]" value="' + descuento + '">' + descuento + '</td>' +
-                        '<td>' + subtotal[cont] + '</td>' +
-                        '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                        '</tr>';
-
-                    //Acciones después de añadir la fila
-                    $('#tabla_detalle_tbody').append(fila);
-                    limpiarCampos();
-
-                    disableButtons();
-
-                    resultadoiva = resultadoiva.toFixed(2);
-
-            producto[cont]=idProducto;
-            Cantidad[cont]=cantidad;
-            precioventa[cont]=parseFloat(precioVenta);
-            nombre[cont]=nameProducto;
-            cantidadarticulos+=parseInt(Cantidad[cont],15);
-            Descuento[cont]=descuento;
-            cont++;
-            sumarArreglos(formulas,monto);
-
-                    //Mostrar los campos calculados
-                    $('#sumas').html(sumas);
-                    $('#IVA').html(IVA);
-                    $('#total').html(total);
-                    $('#subiva').val(subiva);
-                    $('#impuesto').val(IVA);
-                    $('#inputTotal').val(total);
-                } else {
-                    showModal('Cantidad incorrecta');
-                }
-
-            } else {
-                showModal('Valores incorrectos');
-            }
-
-        }
-
-
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
-    });
-}
-
-    }
-
-
-    function eliminarProducto(indice) {
-        //Calcular valores
-        sumas -= round(subtotal[indice]);
-        IVA = round(sumas / 100 * impuesto);
-        total = round(sumas + IVA);
-
-        //Mostrar los campos calculados
-        $('#sumas').html(sumas);
-        $('#IVA').html(IVA);
-        $('#total').html(total);
-        $('#subiva').html(subiva);
-        $('#impuesto').val(IVA);
-        $('#inputTotal').val(total);
-
-        //Eliminar el fila de la tabla
-        $('#fila' + indice).remove();
-
-        disableButtons();
-    }
 
     function cancelarVenta() {
         //Elimar el tbody de la tabla

@@ -30,7 +30,8 @@ use App\Models\DetalleComprobante;
 use App\Models\Lotesalarma;
 use App\Models\MovimientoMateriales;
 use Illuminate\Support\Facades\Auth;
-
+use MathParser\StdMathParser;
+use MathParser\Interpreting\Evaluator;
 
 
 class compraController extends Controller
@@ -95,6 +96,34 @@ class compraController extends Controller
         // Pasar tanto compras como productos a la vista (si ambos son necesarios)
         return view('compra.index', compact('compras', 'productos'));
     }
+
+    private function evaluarFormula($formula, $A)
+{
+    try {
+        if (empty($formula)) return 0;
+
+        // 1. Convertir porcentajes (12% → 0.12)
+        $formula = preg_replace_callback('/(\d+(\.\d+)?)%/', function ($match) {
+            return $match[1] / 100;
+        }, $formula);
+
+        // 2. Reemplazar la variable A por el valor numérico
+        $formula = str_replace('A', $A, $formula);
+
+        // 3. Parsear expresión usando la librería del proyecto
+        $parser = new StdMathParser();
+        $AST = $parser->parse($formula);
+
+        // 4. Evaluar el árbol de sintaxis abstracta
+        $evaluator = new Evaluator();
+        $resultado = $AST->accept($evaluator);
+
+        return round($resultado, 2);
+
+    } catch (\Exception $e) {
+        return 0;
+    }
+}
 
     public function create()
     {
@@ -370,12 +399,574 @@ foreach ($lotesPorActualizar as $loteUpdate) {
         DB::commit();
         return redirect()->route('compras.index')->with('success', 'Compra registrada con éxito.');
 
+} catch (\Exception $e) {
+    DB::rollBack();
+    
+    // Devolvemos una respuesta JSON con código 500 para que AJAX la detecte en la sección de error
+    return response()->json([
+        'error' => 'Error al guardar la compra: ' . $e->getMessage()
+    ], 500);
+}
+
+}
+
+// =========================================================================
+// PARTE 1: INICIALIZACIÓN, TRANSACCIÓN Y GESTIÓN DE PROVEEDOR (ÍNDICE 0)
+// =========================================================================
+public function storeMasivoExcel(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+
+        DB::beginTransaction();
+
+        $fkTienda = session('user_fkTienda');
+        $idUsuario = auth()->id();
+
+        // =========================================================================
+        // PARTE 1: INDEXAR O CREAR EL PROVEEDOR RAÍZ
+        // =========================================================================
+        $proveedor_id = $request->proveedore_id;
+        $arrayNits = $request->get('array_proveedor_nit') ?? [];
+        $arrayNoms = $request->get('array_proveedor_nombre') ?? [];
+        
+$nombreProveedor = (!empty($arrayNoms) && is_array($arrayNoms)) ? trim($arrayNoms[0]) : (is_string($arrayNoms) ? trim($arrayNoms) : 'Proveedor Masivo');
+$numeroDocumento = (!empty($arrayNits) && is_array($arrayNits)) ? trim($arrayNits[0]) : (is_string($arrayNits) ? trim($arrayNits) : null);
+        
+
+        if (empty($proveedor_id) && !empty($numeroDocumento)) {
+            $personaExistente = DB::table('personas')
+                ->where('numero_documento', $numeroDocumento)
+                ->first();
+
+            if (!$personaExistente) {
+                $personaId = DB::table('personas')->insertGetId([
+                    'razon_social'     => $nombreProveedor,
+                    'direccion'        => $request->get('proveedor_direccion', 'Ciudad'),
+                    'tipo_persona'     => 'Juridica',
+                    'estado'           => 1, 
+                    'documento_id'     => $request->get('documento_id', 1), 
+                    'numero_documento' => $numeroDocumento,
+                    'created_at'       => now(),
+                    'updated_at'       => now()
+                ]);
+            } else {
+                $personaId = $personaExistente->id;
+            }
+
+            $proveedorExistente = DB::table('proveedores')
+                ->where('persona_id', $personaId)
+                ->first();
+
+            if (!$proveedorExistente) {
+                $proveedor_id = DB::table('proveedores')->insertGetId([
+                    'persona_id' => $personaId,
+                    'fkTienda'   => $fkTienda,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            } else {
+                $proveedor_id = $proveedorExistente->id;
+            }
+        }
+
+        if (empty($proveedor_id)) {
+            throw new \Exception("No se pudo determinar o registrar un Proveedor válido con el NIT proporcionado.");
+        }
+              // =========================================================================
+        // PARTE 2: BUCLE ITERADOR - CONTROL MULTITIENDA Y CATÁLOGOS
+        // =========================================================================
+        $arrayCodigos      = array_values($request->get('array_codigo') ?? []);
+        $arrayNombres      = array_values($request->get('array_nombre') ?? []);
+        $arrayMarcasTxt    = array_values($request->get('array_marca_nombre') ?? []);
+        $arrayPresentasTxt = array_values($request->get('array_presentacion_nombre') ?? []);
+        $arrayCategoriasTxt= array_values($request->get('array_categoria_nombre') ?? []); 
+        $arrayPerecedero   = array_values($request->get('array_perecedero') ?? []);
+
+        $arrayCantidad         = array_values($request->get('arraycantidad') ?? []);
+        $arrayPrecioCompra     = array_values($request->get('arraypreciocompra') ?? []);
+        $arrayPrecioVenta      = array_values($request->get('arrayprecioventa') ?? []);
+        $arraysubiva           = array_values($request->get('arraysubiva') ?? []);
+        $arrayFechaVencimiento = array_values($request->get('arrayfecha_vencimiento') ?? []);
+
+        $mapaIdsProductos = [];
+        $subtotalAcumuladoGlobal = 0; // Guardará la suma de CANTIDAD * PRECIO_COMPRA
+
+// 1. Crear el encabezado de la compra antes del ciclo para obtener su ID
+$compra = Compra::create([
+    'fkTienda'           => $fkTienda,
+    'fkProveedor'        => $idProveedorFinal ?? null, 
+    'numero_comprobante' => 'MASIVA-' . time(),        
+    'fecha_compra'       => now()->toDateString(),
+    'fecha_hora'         => now(), 
+    'total'              => 0,                         
+    'impuesto'           => 0, 
+    'estado'             => 2, // <--- CAMBIA 'I' POR EL ENTERO 0 (O 1 SEGÚN CORRESPONDA)
+    'created_at'         => now(),
+    'updated_at'         => now()
+]);
+// Inicializamos la posición tal como lo haces en tu otra función.
+$posicion = 1; 
+
+foreach ($arrayCodigos as $index => $codigoFilaRaw) {
+    // 1. Extraer los datos de forma segura (Previene error de arrays/strings)
+    $codigoFila = is_array($codigoFilaRaw) ? trim(head($codigoFilaRaw)) : trim($codigoFilaRaw);
+    
+    $cantFilaRaw = $arrayCantidad[$index] ?? 0;
+    $cantFila = is_array($cantFilaRaw) ? intval(head($cantFilaRaw)) : intval($cantFilaRaw);
+    
+    $precFilaRaw = $arrayPrecioCompra[$index] ?? 0;
+    $precFila = is_array($precFilaRaw) ? floatval(head($precFilaRaw)) : floatval($precFilaRaw);
+    
+    $nombreFilaRaw = $arrayNombres[$index] ?? 'Producto Sin Nombre';
+    $nombreFila = is_array($nombreFilaRaw) ? trim(head($nombreFilaRaw)) : trim($nombreFilaRaw);
+    
+    // Asumimos un precio de venta o impuesto por defecto si no vienen en la carga masiva
+    $precioVentaFila = isset($arrayPrecioVenta[$index]) ? floatval(is_array($arrayPrecioVenta[$index]) ? head($arrayPrecioVenta[$index]) : $arrayPrecioVenta[$index]) : ($precFila * 1.30); 
+    $impuestoFila = isset($arrayImpuesto[$index]) ? floatval(is_array($arrayImpuesto[$index]) ? head($arrayImpuesto[$index]) : $arrayImpuesto[$index]) : 0;
+
+    $subtotalAcumuladoGlobal += ($cantFila * $precFila);
+    
+    // 2. Solución para productos sin código (SG o Vacíos)
+    if (strcasecmp($codigoFila, 'SG') === 0 || empty($codigoFila)) {
+        $productoExistentePorNombre = DB::table('productos')
+            ->where('nombre', $nombreFila)
+            ->where('fkTienda', $fkTienda)
+            ->first();
+
+        if ($productoExistentePorNombre) {
+            $codigoFila = $productoExistentePorNombre->codigo;
+        } else {
+            $existeCodigo = true;
+            $intentos = 0;
+            while ($existeCodigo && $intentos < 100) {
+                $intentos++;
+                $seed = str_replace('.', '', microtime(true)) . $index;
+                $base = str_pad("20" . substr($seed, -10), 12, "0", STR_PAD_RIGHT);
+                $suma = 0;
+                for ($i = 0; $i < 12; $i++) {
+                    $suma += ($i % 2 === 0) ? (int)$base[$i] : (int)$base[$i] * 3;
+                }
+                $codigoFila = $base . ((10 - ($suma % 10)) % 10);
+                $existeCodigo = DB::table('productos')->where('codigo', $codigoFila)->exists();
+            }
+        }
+    }
+
+    // 3. Buscar existencia en la Base de Datos
+    $productoEnTiendaActual = DB::table('productos')->where('codigo', $codigoFila)->where('fkTienda', $fkTienda)->first();
+    $productoEnOtraTienda   = DB::table('productos')->where('codigo', $codigoFila)->first();
+
+    // Determinar ID del producto (Existente o Nuevo)
+    if ($productoEnTiendaActual) {
+        $idProductoFinal = $productoEnTiendaActual->id;
+    } elseif ($productoEnOtraTienda) {
+        $idProductoFinal = $productoEnOtraTienda->id;
+    } else {
+        // NO EXISTE: Resolver catálogos e insertar nuevo producto
+        
+        $marcaNombre = trim(is_array($arrayMarcasTxt[$index] ?? 'Generico') ? head($arrayMarcasTxt[$index]) : ($arrayMarcasTxt[$index] ?? 'Generico'));
+        $marcaExistente = DB::table('marcas')
+            ->join('caracteristicas', 'marcas.caracteristica_id', '=', 'caracteristicas.id')
+            ->where('caracteristicas.nombre', $marcaNombre)->select('marcas.id')->first();
+        $idMarcaFinal = $marcaExistente ? $marcaExistente->id : DB::table('marcas')->insertGetId(['caracteristica_id' => DB::table('caracteristicas')->insertGetId(['nombre' => $marcaNombre, 'created_at' => now(), 'updated_at' => now()]), 'created_at' => now(), 'updated_at' => now()]);
+
+        $presentacionNombre = trim(is_array($arrayPresentasTxt[$index] ?? 'Generico') ? head($arrayPresentasTxt[$index]) : ($arrayPresentasTxt[$index] ?? 'Generico'));
+        $presentacionExistente = DB::table('presentaciones')
+            ->join('caracteristicas', 'presentaciones.caracteristica_id', '=', 'caracteristicas.id')
+            ->where('caracteristicas.nombre', $presentacionNombre)->select('presentaciones.id')->first();
+        $idPresentacionFinal = $presentacionExistente ? $presentacionExistente->id : DB::table('presentaciones')->insertGetId(['caracteristica_id' => DB::table('caracteristicas')->insertGetId(['nombre' => $presentacionNombre, 'created_at' => now(), 'updated_at' => now()]), 'created_at' => now(), 'updated_at' => now()]);
+
+        $categoriaNombre = trim(is_array($arrayCategoriasTxt[$index] ?? 'General') ? head($arrayCategoriasTxt[$index]) : ($arrayCategoriasTxt[$index] ?? 'General'));
+        $categoriaExistente = DB::table('categorias')
+            ->join('caracteristicas', 'categorias.caracteristica_id', '=', 'caracteristicas.id')
+            ->where('caracteristicas.nombre', $categoriaNombre)->select('categorias.id')->first();
+        $idCategoriaFinal = $categoriaExistente ? $categoriaExistente->id : DB::table('categorias')->insertGetId(['caracteristica_id' => DB::table('caracteristicas')->insertGetId(['nombre' => $categoriaNombre, 'created_at' => now(), 'updated_at' => now()]), 'created_at' => now(), 'updated_at' => now()]);
+
+        $fechaVencRaw = trim(is_array($arrayFechaVencimiento[$index] ?? '') ? head($arrayFechaVencimiento[$index]) : ($arrayFechaVencimiento[$index] ?? ''));
+        $fechaVencimientoMySQL = (!empty($fechaVencRaw) && $fechaVencRaw !== 'N/A') 
+            ? date('Y-m-d', strtotime(str_replace('/', '-', $fechaVencRaw))) 
+            : null;
+
+        $idProductoFinal = DB::table('productos')->insertGetId([
+            'codigo'            => $codigoFila, 
+            'nombre'            => $nombreFila, 
+            'precio_base'       => $precFila,
+            'stock'             => 0, // Inicia en 0, tus triggers o flujos le sumarán stock
+            'descripcion'       => $nombreFila, 
+            'fecha_vencimiento' => $fechaVencimientoMySQL,
+            'estado'            => 1, 
+            'marca_id'          => $idMarcaFinal, 
+            'presentacione_id'  => $idPresentacionFinal,
+            'perecedero'        => is_array($arrayPerecedero[$index] ?? 0) ? head($arrayPerecedero[$index]) : ($arrayPerecedero[$index] ?? 0), 
+            'stock_minimo'      => 5, 
+            'fkTienda'          => $fkTienda, 
+            'created_at'        => now(), 
+            'updated_at'        => now()
+        ]);
+
+        if ($idCategoriaFinal) {
+            DB::table('categoria_producto')->insert([
+                'producto_id'  => $idProductoFinal, 
+                'categoria_id' => $idCategoriaFinal, 
+                'created_at'   => now(), 
+                'updated_at'   => now()
+            ]);
+        }
+    }
+
+    // Guardamos en tu mapa de IDs original
+    $mapaIdsProductos[$index] = $idProductoFinal;
+
+    // 4. LÓGICA DE LOTES (Copiada exactamente de tu otra función)
+    $idLoteGenerado = null;
+    $fechaFilaRaw = is_array($arrayFechaVencimiento[$index] ?? '') ? head($arrayFechaVencimiento[$index]) : ($arrayFechaVencimiento[$index] ?? '');
+    
+    if ($fechaFilaRaw != 'N/A' && !empty($fechaFilaRaw)) {
+        $fechaFormateada = date('Ymd', strtotime(str_replace('/', '-', $fechaFilaRaw)));
+        $numeroLote = 'L-' . $fechaFormateada . '.' . $compra->id . '.' . $posicion;
+
+        $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
+            'producto_id'       => $idProductoFinal,
+            'numero_lote'       => $numeroLote,
+            'cantidad'          => $cantFila, 
+            'fecha_vencimiento' => date('Y-m-d', strtotime(str_replace('/', '-', $fechaFilaRaw))),
+            'fkTienda'          => $fkTienda,
+            'compra_id'         => $compra->id,
+            'notificado'        => 0,
+            'created_at'        => now(),
+            'updated_at'        => now()
+        ]);
+
+        $lotesPorActualizar[] = [
+            'id'       => $idLoteGenerado,
+            'cantidad' => $cantFila
+        ];
+    }
+
+    // 5. ATTACH PIVOTE (Dispara tus triggers contables de la compra)
+    $compra->productos()->attach([
+        $idProductoFinal => [
+            'cantidad'      => $cantFila,
+            'precio_compra' => $precFila,
+            'precio_venta'  => $precioVentaFila,
+            'impuesto'      => $impuestoFila,
+            'fkTienda'      => $fkTienda,
+            'fkLote'        => $idLoteGenerado,
+            'Naturaleza'    => 'D',
+            'Estado'        => 'I'
+        ]
+    ]);
+
+    // 6. RESOLVER CENTRO LOGÍSTICO Y ALMACÉN
+    $centro = Centro::join('tienda', 'centro.id', '=', 'tienda.fkCentro')
+        ->where('tienda.idTienda', session('user_fkTienda'))
+        ->select('centro.*', 'tienda.nombre as nombre_tienda')
+        ->first();
+
+    // 7. REGISTRO EN KARDEX (Usando tu Eloquent MovimientoMateriales)
+    MovimientoMateriales::create([
+        'fkTienda'              => $fkTienda,
+        'fkMateriales'          => $idProductoFinal,
+        'fkLotes'               => $idLoteGenerado,
+        'clase_movimiento'      => '641',
+        'tipo_movimiento'       => 'COMPRA',
+        'cantidad'              => $cantFila,
+        'documento_material'    => 'COM-' . $compra->numero_comprobante,
+        'referencia'            => "Comp ID: ||{$compra->id}||",
+        'fecha_contabilizacion' => now(),
+        'centro'                => session('centro') ?? ($centro->codigo ?? 'N/A'),
+        'almacen'               => session('centro') ?? ($centro->codigo ?? 'N/A'),
+        'origen_uso'            => 'compra_nacional',
+        'unidad_medida_base'    => 'PZA',
+        'posicion_documento'    => $posicion
+    ]);
+
+    $posicion++; 
+}
+              // =========================================================================
+        // PARTE 3: CABECERA DE LA COMPRA Y FOLIO CONTABLE AUTOMÁTICO
+        // =========================================================================
+        // Buscar el comprobante activo por ClaveVista 'DC', si no existe, toma el primero que encuentre
+        $comprobante = DB::table('comprobantes')
+            ->where('estado', 1)
+            ->where('ClaveVista', 'DC')
+            ->first() ?? DB::table('comprobantes')->where('estado', 1)->first();
+
+        if (!$comprobante) {
+            throw new \Exception("Error Crítico: No se encontró ningún comprobante parametrizado o activo en el sistema.");
+        }
+
+        $comprobante_id = $comprobante->id;
+        $tipofolio = 'C'; 
+        $numero_comprobante = $request->numero_comprobante;
+
+        if ($numero_comprobante == 0 || empty($numero_comprobante)) {
+            $ultimoNumero = DB::table('compras')->where('fkTienda', $fkTienda)->lockForUpdate()->count('numero_comprobante');
+            $correlativo = $ultimoNumero ? $ultimoNumero + 1 : 1;
+            $numero_comprobante = $correlativo . $tipofolio . $comprobante->ClaveVista . $comprobante->id;
+        }
+
+        // INTEGRACIÓN DE FÓRMULA 1: Calcular IVA global de la cabecera usando tu motor matemático
+        $formulaCabecera = $comprobante->formula ?? null;
+        $impuestotal = $this->evaluarFormula($formulaCabecera, $subtotalAcumuladoGlobal);
+
+        $compraId = DB::table('compras')->insertGetId([
+            'fecha_hora'         => $request->get('fecha_hora', now()),
+            'impuesto'           => $impuestotal,
+            'numero_comprobante' => $numero_comprobante,
+            'total'              => $subtotalAcumuladoGlobal + $impuestotal,
+            'estado'             => 2, 
+            'fkUserCreate'       => $idUsuario,
+            'fkUserCC'           => $idUsuario,
+            'comprobante_id'     => $comprobante_id,
+            'proveedore_id'      => $proveedor_id,
+            'fkTienda'           => $fkTienda,
+            'ClaveVista'         => $comprobante->ClaveVista,
+            'created_at'         => now(),
+            'updated_at'         => now()
+        ]);
+
+        $folioId = DB::table('folio')->insertGetId([
+            'descripcion'          => 'Compra masiva n.' . $compraId . ' mediante comprobante ' . ($comprobante->defauldoc ?? 'Asiento de Compra'),
+            'cabecera'             => 'Asiento de Compra Masiva Automatizado (DC)',
+            'EstatusContable'      => 'C',
+            'TipoFolio'            => $tipofolio,
+            'FechaContabilizacion' => now(),
+            'fkUsuario'            => $idUsuario,
+            'fkComprobante'        => $comprobante_id,
+            'idOrigen'             => $compraId,
+            'TipoMovimiento'       => 'C',
+            'fkTienda'             => $fkTienda,
+            'created_at'           => now(),
+            'updated_at'           => now()
+        ]);
+
+        // INTEGRACIÓN DE FÓRMULA 2: Procesar los movimientos contables del detalle del comprobante
+        $detallesComprobante = DB::table('detalle_comprobantes')->where('fkComprobante', $comprobante_id)->get();
+        foreach ($detallesComprobante as $reglaContable) {
+            
+            // Evaluar la fórmula contable específica de la cuenta o recurrir a su valor mínimo de respaldo
+            $montoContableFinal = $this->evaluarFormula($reglaContable->formula, $subtotalAcumuladoGlobal);
+            if ($montoContableFinal <= 0) {
+                $montoContableFinal = floatval($reglaContable->valorminimo ?? 0);
+            }
+
+            DB::table('detallefolio')->insert([
+                'Monto'             => $montoContableFinal,
+                'Naturaleza'        => $reglaContable->Naturaleza, 
+                'fkCuenetaContable' => $reglaContable->fkCuentaContable,
+                'fkUsuario'         => $idUsuario,
+                'fkTienda'          => $fkTienda,
+                'fkFolio'           => $folioId,
+                'created_at'        => now(),
+                'updated_at'        => now()
+            ]);
+        }
+             // =========================================================================
+        // PARTE 4: CONSOLIDACIÓN DE INVENTARIO, LOTES Y CONFIRMACIÓN FINAL
+        // =========================================================================
+        $productosConsolidados = [];
+
+        foreach ($mapaIdsProductos as $index => $idRealProducto) {
+            $cantidadItems = isset($arrayCantidad[$index]) ? intval($arrayCantidad[$index]) : 0;
+            if ($idRealProducto <= 0 || $cantidadItems <= 0) continue;
+
+            $fechaVenc = !empty($arrayFechaVencimiento[$index]) ? $arrayFechaVencimiento[$index] : 'N/A';
+            $pCompra   = number_format(floatval($arrayPrecioCompra[$index] ?? 0), 4, '.', ''); 
+            $pVenta    = number_format(floatval($arrayPrecioVenta[$index] ?? 0), 4, '.', '');
+
+            // Solución Estricta: Se concatena el $index para evitar que filas del Excel se solapen erróneamente en el array
+            $key = $idRealProducto . '_row' . $index . '_' . $fechaVenc . '_' . $pCompra . '_' . $pVenta;
+
+            if (!isset($productosConsolidados[$key])) {
+                $productosConsolidados[$key] = [
+                    'id'            => $idRealProducto, 
+                    'cantidad'      => 0, 
+                    'precio_compra' => floatval($pCompra),
+                    'precio_venta'  => floatval($pVenta), 
+                    'impuesto'      => 0, 
+                    'fecha'         => $fechaVenc, 
+                    'perecedero'    => $arrayPerecedero[$index] ?? 0
+                ];
+            }
+            $productosConsolidados[$key]['cantidad'] += $cantidadItems;
+            $productosConsolidados[$key]['impuesto'] += floatval($arraysubiva[$index] ?? 0);
+        }
+
+        $posicionLote = 1;
+        foreach ($productosConsolidados as $item) {
+            $idLoteGenerado = null;
+
+            if (($item['perecedero'] == 1 || $item['fecha'] != 'N/A') && !empty($item['fecha'])) {
+                $fechaLoteFormateada = date('Y-m-d', strtotime(str_replace('/', '-', $item['fecha'])));
+                $prefijoFecha = date('Ymd', strtotime($fechaLoteFormateada));
+                
+                $idLoteGenerado = DB::table('lotesalarma')->insertGetId([
+                    'compra_id'         => $compraId,
+                    'fkTienda'          => $fkTienda,
+                    'producto_id'       => $item['id'],
+                    'numero_lote'       => 'L-' . $prefijoFecha . '.' . $compraId . '.' . $posicionLote,
+                    'cantidad'          => $item['cantidad'],
+                    'fecha_vencimiento' => $fechaLoteFormateada,
+                    'notificado'        => 0,
+                    'created_at'        => now(),
+                    'updated_at'        => now()
+                ]);
+                $posicionLote++;
+            }
+
+            DB::table('compra_producto')->insert([
+                'compra_id'     => $compraId,
+                'producto_id'   => $item['id'],
+                'cantidad'      => $item['cantidad'],
+                'precio_compra' => $item['precio_compra'],
+                'precio_venta'  => $item['precio_venta'],
+                'fkTienda'      => $fkTienda,
+                'fkLote'        => $idLoteGenerado,
+                'Naturaleza'    => 'D',
+                'Estado'        => 'I',
+                'impuesto'      => $item['impuesto'],
+                'created_at'    => now(),
+                'updated_at'    => now()
+            ]);
+
+            DB::table('productos')->where('id', $item['id'])->increment('stock', $item['cantidad'], [
+                'precio_base' => $item['precio_compra'],
+                'updated_at'  => now()
+            ]);
+        }
+
+        DB::commit();
+        return response()->json(['status' => 'success', 'message' => 'Lote completo de productos procesado e impuestos calculados con éxito.'], 200);
+
     } catch (\Exception $e) {
         DB::rollBack();
-        return redirect()->back()->withErrors(['error' => 'Error al guardar la compra: ' . $e->getMessage()])->withInput();
+        return response()->json(['status' => 'error', 'message' => 'Fallo en inserción masiva: ' . $e->getMessage()], 500);
     }
 }
 
+public function obtenerCodigoUnicoAjax()
+{
+    $existe = true;
+    $codigoUnico = '';
+    $intentos = 0; // Candado de seguridad para evitar congelar el servidor
+
+    while ($existe && $intentos < 100) {
+        $intentos++;
+
+        // 1. Tomamos los segundos del servidor (10 dígitos exactos en la época actual)
+        $segundos = (string)time(); 
+        
+        // 2. Prefijo '20' (2 dígitos) + Segundos (10 dígitos) = 12 dígitos matemáticos exactos
+        $base = "20" . $segundos;
+        
+        // Si por alguna razón la cadena no mide 12, la rellenamos con ceros a la derecha
+        $base = str_pad($base, 12, "0", STR_PAD_RIGHT);
+
+        // 3. Calcular el dígito verificador oficial EAN-13
+        $suma = 0;
+        for ($i = 0; $i < 12; $i++) {
+            $numero = (int)$base[$i];
+            // Posiciones impares se multiplican por 1, posiciones pares (índices 1, 3, 5...) por 3
+            $suma += ($i % 2 === 0) ? $numero : $numero * 3;
+        }
+        $digitoVerificador = (10 - ($suma % 10)) % 10;
+        
+        // 4. Código final estructurado de 13 dígitos
+        $codigoUnico = $base . $digitoVerificador;
+
+        // 5. Validamos contra tu tabla real de productos
+        // REVISTA ESTO: Cambia 'Producto' por tu Modelo y 'codigo_barras' por tu columna real de la BD
+        $existe = Producto::where('codigo', $codigoUnico)->exists();
+    }
+
+
+    return response()->json(['codigo' => $codigoUnico]);
+}
+
+
+// =========================================================================
+// SECCIÓN 1: CONFIGURACIÓN DE CABECERAS HTTP Y COLUMNAS EXACTAS DEL EXCEL
+// =========================================================================
+public function descargarFormatoCargaMasiva()
+{
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=Formato_Masivo_Compras.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // Sincronización exacta con las columnas visibles de tu imagen de Excel
+    $columnas = [
+        'CODIGO_PRO',     // Código de barra o colocar "SG" para generación automática EAN-13
+        'NOMBRE_PR',      // Nombre o descripción del producto (Varchar 80)
+        'CATEGORIA_',     // Nombre en texto de la Categoría (Ej: Confites, Malvavisco)
+        'PRESENTACI',     // Nombre en texto de la Presentación (Ej: Paleta c/exh, Display)
+        'MARCA_ID',       // Nombre en texto de la Marca (Ej: Lollipop, Mash, varios)
+        'ES_PERECED',     // 1 = Sí es perecedero (lleva vencimiento), 0 = No es perecedero
+        'CANTIDAD',       // Cantidad de unidades físicas que ingresan a stock
+        'PRECIO_CON',     // Precio de Costo / Compra unitario decimal (Ej: 35 o 38.12)
+        'PRECIO_VEN',     // Precio de Venta sugerido al público general (Ej: 50)
+        'SUBTOTAL_I',     // Monto acumulado de la línea o impuesto (Ej: 1750 o 500)
+        'FECHA_VEN',      // Fecha de vencimiento formato DD/MM/YYYY (Ej: 31/12/2026)
+        'PROVEEDOR_NIT',      // NIT o documento del Proveedor (Ej: 123456789)
+        'PROVEEDOR_NOMBRE'      // Razón social o Nombre del Proveedor (Ej: Sophy Candy)
+    ];
+
+// =========================================================================
+// SECCIÓN 2: TRANSMISIÓN EN FLUJO CONSTANTE Y FILAS GUÍA BASADAS EN TU IMAGEN
+// =========================================================================
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        
+        // Forzar marcador BOM UTF-8 para que Excel reconozca tildes y caracteres en español
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); 
+        fputcsv($file, $columnas);
+
+        // Ejemplo 1: Producto perecedero con código automático "SG", marcas y categorías en texto plano
+        fputcsv($file, [
+            'SG',               // CODIGO_PRO
+            'Lollipop frut',    // NOMBRE_PR
+            'Confites',         // CATEGORIA_
+            'Paleta c/exh',     // PRESENTACI
+            'Lollipop',         // MARCA_ID (Texto plano según tu imagen)
+            1,                  // ES_PERECED
+            5,                  // CANTIDAD
+            35.00,              // PRECIO_CON (Costo)
+            50.00,              // PRECIO_VEN (Venta)
+            1750.00,            // SUBTOTAL_I
+            '31/12/2026',       // FECHA_VEN (Formato DD/MM/YYYY de tu imagen)
+            '123456789',        // PROVEEDOR (NIT)
+            'Sophy Candy'       // PROVEEDOR_ (Nombre)
+        ]);
+
+        // Ejemplo 2: Producto de otra categoría (Malvavisco) sin código de barras de fábrica
+        fputcsv($file, [
+            'SG', 
+            'Stich Mash 1', 
+            'Malvavisco', 
+            'Sobre 2 Unid', 
+            'Mash', 
+            1, 
+            5, 
+            21.00, 
+            25.00, 
+            525.00, 
+            '05/01/2027', 
+            '123456789', 
+            'Sophy Candy'
+        ]);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
 
     public function show(Compra $compra)
     {

@@ -1,99 +1,143 @@
 @extends('layouts.app')
 
-@section('title','Crear centro')
-
-@push('css')
-<style>
-    #descripcion {
-        resize: none;
-    }
-</style>
-@endpush
-
 @section('content')
-<div class="container-fluid px-4">
-    <h1 class="mt-4 text-center">Crear Centro</h1>
-    <ol class="breadcrumb mb-4">
-        <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
-        <li class="breadcrumb-item"><a href="{{ route('centros.index')}}">Centros</a></li>
-        <li class="breadcrumb-item active">Crear Centro</li>
-    </ol>
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">Crear Regla de Precio / Promoción</h4>
+        </div>
+        <div class="card-body">
+            @if(session('success'))
+                <div class="alert alert-success">{{ session('success') }}</div>
+            @endif
 
-<form action="{{ route('reglas.store') }}" method="POST">
-    @csrf
-    <div class="grid grid-cols-2 gap-4">
-        <!-- Nombre y Tipo -->
-        <div>
-            <label>Nombre de la Regla</label>
-            <input type="text" name="nombre" class="form-control" placeholder="Ej: Promo 3x2 Cerveza">
-        </div>
-        <div>
-            <label>Tipo de Regla</label>
-            <select name="tipo_regla" id="tipo_regla" class="form-control">
-                <option value="escala_cantidad">Escala por Cantidad (Mayoreo)</option>
-                <option value="bonificacion">Bonificación (3x2, etc)</option>
-                <option value="descuento_fijo">Descuento Directo</option>
-            </select>
-        </div>
+            <form action="{{ url('/reglas/guardar') }}" method="POST">
+                @csrf
 
-        <!-- Cantidades -->
-        <div>
-            <label>Cantidad Mínima para activar</label>
-            <input type="number" name="cantidad_minima" class="form-control" value="1">
-        </div>
-        <div id="div_paso" style="display:none;">
-            <label>Cada cuanto aplicar (Paso)</label>
-            <input type="number" name="cantidad_paso" class="form-control" value="1">
-        </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label font-weight-bold">Nombre de la Regla / Oferta</label>
+                        <input type="text" name="nombre" class="form-control" placeholder="Ej: Mayoreo de refrescos o Promo 3x2" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Tipo de Regla</label>
+                        <select name="tipo_regla" id="tipo_regla" class="form-select" required>
+                            <option value="escala_cantidad">Escala por Cantidad (Mayoreo)</option>
+                            <option value="bonificacion">Bonificación (Ej: 3x2, 4x3)</option>
+                            <option value="descuento_fijo">Descuento Fijo (Oferta directa)</option>
+                            <option value="combo_mixto">Combo Mixto (Paquete)</option>
+                        </select>
+                    </div>
+                </div>
 
-        <!-- Beneficio -->
-        <div>
-            <label>Tipo de Beneficio</label>
-            <select name="tipo_beneficio" class="form-control">
-                <option value="precio_fijo">Precio Fijo / Nuevo Precio</option>
-                <option value="porcentaje">Porcentaje de Descuento (%)</option>
-                <option value="unidad_gratis">Unidades de Regalo</option>
-            </select>
-        </div>
-        <div>
-            <label>Valor del Beneficio</label>
-            <input type="number" step="0.0001" name="valor_beneficio" class="form-control" placeholder="Ej: 0.75 o 10.00">
-        </div>
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Cantidad Mínima Requerida</label>
+                        <input type="number" name="cantidad_minima" class="form-control" value="1" min="1" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Cantidad de Paso (Para 3x2 colocar 3)</label>
+                        <input type="number" name="cantidad_paso" class="form-control" placeholder="Opcional">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Tipo de Beneficio</label>
+                        <select name="tipo_beneficio" class="form-select" required>
+                            <option value="precio_fijo">Precio Fijo Rebajado ($)</option>
+                            <option value="porcentaje">Porcentaje de Descuento (%)</option>
+                            <option value="unidad_gratis">Unidad Gratis (Regalo)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Valor del Beneficio</label>
+                        <input type="number" step="0.0001" name="valor_beneficio" class="form-control" placeholder="Ej: 10.50 o 15%" required>
+                    </div>
+                </div>
 
-        <!-- Vigencia -->
-        <div>
-            <label>Desde</label>
-            <input type="date" name="fecha_inicio" class="form-control">
-        </div>
-        <div>
-            <label>Hasta</label>
-            <input type="date" name="fecha_fin" class="form-control">
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Fecha Inicio (Vigencia)</label>
+                        <input type="datetime-local" name="fecha_inicio" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Fecha Fin (Vigencia)</label>
+                        <input type="datetime-local" name="fecha_fin" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">¿Es prioritaria?</label>
+                        <select name="prioritaria" class="form-select" required>
+                            <option value="0">No (Baja)</option>
+                            <option value="1">Sí (Alta - Mata otras reglas)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label bg-light p-1 rounded d-block font-weight-bold">Modo de Aplicación en Caja</label>
+                        <div class="form-check form-check-inline mt-1">
+                            <input class="form-check-input" type="radio" name="requiere_confirmacion" id="app_directa" value="0" checked>
+                            <label class="form-check-label text-success" for="app_directa"><strong>Aplicar directo</strong></label>
+                        </div>
+                        <div class="form-check form-check-inline mt-1">
+                            <input class="form-check-input" type="radio" name="requiere_confirmacion" id="app_pregunta" value="1">
+                            <label class="form-check-label text-warning" for="app_pregunta"><strong>Preguntar antes</strong></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-light mb-3">
+                    <div class="card-body">
+                        <h5>Asociar Productos a esta Regla</h5>
+                        <p class="text-muted small">Escribe en el buscador para filtrar y selecciona uno o varios productos.</p>
+                        
+                        <!-- Buscador -->
+                        <div class="input-group mb-3">
+                            <span class="input-group-text bg-white">🔍</span>
+                            <input type="text" id="buscador-productos" class="form-control" placeholder="Buscar por nombre o código de barras...">
+                        </div>
+
+                        <!-- Contenedor con Scroll -->
+                        <div id="lista-productos-container" class="rounded" style="max-height: 250px; overflow-y: auto; border: 1px solid #ced4da; padding: 12px; background: white;">
+                            @foreach($productos as $prod)
+                                <div class="form-check p-1 item-producto-row">
+                                    <input class="form-check-input check-producto-item" type="checkbox" name="productos[]" value="{{ $prod->id }}" id="prod_{{ $prod->id }}">
+                                    <label class="form-check-label w-100 label-producto-texto" for="prod_{{ $prod->id }}">
+                                        <strong class="text-secondary">[{{ $prod->codigo }}]</strong> {{ $prod->nombre }} 
+                                        <span class="badge bg-light text-dark float-end">Original: ${{ number_format($prod->precio_base, 2) }}</span>
+                                    </label>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-end">
+                    <button type="submit" class="btn btn-success px-4">Guardar Regla de Precio</button>
+                </div>
+            </form>
         </div>
     </div>
+</div>
 
-    <div class="mt-4">
-        <label>Aplicar a Productos:</label>
-        <select name="productos[]" multiple class="form-control select2">
-            @foreach($productos as $p)
-                <option value="{{ $p->id }}">{{ $p->nombre }}</option>
-            @endforeach
-        </select>
-    </div>
-
-    <button type="submit" class="btn btn-primary mt-4">Guardar Regla</button>
-</form>
-
+<!-- EL SCRIPT SE COLOCA ADENTRO DE LA SECCIÓN CONTENT PARA OBLIGAR A LARAVEL A CARGARLO -->
 <script>
-    // JS sencillo para mostrar/ocultar campos según el tipo
-    document.getElementById('tipo_regla').addEventListener('change', function() {
-        const divPaso = document.getElementById('div_paso');
-        divPaso.style.display = (this.value === 'bonificacion') ? 'block' : 'none';
+    document.addEventListener("DOMContentLoaded", function () {
+        const inputBuscador = document.getElementById('buscador-productos');
+        
+        if (inputBuscador) {
+            inputBuscador.addEventListener('keyup', function () {
+                const terminoFiltrado = this.value.toLowerCase().trim();
+                const bloquesProductos = document.querySelectorAll('.item-producto-row');
+
+                bloquesProductos.forEach(function (bloque) {
+                    // Leemos directamente el texto visible dentro del label para evitar errores de atributos HTML
+                    const textoCelda = bloque.querySelector('.label-producto-texto').textContent.toLowerCase();
+                    
+                    if (textoCelda.indexOf(terminoFiltrado) > -1) {
+                        bloque.style.setProperty('display', 'block', 'important');
+                    } else {
+                        bloque.style.setProperty('display', 'none', 'important');
+                    }
+                });
+            });
+        }
     });
 </script>
-
-</div>
 @endsection
-
-@push('js')
-
-@endpush

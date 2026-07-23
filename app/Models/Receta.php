@@ -29,4 +29,9 @@ class Receta extends Model
     {
         return $this->belongsTo(Producto::class, 'ingrediente_id');
     }
+
+        public function productos()
+    {
+        return $this->belongsToMany(Producto::class, 'producto_regla_precio', 'regla_precio_id', 'producto_id');
+    }
 }

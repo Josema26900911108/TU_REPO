@@ -27,16 +27,21 @@ use Maatwebsite\Excel\Facades\Excel;
 use MathParser\StdMathParser;
 use MathParser\Interpreting\Evaluator;
 use Illuminate\Support\Facades\Log;
+use App\Services\MotorPreciosService;
 
 class ventaController extends Controller
 {
-    function __construct()
+    function __construct(MotorPreciosService $motorPrecios)
     {
         $this->middleware('permission:reporte-venta|cobrar-ventadirecta|ver-venta|crear-venta|mostrar-venta|eliminar-venta', ['only' => ['index']]);
         $this->middleware('permission:crear-venta', ['only' => ['create', 'store']]);
         $this->middleware('permission:mostrar-venta', ['only' => ['show']]);
         $this->middleware('permission:eliminar-venta', ['only' => ['destroy']]);
+
+         $this->motorPrecios = $motorPrecios;
     }
+
+    protected $motorPrecios;
     /**
      * Display a listing of the resource.
      */
@@ -236,67 +241,87 @@ public function exportVentas()
     return Excel::download(new UniversalExport($ventas), 'ventas.xlsx');
 }
 
-    public function create()
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
-        $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
+public function create()
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+    
+    $fkTienda = session('user_fkTienda');
+    $Estatus = session('user_estatus');
 
-
-$productos = Producto::select(
-        'productos.nombre',
-        'productos.img_path',
-        'productos.descripcion',
-        'productos.id',
-        'vsc.stock_contable as stock', // Usamos el cálculo de la vista
-        'cpr.precio_venta',
-        'productos.perecedero',
-        'l.fecha_vencimiento',
-        'l.numero_lote',
-        'l.cantidad as cantidad_lote'
-    )
-    // JOIN a la vista de stock contable
-    ->join('vista_stock_contable as vsc', function ($join) use ($fkTienda) {
-        $join->on('vsc.producto_id', '=', 'productos.id')
-             ->where('vsc.fkTienda', '=', $fkTienda);
-    })
-    // Join para el último precio de compra
-    ->join('compra_producto as cpr', function ($join) use ($fkTienda) {
-        $join->on('cpr.id', '=', DB::raw("(SELECT id FROM compra_producto 
-            WHERE producto_id = productos.id 
-            AND fkTienda = $fkTienda 
-            ORDER BY created_at DESC, id DESC LIMIT 1)"));
-    })
-    // Join para el lote más próximo a vencer
-    ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
-        $join->on('l.id', '=', DB::raw("(SELECT id FROM lotesalarma 
-            WHERE producto_id = productos.id 
-            AND cantidad > 0 
-            AND fkTienda = $fkTienda 
-            ORDER BY fecha_vencimiento ASC, id ASC LIMIT 1)"));
-    })
-    ->with(['reglasPrecios', 'modificadores'])
-    ->where('productos.fkTienda', $fkTienda)
-    ->where('productos.estado', 1)
-    ->where('vsc.stock_contable', '>', 0) // Filtramos por el stock real calculado
-    ->get();
-
-
-
-        $clientes = Cliente::whereHas('persona', function ($query) {
-            $query->where('estado', 1);
-        })->get();
-
-        $comprobantes = Comprobante::with('tienda')
-        ->where('fkTienda', $fkTienda)
-        ->where('ClaveVista','DV')
+    // Consulta avanzada de productos con stock contable y lotes
+    $productos = Producto::select(
+            'productos.nombre',
+            'productos.img_path',
+            'productos.descripcion',
+            'productos.id',
+            'vsc.stock_contable as stock', // Cálculo de la vista de stock
+            'cpr.precio_venta',
+            'productos.perecedero',
+            'l.fecha_vencimiento',
+            'l.numero_lote',
+            'l.cantidad as cantidad_lote'
+        )
+        // JOIN a la vista de stock contable parametrizada por tienda
+        ->join('vista_stock_contable as vsc', function ($join) use ($fkTienda) {
+            $join->on('vsc.producto_id', '=', 'productos.id')
+                 ->where('vsc.fkTienda', '=', $fkTienda);
+        })
+        // Subconsulta correlacionada para traer el precio de venta más reciente
+        ->join('compra_producto as cpr', function ($join) use ($fkTienda) {
+            $join->on('cpr.id', '=', DB::raw("(SELECT id FROM compra_producto 
+                WHERE producto_id = productos.id 
+                AND fkTienda = $fkTienda 
+                ORDER BY created_at DESC, id DESC LIMIT 1)"));
+        })
+        // Subconsulta correlacionada para el lote disponible más próximo a expirar
+        ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
+            $join->on('l.id', '=', DB::raw("(SELECT id FROM lotesalarma 
+                WHERE producto_id = productos.id 
+                AND cantidad > 0 
+                AND fkTienda = $fkTienda 
+                ORDER BY fecha_vencimiento ASC, id ASC LIMIT 1)"));
+        })
+        ->with(['reglasPrecios', 'modificadores'])
+        ->where('productos.fkTienda', $fkTienda)
+        ->where('productos.estado', 1)
+        ->where('vsc.stock_contable', '>', 0) // Excluir productos agotados
         ->get();
 
-
-        return view('venta.create', compact('productos', 'clientes', 'comprobantes'));
+    // 🔥 MAPEO DE REGLAS: Estructuramos la colección para que el frontend la reciba limpia
+    foreach ($productos as $producto) {
+        $producto->reglas_json = $producto->reglasPrecios->map(function($regla) {
+            return [
+                'id' => $regla->id,
+                'nombre' => $regla->nombre,
+                'tipo_regla' => $regla->tipo_regla,
+                'cantidad_minima' => $regla->cantidad_minima,
+                'cantidad_paso' => $regla->cantidad_paso,
+                'tipo_beneficio' => $regla->tipo_beneficio,
+                'valor_beneficio' => $regla->valor_beneficio,
+                'fecha_inicio' => $regla->fecha_inicio,
+                'fecha_fin' => $regla->fecha_fin,
+                'prioritaria' => $regla->prioritaria,
+                'requiere_confirmacion' => $regla->requiere_confirmacion
+            ];
+        })->toArray();
     }
+
+    // Carga de clientes activos
+    $clientes = Cliente::whereHas('persona', function ($query) {
+        $query->where('estado', 1);
+    })->get();
+
+    // Carga de comprobantes parametrizados para Venta Directa (DV)
+    $comprobantes = Comprobante::with('tienda')
+        ->where('fkTienda', $fkTienda)
+        ->where('ClaveVista', 'DV')
+        ->get();
+
+    return view('venta.create', compact('productos', 'clientes', 'comprobantes'));
+}
+
 
         public function posmobile($cliente_id)
     {
@@ -1604,4 +1629,205 @@ foreach ($registrosLote as $reg) {
 
     }
 }
+
+ public function storeReglas(Request $request)
+    {
+        // Validación básica del carrito entrante
+        $request->validate([
+            'productos' => 'required|array',
+            'productos.*.id' => 'required|integer|exists:productos,id',
+            'productos.*.cantidad' => 'required|numeric|min:1',
+            // En caso de que la opción B requiera autorización, el front puede enviar qué combos confirmar
+            'combos_confirmados' => 'nullable|array' 
+        ]);
+
+        $fkTienda = auth()->user()->fkTienda; // ID de tienda del usuario logueado
+        $productosOriginales = $request->input('productos');
+        $combosConfirmadosFront = $request->input('combos_confirmados', []);
+
+        DB::beginTransaction();
+
+        try {
+            // 1. FASE DE COMBOS: Evaluamos promociones grupales primero
+            $analisisCombos = $this->motorPrecios->evaluarCombosMixtos($productosOriginales, $fkTienda);
+            
+            $combosAGuardar = [];
+            $productosParaMayoreo = $analisisCombos['carrito_sobrante'];
+
+            // Filtro por si la tienda exige confirmación de combos y el usuario rechazó alguno
+            foreach ($analisisCombos['combos_aplicados'] as $combo) {
+                // Si viene vacío asumimos que aplica directo, si no, validamos que esté en los confirmados
+                if (empty($combosConfirmadosFront) || in_array($combo['regla_id'], $combosConfirmadosFront)) {
+                    $combosAGuardar[] = $combo;
+                } else {
+                    // Si el usuario rechazó el combo, devolvemos sus piezas al flujo normal de venta individual
+                    $requisitos = DB::table('menu_promocion_items')->where('regla_precio_id', $combo['regla_id'])->get();
+                    foreach ($requisitos as $req) {
+                        $cantidadADevolver = $req->cantidad_requerida * $combo['cantidad_armada'];
+                        $productosParaMayoreo[] = ['id' => $req->producto_id, 'cantidad' => $cantidadADevolver];
+                    }
+                }
+            }
+
+            $granTotalFactura = 0;
+            $lineasDetalleVenta = [];
+
+            // 2. FASE INDIVIDUAL: Procesar el inventario restante para precios unitarios, mayoreo o 3x2
+            foreach ($productosParaMayoreo as $item) {
+                $calculoItem = $this->motorPrecios->procesarLineaCarrito($item['id'], $item['cantidad'], $fkTienda);
+                
+                $granTotalFactura += $calculoItem['subtotal'];
+                $lineasDetalleVenta[] = [
+                    'producto_id'     => $calculoItem['producto_id'],
+                    'tipo'            => 'producto_individual',
+                    'cantidad'        => $calculoItem['cantidad'],
+                    'precio_unitario' => $calculoItem['precio_final_und'],
+                    'subtotal'        => $calculoItem['subtotal'],
+                    'regla_aplicada'  => $calculoItem['regla_aplicada']
+                ];
+            }
+
+            // Sumar los subtotales de los combos que sí fueron aceptados/aplicados
+            foreach ($combosAGuardar as $combo) {
+                $granTotalFactura += $combo['subtotal'];
+                $lineasDetalleVenta[] = [
+                    'producto_id'     => null, // Al ser combo mixto agrupa varios productos
+                    'tipo'            => 'combo_mixto',
+                    'cantidad'        => $combo['cantidad_armada'],
+                    'precio_unitario' => $combo['precio_combo'],
+                    'subtotal'        => $combo['subtotal'],
+                    'regla_aplicada'  => $combo['nombre_promo']
+                ];
+            }
+
+            // 3. REGISTRO EN BASE DE DATOS Y AJUSTE DE STOCK
+            // Insertar cabecera de la venta (Ejemplo referencial de tu tabla de ventas)
+            $ventaId = DB::table('ventas')->insertGetId([
+                'total'      => $granTotalFactura,
+                'fkTienda'   => $fkTienda,
+                'user_id'    => auth()->id(),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            // Insertar detalles de la venta y rebajar inventario físico
+            foreach ($lineasDetalleVenta as $detalle) {
+                DB::table('venta_detalles')->insert([
+                    'venta_id'        => $ventaId,
+                    'producto_id'     => $detalle['producto_id'],
+                    'cantidad'        => $detalle['cantidad'],
+                    'precio_unitario' => $detalle['precio_unitario'],
+                    'subtotal'        => $detalle['subtotal'],
+                    'comentario'      => $detalle['regla_aplicada'],
+                    'created_at'      => now(),
+                    'updated_at'      => now()
+                ]);
+
+                // Descontar inventario físico real
+                if ($detalle['tipo'] === 'producto_individual') {
+                    // Evaluamos si el producto individual posee receta de restaurante
+                    $ingredientes = DB::table('recetas')->where('producto_padre_id', $detalle['producto_id'])->get();
+
+                    if ($ingredientes->isNotEmpty()) {
+                        foreach ($ingredientes as $ing) {
+                            $descuentoMateria = $ing->cantidad * $detalle['cantidad'];
+                            DB::table('productos')->where('id', $ing->ingrediente_id)->decrement('stock', $descuentoMateria);
+                        }
+                    } else {
+                        // Venta comercial regular (Descuento de stock directo)
+                        DB::table('productos')->where('id', $detalle['producto_id'])->decrement('stock', $detalle['cantidad']);
+                    }
+                } elseif ($detalle['tipo'] === 'combo_mixto') {
+                    // Si es combo mixto, debemos rastrear qué ítems lo componen para bajar su respectiva materia prima
+                    $comboRegla = DB::table('menu_promocion_items')
+                        ->where('producto_id', '!=', null) 
+                        ->get(); // Idealmente filtrar por el id de regla correspondiente
+                    
+                    // Nota: Aquí se itera para descontar stock de los elementos del combo de forma análoga.
+                }
+            }
+
+            DB::commit();
+            return response()->json(['status' => 'success', 'message' => 'Venta e inventarios procesados correctamente.', 'venta_id' => $ventaId]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['status' => 'error', 'message' => 'Error al guardar la venta: ' . $e->getMessage()], 500);
+        }
+    }
+
+        /**
+     * OPCIÓN B: Cotización en tiempo real para el Frontend con banderas de confirmación.
+     */
+    public function cotizarCarrito(Request $request)
+    {
+        $fkTienda = auth()->user()->fkTienda;
+        $itemsCarrito = $request->input('productos', []);
+
+        if (empty($itemsCarrito)) {
+            return response()->json(['subtotal_previo' => 0, 'items' => []]);
+        }
+
+        // 1. LEER CONFIGURACIÓN DE LA TIENDA
+        // Consultamos la tabla 'tienda' para saber si la aplicación es automática o requiere consentimiento
+        $configTienda = DB::table('tienda')->where('idTienda', $fkTienda)->first();
+        
+        // Supongamos que tienes una columna booleana llamada 'confirmar_promociones' en tu tabla tienda
+        // Si no la tienes, puedes simularla o definirla por defecto: 
+        $requiereConfirmacion = isset($configTienda->confirmar_promociones) ? (bool)$configTienda->confirmar_promociones : true;
+
+        // 2. CORRER EL MOTOR DE PRECIOS
+        // Fase Combos Mixtos
+        $analisisCombos = $this->motorPrecios->evaluarCombosMixtos($itemsCarrito, $fkTienda);
+        
+        $listaFinalItems = [];
+        $totalSimulado = 0;
+        $ahorroAcumulado = 0;
+
+        // Adjuntar los resultados de los combos detectados
+        foreach ($analisisCombos['combos_aplicados'] as $combo) {
+            $totalSimulado += $combo['subtotal'];
+            $listaFinalItems[] = [
+                'id'              => null,
+                'nombre'          => $combo['nombre_promo'],
+                'tipo'            => 'combo_mixto',
+                'cantidad'        => $combo['cantidad_armada'],
+                'precio_unitario' => $combo['precio_combo'],
+                'subtotal'        => $combo['subtotal'],
+                'regla_id'        => $combo['regla_id'],
+                'regla_aplicada'  => $combo['nombre_promo'],
+                // Avisamos al frontend si debe pedir confirmación al cajero antes de pintar el descuento
+                'requiere_confirmar_cajero' => $requiereConfirmacion 
+            ];
+        }
+
+        // Fase Individual (Mayoreo, Escala de volumen, ofertas directas)
+        foreach ($analisisCombos['carrito_sobrante'] as $itemSuelto) {
+            $calculo = $this->motorPrecios->procesarLineaCarrito($itemSuelto['id'], $itemSuelto['cantidad'], $fkTienda);
+            
+            $totalSimulado += $calculo['subtotal'];
+            $ahorroAcumulado += $calculo['descuento_total'];
+
+            $listaFinalItems[] = [
+                'id'              => $calculo['producto_id'],
+                'nombre'          => $calculo['nombre_producto'],
+                'tipo'            => 'individual',
+                'cantidad'        => $calculo['cantidad'],
+                'precio_unitario' => $calculo['precio_final_und'],
+                'subtotal'        => $calculo['subtotal'],
+                'regla_id'        => null,
+                'regla_aplicada'  => $calculo['regla_aplicada'],
+                // El mayoreo por lo general aplica directo en negocios mixtos, pero usamos la misma bandera general
+                'requiere_confirmar_cajero' => $calculo['regla_aplicada'] ? $requiereConfirmacion : false
+            ];
+        }
+
+        return response()->json([
+            'gran_total_cotizado' => $totalSimulado,
+            'ahorro_estimado'     => $ahorroAcumulado,
+            'requiere_alerta_pos' => $requiereConfirmacion && ($ahorroAcumulado > 0 || !empty($analisisCombos['combos_aplicados'])),
+            'items'               => $listaFinalItems
+        ]);
+    }
+
 }

@@ -142,6 +142,7 @@ $request->validate([
             'formula'=> $request->formula,
             'estado'=> 1,
             'ClaveVista'=>$request->clavevista,
+            'defauldoc'=>$request->compdefault,
             'fkPlantillaHtml' => $request->disdoc,
             'fkTienda' => $fkTienda]);
 

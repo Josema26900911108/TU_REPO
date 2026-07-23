@@ -15,7 +15,7 @@
     <h1 class="mt-4 text-center">Trasladar Material</h1>
     <ol class="breadcrumb mb-4">
         <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
-        <li class="breadcrumb-item"><a href="{{ route('bucketecnico.index')}}">Ventas</a></li>
+        <li class="breadcrumb-item"><a href="{{ route('tecnico.bucket', ['usbucket' => $tecnico->id ]) }}">Bucket Tecnico</a></li>
         <li class="breadcrumb-item active">Trasladar Material</li>
     </ol>
 </div>
@@ -80,19 +80,7 @@
 
 <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
 
-    @foreach($productos as $producto)
-        <option value="{{ $producto->id }}"
-                data-img="{{ $producto->img_path }}"
-                data-stock="{{ $producto->stock }}"
-                data-precio="{{ $producto->precio_venta }}" 
-                data-lote="{{ $producto->numero_lote ?? 'N/A' }}"
-                data-vence="{{ $producto->fecha_vencimiento ?? 'N/A' }}"
-                data-cantidadlote="{{ $producto->cantidad_lote ?? 'N/A' }}"
-                data-reglas="{{ json_encode($producto->reglas_json) ?? 'N/A' }}"
-                data-detalle="{{ $producto->descripcion }}">
-            {{ $producto->nombre }} - {{ $producto->stock }}
-        </option>
-    @endforeach
+
 
 </select>
 
@@ -216,35 +204,36 @@
             <!-----Venta---->
             <div class="col-xl-4">
                 <div class="text-white bg-success p-1 text-center">
-                    Datos generales
+                    Datos de Bodega Origen
                 </div>
                 <div class="p-3 border border-3 border-success">
                     <div class="row gy-4">
-                        <!--Cliente-->
+
+                        <!--Tipo Origen-->
                         <div class="col-12">
-                            <label for="cliente_id" class="form-label">Cliente:</label>
-                            <select name="cliente_id" id="cliente_id" class="form-control selectpicker show-tick" data-live-search="true" title="Selecciona" data-size='10'>
-                                @foreach ($clientes as $item)
-                                    <option value="{{$item->id}}">{{$item->persona->numero_documento.'-'.$item->persona->razon_social}}</option>
-                                @endforeach
-                            </select>
-                            @error('cliente_id')
+                <label for="selector_origen_tipo" class="form-label font-weight-bold">Tipo de Consulta:</label>
+                <select id="selector_origen_tipo" class="form-control selectpicker" data-style="btn-outline-primary">
+                    <option value="raiz">Raíz (Inventario General SAP)</option>
+                    <option value="bodega">Bodega / Técnico Especifico</option>
+                </select>
+                            @error('tipo_origen')
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
                         </div>
 
-                        <!--Tipo de comprobante-->
+                        <!--Centro Origen-->
                         <div class="col-12">
-                            <label for="comprobante_id" class="form-label">Comprobante:</label>
-                            <select name="comprobante_id" id="comprobante_id" class="form-control selectpicker" title="Selecciona" data-size='10'>
-                                @foreach ($comprobantes as $item)
-                                <option value="{{$item->id}}">{{$item->tipo_comprobante}}</option>
-                                @endforeach
-                            </select>
-                            @error('comprobante_id')
+                <label id="label_almacen" for="selector_bodega_id" class="form-label font-weight-bold">Ubicación / Almacén:</label>
+                <select id="selector_bodega_id" class="form-control selectpicker" data-live-search="true" title="Todos los Almacenes">
+                    <!-- Si es Raíz se listarán almacenes SAP, si es Bodega se listan bodegas físicas -->
+                    <option value="">Cargando opciones...</option>
+                </select>
+                            @error('selector_bodega_id')
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
                         </div>
+                        </div>                        
+
 
                         <!--Numero de factura-->
                         <div class="col-12">
@@ -258,18 +247,9 @@
 
                                                 <!--Numero de comprobante-->
                         <div class="col-12">
-                            <label for="numero_factura" class="form-label">Numero de Factura:</label>
-                            <input readonly type="text" name="numero_factura" id="numero_factura" class="form-control">
-                            @error('numero_factura')
-                            <small class="text-danger">{{ '*'.$message }}</small>
-                            @enderror
-                        </div>
-
-                        <!--Impuesto---->
-                        <div class="col-sm-6">
-                            <label for="impuesto" class="form-label">Impuesto(IVA):</label>
-                            <input readonly type="text" name="impuesto" id="impuesto" class="form-control border-success">
-                            @error('impuesto')
+                            <label for="numero_movimiento" class="form-label">Numero Movimiento:</label>
+                            <input readonly type="text" name="numero_movimiento" id="numero_movimiento" class="form-control">
+                            @error('numero_movimiento')
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
                         </div>
@@ -398,6 +378,13 @@
     //Constantes
     const impuesto = 12;
     $(document).ready(function() {
+
+   cargarAlmacenesSegunOrigen();
+
+    // Evento reactivo al cambiar entre Raíz y Bodega
+    $('#selector_origen_tipo').change(function() {
+        cargarAlmacenesSegunOrigen();
+    });
 
 
     $('#producto_id').selectpicker();
@@ -590,49 +577,8 @@ $('#btnCancelarCompra').click(function() {
 });
 
 disableButtons();
-$('#comprobante_id').on('change', function() {
-var comprobanteId = $(this).val();
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detalles/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-            var detalles = response.detalles;
-            var tableBody = $('#detalle_tbody');
-            tableBody.empty();
 
-            // Iterar sobre los detalles y agregar filas a la tabla
-            $.each(detalles, function(index, detalle) {
-
-                var row = '<tr>' +
-                    '<td></td>' +
-                    '<td></td>' +
-                    '<td>' + detalle.cuenta_contable_nombre + '</td>' +
-                    '<td class="small-text">' + detalle.formula + '</td>' +
-                    '<td>' + detalle.valorminimo + '</td>' +
-                    '<td>' + detalle.Naturaleza + '</td>' +
-                    '</tr>';
-                tableBody.append(row);
-                formulas[index]=detalle.formula;
-                monto[index]=detalle.valorminimo;
-                cuenta[index]=detalle.cuenta_contable_nombre;
-                tipo[index]=detalle.Naturaleza;
-                formula=detalle.formuladoc;
-
-                sumarArreglos(formulas,monto);
-
-            });
-
-            llenarTablaventas();
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
-    });
-}
-});
-
-$('#producto_id').change(mostrarValores);
+$('#producto_id').change();
 
 
         $('#btn_agregar').click(function() {
@@ -659,67 +605,7 @@ $('#producto_id').change(mostrarValores);
             totalMASIVA = 0;
             cantidadarticulos=0;
 
-function mostrarValores() {
 
-    let select = document.getElementById('producto_id');
-    let option = select.selectedOptions[0];
-
-    let stock = option.getAttribute('data-stock');
-    let precio = option.getAttribute('data-precio');
-
-    document.getElementById('stock').value = stock;
-    document.getElementById('precio_venta').value = precio;
-
-    let lote = option.getAttribute('data-lote');
-    let vence = option.getAttribute('data-vence');
-    let cantidadlote = option.getAttribute('data-cantidadlote');
-
-    if(lote !== 'N/A') {
-        $('#info_lote_guia').html(`<i class="fas fa-box"></i> SUGERENCIA: Tomar del <b>Lote: ${lote}</b> (Vence: ${vence}) - Cantidad en lote: ${cantidadlote})`);
-    } else {
-        $('#info_lote_guia').text("");
-    }
-
-}
-
-    function mostrarValoresScanner() {
-
-
-var comprobanteId = $("#SKU").val();
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detallesSCAN/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-
-                if (!response || response.length === 0) {
-                    console.warn("No se encontró producto.");
-                    return;
-                }
-
-            var detalle = response[0];
-
-                let idProducto = detalle.producto_id;
-                let seleccionable = idProducto + "-" +detalle.existencia+"-"+detalle.precio_venta;
-
-                $("#producto_id option").each(function () {
-                    let v = $(this).val();
-                    if (v.startsWith(seleccionable)) {
-                        $("#producto_id").val(v).change();
-                        $('.selectpicker').selectpicker('refresh');
-                        return false; // salir del each
-                    }
-                });
-                $('#precio_venta').val(detalle.precio_venta);
-                $('#stock').val(detalle.existencia);
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
-    });
-}
-
-    }
 
     function llenarTablaventas() {
         var tableBodyDetalle = $('#tabla_detalle_tbody');
@@ -803,15 +689,7 @@ error: function(xhr) {
     });
 });
 
-    function CalcularFormula(formulalocal, montoA) {
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluadaiva = formulalocal.replace(/A/g, montoA);
-            // Evaluar la fórmula usando math.js
-            resultadoiva = math.evaluate(formulaEvaluadaiva);
-            // Redondear el resultado a 2 decimales
-            resultadoiva = parseFloat(resultadoiva.toFixed(2));
-            return resultadoiva;
-    }
+
 
     function agregarProducto() {
         let dataProducto = document.getElementById('producto_id').value.split('-');
@@ -1281,44 +1159,6 @@ if (comprobanteId) {
             title: message
         })
     }
-    function sumarArreglos(arr1, arr2, A){
-        let resultados = []; // Inicializar el arreglo correctamente
-        let formulaEvaluada;
-        let resultado;
-        var tableBody = $('#detalle_tbody');
-        tableBody.empty();
-
-        // Sumar los elementos correspondientes de los arreglos
-        for (let i = 0; i < arr1.length; i++) {
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluada = arr1[i].replace(/A/g, total);
-            // Evaluar la fórmula usando math.js
-            resultado = math.evaluate(formulaEvaluada);
-            // Redondear el resultado a 2 decimales
-            resultado = parseFloat(resultado.toFixed(2));
-            arr2[i]=resultado;
-            // Sumar el valor evaluado al valor de arr2[i]
-            resultados.push(arr2[i]);
-        };
-                        // Iterar sobre los detalles y agregar filas a la tabla
-                        $.each(arr1, function(index, arr1) {
-                            var row = '<tr>' +
-                                '<td></td>' +
-                                '<td></td>' +
-                                '<td>' + cuenta[index] + '</td>' +
-                                '<td class="small-text">' + formulas[index] + '</td>' +
-                                '<td>' + resultados[index] + '</td>' +
-                                '<td>' + tipo[index] + '</td>' +
-                                '</tr>';
-                            tableBody.append(row);
-                            monto[index]=resultados[index];
-                            $('#impuesto').val(IVA);
-
-                        });
-
-        return resultados; // Devolver el arreglo de resultados
-    };
-
     // Variables para detectar si es lector de barras
 let lastInputTime = 0;
 
@@ -1443,5 +1283,105 @@ function StopScanner() {
 
 let scanner = null;
 let escaneando = false;
+
+// Función para cambiar las etiquetas y cargar dinámicamente las bodegas del selectpicker
+function cargarAlmacenesSegunOrigen() {
+    let tipo = $('#selector_origen_tipo').val();
+    let selectAlmacen = $('#selector_bodega_id');
+    let labelAlmacen = $('#label_almacen');
+
+    selectAlmacen.empty();
+
+    if (tipo === 'raiz') {
+        labelAlmacen.text('Almacén SAP / Raíz:');
+        selectAlmacen.append('<option value="">Todos los Almacenes SAP</option>');
+        // 💡 AQUÍ puedes renderizar tus almacenes SAP desde una variable de Laravel si la tienes compartida
+        // Ejemplo: selectAlmacen.append('<option value="ALM1">Almacén Principal SAP</option>');
+    } else {
+        labelAlmacen.text('Bodega Física / Contrata:');
+        selectAlmacen.append('<option value="">Todas las Bodegas Físicas</option>');
+        // Ejemplo: selectAlmacen.append('<option value="BOD-01">Bodega Central</option>');
+    }
+
+    selectAlmacen.selectpicker('refresh');
+}
+
+// Función Maestra que conecta con el Controlador de Laravel de forma asíncrona
+function ejecutarBusquedaInventarioMamo() {
+    let tipoOrigen = $('#selector_origen_tipo').val();
+    let bodegaCodigo = $('#selector_bodega_id').val();
+    
+    if (textoBuscar.trim() === "") {
+        showModal('Por favor, ingrese un SKU o Número de Serie para realizar la búsqueda', 'warning');
+        return false;
+    }
+
+    $.ajax({
+        url: '/inventario/buscar-materiales-flexibles', // 👈 Asegúrate de dar de alta esta ruta en web.php
+        type: 'GET',
+        data: {
+            origen: tipoOrigen,
+            almacen: bodegaCodigo,
+            buscar: textoBuscar
+        },
+        success: function(response) {
+            let contenedorBody = $('#tabla_resultados_inventario_tbody');
+            contenedorBody.empty();
+
+            if (!response.materiales || response.materiales.length === 0) {
+                $('#card_resultados_busqueda').addClass('d-none');
+                showModal('No se encontraron existencias físicas o registros SAP con el criterio ingresado', 'warning');
+                return;
+            }
+
+            // Mostrar el contenedor de la tabla
+            $('#card_resultados_busqueda').removeClass('d-none');
+
+            // Iterar y pintar las filas devueltas por la base de datos de manera limpia
+            $.each(response.materiales, function(index, mat) {
+                let skuVisual = mat.sku || 'N/A';
+                
+                // Si mat.serie no existe (porque viene del Kardex), mostramos aviso de Misceláneo
+                let serieVisual = mat.serie ? `<b>${mat.serie}</b>` : '<span class="text-muted">Misceláneo (Sin Serie)</span>';
+                let centroVisual = mat.centro ? ` (${mat.centro})` : '';
+                let cantidadVisual = parseFloat(mat.cantidad_disponible).toFixed(2);
+                let unidadMedidaVisual = mat.unidad_medida || 'PZA';
+
+                let fila = `<tr>
+                    <td>${index + 1}</td>
+                    <td><span class="badge bg-secondary font-size-13">${skuVisual}</span></td>
+                    <td>${serieVisual}</td>
+                    <td>${mat.almacen}${centroVisual}</td>
+                    <td><strong class="text-primary">${cantidadVisual} ${unidadMedidaVisual}</strong></td>
+                    <td>
+                        <button class="btn btn-sm btn-success" type="button" onclick="vincularMaterialAFormulario('${mat.id}', '${skuVisual}', '${cantidadVisual}', '${mat.almacen}')">
+                            <i class="fa-solid fa-circle-check"></i> Cargar
+                        </button>
+                    </td>
+                </tr>`;
+                
+                contenedorBody.append(fila);
+            });
+        },
+        error: function(xhr) {
+            console.error("Error crítico de inventarios:", xhr.responseText);
+            showModal('Error al conectar con la base de datos de materiales', 'danger');
+        },
+        complete: function() {
+            // Reactivar el botón de búsqueda
+           
+        }
+    });
+}
+
+// Función para transferir el material seleccionado a tu carrito o campos de texto actuales
+function vincularMaterialAFormulario(id, sku, stock, almacen) {
+    // 💡 Esta función amarra el resultado con tus inputs de agregar de tu pantalla
+    $('#producto_id').val(id).change(); // Sincroniza tu selector principal
+    $('#stock').val(stock); // Llena el stock contable calculado en caliente
+    $('#cantidad').val('1').focus(); // Posiciona el cursor listo para escribir la cantidad
+    
+    showModal('Material cargado al selector correctamente', 'success');
+}
 </script>
 @endpush

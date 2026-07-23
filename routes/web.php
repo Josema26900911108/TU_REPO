@@ -137,14 +137,34 @@ Route::get('/arqueocaja/ventas/{ventas}', [ArqueoCajaController::class, 'ventas'
 Route::get('/arqueocaja/cobrarventas/{ventas}', [ArqueoCajaController::class, 'cobrarventas'])->name('arqueocaja.cobrarventas');
 Route::get('/arqueoc/cobventasdirecta/', [ArqueoCajaController::class, 'cobrarventasdir'])->name('arqueocaja.cobventasdir');
 
+
+
 Route::middleware(['auth'])->group(function () {
-    
+        Route::get('/inventario/buscar-materiales-flexibles', [TecnicoController::class, 'buscarMaterialesFlexibles'])
+        ->name('inventario.buscar.materiales');
     // Rutas estándar para el CRUD de Reglas de Precios
     Route::resource('reglas', ReglaPrecioController::class);
+
+    Route::post('/reglas/guardar', [ReglaPrecioController::class, 'store']);
+
+    // 1. Primero las fijas o estáticas
+
+
+// Cambia tu ruta actual para que quede exactamente así:
+Route::get('/reglas', [ReglaPrecioController::class, 'index'])
+    ->middleware('auth')
+    ->name('reglas.index'); // <-- Esto define el nombre que Laravel busca
+
+
 
     // Ruta adicional para ver o actualizar productos vinculados a una regla (Opcional/Útil)
     Route::get('reglas/{regla}/productos', [ReglaPrecioController::class, 'getProductos'])
          ->name('reglas.productos');
+
+             Route::post('/ventas/cotizar', [VentaController::class, 'cotizarCarrito']);
+    
+    // Ruta de la opción A: guarda de manera definitiva la transacción
+    Route::post('/ventas/guardar', [VentaController::class, 'store']);
          
 });
 
@@ -190,6 +210,9 @@ Route::get('/devolucionventa/devolucionreporte', [ventaController::class, 'devol
 
     Route::get('/compra/comprasreporte', [compraController::class, 'comprasReporte'])
     ->name('compra.comprareporte');
+
+    Route::get('/cargamasiva/productos', [compraController::class, 'descargarFormatoCargaMasiva'])->name('compras.descargar-formato');
+    Route::post('/Carga/Masiva/Productos',[compraController::class, 'storeMasivoExcel'])->name('compras.storeMasivoExcel');
 
 Route::get('/dashboardcompra/exportcompra-excel', [DashboardController::class, 'exportcompraExcel'])
     ->name('dashboardcompra.export.excel');

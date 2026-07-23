@@ -114,11 +114,131 @@ public function InsertarMaterialesTecnico($id)
     }
 
     // 3. Obtener los materiales asociados al técnico
-    $materiales = MovimientoMateriales::where('fkTecnico', $id)->get();
+    $materiales = MovimientoMateriales::where('contrata', $id)->get();
 
     // 4. Retornar la vista con los materiales del técnico
-    return view('trasladarmateria', compact('tecnico', 'materiales'));
+    return view('buckettecnico.trasladarmaterial', compact('tecnico', 'materiales'));
 
+}
+
+public function buscarMaterialesFlexibles(Request $request)
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'No autorizado'], 401);
+    }
+
+    $fkTienda = session('user_fkTienda');
+    
+    // Captura de parámetros del frontend
+    $tipoOrigen = $request->input('origen'); // 'raiz' o 'bodega'
+    $almacenSeleccionado = $request->input('almacen'); // Código o nombre de la bodega/almacén
+    $criterioBusqueda = trim($request->input('buscar')); // Puede ser el SKU o la SERIE
+
+    if (empty($criterioBusqueda)) {
+        return response()->json(['materiales' => []], 200);
+    }
+
+    // Determinar de forma automática si es SKU o SERIE por patrón alfanumérico o longitud
+    // (Si contiene letras o tiene más de 9 caracteres, asumimos que es una Serie)
+    $esSerie = preg_match('/[A-Za-z]/', $criterioBusqueda) || strlen($criterioBusqueda) > 9;
+
+    // =========================================================================
+    // 🔹 ESCENARIO A: BÚSQUEDA A NIVEL RAÍZ (Tabla SAP: materialexistentesap)
+    // =========================================================================
+    if ($tipoOrigen === 'raiz') {
+        
+        $query = DB::table('materialexistentesap')
+            ->where('fkTienda', $fkTienda);
+
+        // Aplicar filtro adaptativo según el criterio detectado
+        if ($esSerie) {
+            $query->where('serie', $criterioBusqueda);
+        } else {
+            $query->where('SKU', $criterioBusqueda);
+        }
+
+        // Si el usuario especificó un almacén raíz en particular
+        if (!empty($almacenSeleccionado)) {
+            $query->where('almacen', $almacenSeleccionado);
+        }
+
+        $resultados = $query->select(
+                'id',
+                'SKU as sku',
+                'serie',
+                'Lote as lote',
+                'almacen',
+                'CENTRO as centro',
+                'ESTATUS as estatus',
+                'TIPO as tipo_material',
+                'unidadmedida as unidad_medida',
+                'COSTO as costo_unitario',
+                DB::raw('COALESCE(cantidad, 1) as cantidad_disponible')
+            )
+            ->get();
+
+        return response()->json(['origen' => 'raiz', 'materiales' => $resultados], 200);
+    }
+
+    // =========================================================================
+    // 🔹 ESCENARIO B: BÚSQUEDA EN BODEGA ESPECÍFICA (Tabla: movimiento_materiales)
+    // =========================================================================
+    else {
+        // En el Kardex calculamos el stock remanente real:
+        // Entradas (clases de ingreso, compras, traslados positivos) sumando, y salidas restando.
+        // Si el campo clase_movimiento define el signo, adaptamos con un condicional contable CASE WHEN.
+        
+        $query = DB::table('movimiento_materiales')
+            ->join('productos', 'movimiento_materiales.fkMateriales', '=', 'productos.id')
+            ->where('movimiento_materiales.fkTienda', $fkTienda);
+
+        // Filtrar obligatoriamente por la bodega/almacén seleccionado
+        if (!empty($almacenSeleccionado)) {
+            $query->where('movimiento_materiales.almacen', $almacenSeleccionado);
+        }
+
+        // Aplicar el buscador híbrido SKU / SERIE conectando al catálogo o al lote
+        if ($esSerie) {
+            // Si es serie, buscamos la serie a través del documento o el lote asignado al movimiento
+            $query->where('movimiento_materiales.documento_material', 'LIKE', '%' . $criterioBusqueda . '%')
+                  ->orWhere('movimiento_materiales.referencia', 'LIKE', '%' . $criterioBusqueda . '%');
+        } else {
+            // Si es misceláneo, buscamos directo por el código SKU del catálogo de productos
+            $query->where('productos.codigo', $criterioBusqueda)
+                  ->orWhere('movimiento_materiales.fkMateriales', $criterioBusqueda);
+        }
+
+        // Agrupamos por producto y almacén para consolidar los saldos netos contables
+        $resultados = $query->select(
+                'movimiento_materiales.fkMateriales as id',
+                'productos.codigo as sku',
+                'productos.nombre as descripcion_material',
+                'movimiento_materiales.almacen',
+                'movimiento_materiales.centro',
+                'movimiento_materiales.unidad_medida_base as unidad_medida',
+                // 🔥 MATEMÁTICA KARDEX: Sumamos entradas y restamos salidas según la clase de movimiento de tu negocio
+                DB::raw("SUM(
+                    CASE 
+                        WHEN movimiento_materiales.clase_movimiento IN ('641', '101', '501', 'saldo_inicial') THEN movimiento_materiales.cantidad
+                        WHEN movimiento_materiales.clase_movimiento IN ('642', '201', '601') THEN -movimiento_materiales.cantidad
+                        ELSE movimiento_materiales.cantidad 
+                    END
+                ) as cantidad_disponible")
+            )
+            ->groupBy(
+                'movimiento_materiales.fkMateriales', 
+                'productos.codigo', 
+                'productos.nombre', 
+                'movimiento_materiales.almacen', 
+                'movimiento_materiales.centro',
+                'movimiento_materiales.unidad_medida_base'
+            )
+            // Filtramos para mostrar únicamente materiales que tengan existencias reales en la bodega
+            ->having('cantidad_disponible', '>', 0)
+            ->get();
+
+        return response()->json(['origen' => 'bodega', 'materiales' => $resultados], 200);
+    }
 }
 public function generarMemoriaFotografica(Request $request)
 {

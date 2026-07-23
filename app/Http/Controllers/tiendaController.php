@@ -42,37 +42,44 @@ public function index()
 
     $idusuario = auth()->user()->id;
 
-// 1. Buscamos los IDs de las tiendas a las que el usuario tiene acceso directo
-$tiendasDirectasIds = DB::table('usuario_tienda')
-    ->where('fkUsuario', $idusuario)
-    ->pluck('fkTienda');
+    // 1. Buscamos los IDs de las tiendas a las que el usuario tiene acceso directo
+    $tiendasDirectasIds = DB::table('usuario_tienda')
+        ->where('fkUsuario', $idusuario)
+        ->pluck('fkTienda');
 
-// 2. Usamos la lógica de UNION para encontrar todas las tiendas relacionadas (Principales o Dependientes)
-$tiendasRelacionadasIds = DB::table('centros_organizacion')
-    ->whereIn('fkTiendaPrincipal', $tiendasDirectasIds)
-    ->select('fkTiendaDependiente as tienda_id')
-    ->union(
-        DB::table('centros_organizacion')
-            ->whereIn('fkTiendaDependiente', $tiendasDirectasIds)
-            ->select('fkTiendaPrincipal as tienda_id')
-    )
-    ->union(
-        DB::table('tienda')
-            ->whereIn('idTienda', $tiendasDirectasIds)
-            ->select('idTienda as tienda_id')
-    )
-    ->pluck('tienda_id');
+    // 2. Ejecutar el UNION intermedio
+    $rawIds = DB::table('centros_organizacion')
+        ->whereIn('fkTiendaPrincipal', $tiendasDirectasIds)
+        ->select('fkTiendaDependiente as tienda_id')
+        ->union(
+            DB::table('centros_organizacion')
+                ->whereIn('fkTiendaDependiente', $tiendasDirectasIds)
+                ->select('fkTiendaPrincipal as tienda_id')
+        )
+        ->union(
+            DB::table('usuario_tienda')
+                ->where('fkUsuario', $idusuario)
+                ->select('fkTienda as tienda_id')
+        )
+        ->get()
+        ->pluck('tienda_id')
+        ->unique()
+        ->toArray();
 
-// 3. Ejecutamos la consulta final sobre el modelo Tienda con los nombres de Centro
-$tiendas = Tienda::join('centro', 'tienda.fkCentro', '=', 'centro.id')
-    ->select(
-        'centro.codigo as centro_codigo',
-        'centro.nombre as centro_nombre',   
-        'tienda.*'
-    )
-    ->whereIn('tienda.idTienda', $tiendasRelacionadasIds)
-    ->distinct()
-    ->get();
+    // 🔥 LA SOLUCIÓN DEFINITIVA: Forzar la conversión estricta a números enteros puros (int)
+    $tiendasRelacionadasIds = array_map('intval', $rawIds);
+
+    // 3. Consulta final blindada con leftJoin y protección contra nulos
+    $tiendas = Tienda::leftJoin('centro', 'tienda.fkCentro', '=', 'centro.id')
+        ->select(
+            'tienda.*',
+            'centro.codigo as centro_codigo',
+            'centro.nombre as centro_nombre',
+            'tienda.idTienda as idTienda' // Forzar persistencia del ID base
+        )
+        ->whereIn('tienda.idTienda', $tiendasRelacionadasIds)
+        ->distinct()
+        ->get();
 
     return view('tienda.index', compact('tiendas'));
 }

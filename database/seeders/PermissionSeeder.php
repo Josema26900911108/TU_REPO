@@ -57,6 +57,7 @@ class PermissionSeeder extends Seeder
             'editar-producto',
             'eliminar-producto',
             'vertienda-producto',
+            'crear-productomasivo',
 
             //Proveedore
             'panel-proveedore',

@@ -17,6 +17,7 @@ class Comprobante extends Model
             'fkComprobante',              // La clave foránea en `detalle_comprobantes` que apunta a `comprobantes`
             'id',                         // La clave foránea en `cuentas_contables` (debería ser 'id', que es la clave primaria)
             'id',                         // La clave local en `comprobantes`
+
             'fkCuentaContable'            // La clave foránea en `detalle_comprobantes` que apunta a `cuentas_contables`
         );
     }
@@ -42,5 +43,5 @@ class Comprobante extends Model
     protected $primaryKey = 'id'; // Especifica la clave primaria
     public $incrementing = true; // Si es autoincremental
     protected $keyType = 'int'; // Tipo de la clave primaria
-    protected $fillable = ['id','tipo_comprobante', 'estado', 'created_at', 'update_at', 'formula','fkTienda','ClaveVista','fkPlantillaHtml']; // Agrega aquí todos los campos que deseas que sean "fillables"
+    protected $fillable = ['id','defauldoc', 'tipo_comprobante', 'estado', 'created_at', 'update_at', 'formula','fkTienda','ClaveVista','fkPlantillaHtml']; // Agrega aquí todos los campos que deseas que sean "fillables"
 }

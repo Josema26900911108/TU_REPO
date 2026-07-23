@@ -29,6 +29,56 @@
     </div>
     @endcan
 
+    @can('crear-productomasivo')
+    <style>
+        .gap-3 { gap: 1rem; }
+        .cursor-pointer { cursor: pointer; }
+        .btn-masivo-custom {
+            display: inline-block;
+            font-weight: bold;
+            text-align: center;
+            vertical-align: middle;
+            user-select: none;
+            padding: .375rem .75rem;
+            font-size: 1rem;
+            line-height: 1.5;
+            border-radius: .25rem;
+            transition: background-color .15s ease-in-out;
+        }
+    </style>
+
+    <!-- CORRECCIÓN CRÍTICA: CDN Real y funcional de PapaParse -->
+    <script src="https://cloudflare.com"></script>
+
+    <div id="contenedorMasivoAislado" class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-light border-0">
+            <h5 class="mb-0 text-secondary font-weight-bold">
+                📦 Gestión Masiva de Compras e Inventarios
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">
+                Descarga la plantilla oficial para rellenar los datos. Si utilizas el código <strong>"SG"</strong>, el sistema autogenerará un código de barras EAN-13 válido de forma automática.
+            </p>
+            
+            <div class="d-flex flex-wrap align-items-center gap-3">
+                <a href="{{ route('compras.descargar-formato') }}" class="btn btn-outline-primary font-weight-bold px-4">
+                    📥 Descargar Formato CSV
+                </a>
+
+                <input type="file" id="csvFileInput" accept=".csv" style="display: none !important; visibility: hidden !important;">
+                
+                <span id="triggerFileSpan" class="btn-masivo-custom bg-success text-white cursor-pointer px-4">
+                    🚀 Seleccionar y Cargar CSV
+                </span>
+                
+                <span id="fileNameDisplay" class="text-muted small font-italic">No se ha seleccionado ningún archivo</span>
+            </div>
+        </div>
+    </div>
+    @endcan
+
+
     <div class="card">
         <div class="card-header">
             <i class="fas fa-table me-1"></i>
@@ -231,4 +281,183 @@
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/simple-datatables@latest" type="text/javascript"></script>
 <script src="{{ asset('js/datatables-simple-demo.js') }}"></script>
+
+<!-- =========================================================================
+// PARTE 2.1: INTERCEPCIÓN DEL SELECTOR NEUTRO Y PARSEO DE CELDAS
+// ========================================================================= -->
+@push('js')
+<script src="{{ asset('js/papaparse.min.js') }}"></script>
+<script src="{{ asset('js/datatables-simple-demo.js') }}"></script>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const csvFileInput = document.getElementById('csvFileInput');
+    const triggerFileSpan = document.getElementById('triggerFileSpan');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+
+    if (triggerFileSpan && csvFileInput) {
+        triggerFileSpan.addEventListener('click', function (e) {
+            e.preventDefault(); 
+            e.stopPropagation();
+            csvFileInput.click();
+        });
+    }
+
+// =========================================================================
+// PARTE 1: CAPTURA CORREGIDA DEL ARCHIVO INDIVIDUAL [0] (EVITA ERROR BLOB)
+// =========================================================================
+    if (csvFileInput) {
+        csvFileInput.addEventListener('change', function (e) {
+            e.preventDefault(); 
+            e.stopPropagation();
+            
+            const files = e.target.files;
+            // Freno de seguridad si el usuario cierra la ventana sin elegir nada
+            if (!files || files.length === 0) return;
+
+            // MOSTRAR NOMBRE: Extraemos el nombre del primer archivo de la lista
+            fileNameDisplay.textContent = files[0].name;
+
+            // SOLUCIÓN AL ERROR: Pasamos files[0] (que es un Blob válido) en lugar de la lista completa
+            Papa.parse(files[0], {
+                header: true,
+                skipEmptyLines: true,
+                encoding: "UTF-8", 
+                complete: function (results) {
+                    if (!results.data || results.data.length === 0) {
+                        Swal.fire('Error', 'El archivo CSV está vacío.', 'error');
+                        return;
+                    }
+                    solicitarParametrosCabecera(results.data);
+                },
+                error: function (error) {
+                    Swal.fire('Error', 'No se pudo leer el archivo: ' + error.message, 'error');
+                }
+            });
+            
+            csvFileInput.value = ''; // Limpiar campo para permitir re-subidas
+        });
+    }
+
+
+    function solicitarParametrosCabecera(filasCSV) {
+        Swal.fire({
+            title: 'Confirmación de Carga',
+            html: `
+                <div class="text-start">
+                    <p class="small text-muted mb-2">El sistema procesara automaticamente el lote asociandolo al folio contable y tipo de comprobante por defecto <strong>"DC"</strong>.</p>
+                    <label class="form-label small font-weight-bold">Número Comprobante (0 para Auto-correlativo):</label>
+                    <input type="text" id="swal_numero_comprobante" class="form-control" value="0">
+                </div>
+            `,
+            focusConfirm: false, 
+            showCancelButton: true,
+            confirmButtonText: 'Procesar Carga Masiva 🚀', 
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                return { numero_comprobante: document.getElementById('swal_numero_comprobante').value }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                construirFormDataMasivo(filasCSV, result.value);
+            }
+        });
+    }// =========================================================================
+// SECCIÓN 2.2: CONSTRUCCIÓN DE MATRICES INDEXADAS Y ENVÍO SEGURO POST (FETCH)
+// =========================================================================
+    function construirFormDataMasivo(filas, cabecera) {
+        Swal.fire({
+            title: 'Procesando inserción masiva...',
+            text: 'Por favor espera un momento, aplicando cambios en Kárdex y Contabilidad.',
+            allowOutsideClick: false, 
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        let formData = new FormData();
+        formData.append('numero_comprobante', cabecera.numero_comprobante);
+        formData.append('proveedore_id', ''); 
+
+        const ahora = new Date();
+        formData.append('fecha_hora', ahora.toISOString().slice(0, 19).replace('T', ' '));
+        formData.append('fecha', ahora.toISOString().split('T'));
+
+        // Extraer los datos del proveedor utilizando la primera fila útil de tu Excel
+        if (filas.length > 0) {
+            formData.append('proveedor_nit', filas['PROVEEDOR_NIT'] || filas['PROVEEDOR_NIT'] || '');
+            formData.append('proveedor_nombre', filas['PROVEEDOR_NOMBRE'] || filas['PROVEEDOR_NOMBRE'] || '');
+        }
+
+        let totalGeneral = 0;
+        let impuestoGeneral = 0;
+
+        // Recorrer filas mapeando los nombres exactos de tu imagen
+        filas.forEach((fila) => {
+            const cantidad = parseInt(fila['CANTIDAD']) || 0;
+            const precioCompra = parseFloat(fila['PRECIO_CON']) || parseFloat(fila['PRECIO COMPRA']) || 0;
+            const subtotalIva = parseFloat(fila['SUBTOTAL_IVA']) || 0;
+
+            totalGeneral += (cantidad * precioCompra);
+            impuestoGeneral += subtotalIva;
+
+            const textoPerecedero = (fila['ES_PERECED'] || fila['ES PERECEDERO'] || '').trim().toUpperCase();
+            const esPerecederoEntero = (textoPerecedero === 'SI' || textoPerecedero === 'SÍ') ? 1 : 0;
+
+            formData.append('array_codigo[]', fila['CODIGO_PRO'] || fila['PRODUCTO CODIGO'] || 'SG');
+            formData.append('array_nombre[]', fila['NOMBRE_PR'] || 'Producto Masivo');
+            formData.append('array_categoria_nombre[]', fila['CATEGORIA_'] || fila['CATEGORIA'] || '');
+            formData.append('array_presentacion_nombre[]', fila['PRESENTACI'] || fila['PRESENTACION'] || '');
+            formData.append('array_marca_nombre[]', fila['MARCA_ID'] || fila['MARCA'] || '');
+            formData.append('array_marca_nombre[]', fila['MARCA_ID'] || fila['MARCA'] || '');
+            formData.append('array_proveedor_nombre[]', fila['PROVEEDOR_NOMBRE'] || fila['PROVEEDOR_NOMBRE'] || '');
+            formData.append('array_proveedor_nit[]', fila['PROVEEDOR_NIT'] || fila['PROVEEDOR_NIT'] || '');
+            
+            formData.append('array_perecedero[]', esPerecederoEntero);
+            formData.append('arraycantidad[]', cantidad);
+            formData.append('arraypreciocompra[]', precioCompra);
+            formData.append('arrayprecioventa[]', parseFloat(fila['PRECIO_VEN']) || parseFloat(fila['PRECIO VENTA']) || 0);
+            formData.append('arraysubiva[]', subtotalIva);
+            formData.append('arrayfecha_vencimiento[]', fila['FECHA_VEN'] || fila['FECHA VENCIMIENTO'] || '');
+        });
+
+        formData.append('total', totalGeneral.toFixed(2));
+        formData.append('impuesto', impuestoGeneral.toFixed(2));
+
+        despacharPeticionBackend(formData);
+    }
+
+    function despacharPeticionBackend(formData) {
+        const tokenCsrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+        fetch("{{ route('compras.storeMasivoExcel') }}", {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-CSRF-TOKEN': tokenCsrf, 'Accept': 'application/json' }
+        })
+        .then(async response => {
+            const textResponse = await response.text();
+            let jsonData;
+            try { 
+                jsonData = JSON.parse(textResponse); 
+            } catch (err) {
+                console.error("Respuesta cruda del servidor:", textResponse);
+                throw new Error("El backend devolvio un fallo de codigo en lugar de JSON.");
+            }
+            if (!response.ok) {
+                throw new Error(jsonData.message || 'Error operativo en base de datos.');
+            }
+            return jsonData;
+        })
+        .then(data => {
+            Swal.fire({ icon: 'success', title: '¡Todo listo!', text: data.message }).then(() => {
+                window.location.reload(); 
+            });
+        })
+        .catch(error => {
+            console.error(error);
+            Swal.fire('Fallo en insercion masiva', error.message, 'error');
+        });
+    }
+});
+</script>
 @endpush

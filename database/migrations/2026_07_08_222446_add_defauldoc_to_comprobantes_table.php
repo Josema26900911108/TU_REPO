@@ -1,5 +1,4 @@
 <?php
-
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -11,8 +10,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('materialexistentesap', function (Blueprint $table) {
-            $table->double('cantidad', 8, 2)->default(0.00)->after('COSTO');
+        Schema::table('comprobantes', function (Blueprint $table) {
+            // Modifica 'string' por 'boolean', 'integer', etc., según lo requieras
+            $table->string('defauldoc')->nullable()->after('id'); 
         });
     }
 
@@ -21,8 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('materialexistentesap', function (Blueprint $table) {
-            $table->dropColumn('cantidad');
+        Schema::table('comprobantes', function (Blueprint $table) {
+            $table->dropColumn('defauldoc');
         });
     }
 };
