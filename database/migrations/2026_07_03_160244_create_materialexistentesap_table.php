@@ -11,35 +11,38 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('materialexistentesap', function (Blueprint $table) {
-            $table->id(); // Convención moderna de Laravel (BigIncrements implícito)
+        Schema::create('material_existente_sap', function (Blueprint $table) {
+            // Clave primaria
+            $table->id(); 
             
-            // Relación externa limpia y tipada correctamente
-            $table->foreignId('fkTienda')
+            // Relación externa (llave foránea)
+            $table->foreignId('tienda_id')
                   ->nullable()
-                  ->constrained('tienda')
+                  ->constrained('tiendas')
                   ->onDelete('cascade');
             
-            // Campos indexados para búsquedas de alta velocidad
+            // Índices para búsquedas de alta velocidad
             $table->string('serie')->nullable()->index(); 
-            $table->string('SKU')->nullable()->index();   
-            $table->string('Lote')->nullable()->index();  
-            $table->string('MAC1')->nullable()->index();  
-            $table->string('CENTRO')->nullable()->index(); 
+            $table->string('sku')->nullable()->index();   
+            $table->string('lote')->nullable()->index();  
+            $table->string('mac1')->nullable()->index();  
+            $table->string('centro')->nullable()->index(); 
 
             // Campos informativos y técnicos
             $table->string('almacen')->nullable();
-            $table->string('MAC2')->nullable();
-            $table->string('MAC3')->nullable();
-            $table->string('ESTATUS')->nullable();
-            $table->decimal('COSTO', 12, 2)->nullable(); // Reemplazado double por decimal (mayor precisión financiera)
-            $table->string('TIPO')->nullable();
-            $table->string('unidadmedida')->nullable();
-            $table->string('TIPOMOVIMIENTO')->nullable();
+            $table->string('mac2')->nullable();
+            $table->string('mac3')->nullable();
+            $table->string('estatus')->nullable();
+            $table->string('tipo')->nullable();
+            $table->string('unidad_medida')->nullable();
+            $table->string('tipo_movimiento')->nullable();
 
-            // Auditoría (Se eliminaron duplicados y se usa la convención de Laravel)
-            $table->string('Modificado_por')->nullable();
-            $table->string('Creado_por')->nullable();
+            // Precisión financiera
+            $table->decimal('costo', 12, 2)->nullable(); 
+
+            // Auditoría y control
+            $table->string('creado_por')->nullable();
+            $table->string('modificado_por')->nullable();
             $table->timestamps(); 
         });
     }
@@ -49,6 +52,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('materialexistentesap');
+        Schema::dropIfExists('material_existente_sap');
     }
 };
