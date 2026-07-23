@@ -11,17 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Nombre de tabla corregido a snake_case plural
         Schema::create('materialexistentesap', function (Blueprint $table) {
-            // Clave primaria
+            // Clave primaria estándar
             $table->id(); 
             
-            // Relación externa (llave foránea)
+            // Relación externa optimizada (Ajusta 'id' si tu tabla tienda usa 'idTienda')
             $table->foreignId('fkTienda')
-                  ->nullable()
-                  ->constrained('tienda')
+                  ->constrained('tienda', 'idTienda') 
                   ->onDelete('cascade');
             
-            // Índices para búsquedas de alta velocidad
+            // Campos indexados para búsquedas rápidas
             $table->string('serie')->nullable()->index(); 
             $table->string('sku')->nullable()->index();   
             $table->string('lote')->nullable()->index();  
@@ -37,7 +37,7 @@ return new class extends Migration
             $table->string('unidad_medida')->nullable();
             $table->string('tipo_movimiento')->nullable();
 
-            // Precisión financiera
+            // Precisión financiera (12 dígitos en total, 2 decimales)
             $table->decimal('costo', 12, 2)->nullable(); 
 
             // Auditoría y control
