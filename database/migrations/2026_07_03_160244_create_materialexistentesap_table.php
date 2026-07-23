@@ -16,7 +16,7 @@ return new class extends Migration
             $table->id(); 
             
             // Relación externa (llave foránea)
-            $table->foreignId('tienda_id')
+            $table->foreignId('fkTienda')
                   ->nullable()
                   ->constrained('tienda')
                   ->onDelete('cascade');
@@ -52,6 +52,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('material_existente_sap');
+        Schema::dropIfExists('materialexistentesap');
     }
 };
