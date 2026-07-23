@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('material_existente_sap', function (Blueprint $table) {
+        Schema::create('materialexistentesap', function (Blueprint $table) {
             // Clave primaria
             $table->id(); 
             
