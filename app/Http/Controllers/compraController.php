@@ -423,7 +423,7 @@ public function storeMasivoExcel(Request $request)
         DB::beginTransaction();
 
         $fkTienda = session('user_fkTienda');
-        $idUsuario = auth()->id();
+        $idUsuario = session('user_fkUsuario');
 
         // =========================================================================
         // PARTE 1: INDEXAR O CREAR EL PROVEEDOR RAÍZ
@@ -497,15 +497,14 @@ $numeroDocumento = (!empty($arrayNits) && is_array($arrayNits)) ? trim($arrayNit
 // 1. Crear el encabezado de la compra antes del ciclo para obtener su ID
 $compra = Compra::create([
     'fkTienda'           => $fkTienda,
-    'fkProveedor'        => $idProveedorFinal ?? null, 
+    'proveedore_id'      => $idProveedorFinal ?? null, // Corregido según tus columnas
     'numero_comprobante' => 'MASIVA-' . time(),        
-    'fecha_compra'       => now()->toDateString(),
     'fecha_hora'         => now(), 
     'total'              => 0,                         
     'impuesto'           => 0, 
-    'estado'             => 2, // <--- CAMBIA 'I' POR EL ENTERO 0 (O 1 SEGÚN CORRESPONDA)
-    'created_at'         => now(),
-    'updated_at'         => now()
+    'estado'             => 2,
+    'fkUserCreate'       => $idUsuario, 
+    'fkUserCC'           => $idUsuario,
 ]);
 // Inicializamos la posición tal como lo haces en tu otra función.
 $posicion = 1; 
@@ -713,20 +712,24 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
         $formulaCabecera = $comprobante->formula ?? null;
         $impuestotal = $this->evaluarFormula($formulaCabecera, $subtotalAcumuladoGlobal);
 
-        $compraId = DB::table('compras')->insertGetId([
-            'fecha_hora'         => $request->get('fecha_hora', now()),
-            'impuesto'           => $impuestotal,
-            'numero_comprobante' => $numero_comprobante,
-            'total'              => $subtotalAcumuladoGlobal + $impuestotal,
-            'estado'             => 2, 
-            'fkUserCreate'       => $idUsuario,
-            'fkUserCC'           => $idUsuario,
-            'comprobante_id'     => $comprobante_id,
-            'proveedore_id'      => $proveedor_id,
-            'fkTienda'           => $fkTienda,
-            'created_at'         => now(),
-            'updated_at'         => now()
-        ]);
+ 
+$compra->update([
+    'fecha_hora'         => $request->get('fecha_hora', now()),
+    'impuesto'           => $impuestotal,
+    'numero_comprobante' => $numero_comprobante,
+    'total'              => $subtotalAcumuladoGlobal + $impuestotal,
+    'estado'             => 2, 
+    'fkUserCreate'       => $idUsuario,
+    'fkUserCC'          => $idUsuario,
+    'comprobante_id'     => $comprobante_id,
+    'ClaveVista'            => 'DC',
+    'proveedore_id'      => $proveedor_id, 
+    'fkTienda'           => $fkTienda,    
+    'updated_at'         => now()
+]);
+
+// Si necesitas el ID para los pasos siguientes, simplemente usas:
+$compraId = $compra->id;
 
         $folioId = DB::table('Folio')->insertGetId([
             'descripcion'          => 'Compra masiva n.' . $compraId . ' mediante comprobante ' . ($comprobante->defauldoc ?? 'Asiento de Compra'),
@@ -817,20 +820,6 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
                 $posicionLote++;
             }
 
-            DB::table('compra_producto')->insert([
-                'compra_id'     => $compraId,
-                'producto_id'   => $item['id'],
-                'cantidad'      => $item['cantidad'],
-                'precio_compra' => $item['precio_compra'],
-                'precio_venta'  => $item['precio_venta'],
-                'fkTienda'      => $fkTienda,
-                'fkLote'        => $idLoteGenerado,
-                'Naturaleza'    => 'D',
-                'Estado'        => 'I',
-                'impuesto'      => $item['impuesto'],
-                'created_at'    => now(),
-                'updated_at'    => now()
-            ]);
 
             DB::table('productos')->where('id', $item['id'])->increment('stock', $item['cantidad'], [
                 'precio_base' => $item['precio_compra'],
