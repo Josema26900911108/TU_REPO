@@ -2907,39 +2907,95 @@ public function fetchrelacionC(Request $request)
 
 
 
-    public function fetchrelacioninv(Request $request)
+public function fetchrelacioninv(Request $request)
 {
     DB::connection()->disableQueryLog();
-    try{
-                        if(!Auth::check()){
+    try {
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
 
-                    $Estatus = session('user_estatus');
-                    $fkTienda = session('user_fkTienda');
-                    $idtecnico= $request->input('id');
+        $Estatus   = session('user_estatus');
+        $fkTienda  = session('user_fkTienda');
+        $idtecnico = $request->input('id');
 
-
-   $relacion = MovimientoMaterial::with(['treematerialcategoria' => function($query) {
-                // Solo traer columnas necesarias
-                $query->select('SKU', 'nombre as descripcion');
-            }])
+        // 1. Catálogo base para traer las descripciones limpias sin duplicar filas
+        $subconsultaCatalogo = DB::table('treematerialescategoria')
+            ->select('SKU', DB::raw('MIN(nombre) as descripcion'))
             ->where('fkTienda', $fkTienda)
-            ->where('ESTATUS', 'DISPONIBLE')
+            ->groupBy('SKU');
+
+        // 2. Subconsulta Maestra para limpiar y aplicar TRIM a las series y MACs
+        $subconsultaMovimientos = DB::table('movimientomateriales')
+            ->select(
+                'id',
+                'fkTienda',
+                'fkTecnico',
+                'SKU',
+                'Status',
+                'ESTATUS',
+                'CENTRO',
+                'Naturaleza',
+                'cantidad',
+                'created_at',
+                // Unificación inteligente de series y genéricos ('N/A')
+                DB::raw("
+                    CASE 
+                        WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) IN ('', '-', '0', 'N/A') THEN 'N/A'
+                        WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                        ELSE TRIM(serie)
+                    END as serie_unificada
+                ")
+            )
+            ->where('fkTienda', $fkTienda)
             ->where('fkTecnico', $idtecnico)
+            // Agregamos tus dos estados reales para que calcule las instalaciones hechas
+            ->whereIn('Status', ['I', 'A']); 
+
+        // 3. Consulta final paginada con balance neto y orden descendente
+        $relacion = DB::table($subconsultaMovimientos, 'mov')
+            ->leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
+                $join->on('tmc_unica.SKU', '=', 'mov.SKU');
+            })
+            ->select(
+                DB::raw('MAX(mov.id) as id'),
+                'mov.serie_unificada as serie',
+                'mov.SKU as sku',
+                'tmc_unica.descripcion as descripcion',
+                DB::raw('MAX(mov.ESTATUS) as ESTATUS'),
+                DB::raw('MAX(mov.CENTRO) as CENTRO'),
+                DB::raw('MAX(mov.created_at) as created_at'),
+                // Operación matemática: 'E' suma, 'H' resta
+                DB::raw("
+                    SUM(
+                        CASE 
+                            WHEN mov.Naturaleza = 'E' THEN IFNULL(mov.cantidad, 0)
+                            WHEN mov.Naturaleza = 'H' THEN -IFNULL(mov.cantidad, 0)
+                            ELSE IFNULL(mov.cantidad, 0)
+                        END
+                    ) as cantidad
+                ")
+            )
+            ->groupBy(
+                'mov.SKU',
+                'tmc_unica.descripcion',
+                'mov.serie_unificada'
+            )
+            ->having('cantidad', '>', 0)
             ->orderBy('created_at', 'desc')
             ->paginate($request->input('count', 15));
 
+        if ($request->ajax()) {
+            return view('buckettecnico.table.tablainv', compact('relacion'))->render();
+        }
 
-    if ($request->ajax()) {
-        return view('buckettecnico.table.tablainv', compact('relacion'))->render();
+    } catch (\Exception $e) {
+        // Corregido el formato del compact del catch original para evitar errores de sintaxis en PHP
+        $errorMessage = 'Error: ' . $e->getMessage();
+        return view('tecnico.index', compact('errorMessage'));
     }
-    }catch(Exception $e){
-    return view('tecnico.index', compact('relacion','Error: '.$e->getMessage()));
-    }
-
-
 }
+
 
 public function exportar(Request $request)
 {
