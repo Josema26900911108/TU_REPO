@@ -1806,10 +1806,9 @@ public function InventarioLista(Request $request)
         $idPadre = $request->input('id1'); 
         $idtecnico = $request->input('id2');
         
-        // Capturamos el ID de la tecnología enviado desde el AJAX
         $idTecnologiaSelect = $request->input('id_tecnologia'); 
 
-        // Consulta SQL recursiva original para extraer las ramas del nodo actual
+        // Consulta SQL recursiva original
         $sqlll = "
 WITH RECURSIVE nodo_padre AS (
     SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
@@ -1847,7 +1846,6 @@ LEFT JOIN treematerialescategoria AS am_padre
         $stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
         $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        // Detectar si hay algún registro de tipo MO
         $contieneMO = collect($detallecomprobante)->contains('TP', 'MO');
 
         if ($contieneMO) {
@@ -1869,30 +1867,28 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ];
             }
         } else {
-            // 1. Extraemos la lista limpia de SKUs de la tecnología (GPON/subcategorías)
             $skusValidos = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->filter()->toArray()));
             
             if (empty($skusValidos)) {
                 return response()->json([]);
             }
 
-            // 2. Creamos la subconsulta protectora para de-duplicar el catálogo de materiales de la tienda
             $subconsultaCatalogo = DB::table('treematerialescategoria')
                 ->select('SKU', DB::raw('MIN(nombre) as nombre'))
                 ->where('fkTienda', $fkTienda)
                 ->groupBy('SKU');
 
-            // 3. Consulta de inventario inteligente para controlar materiales genéricos y seriados por separado
+            // 🌟 CONSULTA DE INVENTARIO OPTIMIZADA Y COMPATIBLE CON EL MODO ESTRICTO 🌟
             $final = MovimientoMaterial::leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
                     $join->on('tmc_unica.SKU', '=', 'movimientomateriales.SKU');
                 })
                 ->where('movimientomateriales.fkTienda', $fkTienda)
                 ->where('movimientomateriales.fkTecnico', $idtecnico)
                 ->whereIn('movimientomateriales.SKU', $skusValidos) 
-                ->whereIn('movimientomateriales.Status', ['I', 'A']) // Incluye estados de Entrada 'I' e Instalación 'A'
+                ->whereIn('movimientomateriales.Status', ['I', 'A']) 
                 ->select(
                     DB::raw('MAX(movimientomateriales.id) as id'), 
-                    // Identificador unificado para agrupar entradas y salidas de la misma serie física
+                    // Si el registro es de instalación (serie -) pero tiene MAC1, devolvemos la MAC1 para unificar las filas
                     DB::raw("
                         CASE 
                             WHEN movimientomateriales.serie IN ('', '-', '0') AND movimientomateriales.MAC1 NOT IN ('', '-', 'N/A') THEN movimientomateriales.MAC1
@@ -1902,7 +1898,7 @@ LEFT JOIN treematerialescategoria AS am_padre
                     DB::raw('MAX(movimientomateriales.CENTRO) as CENTRO'), 
                     'tmc_unica.nombre as categoria_nombre', 
                     'movimientomateriales.SKU as sku', 
-                    // Operación matemática: E (Entrada) suma, H (Instalado/Salida) resta
+                    // Operación de balance neto (Entradas menos Salidas)
                     DB::raw("
                         SUM(
                             CASE 
@@ -1916,15 +1912,11 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ->groupBy(
                     'tmc_unica.nombre', 
                     'movimientomateriales.SKU',
-                    // Agrupamos por la misma lógica de serie/MAC para separar cada equipo físico sin fragmentar
-                    DB::raw("
-                        CASE 
-                            WHEN movimientomateriales.serie IN ('', '-', '0') AND movimientomateriales.MAC1 NOT IN ('', '-', 'N/A') THEN movimientomateriales.MAC1
-                            ELSE movimientomateriales.serie
-                        END
-                    ")
+                    // Agrupamos por las columnas físicas directas involucradas. Esto rompe la restricción estricta de MySQL 1055
+                    'movimientomateriales.serie',
+                    'movimientomateriales.MAC1'
                 )
-                ->having('cantidad', '>', 0) // Oculta automáticamente los equipos o materiales con saldo 0
+                ->having('cantidad', '>', 0) 
                 ->get();
         }
 
