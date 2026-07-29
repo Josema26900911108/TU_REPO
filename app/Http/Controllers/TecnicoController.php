@@ -1878,7 +1878,7 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ->where('fkTienda', $fkTienda)
                 ->groupBy('SKU');
 
-            // 🌟 Subconsulta para limpiar, estandarizar y aplicar TRIM a las series y MACs
+            // 🌟 Subconsulta inteligente para unificar materiales genéricos y mantener equipos seriados
             $subconsultaMovimientos = DB::table('movimientomateriales')
                 ->select(
                     'id',
@@ -1889,10 +1889,12 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'CENTRO',
                     'Naturaleza',
                     'cantidad',
-                    // 🌟 APLICAMOS TRIM Y CLEANING DE CARACTERES
+                    // 🌟 SI EL MATERIAL NO TIENE UNA SERIE REAL O ES GENÉRICO ('0', '-', etc.), LO FORZAMOS A 'N/A'
+                    // SI TIENE UNA SERIE EXTENSA O MAC REAL, CONSERVA SU IDENTIFICADOR INDIVIDUAL
                     DB::raw("
                         CASE 
-                            WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) NOT IN ('', '-', 'N/A') THEN TRIM(MAC1)
+                            WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) IN ('', '-', '0', 'N/A') THEN 'N/A'
+                            WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
                             ELSE TRIM(serie)
                         END as serie_unificada
                     ")
@@ -1902,7 +1904,7 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ->whereIn('movimientomateriales.SKU', $skusValidos)
                 ->whereIn('movimientomateriales.Status', ['I', 'A']);
 
-            // 🌟 Consulta final agrupada por la serie limpia de espacios en blanco
+            // Consulta final agrupada
             $final = DB::table($subconsultaMovimientos, 'mov')
                 ->leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
                     $join->on('tmc_unica.SKU', '=', 'mov.SKU');
@@ -1913,7 +1915,7 @@ LEFT JOIN treematerialescategoria AS am_padre
                     DB::raw('MAX(mov.CENTRO) as CENTRO'),
                     'tmc_unica.nombre as categoria_nombre',
                     'mov.SKU as sku',
-                    // Cálculo neto: 'E' suma, 'H' resta
+                    // Cálculo matemático neto
                     DB::raw("
                         SUM(
                             CASE 
@@ -1929,7 +1931,7 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'mov.SKU',
                     'mov.serie_unificada'
                 )
-                ->having('cantidad', '>', 0) // Hace desaparecer el equipo si llega a 0
+                ->having('cantidad', '>', 0) 
                 ->get();
         }
 
@@ -1939,8 +1941,6 @@ LEFT JOIN treematerialescategoria AS am_padre
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
-
-
 
 
 
