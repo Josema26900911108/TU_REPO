@@ -1806,10 +1806,9 @@ public function InventarioLista(Request $request)
         $idPadre = $request->input('id1'); 
         $idtecnico = $request->input('id2');
         
-        // 🌟 CAPTURAMOS EL ID DE LA TECNOLOGÍA ENVIADO DESDE EL AJAX
         $idTecnologiaSelect = $request->input('id_tecnologia'); 
 
-        // Consulta SQL recursiva original para extraer las ramas del nodo actual
+        // Consulta SQL recursiva original
         $sqlll = "
 WITH RECURSIVE nodo_padre AS (
     SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
@@ -1847,7 +1846,6 @@ LEFT JOIN treematerialescategoria AS am_padre
         $stmt->execute([$idPadre, $fkTienda, $fkTienda, $idPadre, $fkTienda]);
         $detallecomprobante = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        // Detectar si hay algún registro de tipo MO
         $contieneMO = collect($detallecomprobante)->contains('TP', 'MO');
 
         if ($contieneMO) {
@@ -1868,47 +1866,50 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'cantidad'         => $value['limite']
                 ];
             }
-                        } else {
-            // 🌟 1. Extraemos la lista limpia de SKUs de la tecnología (GPON/subcategorías)
+        } else {
             $skusValidos = array_values(array_unique(collect($detallecomprobante)->pluck('sku')->filter()->toArray()));
             
             if (empty($skusValidos)) {
                 return response()->json([]);
             }
 
-            // 🌟 2. Creamos la subconsulta protectora para de-duplicar el catálogo de materiales de la tienda
             $subconsultaCatalogo = DB::table('treematerialescategoria')
                 ->select('SKU', DB::raw('MIN(nombre) as nombre'))
                 ->where('fkTienda', $fkTienda)
                 ->groupBy('SKU');
 
-            // 🌟 3. Consulta de inventario unida de forma segura a la subconsulta limpia
-            $final = MovimientoMaterial::joinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
+            // 🌟 CONSULTA DE INVENTARIO CORREGIDA CON ENTRADAS Y CONTRAMOVIMIENTOS 🌟
+            $final = MovimientoMaterial::leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
                     $join->on('tmc_unica.SKU', '=', 'movimientomateriales.SKU');
                 })
                 ->where('movimientomateriales.fkTienda', $fkTienda)
                 ->where('movimientomateriales.fkTecnico', $idtecnico)
-                ->whereIn('movimientomateriales.SKU', $skusValidos) // Acota los materiales a los SKUs de GPON
-                ->where('movimientomateriales.STATUS', 'I') 
+                ->whereIn('movimientomateriales.SKU', $skusValidos) 
+                ->whereIn('movimientomateriales.Status', ['I', 'A']) // Cambiado para abarcar tus dos estados reales
                 ->select(
                     DB::raw('MAX(movimientomateriales.id) as id'), 
-                    'movimientomateriales.serie',
-                    'movimientomateriales.CENTRO',
-                    'tmc_unica.nombre as categoria_nombre', // Hereda el nombre limpio sin duplicar filas
+                    DB::raw('MAX(movimientomateriales.serie) as serie'), // Agregado MAX para no fragmentar filas
+                    DB::raw('MAX(movimientomateriales.CENTRO) as CENTRO'), // Agregado MAX para no fragmentar filas
+                    'tmc_unica.nombre as categoria_nombre', 
                     'movimientomateriales.SKU as sku', 
-                    // SUM directo y real sobre la tabla física (Dará 400.00 exactos)
-                    DB::raw('SUM(IFNULL(movimientomateriales.cantidad, 0)) as cantidad')
+                    // Operación matemática real: E suma, H resta
+                    DB::raw("
+                        SUM(
+                            CASE 
+                                WHEN movimientomateriales.Naturaleza = 'E' THEN IFNULL(movimientomateriales.cantidad, 0)
+                                WHEN movimientomateriales.Naturaleza = 'H' THEN -IFNULL(movimientomateriales.cantidad, 0)
+                                ELSE IFNULL(movimientomateriales.cantidad, 0)
+                            END
+                        ) as cantidad
+                    ")
                 )
                 ->groupBy(
-                    'movimientomateriales.serie', 
-                    'movimientomateriales.CENTRO', 
                     'tmc_unica.nombre', 
                     'movimientomateriales.SKU'
                 )
-                ->having('cantidad', '>', 0) 
+                ->having('cantidad', '>', 0) // Filtra en automático saldos de equipos seriados en cero
                 ->get();
         }
-
 
         return response()->json(is_array($final) ? $final : $final->toArray());
 
@@ -1916,6 +1917,7 @@ LEFT JOIN treematerialescategoria AS am_padre
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
+
 
 
 
