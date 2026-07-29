@@ -722,7 +722,6 @@ $compra->update([
     'fkUserCreate'       => $idUsuario,
     'fkUserCC'          => $idUsuario,
     'comprobante_id'     => $comprobante_id,
-    'ClaveVista'            => 'DC',
     'proveedore_id'      => $proveedor_id, 
     'fkTienda'           => $fkTienda,    
     'updated_at'         => now()
