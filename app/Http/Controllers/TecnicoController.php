@@ -2905,8 +2905,6 @@ public function fetchrelacionC(Request $request)
 
 
 
-
-
 public function fetchrelacioninv(Request $request)
 {
     DB::connection()->disableQueryLog();
@@ -2919,16 +2917,17 @@ public function fetchrelacioninv(Request $request)
         $fkTienda  = session('user_fkTienda');
         $idtecnico = $request->input('id');
 
-        // 🌟 CONSULTA BLINDADA CON ELOQUENT PARA MANTENER COMPATIBILIDAD CON TU BLADE
+        // 🌟 CONSULTA ELOQUENT PERMITIENDO ENTRADAS, SALIDAS Y COMPATIBLE CON PAGINATE() 🌟
         $relacion = MovimientoMaterial::with(['treematerialcategoria' => function($query) {
                 $query->select('SKU', 'nombre as descripcion');
             }])
             ->where('fkTienda', $fkTienda)
             ->where('fkTecnico', $idtecnico)
-            ->whereIn('Status', ['I', 'A']) // Abarca entradas e instalaciones
+            ->whereIn('Status', ['I', 'A']) 
             ->select(
                 DB::raw('MAX(id) as id'),
                 'SKU',
+                // Unificación idéntica de la serie para la vista
                 DB::raw("
                     CASE 
                         WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) IN ('', '-', '0', 'N/A') THEN 'N/A'
@@ -2952,13 +2951,10 @@ public function fetchrelacioninv(Request $request)
             )
             ->groupBy(
                 'SKU',
-                DB::raw("
-                    CASE 
-                        WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) IN ('', '-', '0', 'N/A') THEN 'N/A'
-                        WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
-                        ELSE TRIM(serie)
-                    END
-                ")
+                // 🌟 Agrupamos por las columnas físicas directas involucradas.
+                // Esto blinda la subconsulta del paginador ante el error 1055 de MySQL
+                'serie',
+                'MAC1'
             )
             ->having('cantidad', '>', 0)
             ->orderBy('created_at', 'desc')
@@ -2969,12 +2965,9 @@ public function fetchrelacioninv(Request $request)
         }
 
     } catch (\Exception $e) {
-        // Retornamos un JSON controlado si falla la petición AJAX para que sepas el error exacto
         if ($request->ajax()) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
-        
-        // Si no es AJAX, redirigimos limpiamente para evitar caídas por falta de variables
         return redirect()->back()->with('error', $e->getMessage());
     }
 }
