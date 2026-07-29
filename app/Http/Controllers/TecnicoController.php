@@ -1878,45 +1878,58 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ->where('fkTienda', $fkTienda)
                 ->groupBy('SKU');
 
-            // 🌟 CONSULTA DE INVENTARIO OPTIMIZADA Y COMPATIBLE CON EL MODO ESTRICTO 🌟
-            $final = MovimientoMaterial::leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
-                    $join->on('tmc_unica.SKU', '=', 'movimientomateriales.SKU');
-                })
-                ->where('movimientomateriales.fkTienda', $fkTienda)
-                ->where('movimientomateriales.fkTecnico', $idtecnico)
-                ->whereIn('movimientomateriales.SKU', $skusValidos) 
-                ->whereIn('movimientomateriales.Status', ['I', 'A']) 
+            // 🌟 Subconsulta para limpiar, estandarizar y aplicar TRIM a las series y MACs
+            $subconsultaMovimientos = DB::table('movimientomateriales')
                 ->select(
-                    DB::raw('MAX(movimientomateriales.id) as id'), 
-                    // Si el registro es de instalación (serie -) pero tiene MAC1, devolvemos la MAC1 para unificar las filas
+                    'id',
+                    'fkTienda',
+                    'fkTecnico',
+                    'SKU',
+                    'Status',
+                    'CENTRO',
+                    'Naturaleza',
+                    'cantidad',
+                    // 🌟 APLICAMOS TRIM Y CLEANING DE CARACTERES
                     DB::raw("
                         CASE 
-                            WHEN movimientomateriales.serie IN ('', '-', '0') AND movimientomateriales.MAC1 NOT IN ('', '-', 'N/A') THEN movimientomateriales.MAC1
-                            ELSE movimientomateriales.serie
-                        END as serie
-                    "),
-                    DB::raw('MAX(movimientomateriales.CENTRO) as CENTRO'), 
-                    'tmc_unica.nombre as categoria_nombre', 
-                    'movimientomateriales.SKU as sku', 
-                    // Operación de balance neto (Entradas menos Salidas)
+                            WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) NOT IN ('', '-', 'N/A') THEN TRIM(MAC1)
+                            ELSE TRIM(serie)
+                        END as serie_unificada
+                    ")
+                )
+                ->where('movimientomateriales.fkTienda', $fkTienda)
+                ->where('movimientomateriales.fkTecnico', $idtecnico)
+                ->whereIn('movimientomateriales.SKU', $skusValidos)
+                ->whereIn('movimientomateriales.Status', ['I', 'A']);
+
+            // 🌟 Consulta final agrupada por la serie limpia de espacios en blanco
+            $final = DB::table($subconsultaMovimientos, 'mov')
+                ->leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
+                    $join->on('tmc_unica.SKU', '=', 'mov.SKU');
+                })
+                ->select(
+                    DB::raw('MAX(mov.id) as id'),
+                    'mov.serie_unificada as serie',
+                    DB::raw('MAX(mov.CENTRO) as CENTRO'),
+                    'tmc_unica.nombre as categoria_nombre',
+                    'mov.SKU as sku',
+                    // Cálculo neto: 'E' suma, 'H' resta
                     DB::raw("
                         SUM(
                             CASE 
-                                WHEN movimientomateriales.Naturaleza = 'E' THEN IFNULL(movimientomateriales.cantidad, 0)
-                                WHEN movimientomateriales.Naturaleza = 'H' THEN -IFNULL(movimientomateriales.cantidad, 0)
-                                ELSE IFNULL(movimientomateriales.cantidad, 0)
+                                WHEN mov.Naturaleza = 'E' THEN IFNULL(mov.cantidad, 0)
+                                WHEN mov.Naturaleza = 'H' THEN -IFNULL(mov.cantidad, 0)
+                                ELSE IFNULL(mov.cantidad, 0)
                             END
                         ) as cantidad
                     ")
                 )
                 ->groupBy(
-                    'tmc_unica.nombre', 
-                    'movimientomateriales.SKU',
-                    // Agrupamos por las columnas físicas directas involucradas. Esto rompe la restricción estricta de MySQL 1055
-                    'movimientomateriales.serie',
-                    'movimientomateriales.MAC1'
+                    'tmc_unica.nombre',
+                    'mov.SKU',
+                    'mov.serie_unificada'
                 )
-                ->having('cantidad', '>', 0) 
+                ->having('cantidad', '>', 0) // Hace desaparecer el equipo si llega a 0
                 ->get();
         }
 
