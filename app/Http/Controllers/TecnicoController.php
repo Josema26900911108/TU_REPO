@@ -2904,7 +2904,6 @@ public function fetchrelacionC(Request $request)
 }
 
 
-
 public function fetchrelacioninv(Request $request)
 {
     DB::connection()->disableQueryLog();
@@ -2913,50 +2912,63 @@ public function fetchrelacioninv(Request $request)
             return redirect()->route('login');
         }
 
-        $Estatus   = session('user_estatus');
         $fkTienda  = session('user_fkTienda');
         $idtecnico = $request->input('id');
 
-        // 🌟 CONSULTA ELOQUENT PERMITIENDO ENTRADAS, SALIDAS Y COMPATIBLE CON PAGINATE() 🌟
+        // 🌟 1. Subconsulta Maestra dándole PRIORIDAD ABSOLUTA a la columna 'serie'
+        $subconsultaBase = DB::table('movimientomateriales')
+            ->select(
+                'id',
+                'SKU',
+                'ESTATUS',
+                'CENTRO',
+                'created_at',
+                'Naturaleza',
+                'cantidad',
+                // EVALUACIÓN DE PRIORIDAD:
+                // 1. Si la columna 'serie' tiene un valor real y válido, se queda con la serie.
+                // 2. Si la serie es inválida ('-', '0', vacía) pero 'MAC1' tiene valor real, toma MAC1.
+                // 3. Si ninguno es válido, es un material genérico sin serie ('N/A').
+                DB::raw("
+                    CASE 
+                        WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                        WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                        ELSE 'N/A'
+                    END as serie_maestra
+                ")
+            )
+            ->where('fkTienda', $fkTienda)
+            ->where('fkTecnico', $idtecnico)
+            ->whereIn('Status', ['I', 'A']);
+
+        // 🌟 2. Consulta Eloquent que lee desde la subconsulta unificada (Compatibilidad total con tu Blade)
         $relacion = MovimientoMaterial::with(['treematerialcategoria' => function($query) {
                 $query->select('SKU', 'nombre as descripcion');
             }])
-            ->where('fkTienda', $fkTienda)
-            ->where('fkTecnico', $idtecnico)
-            ->whereIn('Status', ['I', 'A']) 
+            ->fromSub($subconsultaBase, 'mov')
             ->select(
-                DB::raw('MAX(id) as id'),
-                'SKU',
-                // Unificación idéntica de la serie para la vista
-                DB::raw("
-                    CASE 
-                        WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) IN ('', '-', '0', 'N/A') THEN 'N/A'
-                        WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
-                        ELSE TRIM(serie)
-                    END as serie
-                "),
-                DB::raw("MAX(ESTATUS) as ESTATUS"),
-                DB::raw("MAX(CENTRO) as CENTRO"),
-                DB::raw("MAX(created_at) as created_at"),
-                // Balance matemático neto
+                DB::raw('MAX(mov.id) as id'),
+                'mov.SKU',
+                'mov.serie_maestra as serie', // Se expone con el nombre 'serie' que tu vista Blade necesita
+                DB::raw("MAX(mov.ESTATUS) as ESTATUS"),
+                DB::raw("MAX(mov.CENTRO) as CENTRO"),
+                DB::raw("MAX(mov.created_at) as created_at"),
+                // Operación matemática neta
                 DB::raw("
                     SUM(
                         CASE 
-                            WHEN Naturaleza = 'E' THEN IFNULL(cantidad, 0)
-                            WHEN Naturaleza = 'H' THEN -IFNULL(cantidad, 0)
-                            ELSE IFNULL(cantidad, 0)
+                            WHEN mov.Naturaleza = 'E' THEN IFNULL(mov.cantidad, 0)
+                            WHEN mov.Naturaleza = 'H' THEN -IFNULL(mov.cantidad, 0)
+                            ELSE IFNULL(mov.cantidad, 0)
                         END
                     ) as cantidad
                 ")
             )
             ->groupBy(
-                'SKU',
-                // 🌟 Agrupamos por las columnas físicas directas involucradas.
-                // Esto blinda la subconsulta del paginador ante el error 1055 de MySQL
-                'serie',
-                'MAC1'
+                'mov.SKU',
+                'mov.serie_maestra' // Agrupamos por la serie unificada
             )
-            ->having('cantidad', '>', 0)
+            ->having('cantidad', '>', 0) // Quita de la lista los saldos que queden en 0
             ->orderBy('created_at', 'desc')
             ->paginate($request->input('count', 15));
 
