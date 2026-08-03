@@ -254,6 +254,14 @@
                     Clientes
                 </a>
                 @endcan
+                @can('ver-rutacliente')
+                <a class="nav-link" href="{{ route('rutas.index') }}">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-route"></i></div>
+
+
+                    Rutas de Clientes
+                </a>
+                @endcan
 
                                 @can('ver-materialmanoobra')
                 <a class="nav-link" href="{{ route('manoobramaterial.lista') }}">
@@ -327,6 +335,14 @@
                     Tecnico/Piloto
                 </a>
                 @endcan
+
+                @can('ver-despacho-piloto')
+                <a class="nav-link" href="{{ route('piloto.despacho') }}">
+                <div class="sb-nav-link-icon"><i class="fa-solid fa-truck-ramp-box"></i></div>
+                Mi Despacho Diario
+                </a>
+                @endcan
+
 
                 @can('ver-tecnico')
                 <a class="nav-link" href="{{ route('tecnico.buckettecnico') }}">

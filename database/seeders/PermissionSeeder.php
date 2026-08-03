@@ -28,6 +28,10 @@ class PermissionSeeder extends Seeder
             'editar-cliente',
             'eliminar-cliente',
 
+            //rutas_clientes
+            'ver-rutacliente',
+            'ver-despacho-piloto',
+
             //Compra
             'ver-compra',
             'panel-compra',

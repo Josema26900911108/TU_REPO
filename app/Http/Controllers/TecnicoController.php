@@ -1655,6 +1655,300 @@ try {
         return $output;
     }
 
+    public function obtenerExistenciasSap(Request $request)
+{
+    DB::connection()->disableQueryLog();
+    try {
+        $fkTienda = session('user_fkTienda');
+
+        // 🌟 1. Subconsulta para procesar, limpiar y agrupar lo que ya se extrajo en el sistema local
+        $subconsultaLocal = DB::table('movimientomateriales')
+            ->select(
+                'SKU',
+                DB::raw("
+                    CASE 
+                        WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                        WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                        ELSE 'N/A'
+                    END as serie_maestra
+                "),
+                // Netear las entradas ('E') y salidas ('H') locales
+                DB::raw("
+                    SUM(
+                        CASE 
+                            WHEN Naturaleza = 'E' THEN IFNULL(cantidad, 0)
+                            WHEN Naturaleza = 'H' THEN -IFNULL(cantidad, 0)
+                            ELSE IFNULL(cantidad, 0)
+                        END
+                    ) as total_local
+                ")
+            )
+            ->where('fkTienda', $fkTienda)
+            ->whereIn('Status', ['I', 'A'])
+            ->groupBy('SKU', DB::raw("
+                CASE 
+                    WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                    WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                    ELSE 'N/A'
+                END
+            "));
+
+        // 🌟 2. Subconsulta para limpiar y estandarizar las series registradas en la tabla de SAP
+        $subconsultaSap = DB::table('materialexistentesap')
+            ->select(
+                'SKU',
+                'nombre as descripcion',
+                'cantidad',
+                DB::raw("
+                    CASE 
+                        WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                        WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                        ELSE 'N/A'
+                    END as serie_sap
+                ")
+            )
+            ->where('fkTienda', $fkTienda);
+
+        // 🌟 3. Consulta Principal: Restamos el histórico local al inventario inicial de SAP
+        $disponibles = DB::table($subconsultaSap, 'sap')
+            ->leftJoinSub($subconsultaLocal, 'local', function ($join) {
+                $join->on('local.SKU', '=', 'sap.SKU')
+                     ->on('local.serie_maestra', '=', 'sap.serie_sap');
+            })
+            ->select(
+                'sap.SKU as sku',
+                'sap.descripcion',
+                'sap.serie_sap as serie',
+                // Operación: Inventario inicial de SAP menos lo que ya se asignó localmente
+                DB::raw("
+                    SUM(IFNULL(sap.cantidad, 0)) - IFNULL(local.total_local, 0) as cantidad_disponible
+                ")
+            )
+            ->groupBy('sap.SKU', 'sap.descripcion', 'sap.serie_sap', 'local.total_local')
+            // Solo muestra filas donde SAP tenga más stock del que se ha asignado localmente (las diferencias)
+            ->having('cantidad_disponible', '>', 0)
+            ->get();
+
+        return response()->json($disponibles);
+
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
+public function obtenerItemsSap(Request $request)
+{
+    DB::connection()->disableQueryLog();
+    try {
+        $fkTienda = session('user_fkTienda');
+
+        // Subconsulta de lo extraído localmente (E suma, H resta) agrupado por SKU y Serie Maestra
+        $subconsultaLocal = DB::table('movimientomateriales')
+            ->select(
+                'SKU',
+                DB::raw("
+                    CASE 
+                        WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                        WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                        ELSE 'N/A'
+                    END as serie_maestra
+                "),
+                DB::raw("
+                    SUM(
+                        CASE 
+                            WHEN Naturaleza = 'E' THEN IFNULL(cantidad, 0)
+                            WHEN Naturaleza = 'H' THEN -IFNULL(cantidad, 0)
+                            ELSE IFNULL(cantidad, 0)
+                        END
+                    ) as total_local
+                ")
+            )
+            ->where('fkTienda', $fkTienda)
+            ->whereIn('Status', ['I', 'A'])
+            ->groupBy('SKU', DB::raw("
+                CASE 
+                    WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                    WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                    ELSE 'N/A'
+                END
+            "));
+
+        // Subconsulta para normalizar los registros cargados inicialmente de SAP
+        $subconsultaSap = DB::table('materialexistentesap')
+            ->select(
+                'SKU',
+                'nombre as descripcion',
+                'cantidad',
+                DB::raw("
+                    CASE 
+                        WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                        WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                        ELSE 'N/A'
+                    END as serie_sap
+                ")
+            )
+            ->where('fkTienda', $fkTienda);
+
+        // Neteo final de remanentes
+        $disponibles = DB::table($subconsultaSap, 'sap')
+            ->leftJoinSub($subconsultaLocal, 'local', function ($join) {
+                $join->on('local.SKU', '=', 'sap.SKU')
+                     ->on('local.serie_maestra', '=', 'sap.serie_sap');
+            })
+            ->select(
+                'sap.SKU as sku',
+                'sap.descripcion',
+                'sap.serie_sap as serie',
+                DB::raw("SUM(IFNULL(sap.cantidad, 0)) - SUM(IFNULL(local.total_local, 0)) as cantidad_disponible")
+            )
+            ->groupBy('sap.SKU', 'sap.descripcion', 'sap.serie_sap')
+            ->having('cantidad_disponible', '>', 0)
+            ->get();
+
+        return response()->json($disponibles);
+
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
+public function obtenerCentrosLocales(Request $request)
+{
+    DB::connection()->disableQueryLog();
+    try {
+        $fkTienda = session('user_fkTienda');
+
+        $centrosConMovimientos = DB::table('movimientomateriales')
+            ->where('fkTienda', $fkTienda)
+            ->whereNotNull('CENTRO')
+            ->where('CENTRO', '<>', '')
+            ->distinct()
+            ->pluck('CENTRO');
+
+        $bodegas = DB::table('centro')
+            ->select('codigo', 'nombre')
+            ->where('fkTienda', $fkTienda)
+            ->whereIn('codigo', $centrosConMovimientos)
+            ->orderBy('codigo', 'asc')
+            ->get();
+
+        return response()->json($bodegas);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
+public function obtenerProductosInventario(Request $request)
+{
+    DB::connection()->disableQueryLog();
+    try {
+        $fkTienda = session('user_fkTienda');
+        $tipo = $request->input('tipo');
+        $centro = $request->input('centro');
+
+        // Subconsulta catálogo base para descripciones limpias
+        $subconsultaCatalogo = DB::table('treematerialescategoria')
+            ->select('SKU', DB::raw('MIN(nombre) as descripcion'))
+            ->where('fkTienda', $fkTienda)
+            ->groupBy('SKU');
+
+        if ($tipo === 'raiz') {
+            // ==========================================
+            // LÓGICA DE NEGOCIO: EXTRACCIÓN DESDE RAÍZ / SAP
+            // ==========================================
+            $subconsultaLocal = DB::table('movimientomateriales')
+                ->select(
+                    'SKU',
+                    DB::raw("
+                        CASE 
+                            WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                            WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                            ELSE 'N/A'
+                        END as serie_maestra
+                    "),
+                    DB::raw("SUM(CASE WHEN Naturaleza = 'E' THEN IFNULL(cantidad, 0) WHEN Naturaleza = 'H' THEN -IFNULL(cantidad, 0) ELSE IFNULL(cantidad, 0) END) as total_local")
+                )
+                ->where('fkTienda', $fkTienda)
+                ->whereIn('Status', ['I', 'A'])
+                ->groupBy('SKU', DB::raw("CASE WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie) WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1) ELSE 'N/A' END"));
+
+            $subconsultaSap = DB::table('materialexistentesap')
+                ->select(
+                    'SKU',
+                    'nombre as descripcion',
+                    'cantidad',
+                    DB::raw("CASE WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie) WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1) ELSE 'N/A' END as serie_sap")
+                )
+                ->where('fkTienda', $fkTienda);
+
+            $productos = DB::table($subconsultaSap, 'sap')
+                ->leftJoinSub($subconsultaLocal, 'local', function ($join) {
+                    $join->on('local.SKU', '=', 'sap.SKU')->on('local.serie_maestra', '=', 'sap.serie_sap');
+                })
+                ->select(
+                    'sap.SKU as sku',
+                    'sap.descripcion',
+                    'sap.serie_sap as serie',
+                    DB::raw("SUM(IFNULL(sap.cantidad, 0)) - SUM(IFNULL(local.total_local, 0)) as cantidad")
+                )
+                ->groupBy('sap.SKU', 'sap.descripcion', 'sap.serie_sap')
+                ->having('cantidad', '>', 0)
+                ->get();
+
+            return response()->json($productos);
+
+        } else {
+            // ==========================================
+            // LÓGICA DE NEGOCIO: BODEGA FÍSICA ESPECÍFICA (Filtra por CENTRO)
+            // ==========================================
+            $subconsultaMovimientos = DB::table('movimientomateriales')
+                ->select(
+                    'SKU',
+                    'Naturaleza',
+                    'cantidad',
+                    // Prioridad absoluta a columna serie, si no MAC1, de lo contrario 'N/A'
+                    DB::raw("
+                        CASE 
+                            WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
+                            WHEN TRIM(MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(MAC1)
+                            ELSE 'N/A'
+                        END as serie_maestra
+                    ")
+                )
+                ->where('fkTienda', $fkTienda)
+                ->where('CENTRO', $centro) // Filtro dinámico según la bodega seleccionada
+                ->whereIn('Status', ['I', 'A']);
+
+            $productos = DB::table($subconsultaMovimientos, 'mov')
+                ->leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
+                    $join->on('tmc_unica.SKU', '=', 'mov.SKU');
+                })
+                ->select(
+                    'mov.SKU as sku',
+                    'tmc_unica.descripcion',
+                    'mov.serie_maestra as serie',
+                    DB::raw("
+                        SUM(
+                            CASE 
+                                WHEN mov.Naturaleza = 'E' THEN IFNULL(mov.cantidad, 0)
+                                WHEN mov.Naturaleza = 'H' THEN -IFNULL(mov.cantidad, 0)
+                                ELSE IFNULL(mov.cantidad, 0)
+                            END
+                        ) as cantidad
+                    ")
+                )
+                ->groupBy('mov.SKU', 'tmc_unica.descripcion', 'mov.serie_maestra')
+                ->having('cantidad', '>', 0)
+                ->get();
+
+            return response()->json($productos);
+        }
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+}
+
+
 public function fillEstructuraMO($id)
 {
     DB::connection()->disableQueryLog();

@@ -76,27 +76,12 @@
                         </div>
 
                         <!-----Producto---->
-                        <div class="col-12">
-
-<select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
-
-
-
-</select>
-
-<div class="mt-2">
-    <small class="text-primary font-weight-bold" id="info_lote_guia"></small>
+<div class="col-12">
+    <label for="producto_id">Busque un producto aquí:</label>
+    <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
+        <option value="">Seleccione una bodega o almacén primero...</option>
+    </select>
 </div>
-
-<button type="button" class="btn btn-primary" id="btnVerProducto">
-    Ver
-</button>
-<button type="button" class="btn btn-primary" id="btnBuscarProducto">
-    Buscar
-</button>
-
-
-                        </div>
 
                         <!-----Stock--->
                         <div class="d-flex justify-content-end">
@@ -232,27 +217,7 @@
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
                         </div>
-                        </div>                        
-
-
-                        <!--Numero de factura-->
-                        <div class="col-12">
-                            <label for="numero_comprobante" class="form-label">Numero de comprobante:</label>
-                            <input readonly type="text" name="numero_comprobante" id="numero_comprobante" class="form-control">
-                            <input type="hidden" name="TipoFolio" id="TipoFolio" value="A">
-                            @error('numero_comprobante')
-                            <small class="text-danger">{{ '*'.$message }}</small>
-                            @enderror
-                        </div>
-
-                                                <!--Numero de comprobante-->
-                        <div class="col-12">
-                            <label for="numero_movimiento" class="form-label">Numero Movimiento:</label>
-                            <input readonly type="text" name="numero_movimiento" id="numero_movimiento" class="form-control">
-                            @error('numero_movimiento')
-                            <small class="text-danger">{{ '*'.$message }}</small>
-                            @enderror
-                        </div>
+                        </div>    
 
                         <!--Fecha--->
                         <div class="col-sm-6">
@@ -419,115 +384,7 @@
         modal.show();
     });
 
-$('#searchproducto').on('input', function () {
 
-    let search = $(this).val();
-
-    if (search.length < 2) {
-        $('#searchProductoR').html('');
-        return;
-    }
-
-    $.ajax({
-        url: "{{ route('producto.buscarPorCategoria') }}",
-        method: 'GET',
-        data: { search: search },
-        success: function(response) {
-
-            let html = `
-                <table class="table table-hover">
-                    <thead class="bg-primary">
-                        <tr>
-                            <th class="text-white">Código</th>
-                            <th class="text-white">Nombre</th>
-                            <th class="text-white">Stock</th>
-                            <th class="text-white">Descripción</th>
-                            <th class="text-white">Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            if (response.length > 0) {
-                response.forEach(function (producto) {
-                    html += `
-                        <tr>
-                            <td>${producto.codigo}</td>
-                            <td>${producto.nombre}</td>
-                            <td>${producto.stock}</td>
-                            <td>${producto.descripcion}</td>
-                            <td>
-<button type="button"
-        class="btn btn-sm btn-primary seleccionar-producto"
-        data-id="${producto.id}">
-    Seleccionar
-</button>
-                            </td>
-                        </tr>
-                    `;
-                });
-            } else {
-                html += `
-                    <tr>
-                        <td colspan="5" class="text-center">
-                            No se encontraron resultados
-                        </td>
-                    </tr>
-                `;
-            }
-
-            html += `
-                    </tbody>
-                </table>
-            `;
-
-            $('#searchProductoR').html(html);
-        },
-        error: function(error) {
-            console.error(error);
-        }
-    });
-
-});
-
-        $(document).on('keydown', '.bs-searchbox input', function(event) {
-    if (event.keyCode === 13) { // 13 = Enter
-        event.preventDefault(); // Evita que el Enter seleccione un elemento automáticamente
-        var searchTerm = $(this).val().trim();
-
-        if (searchTerm.length > 0) {
-            var $select = $('#cliente_id');
-
-            $.ajax({
-                url: "{{ route('client.obtener') }}",
-                method: 'GET',
-                data: { search: searchTerm },
-                success: function(response) {
-                    $select.html('').selectpicker('destroy'); // 🔄 Limpiar y destruir selectpicker
-
-                    if (response.length > 0) {
-                        response.forEach(function(cliente) {
-                            $select.append('<option value="' + cliente.id + '">' +
-                                           cliente.persona.numero_documento + ' - ' +
-                                           cliente.persona.razon_social + '</option>');
-                        });
-                    } else {
-                        $select.append('<option value="">No se encontraron resultados</option>');
-                        actualizarClientes();
-                    }
-
-                    $select.selectpicker(); // 🔄 Reinicializar selectpicker
-                    setTimeout(() => $('.bs-searchbox input').val(searchTerm).trigger('focus'), 50);
-                },
-                error: function(xhr, status, error) {
-                    console.error(error);
-                }
-            });
-        } else {
-            actualizarClientes(); // Si no hay búsqueda, cargar todos los clientes
-        }
-    }
-});
 
 $(document).on('click', '.seleccionar-producto', function () {
     let idProducto = $(this).data('id');
@@ -543,30 +400,6 @@ $(document).on('click', '.seleccionar-producto', function () {
 });
 
 
-
-// ✅ **Función para cargar todos los clientes al inicio o cuando no hay búsqueda**
-function actualizarClientes() {
-    $.ajax({
-        url: "{{ route('client.obtener') }}",
-        method: 'GET',
-        success: function(response) {
-            var $select = $('#cliente_id');
-
-            // 🔥 **Eliminar opciones previas y reinicializar selectpicker**
-            $select.html('').selectpicker('destroy');
-
-            response.forEach(function(cliente) {
-                $select.append('<option value="' + cliente.id + '">' + cliente.persona.numero_documento+' - '+cliente.persona.razon_social + '</option>');
-            });
-
-            // 🔄 **Reiniciar selectpicker**
-            $select.selectpicker();
-        },
-        error: function(xhr, status, error) {
-            console.error(error);
-        }
-    });
-}
 
 $('#btn_agregar').click(function() {
     agregarProducto();
@@ -1284,27 +1117,88 @@ function StopScanner() {
 let scanner = null;
 let escaneando = false;
 
-// Función para cambiar las etiquetas y cargar dinámicamente las bodegas del selectpicker
+// Función para inicializar/cambiar el tipo de origen (Paso 1)
 function cargarAlmacenesSegunOrigen() {
     let tipo = $('#selector_origen_tipo').val();
     let selectAlmacen = $('#selector_bodega_id');
+    let selectProducto = $('#producto_id');
     let labelAlmacen = $('#label_almacen');
 
-    selectAlmacen.empty();
+    selectAlmacen.selectpicker('destroy').empty();
+    selectProducto.selectpicker('destroy').empty().append('<option value="">Seleccione una bodega o almacén primero...</option>').selectpicker({ liveSearch: true });
 
     if (tipo === 'raiz') {
         labelAlmacen.text('Almacén SAP / Raíz:');
         selectAlmacen.append('<option value="">Todos los Almacenes SAP</option>');
-        // 💡 AQUÍ puedes renderizar tus almacenes SAP desde una variable de Laravel si la tienes compartida
-        // Ejemplo: selectAlmacen.append('<option value="ALM1">Almacén Principal SAP</option>');
+        selectAlmacen.append('<option value="RAIZ_GENERAL">BODEGA GENERAL SAP</option>'); // Opción para disparar la carga global de SAP
+        selectAlmacen.selectpicker({ liveSearch: true });
     } else {
         labelAlmacen.text('Bodega Física / Contrata:');
-        selectAlmacen.append('<option value="">Todas las Bodegas Físicas</option>');
-        // Ejemplo: selectAlmacen.append('<option value="BOD-01">Bodega Central</option>');
-    }
+        selectAlmacen.append('<option value="">Cargando bodegas...</option>');
+        selectAlmacen.selectpicker({ liveSearch: true });
 
-    selectAlmacen.selectpicker('refresh');
+        $.ajax({
+            url: '/obtener-centros-locales',
+            type: 'GET',
+            dataType: 'json',
+            success: function(data) {
+                selectAlmacen.selectpicker('destroy').empty();
+                if (data.length === 0) {
+                    selectAlmacen.append('<option value="">No se encontraron bodegas activas</option>');
+                } else {
+                    selectAlmacen.append('<option value="">-- Seleccione una Bodega --</option>');
+                    data.forEach(function(centro) {
+                        selectAlmacen.append(`<option value="${centro.codigo}">${centro.codigo} - ${centro.nombre}</option>`);
+                    });
+                }
+                selectAlmacen.selectpicker({ liveSearch: true });
+            }
+        });
+    }
 }
+
+// Nueva Función: Carga los productos dinámicamente filtrados (Paso 2)
+function cargarProductosPorBodegaOrRaiz() {
+    let tipo = $('#selector_origen_tipo').val();
+    let centroSelected = $('#selector_bodega_id').val();
+    let selectProducto = $('#producto_id');
+
+    if (!centroSelected) return;
+
+    selectProducto.selectpicker('destroy').empty().append('<option value="">Cargando materiales disponibles...</option>').selectpicker({ liveSearch: true });
+
+    $.ajax({
+        url: '/obtener-productos-inventario',
+        type: 'GET',
+        dataType: 'json',
+        data: {
+            tipo: tipo,
+            centro: centroSelected
+        },
+        success: function(data) {
+            selectProducto.selectpicker('destroy').empty();
+            if (data.length === 0) {
+                selectProducto.append('<option value="">No hay materiales con saldo disponible</option>');
+            } else {
+                selectProducto.append('<option value="">-- Seleccione Material o Serie --</option>');
+                data.forEach(function(item) {
+                    let texto = `SKU: ${item.sku} | ${item.descripcion} | Disp: ${item.cantidad}`;
+                    if (item.serie && item.serie !== 'N/A') {
+                        texto += ` | Serie: ${item.serie}`;
+                    }
+                    // Inyectamos el option guardando la serie en los atributos data por si los ocupas en tu submit
+                    selectProducto.append(`<option value="${item.sku}" data-serie="${item.serie}">${texto}</option>`);
+                });
+            }
+            selectProducto.selectpicker({ liveSearch: true, size: 10 });
+        },
+        error: function() {
+            selectProducto.selectpicker('destroy').empty().append('<option value="">Error al consultar existencias</option>').selectpicker({ liveSearch: true });
+        }
+    });
+}
+
+
 
 // Función Maestra que conecta con el Controlador de Laravel de forma asíncrona
 function ejecutarBusquedaInventarioMamo() {

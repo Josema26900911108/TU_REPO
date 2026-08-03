@@ -111,25 +111,31 @@
 
                                 <div> <!------Vender a cliente---->
                                     @can('vender-a-cliente')
-                                   <div>
-                                    <a title="Vender a Cliente por mobil" href="{{route('ventas.posmobile',['idcliente'=>$item])}}">
-<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
-    
-  <path d="M6 10l-1-2h-1" stroke="currentColor" stroke-width="1" fill="none"/>
-  <!-- Teléfono -->
-  <rect x="4" y="1" width="12" height="18" rx="2" stroke="currentColor" fill="none"/>
+<div>
+    <a title="Vender a Cliente por móvil" 
+       href="{{ route('ventas.posmobile', ['idcliente' => $visita->cliente_id]) }}" 
+       class="btn btn-link p-0 text-primary hover-shadow" 
+       style="text-decoration: none;">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Marco del Teléfono Móvil -->
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2" stroke="currentColor" fill="none" stroke-width="1.5"/>
+            
+            <!-- Línea de la Pantalla Interna -->
+            <path d="M5 18h14" stroke="currentColor" stroke-width="1"/>
+            
+            <!-- Carrito de Compras estilizado dentro de la pantalla (Coordenadas optimizadas) -->
+            <circle cx="9" cy="14" r="1" fill="currentColor" stroke="none"/>
+            <circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/>
+            <path d="M6 6h2.5l1.5 5h5l1.2-3.5H8.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            
+            <!-- Botón Home o Lector del Celular -->
+            <circle cx="12" cy="20" r="0.7" fill="currentColor" stroke="none"/>
+        </svg>
 
-  <!-- Pantalla (más pequeña y suave) -->
-  <rect x="5.5" y="3" width="9" height="10" fill="currentColor" opacity="0.1"/>
+    </a>
+</div>
 
-  <!-- Carrito (más grande 🔥) -->
-  <path d="M6 10h8l-1.5 3H7.5z" fill="currentColor"/>
-  <circle cx="8" cy="14.5" r="0.8" fill="currentColor"/>
-  <circle cx="12" cy="14.5" r="0.8" fill="currentColor"/>
-
-</svg>
-                                    </a>
-                                </div>
                                     @endcan
                                 </div>
 

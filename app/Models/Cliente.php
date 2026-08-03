@@ -19,6 +19,13 @@ class Cliente extends Model
     public function cliente(){
 
     }
+     
+    public function rutas()
+    {
+        return $this->belongsToMany(Ruta::class, 'ruta_dia_cliente')
+                    ->withPivot('dia_semana', 'orden')
+                    ->withTimestamps();
+    }
     protected $table = 'clientes'; // Cambia 'clientes' por el nombre correcto de tu tabla
     protected $primaryKey = 'id'; // Especifica la clave primaria
     protected $fillable = [

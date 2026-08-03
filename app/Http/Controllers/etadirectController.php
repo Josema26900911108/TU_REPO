@@ -629,7 +629,7 @@ private function ejecutarLogicaInternaVista($orden, $item, &$procesados, &$rastr
 
 public function AutomataRecursivoVista(
     string $skuActual,
-    int $orden,
+    string $orden,
     int $recuento,
     float $valor,
     float $maximo,

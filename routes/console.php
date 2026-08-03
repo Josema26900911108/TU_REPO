@@ -2,7 +2,8 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
-
+use Illuminate\Console\Scheduling\Schedule;
+use App\Jobs\GenerarDespachoCiclicoDiario;
 /*
 |--------------------------------------------------------------------------
 | Console Routes
@@ -16,4 +17,8 @@ use Illuminate\Support\Facades\Artisan;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
+
+    Schedule::job(new GenerarDespachoCiclicoDiario)->daily();
+
 })->purpose('Display an inspiring quote');
+

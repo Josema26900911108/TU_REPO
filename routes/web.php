@@ -22,6 +22,10 @@ use App\Http\Controllers\proveedorController;
 use App\Http\Controllers\roleController;
 use App\Http\Controllers\userController;
 use App\Http\Controllers\ventaController;
+use App\Http\Controllers\RutaCicloController;
+use App\Jobs\GenerarDespachoCiclicoDiario;
+use App\Http\Controllers\PilotoDespachoController;
+
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\CashRegisterController;
@@ -104,6 +108,11 @@ Route::resources([
     'treematerialescategoria'=>TreematerialescategoriaController::class,
     'centros' => centroController::class,
     'centroorganizacion'=>CentrosOrganizacionController::class,
+    'reglas'=>ReglaPrecioController::class,
+    'pagotecnico'=>PagotecnicoController::class,
+    'dashboard'=>DashboardController::class,
+    'rutas'=>RutaCicloController::class,
+    'piloto'=>PilotoDespachoController::class,
 ]);
 
 
@@ -167,6 +176,28 @@ Route::get('/reglas', [ReglaPrecioController::class, 'index'])
     Route::post('/ventas/guardar', [VentaController::class, 'store']);
          
 });
+
+Route::get('/rutas-ciclos', [RutaCicloController::class, 'index'])->name('rutas.index');
+Route::post('/rutas-ciclos/mover-cliente', [RutaCicloController::class, 'moverCliente'])->name('rutas.moverCliente');
+Route::post('/rutas-ciclos/mover-dia', [RutaCicloController::class, 'moverDiaCompleto'])->name('rutas.moverDia');
+Route::post('/rutas-ciclos/asignar-manual', [RutaCicloController::class, 'asignarCliente'])->name('rutas.asignarManual');
+Route::post('/rutas-ciclos/store', [RutaCicloController::class, 'storeRuta'])->name('rutas-ciclos.storeRuta');
+Route::post('/rutas-ciclos/eliminar-cliente', [RutaCicloController::class, 'eliminarCliente'])->name('rutas-ciclos.eliminarCliente');
+Route::post('/rutas-ciclos/actualizar-centro-costos', [RutaCicloController::class, 'actualizarCentroCostos'])->name('rutas.actualizarCentroCostos');
+
+Route::get('/probar-job-logistica', function () {
+    // El método dispatchSync() obliga al Job a ejecutarse de forma inmediata en esta misma pestaña
+    GenerarDespachoCiclicoDiario::dispatchSync();
+    
+    return "¡Job ejecutado con éxito! Revisa tu tabla despachos_diarios_pilotos en phpMyAdmin.";
+});
+
+
+Route::get('/mi-despacho', [PilotoDespachoController::class, 'miHojaDeRuta'])->name('piloto.despacho');
+Route::post('/mi-despacho/actualizar/{id}', [PilotoDespachoController::class, 'actualizarEstatusEntrega'])->name('piloto.actualizar');
+
+
+
 
 Route::get('/login',[loginController::class,'index'])->name('login');
 Route::post('/login',[loginController::class,'login']);
@@ -519,6 +550,13 @@ Route::get('/tecnicotablaC', [TecnicoController::class, 'fetchrelacionC'])->name
 Route::get('/tecnicoinvtabla', [TecnicoController::class, 'fetchrelacioninv'])->name('fetchinvtabla');
 Route::get('/tecnologiacategoria', [TecnicoController::class, 'fillEstructura'])->name('tecnologiaarb');
 Route::get('/manoobracategoria/{id}', [TecnicoController::class, 'fillEstructuraMO'])->name('manoobrarb');
+Route::get('/obtener-items-sap', [TecnicoController::class, 'obtenerItemsSap']);
+Route::get('/obtener-centros-locales', [TecnicoController::class, 'obtenerCentrosLocales']);
+
+Route::get('/obtener-productos-inventario', [TecnicoController::class, 'obtenerProductosInventario']);
+
+Route::get('/obtener-existencias-sap', [TecnicoController::class, 'obtenerExistenciasSap']);
+
 Route::get('/inventariolista', [TecnicoController::class, 'InventarioLista'])->name('inventariolista');
 Route::get('/tecnico/materiales/scan-global/{sku}', [TecnicoController::class, 'scanMaterialGlobal'])->name('tecnico.materiales.scan_global');
 Route::post('/tecnico/guardar-firma-rapida', [TecnicoController::class, 'guardarFirmaRapida'])->name('tecnico.guardar.firma.rapida');

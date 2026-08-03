@@ -323,36 +323,82 @@ public function create()
 }
 
 
-        public function posmobile($cliente_id)
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
-        $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
-
-        $subquery = DB::table('compra_producto')
-            ->select('producto_id', DB::raw('MAX(created_at) as max_created_at'))
-            ->where('fkTienda',$fkTienda)
-            ->groupBy('producto_id');
-
-        $productos = Producto::join('compra_producto as cpr', function ($join) use ($subquery) {
-            $join->on('cpr.producto_id', '=', 'productos.id')
-                ->whereIn('cpr.created_at', function ($query) use ($subquery) {
-                    $query->select('max_created_at')
-                        ->fromSub($subquery, 'subquery')
-                        ->whereRaw('subquery.producto_id = cpr.producto_id');
-                });
-        })
-            ->select('productos.nombre', 'productos.img_path', 'descripcion', 'productos.id', 'productos.stock', 'cpr.precio_venta', 'productos.codigo')
-            ->where('productos.fkTienda',$fkTienda)
-            ->where('productos.estado', 1)
-            ->where('productos.stock', '>', 0)
-            ->get();
-
-        //return view('venta.posmobil', compact('productos', 'clientes', 'comprobantes'));
-        return view('venta.posmobil', compact('productos','cliente_id'));
+public function posmobile($cliente_id)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+    
+    $clienteIdFinal = (int) $cliente_id;
+    $fkTienda = session('user_fkTienda');
+
+    // CONSUlTA PROTEGIDA CONTRA DUPLICADOS POR MÚLTIPLES LOTES
+    $productos = Producto::select(
+            'productos.nombre',
+            'productos.img_path',
+            'productos.descripcion',
+            'productos.id',
+            'productos.stock', 
+            'cpr.precio_venta',
+            'productos.perecedero',
+            'l.fecha_vencimiento',
+            'l.numero_lote',
+            'l.cantidad as cantidad_lote',
+            'productos.codigo'
+        )
+        // 1. Traer el precio de venta más reciente de la tabla compra_producto
+        ->join('compra_producto as cpr', function ($join) use ($fkTienda) {
+            $join->on('cpr.id', '=', DB::raw("(SELECT id FROM compra_producto 
+                WHERE producto_id = productos.id 
+                AND fkTienda = $fkTienda 
+                ORDER BY created_at DESC, id DESC LIMIT 1)"));
+        })
+        // 2. 🔥 SOLUCIÓN EN CASCADA: Traer ÚNICAMENTE el lote más próximo a expirar (Evita duplicados)
+        ->leftJoin('lotesalarma as l', function ($join) use ($fkTienda) {
+            $join->on('l.id', '=', DB::raw("(SELECT id FROM lotesalarma 
+                WHERE producto_id = productos.id 
+                AND cantidad > 0 
+                AND fkTienda = $fkTienda 
+                ORDER BY fecha_vencimiento ASC, id ASC LIMIT 1)"));
+        })
+        ->with(['reglasPrecios', 'modificadores'])
+        ->where('productos.fkTienda', $fkTienda)
+        ->where('productos.estado', 1)
+        ->where('productos.stock', '>', 0) 
+        ->get();
+
+    // El mapeo de reglas_json y la consulta de comprobantes se quedan exactamente iguales
+    foreach ($productos as $producto) {
+        $producto->reglas_json = $producto->reglasPrecios->map(function($regla) {
+            return [
+                'id' => $regla->id,
+                'nombre' => $regla->nombre,
+                'tipo_regla' => $regla->tipo_regla,
+                'cantidad_minima' => $regla->cantidad_minima,
+                'cantidad_paso' => $regla->cantidad_paso,
+                'tipo_beneficio' => $regla->tipo_beneficio,
+                'valor_beneficio' => $regla->valor_beneficio,
+                'fecha_inicio' => $regla->fecha_inicio,
+                'fecha_fin' => $regla->fecha_fin,
+                'prioritaria' => $regla->prioritaria,
+                'requiere_confirmacion' => $regla->requiere_confirmacion
+            ];
+        })->toArray();
+    }
+
+    $comprobantes = DB::table('comprobantes')
+        ->where('fkTienda', $fkTienda)
+        ->where('ClaveVista', 'DV')
+        ->get();
+
+    return view('venta.posmobil', [
+        'productos' => $productos,
+        'comprobantes' => $comprobantes,
+        'cliente_id' => $clienteIdFinal
+    ]);
+}
+
+
 
             public function posmobileCierre($cliente_id)
     {
