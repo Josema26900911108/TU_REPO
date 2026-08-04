@@ -27,7 +27,7 @@ return new class extends Migration
         // 2. Enlazamos la llave foránea de forma directa e independiente
         Schema::table('rutas', function (Blueprint $table) {
             $table->foreign('fkTienda')
-                  ->references('id')
+                  ->references('idTienda')
                   ->on('tienda')
                   ->onDelete('cascade');
         });
