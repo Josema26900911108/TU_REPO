@@ -4021,7 +4021,7 @@ public function guardarFirmaRapida(Request $request)
 
             // 5. Guardar en Google Cloud Storage usando tu disco 'gcs_images'
             $imagenCodificada = $image->encode($webpEncoder);
-            $binarioFinal = $imagenCodificada->toBuffer()->toString(); // 👈 Extracción correcta en V3
+            $binarioFinal = $imagenCodificada->toString(); // 👈 Método correcto e infalible para V2
             
             Storage::disk('gcs_images')->put($path, $binarioFinal);
 
