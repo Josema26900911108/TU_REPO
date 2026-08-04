@@ -4000,9 +4000,15 @@ public function guardarFirmaRapida(Request $request)
             
             // 2. Limpiar el encabezado y decodificar el texto a datos binarios de imagen
             $image_split = explode(',', $image_data);
+            
+            // Validación preventiva por si el Base64 no viene bien estructurado
+            if (!isset($image_split[1])) {
+                return response()->json(['status' => 'error', 'message' => 'El formato Base64 de la firma es incorrecto.'], 422);
+            }
+            
             $image_base64 = base64_decode($image_split[1]); 
 
-            // 3. Inicializar Intervention Image V3 igual que en tu función base
+            // 3. Inicializar Intervention Image V3
             $manager = new ImageManager(new Driver());
 
             // Leemos los datos binarios directamente de la memoria
@@ -4012,22 +4018,36 @@ public function guardarFirmaRapida(Request $request)
                                  $constraint->upsize();
                              });
 
-            // 4. Definir nombre y ruta virtual Fuera de las otras carpetas
-            // Esto creará una carpeta llamada "firmas" en la raíz de tu Bucket
+            // 4. Definir nombre y ruta virtual dentro de tu Bucket
             $filename = 'firma_orden_' . $expediente->Orden . '_' . time() . '.webp';
             $path = 'firmas/' . $filename; 
             
             $webpEncoder = new WebpEncoder(quality: 80);
 
+            // 🔥 CORRECCIÓN CLAVE INTERVENTION V3:
+            // Ejecutamos la codificación y extraemos los bytes binarios puros usando ->toToBytes()
+            $imagenCodificada = $image->encode($webpEncoder);
+            $binarioFinal = $imagenCodificada->toToBytes(); // 👈 Esto extrae el binario real para Storage
+
             // 5. Guardar en Google Cloud Storage usando tu disco 'gcs_images'
-            Storage::disk('gcs_images')->put($path, (string) $image->encode($webpEncoder));
+            // Validamos que el método put devuelva true de forma estricta
+            $subidaExitosa = Storage::disk('gcs_images')->put($path, $binarioFinal);
+
+            if (!$subidaExitosa) {
+                return response()->json([
+                    'status' => 'error', 
+                    'message' => 'Google Cloud Storage rechazó la escritura física del archivo.'
+                ], 500);
+            }
 
             // 6. Obtener la URL pública del archivo en Google Cloud
             $urlPublicaGoogle = Storage::disk('gcs_images')->url($path);
 
-            // 7. Guardar la URL final en tu base de datos y actualizar
+            // 7. Guardar la URL final en tu base de datos y actualizar el registro
             $expediente->firma_cliente = $urlPublicaGoogle;
-            $expediente->save(); 
+            
+            // Usamos saveOrFail() para asegurar que si la base de datos rechaza la columna, tire una excepción visible
+            $expediente->saveOrFail(); 
 
             return response()->json([
                 'status' => 'success',
@@ -4039,7 +4059,11 @@ public function guardarFirmaRapida(Request $request)
         return response()->json(['status' => 'error', 'message' => 'No se recibieron datos de la firma.'], 400);
 
     } catch (\Exception $e) {
-        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        // En caso de fallas, el catch capturará el error matemático o de GCS y lo mostrará en tu Swal.fire
+        return response()->json([
+            'status' => 'error', 
+            'message' => 'Falla en el servidor: ' . $e->getMessage()
+        ], 500);
     }
 }
 
