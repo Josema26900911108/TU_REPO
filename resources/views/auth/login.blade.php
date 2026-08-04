@@ -124,9 +124,11 @@
             <div class="d-flex align-items-center justify-content-between small text-secondary">
                 <div>Copyright &copy; CODE ERP {{ date('Y') }}</div>
                 <div>
-                    <a href="#" class="text-decoration-none text-secondary me-2">Privacidad</a>
+                    <!-- Reemplaza los enlaces viejos del footer por estos -->
+                    <a href="{{ route('legal.privacidad') }}" target="_blank" class="text-decoration-none text-secondary me-2">Privacidad</a>
                     &middot;
-                    <a href="#" class="text-decoration-none text-secondary ms-2">Términos</a>
+                    <a href="{{ route('legal.terminos') }}" target="_blank" class="text-decoration-none text-secondary ms-2">Términos y Condiciones</a>
+
                 </div>
             </div>
         </div>

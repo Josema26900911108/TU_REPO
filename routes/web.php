@@ -64,6 +64,7 @@ use App\Models\User;
 use App\Notifications\LoteVencimientoNotification;
 use Barryvdh\DomPDF\Facade as PDF;
 use App\Models\ReglaPrecio;
+use App\Http\Controllers\LegalController;
 
 
 /*
@@ -113,8 +114,11 @@ Route::resources([
     'dashboard'=>DashboardController::class,
     'rutas'=>RutaCicloController::class,
     'piloto'=>PilotoDespachoController::class,
+    'legal'=>LegalController::class,
 ]);
 
+Route::get('/privacidad', [LegalController::class, 'privacidad'])->name('legal.privacidad');
+Route::get('/terminos-y-condiciones', [LegalController::class, 'terminos'])->name('legal.terminos');
 
 //CENTROS
 Route::post('/centrosstore', [centroController::class, 'store'])->name('centros.store');
