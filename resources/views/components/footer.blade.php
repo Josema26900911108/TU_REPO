@@ -3,9 +3,11 @@
         <div class="d-flex align-items-center justify-content-between small">
             <div class="text-muted">Copyright &copy; Your Website 2025</div>
             <div>
-                <a href="#">Privacy Policy</a>
-                &middot;
-                <a href="#">Terms &amp; Conditions</a>
+                    <!-- Reemplaza los enlaces viejos del footer por estos -->
+                    <a href="{{ route('legal.privacidad') }}" target="_blank" class="text-decoration-none text-secondary me-2">Privacidad</a>
+                    &middot;
+                    <a href="{{ route('legal.terminos') }}" target="_blank" class="text-decoration-none text-secondary ms-2">Términos y Condiciones</a>
+
             </div>
         </div>
     </div>
