@@ -4019,11 +4019,8 @@ public function guardarFirmaRapida(Request $request)
             
             $webpEncoder = new WebpEncoder(quality: 80);
 
-            // 5. Guardar en Google Cloud Storage usando tu disco 'gcs_images'
-            $imagenCodificada = $image->encode($webpEncoder);
-            $binarioFinal = $imagenCodificada->toString(); // 👈 Método correcto e infalible para V2
-            
-            Storage::disk('gcs_images')->put($path, $binarioFinal);
+// 5. Guardar bypass directo sin pasar por la librería Intervention
+Storage::disk('gcs_images')->put($path, $image_base64);
 
 
             // 6. Obtener la URL pública del archivo en Google Cloud
