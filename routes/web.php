@@ -199,6 +199,8 @@ Route::get('/probar-job-logistica', function () {
 
 Route::get('/mi-despacho', [PilotoDespachoController::class, 'miHojaDeRuta'])->name('piloto.despacho');
 Route::post('/mi-despacho/actualizar/{id}', [PilotoDespachoController::class, 'actualizarEstatusEntrega'])->name('piloto.actualizar');
+Route::get('/clientes/{id}/historial', [PilotoDespachoController::class, 'historialCompras'])->name('piloto.historial');
+Route::get('/clientes/{id}/top-productos', [PilotoDespachoController::class, 'topProductos'])->name('piloto.top-productos');
 
 
 

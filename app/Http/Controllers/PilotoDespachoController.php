@@ -43,30 +43,102 @@ public function miHojaDeRuta(Request $request)
     $centroCostosPiloto = $tecnico->codigo; 
 
     // 3. Consultar las visitas asignadas a su código/centro de costos para el día de hoy
-    $visitas = DB::table('despachos_diarios_pilotos')
-        ->join('clientes', 'despachos_diarios_pilotos.cliente_id', '=', 'clientes.id')
-        ->join('personas', 'clientes.persona_id', '=', 'personas.id')
-        ->join('rutas', 'despachos_diarios_pilotos.ruta_id', '=', 'rutas.id')
-        ->select(
-            'despachos_diarios_pilotos.*',
-            'personas.razon_social as cliente_nombre',
-            'personas.direccion as cliente_direccion',
-            'personas.numero_documento as cliente_nit',
-            'rutas.nombre as nombre_ruta'
-        )
-        ->where('despachos_diarios_pilotos.fecha_despacho', $hoy)
-        ->where('despachos_diarios_pilotos.centro_costos', $centroCostosPiloto)
-        ->where('despachos_diarios_pilotos.fkTienda', $fkTiendaUsuario)
-        ->orderBy('despachos_diarios_pilotos.orden_visita', 'asc') // Respeta estrictamente la secuencia Kanban
-        ->get();
+$visitas = DB::table('clientes')
+    ->join('personas', 'clientes.persona_id', '=', 'personas.id')
+    ->leftJoin('despachos_diarios_pilotos', function($join) use ($hoy, $centroCostosPiloto, $fkTiendaUsuario) {
+        $join->on('clientes.id', '=', 'despachos_diarios_pilotos.cliente_id')
+             ->where('despachos_diarios_pilotos.fecha_despacho', $hoy)
+             ->where('despachos_diarios_pilotos.centro_costos', $centroCostosPiloto)
+             ->where('despachos_diarios_pilotos.fkTienda', $fkTiendaUsuario);
+    })
+    ->leftJoin('rutas', 'despachos_diarios_pilotos.ruta_id', '=', 'rutas.id')
+    ->select(
+        'clientes.id as id',
+        // Traemos todas las columnas excepto estatus_entrega para evitar que se duplique
+        'despachos_diarios_pilotos.id as despacho_id',
+        'despachos_diarios_pilotos.fecha_despacho',
+        'despachos_diarios_pilotos.fkTienda',
+        'despachos_diarios_pilotos.centro_costos',
+        'despachos_diarios_pilotos.ruta_id',
+        'despachos_diarios_pilotos.cliente_id',
+        'despachos_diarios_pilotos.orden_visita',
+        'despachos_diarios_pilotos.observaciones',
+        'despachos_diarios_pilotos.created_at',
+        'despachos_diarios_pilotos.updated_at',
+        
+        'personas.razon_social as cliente_nombre',
+        'personas.direccion as cliente_direccion',
+        'personas.numero_documento as cliente_nit',
+        
+        // Si el estatus de entrega es NULL o dice 'rechazado', lo forzamos al texto que necesitas
+        DB::raw("CASE 
+            WHEN despachos_diarios_pilotos.estatus_entrega IS NULL OR despachos_diarios_pilotos.estatus_entrega = 'rechazado' THEN 'sin pedidos a despachar' 
+            ELSE despachos_diarios_pilotos.estatus_entrega 
+        END as estatus_entrega"),
+        
+        // Controlamos también el nombre de la ruta por si acaso
+        DB::raw("COALESCE(rutas.nombre, 'sin pedidos a despachar') as nombre_ruta")
+    )
+    ->orderByRaw('ISNULL(despachos_diarios_pilotos.orden_visita), despachos_diarios_pilotos.orden_visita asc')
+    ->get();
+
+
 
     // 4. Retornar a la vista corregida (despacho en plural) con su compact completo
     return view('pilotos.depacho', compact('visitas', 'hoy', 'centroCostosPiloto', 'tecnico'));
 }
 
+
+
     /**
      * Actualizar el estatus de la entrega desde el teléfono o la computadora del piloto
      */
+
+    // 1. HISTORIAL DE COMPRAS
+public function historialCompras($clienteId)
+{
+    try {
+        // NOTA: Revisa si tu tabla se llama 'pedidos', 'ventas' o 'facturas'
+        $historial = DB::table('pedidos') 
+            ->select('id', 'fecha', 'total', 'estado') // Verifica si estas columnas existen
+            ->where('cliente_id', $clienteId)
+            ->orderBy('fecha', 'desc')
+            ->limit(20)
+            ->get();
+
+        return response()->json($historial);
+
+    } catch (Exception $e) {
+        // Si la consulta falla, envía el mensaje de error real a la consola de JS
+        return response()->json([
+            'error' => true,
+            'mensaje' => $e->getMessage()
+        ], 500);
+    }
+}
+
+// 2. TOP 10 PRODUCTOS MÁS VENDIDOS
+public function topProductos($clienteId)
+
+{
+    $topProductos = DB::table('pedido_detalles') // Tu tabla pivote/detalle de venta
+        ->join('pedidos', 'pedido_detalles.pedido_id', '=', 'pedidos.id')
+        ->join('productos', 'pedido_detalles.producto_id', '=', 'productos.id')
+        ->select(
+            'productos.nombre as producto',
+            DB::raw('SUM(pedido_detalles.cantidad) as total_cantidad'),
+            DB::raw('COUNT(pedido_detalles.id) as veces_comprado')
+        )
+        ->where('pedidos.cliente_id', $clienteId)
+        // Opcional: ->where('pedidos.estado', 'completado') 
+        ->groupBy('productos.id', 'productos.nombre')
+        ->orderBy('total_cantidad', 'desc')
+        ->limit(10)
+        ->get();
+
+    return response()->json($topProductos);
+}
+
     public function actualizarEstatusEntrega(Request $request, $id)
     {
         $request->validate([
@@ -84,4 +156,6 @@ public function miHojaDeRuta(Request $request)
 
         return redirect()->back()->with('success', 'Estatus de la entrega actualizado en tus costos.');
     }
+
+    
 }

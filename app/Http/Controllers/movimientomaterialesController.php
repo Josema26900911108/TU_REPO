@@ -36,29 +36,37 @@ class movimientomaterialesController extends Controller
 
     }
 
-    public function index()
-    {
-  DB::connection()->disableQueryLog();
+public function index()
+{
+    DB::connection()->disableQueryLog();
 
-                    if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
-        $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
-
-                if ($Estatus == 'ER') {
-
-                    $materialmanoobra = MovimientoMaterial::all();
-
-                } else {
-                    $materialmanoobra = MovimientoMaterial::where('fkTienda',$fkTienda)->get();
-                }
-
-
-
-        return view('materialmovorganizaciones.index', compact('materialmanoobra'));
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+
+    $fkTienda = session('user_fkTienda');
+    $Estatus = session('user_estatus');
+
+    // 1. Creamos la consulta base con el Join hacia expediente técnico
+    $query = DB::table('movimientomateriales') // Asegúrate de que este sea el nombre real de tu tabla
+        ->leftJoin('expedientetecnico', 'movimientomateriales.fkExpediente', '=', 'expedientetecnico.id')
+        ->select(
+            'movimientomateriales.*',
+            'expedientetecnico.Orden as numero_orden' // Reemplaza 'numero_orden' por el nombre real de la columna en tu tabla expediente
+        );
+
+    // 2. Aplicamos el filtro de seguridad según el Estatus del usuario
+    if ($Estatus == 'ER') {
+        $materialmanoobra = $query->get();
+    } else {
+        $materialmanoobra = $query->where('movimientomateriales.fkTienda', $fkTienda)->get();
+    }
+
+    return view('materialmovorganizaciones.index', compact('materialmanoobra'));
+}
+
+
+
 public function importarmamo(Request $request)
 {
     DB::connection()->disableQueryLog();
@@ -898,54 +906,62 @@ public function fetchrelacionmovimientosmat(Request $request)
         // Capturar el parámetro de búsqueda general
         $search = $request->input('search') ? $request->input('search') : '';
 
-        // Consulta base usando Query Builder (o tu Modelo si existe, ej: MovimientoMaterial::query())
+        // 1. Consulta base con el Left Join (usando 'Orden' según tu log de error)
         $query = DB::table('movimientomateriales')
-            ->where('fkTienda', $fkTienda)
-            // Filtro por rango de fechas usando Creado_el
-            ->whereBetween('Creado_el', [$fechain, $fechafin]);
+            ->leftJoin('expedientetecnico', 'movimientomateriales.fkExpediente', '=', 'expedientetecnico.id')
+            ->select(
+                'movimientomateriales.*',
+                'expedientetecnico.Orden as numero_orden', // Cambiado a 'Orden' según tu reporte de error
+                'expedientetecnico.id as expediente_id'
+            )
+            ->where('movimientomateriales.fkTienda', $fkTienda)
+            ->whereBetween('movimientomateriales.Creado_el', [$fechain, $fechafin]);
 
-        // Filtrado específico por Técnico si se envía el ID
+        // Filtrado específico por Técnico
         if ($request->has('id') && !empty($request->input('id'))) {
-            $query->where('fkTecnico', $request->input('id'));
+            $query->where('movimientomateriales.fkTecnico', $request->input('id'));
         }
 
-        // Si el usuario escribió en el buscador, aplicamos filtros tipo OR LIKE
-        if (!empty($search) || $search == '') {
+        // Buscador general tipo OR LIKE
+        if (!empty($search)) {
             $query->where(function($q) use ($search) {
-                $q->where('serie', 'LIKE', "%{$search}%")
-                  ->orWhere('SKU', 'LIKE', "%{$search}%")
-                  ->orWhere('almacen', 'LIKE', "%{$search}%")
-                  ->orWhere('Lote', 'LIKE', "%{$search}%")
-                  ->orWhere('MAC1', 'LIKE', "%{$search}%")
-                  ->orWhere('MAC2', 'LIKE', "%{$search}%")    
-                  ->orWhere('MAC3', 'LIKE', "%{$search}%")    
-                  ->orWhere('ESTATUS', 'LIKE', "%{$search}%")
-                  ->orWhere('CENTRO', 'LIKE', "%{$search}%")
-                  ->orWhere('TIPO', 'LIKE', "%{$search}%")
-                  ->orWhere('TIPOMOVIMIENTO', 'LIKE', "%{$search}%")
-                  ->orWhere('Creado_por', 'LIKE', "%{$search}%");
+                $q->where('movimientomateriales.serie', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.SKU', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.almacen', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.Lote', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.MAC1', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.MAC2', 'LIKE', "%{$search}%")    
+                  ->orWhere('movimientomateriales.MAC3', 'LIKE', "%{$search}%")    
+                  ->orWhere('movimientomateriales.ESTATUS', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.CENTRO', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.TIPO', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.TIPOMOVIMIENTO', 'LIKE', "%{$search}%")
+                  ->orWhere('movimientomateriales.Creado_por', 'LIKE', "%{$search}%")
+                  ->orWhere('expedientetecnico.Orden', 'LIKE', "%{$search}%");
             });
         }
 
-        // Ordenamos por ID de forma descendente para ver lo más reciente primero
-        $query->orderBy('id', 'DESC');
+        // 2. SOLUCIÓN AL ERROR DE ORDENAMIENTO:
+        // Usamos orderByRaw para procesar correctamente la función IFNULL de la base de datos
+        // y evitar que interprete los paréntesis como parte del nombre de la columna.
+        $query->orderByRaw('IFNULL(expedientetecnico.Orden, 0) DESC')
+              ->orderBy('movimientomateriales.Creado_el', 'DESC');
 
-        // Paginamos los resultados ya filtrados de forma limpia
+        // Paginamos de forma limpia
         $movimientos = $query->paginate(15);
 
-        // Si la petición es por AJAX, retornamos solo el fragmento de la tabla renderizado
+        // Si la petición es por AJAX
         if ($request->ajax()) {
             return view('materialmovorganizaciones.tabla.movimientostable', compact('movimientos'))->render();
         }
 
-        // Carga inicial completa de la página index
         return view('movimientos', compact('movimientos'));
 
     } catch (\Exception $e) {
         return response()->json(['error' => 'Error al filtrar movimientos: ' . $e->getMessage()], 500);
     }
-
 }
+
 
 public function exportarExcelMovimientos(Request $request)
 {

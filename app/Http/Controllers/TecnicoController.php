@@ -4019,9 +4019,8 @@ public function guardarFirmaRapida(Request $request)
             
             $webpEncoder = new WebpEncoder(quality: 80);
 
-// 5. Guardar bypass directo sin pasar por la librería Intervention
-Storage::disk('gcs_images')->put($path, $image_base64);
-
+            // 5. Guardar bypass directo sin pasar por la librería Intervention
+            Storage::disk('gcs_images')->put($path, $image_base64);
 
             // 6. Obtener la URL pública del archivo en Google Cloud
             $urlPublicaGoogle = Storage::disk('gcs_images')->url($path);

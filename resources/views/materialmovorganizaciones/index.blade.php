@@ -81,6 +81,7 @@
             <table style="width: 100%; border-collapse: collapse; text-align: left; background: #fff; color: #333;">
                 <thead>
                     <tr style="background-color: #ffeeba; color: #856404;">
+                        <th style="padding: 8px; border: 1px solid #ddd;">Orden</th>
                         <th style="padding: 8px; border: 1px solid #ddd;">Fila</th>
                         <th style="padding: 8px; border: 1px solid #ddd;">SKU</th>
                         <th style="padding: 8px; border: 1px solid #ddd;">Serie</th>
@@ -90,6 +91,7 @@
                 <tbody>
                     @foreach (session('filasRechazadas') as $rechazo)
                         <tr>
+                            <td style="padding: 6px; border: 1px solid #ddd; font-weight: bold;">{{ $rechazo['numero_orden'] }}</td>
                             <td style="padding: 6px; border: 1px solid #ddd; font-weight: bold;">{{ $rechazo['fila'] }}</td>
                             <td style="padding: 6px; border: 1px solid #ddd;">{{ $rechazo['SKU'] ?? $rechazo['sku'] ?? 'N/A' }}</td>
                             <td style="padding: 6px; border: 1px solid #ddd;">{{ $rechazo['serie'] }}</td>
@@ -112,7 +114,7 @@
 
 </ul>
 
-<div class="tab-content mt-3" id="tecnicoTabsContent">w
+<div class="tab-content mt-3" id="tecnicoTabsContent">
     <div class="tab-pane fade show active" id="datos" role="tabpanel" aria-labelledby="datos-tab">
         <div class="card">
             <div class="card-header">

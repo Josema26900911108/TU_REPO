@@ -12,6 +12,7 @@
     <table id="datatablesSimple" class="table table-striped fs-6">
         <thead>
             <tr>
+                <th>Orden</th>
                 <th>Serie</th>
                 <th>SKU</th>
                 <th>Almacén</th>
@@ -34,6 +35,7 @@
         <tbody>
             @foreach ($movimientos as $item)
             <tr>
+                <td>{{ $item->numero_orden }}</td>
                 <td>{{ $item->serie ?? 'N/A' }}</td>
                 <td>{{ $item->SKU }}</td>
                 <td>{{ $item->almacen }}</td>
@@ -70,6 +72,20 @@
                                 <li>
                                     <a class="dropdown-item" role="button" data-bs-toggle="modal" data-bs-target="#verModal-{{$item->id}}">Ver detalles</a>
                                 </li>
+                                @if(!empty($item->expediente_id))
+                                    <li>
+                                        <a class="dropdown-item" href="{{ url('buckettecnicoconstruccion/' . $item->expediente_id) }}">
+                                            Inventario
+                                        </a>
+                                    </li>
+                                @else
+                                    <li>
+                                        <a class="dropdown-item disabled" href="#" title="Sin expediente técnico asociado">
+                                            Inventario (Sin Orden)
+                                        </a>
+                                    </li>
+                                @endif
+
                                 @endcan
                             </ul>
                         </div>
