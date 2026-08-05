@@ -3189,7 +3189,8 @@ public function fetchrelacionC(Request $request)
         // Se eliminaron las condiciones repetidas de fkTecnico y fkTienda
         $query = Pagotecnico::where('fkTecnico', $idtecnico)
             ->whereNotNull('fkTecnico')
-            ->where('Status', 'S')
+            ->where('Status', 'S')            
+            ->wherenot('Status', 'B')
             ->where('Naturaleza', 'D');
 
         if ($Estatus !== 'ER') {
