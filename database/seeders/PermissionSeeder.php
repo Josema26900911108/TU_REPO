@@ -234,6 +234,7 @@ class PermissionSeeder extends Seeder
             'eliminar-pagotecnico',
             'ver-cobrotecnico',
             'ver-pagocobrotecnico',
+            'modificar-materialmanoobra',
 
         ];
 

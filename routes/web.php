@@ -462,12 +462,17 @@ Route::get('/materialmanoobra/descargarformato',[materialmanoobraController::cla
 Route::post('/materialmanoobra/importar',[materialmanoobraController::class,'importarMAMO'])->name('manoobramaterial.importar');
 
 //Route::get('/pagotecnico/lista', [PagotecnicoController::class, 'index'])->name('pagotecnico.lista');
-Route::post('/pagotecnico/importar', [PagotecnicoController::class, 'importarPagosTecnico'])->name('pagotecnico.importar');
+Route::post('/pagotecnico/importar', [pagotecnicoController::class, 'importarPagosTecnico'])->name('pagotecnico.importar');
+
 Route::get('/pagos-tecnico/exportar-fotos', [PagotecnicoController::class, 'exportarFotosZip'])->name('pagostecnico.exportarfotos');
 
-Route::get('/pagotecnico/formato', [PagotecnicoController::class, 'descargarFormatoPagos'])->name('pagotecnico.formato');
+
 Route::get('/pagotecnico/formato-pago', [PagotecnicoController::class, 'descargarFormatoPago'])->name('pagotecnico.formato-pago');
-Route::get('/pagotecnico/exportar', [PagotecnicoController::class, 'exportarExcel'])->name('pagotecnico.exportar');
+
+Route::get('/pagotecnico/formato-modificacion-pago', [PagotecnicoController::class, 'descargarFormatoModificacionPago'])->name('pagotecnico.formato-modificacion-pago');
+Route::post('/pagotecnico/EditarMasivo', [PagotecnicoController::class, 'modificarPagosTecnicoMasivo'])->name('pagotecnico.editar-masivo');
+
+Route::get('/pagotecnico/Editarexportar', [PagotecnicoController::class, 'exportarExcel'])->name('pagotecnico.exportar');
 Route::post('/extraccion-masiva', [TecnicoController::class, 'extraccionMasiva'])
     ->name('pagotecnico.extraccion-masiva');
 Route::get('/tecnicos', [TecnicoController::class, 'index'])->name('tecnico.index');

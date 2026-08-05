@@ -509,6 +509,59 @@ public function descargarFormatoPago()
     return response()->stream($callback, 200, $headers);
 }
 
+public function descargarFormatoModificacionPago()
+{
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=Formato_Modificacion_Pagos_Tecnicos.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // Columnas requeridas para la modificación masiva (Incluye la llave primaria 'id')
+    $columnas = [
+        'id',          // <--- COLUMNA MANDATORIA CRÍTICA PARA MODIFICAR
+        'Orden',
+        'SKU',
+        'Descripcion',
+        'OBS',
+        'Cantidad',
+        'COSTOPAGO',
+        'Status',
+        'Naturaleza',
+        'fkTecnico'
+    ];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        
+        // Añadir el BOM UTF-8 para compatibilidad absoluta con acentos en Microsoft Excel
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        fputcsv($file, $columnas); // Escribir encabezado de la tabla
+
+        // Línea de ejemplo con datos ficticios para guiar al usuario:
+        // id, Orden, SKU, Descripcion, OBS, Cantidad, COSTOPAGO, Status, Naturaleza, fkTecnico
+        fputcsv($file, [
+            '1548', // ID real del registro en la base de datos a modificar
+            'ORD-100254',
+            'SKU-MO-001',
+            'INSTALACION TOMA DE LINEA RJ11',
+            'Actualización de tarifa por solicitud de soporte',            
+            '1.00',
+            '275.50', // Nuevo costo a sobreescribir
+            'C',      // Nuevo Status
+            'H',      // Nueva Naturaleza
+            '12'      // ID del Técnico
+        ]);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
 public function descargarinventariopago()
 {
     $headers = [
@@ -824,6 +877,163 @@ if (count($batchData) >= $batchSize) {
             fclose($file);
         }
         return back()->with('error', 'Error crítico en procesamiento Cloud de Pagos: ' . $e->getMessage());
+    }
+}
+
+public function modificarPagosTecnicoMasivo(Request $request)
+{
+    DB::connection()->disableQueryLog(); 
+    
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+
+    $fkTienda = session('user_fkTienda') ?? 0;    
+    
+    // Configuraciones de alto rendimiento para el servidor (Evita Timeouts y caídas de RAM)
+    set_time_limit(0); 
+    ini_set('memory_limit', '512M');    
+    DB::connection()->disableQueryLog();
+
+    // Validar que el archivo sea CSV o TXT
+    $request->validate([
+        'archivo' => 'required|file|mimes:csv,txt',
+    ]);
+
+    $file = fopen($request->file('archivo')->getRealPath(), 'r');    
+    
+    // Leer el encabezado del CSV y limpiar el posible carácter invisible BOM UTF-8
+    $encabezadoRaw = fgetcsv($file);
+    if ($encabezadoRaw && str_contains($encabezadoRaw[0], chr(0xEF).chr(0xBB).chr(0xBF))) {
+        $encabezadoRaw[0] = str_replace(chr(0xEF).chr(0xBB).chr(0xBF), '', $encabezadoRaw[0]);
+    }
+    
+    $encabezado = $encabezadoRaw;
+    $actualizados = 0;
+    $omitidos = 0;   
+    $batchSize = 500; // Procesamiento atómico en bloques de 500 para proteger la CPU
+    $batchData = [];
+    $now = now();
+
+    try {
+        while (($linea = fgetcsv($file)) !== false) {
+            // Validar consistencia de columnas
+            if (count($encabezado) !== count($linea)) {
+                $omitidos++;
+                continue;
+            }
+
+            $data = array_combine($encabezado, $linea);
+
+            // VALIDACIÓN CRÍTICA PARA MODIFICACIÓN: El ID del movimiento debe existir y ser numérico
+            if (empty($data['id']) || intval($data['id']) <= 0) {
+                $omitidos++;
+                continue;
+            }
+
+            // Normalización de Naturaleza (D / H)
+            $naturaleza = strtoupper(trim($data['Naturaleza'] ?? 'D'));
+            if (!in_array($naturaleza, ['D', 'H'])) {
+                $naturaleza = 'D'; 
+            }
+
+            // Recálculo o asignación de costos (Misma lógica de prioridad de tu catálogo)
+            $valorcosto = floatval($data['COSTOPAGO'] ?? 0.00);
+
+            if ($valorcosto == 0 && !empty($data['SKU'])) {
+                $tecnicoId = intval($data['fkTecnico'] ?? 0);
+                $tecnicoCodigo = '';
+                
+                if ($tecnicoId > 0) {
+                    $tecnicoCodigo = DB::table('tecnico')->where('id', $tecnicoId)->value('codigo') ?? '';
+                }
+
+                $obtenervalor = DB::table('MaterialManoObra') // Usando la tabla maestra directa
+                    ->where('SKU', $data['SKU'])
+                    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+                        $query->where('centrocostoespecifico', '=', $tecnicoCodigo)
+                              ->orWhere('centrocostoespecifico', '=', $fkTienda)
+                              ->orWhereNull('centrocostoespecifico')
+                              ->orWhere('centrocostoespecifico', '=', '');
+                    })
+                    ->select('CATEGORIACOBRO', 'COSTOPAGO', 'CATEGORIA', 'TIPO', 'centrocostoespecifico')
+                    ->orderByRaw("CASE 
+                        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+                        WHEN centrocostoespecifico = ? THEN 2
+                        ELSE 3 
+                    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+                    ->latest()
+                    ->first();
+
+                if ($obtenervalor) {
+                    if ($obtenervalor->CATEGORIA === 'MANO DE OBRA' || $obtenervalor->TIPO === 'MANO DE OBRA') {
+                        $data['COSTOPAGO'] = floatval($obtenervalor->COSTOPAGO);
+                    } elseif ($obtenervalor->CATEGORIA === 'MATERIAL' || $obtenervalor->TIPO === 'MATERIAL') {
+                        $data['COSTOPAGO'] = floatval($obtenervalor->CATEGORIACOBRO);
+                    } else {
+                        $data['COSTOPAGO'] = floatval($obtenervalor->COSTOPAGO ?? 0.00);
+                    }
+                } else {
+                    $data['COSTOPAGO'] = 0.00;
+                }
+            } else {
+                $data['COSTOPAGO'] = $valorcosto;
+            }
+
+            $status = substr(trim($data['Status'] ?? 'I'), 0, 2);
+
+            // Mapeo del lote incluyendo explícitamente la llave primaria 'id'
+            $batchData[] = [
+                'id'          => intval($data['id']), // Llave primaria obligatoria para actualizar
+                'Orden'       => $data['Orden'] ?? null,
+                'SKU'         => $data['SKU'] ?? null,
+                'Descripcion' => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'OBS'         => mb_convert_encoding($data['OBS'] ?? 'Modificación masiva por CSV', 'UTF-8', 'ISO-8859-1'),
+                'Cantidad'    => isset($data['Cantidad']) ? floatval($data['Cantidad']) : 1.00,
+                'COSTOPAGO'   => floatval($data['COSTOPAGO']),
+                'fkTienda'    => $fkTienda,
+                'fkTecnico'   => intval($data['fkTecnico'] ?? 0),
+                'Naturaleza'  => $naturaleza,
+                'Status'      => $status,
+                'updated_at'  => $now,
+            ];
+
+            $actualizados++;
+
+            // Ejecución del Upsert al completar el tamaño de bloque (Batch)
+            if (count($batchData) >= $batchSize) {
+                DB::transaction(function () use ($batchData) {
+                    DB::table('pagotecnico')->upsert(
+                        $batchData, 
+                        ['id'], // 1. Condición única: Si el 'id' coincide, se activa la actualización
+                        ['Orden', 'SKU', 'Descripcion', 'OBS', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status', 'updated_at'] // 2. Campos que se van a sobreescribir
+                    );
+                });
+                $batchData = [];
+                gc_collect_cycles(); // Invoca el recolector de basura de PHP para liberar RAM de inmediato
+            }
+        }
+
+        // Procesar los últimos registros remanentes
+        if (!empty($batchData)) {
+            DB::transaction(function () use ($batchData) {
+                DB::table('pagotecnico')->upsert(
+                    $batchData,
+                    ['id'],
+                    ['Orden', 'SKU', 'Descripcion', 'OBS', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status', 'updated_at']
+                );
+            });
+        }
+
+        fclose($file);
+
+        return back()->with('success', "Modificación masiva exitosa: {$actualizados} registros actualizados en el sistema, {$omitidos} filas omitidas por falta de ID válido.");
+
+    } catch (\Exception $e) {
+        if (is_resource($file)) {
+            fclose($file);
+        }
+        return back()->with('error', 'Error crítico en la modificación masiva: ' . $e->getMessage());
     }
 }
 

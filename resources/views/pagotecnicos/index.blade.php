@@ -60,30 +60,78 @@
         <li class="breadcrumb-item active">Desgloce Pagos a Técnicos</li>
     </ol>
 
-    @can('crear-materialmanoobra')
-
-        <div class="card border-0 shadow-sm rounded-3 mb-4">
-            <div class="card-body p-2">
-                <div class="row align-items-center g-3">
-                    <form action="{{ route('pagotecnico.importar') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <button type="submit" class="btn btn-success">Subir</button>
-                            <label for="archivo" class="btn btn-primary custom-upload-btn">
-                            <i class="fa fa-upload"></i>
-                            </label>
-
-                            <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
-                            <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
-                    </form>
-                </div>
-                <div class="row align-items-center g-1">
+@can('crear-materialmanoobra')
+    <!-- Contenedor alineado con el estilo de "Insertar Movimientos" -->
+    <div class="card shadow-sm border rounded-3 mb-4">
+        <!-- Encabezado con título integrado en el marco -->
+        <div class="card-header bg-light py-2 px-3 border-bottom">
+            <h6 class="card-title mb-0 text-primary fw-bold">
+                <i class="fa fa-file-excel-o me-2"></i> Importar Formato de Pagos
+            </h6>
+        </div>
+        
+        <div class="card-body p-3">
+            <!-- Bloque de Acción de Subida -->
+            
+            <form action="{{ route('pagotecnico.importar') }}" method="POST" enctype="multipart/form-data" class="row align-items-center g-3 mb-3">
+                @csrf
+                <div class="col-auto d-flex align-items-center gap-2">
                     <a href="{{route('pagotecnico.formato-pago')}}">
                         <button type="button" class="fa fa-download">descargar formato</button>
                     </a>
+                    <button type="submit" class="btn btn-success px-4">
+                        <i class="fa fa-check me-1"></i> Subir
+                    </button>
+                    
+                    <label for="archivo" class="btn btn-primary custom-upload-btn mb-0">
+                        <i class="fa fa-upload"></i> Seleccionar Archivo
+                    </label>
+                    <input type="file" id="archivo" name="archivo" class="custom-file-input d-none" onchange="mostrarNombre(this)">
                 </div>
-            </div>
+                <div class="col">
+                    <span id="nombre-archivo" class="text-muted small">Ningún archivo seleccionado</span>
+                </div>
+            </form>
         </div>
-    @endcan
+    </div>
+@endcan
+
+@can('modificar-materialmanoobra')
+    <!-- Contenedor alineado con el estilo de "Insertar Movimientos" -->
+    <div class="card shadow-sm border rounded-3 mb-4">
+        <!-- Encabezado con título integrado en el marco -->
+        <div class="card-header bg-light py-2 px-3 border-bottom">
+            <h6 class="card-title mb-0 text-primary fw-bold">
+                <i class="fa fa-file-excel-o me-2"></i> Editar Formato de Pagos
+            </h6>
+        </div>
+        
+        <div class="card-body p-3">
+            <!-- Bloque de Acción de Subida -->
+            
+            <form action="{{ route('pagotecnico.editar-masivo') }}" method="POST" enctype="multipart/form-data" class="row align-items-center g-3 mb-3">
+                @csrf
+                <div class="col-auto d-flex align-items-center gap-2">
+                    <a href="{{route('pagotecnico.formato-modificacion-pago')}}">
+                        <button type="button" class="fa fa-download">descargar formato</button>
+                    </a>
+                    <button type="submit" class="btn btn-success px-4">
+                        <i class="fa fa-check me-1"></i> Subir
+                    </button>
+                    
+                    <label for="archivo" class="btn btn-primary custom-upload-btn mb-0">
+                        <i class="fa fa-upload"></i> Seleccionar Archivo
+                    </label>
+                    <input type="file" id="archivo" name="archivo" class="custom-file-input d-none" onchange="mostrarNombre(this)">
+                </div>
+                <div class="col">
+                    <span id="nombre-archivo" class="text-muted small">Ningún archivo seleccionado</span>
+                </div>
+            </form>
+        </div>
+    </div>
+@endcan
+
 
         <!-- ========================================== -->
     <!-- COMPONENTE DE FILTROS DINÁMICOS -->
