@@ -467,12 +467,16 @@ Route::post('/pagotecnico/importar', [pagotecnicoController::class, 'importarPag
 Route::get('/pagos-tecnico/exportar-fotos', [PagotecnicoController::class, 'exportarFotosZip'])->name('pagostecnico.exportarfotos');
 
 
-Route::get('/pagotecnico/formato-pago', [PagotecnicoController::class, 'descargarFormatoPago'])->name('pagotecnico.formato-pago');
+Route::get('/pagotecnico.formato-pago', [PagotecnicoController::class, 'descargarFormatoPago'])->name('pagotecnico.formato-pago');
 
-Route::get('/pagotecnico/formato-modificacion-pago', [PagotecnicoController::class, 'descargarFormatoModificacionPago'])->name('pagotecnico.formato-modificacion-pago');
-Route::post('/pagotecnico/EditarMasivo', [PagotecnicoController::class, 'modificarPagosTecnicoMasivo'])->name('pagotecnico.editar-masivo');
+// Ruta nueva e independiente para descargar el formato de modificación
+Route::get('/descarga-directa-formato-modificar', [PagotecnicoController::class, 'descargarFormatoModificacionPago'])
+    ->name('pagotecnico.nuevo_formato_descarga');
 
-Route::get('/pagotecnico/Editarexportar', [PagotecnicoController::class, 'exportarExcel'])->name('pagotecnico.exportar');
+    Route::post('/pagotecnico/EditarMasivo', [PagotecnicoController::class, 'modificarPagosTecnicoMasivo'])->name('pagotecnico.editar-masivo');
+
+Route::get('/pagotecnico.Exportar', [PagotecnicoController::class, 'exportarExcel'])->name('pagotecnico.exportar');
+
 Route::post('/extraccion-masiva', [TecnicoController::class, 'extraccionMasiva'])
     ->name('pagotecnico.extraccion-masiva');
 Route::get('/tecnicos', [TecnicoController::class, 'index'])->name('tecnico.index');
@@ -598,9 +602,11 @@ Route::post('/clientes/existente', [clienteController::class, 'exist'])
 
     ->middleware('permission:crear-cliente');  // Mantener la restricción de permisos
 
+    // Cambia esto:
 Route::get('clientes/lista', [clienteController::class, 'listaClientes'])
-    ->name('clientes.lista')
+    ->name('clientes.lista_manual') // <--- CAMBIA EL NOMBRE AQUÍ
     ->withoutMiddleware(['auth']);
+
 
 //Route::get('/clientes/obtener', [clienteController::class, 'obtenerClientes'])
   //  ->name('clientes.obtener')

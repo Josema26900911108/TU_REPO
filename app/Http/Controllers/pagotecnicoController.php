@@ -511,6 +511,11 @@ public function descargarFormatoPago()
 
 public function descargarFormatoModificacionPago()
 {
+    // Limpiar cualquier residuo en el búfer de salida para evitar que XAMPP rompa el CSV
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+
     $headers = [
         "Content-type"        => "text/csv; charset=UTF-8",
         "Content-Disposition" => "attachment; filename=Formato_Modificacion_Pagos_Tecnicos.csv",
@@ -519,9 +524,8 @@ public function descargarFormatoModificacionPago()
         "Expires"             => "0"
     ];
 
-    // Columnas requeridas para la modificación masiva (Incluye la llave primaria 'id')
     $columnas = [
-        'id',          // <--- COLUMNA MANDATORIA CRÍTICA PARA MODIFICAR
+        'id',
         'Orden',
         'SKU',
         'Descripcion',
@@ -536,24 +540,15 @@ public function descargarFormatoModificacionPago()
     $callback = function () use ($columnas) {
         $file = fopen('php://output', 'w');
         
-        // Añadir el BOM UTF-8 para compatibilidad absoluta con acentos en Microsoft Excel
+        // BOM UTF-8 para que Excel en Windows abra los acentos sin problemas
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
         
-        fputcsv($file, $columnas); // Escribir encabezado de la tabla
+        fputcsv($file, $columnas);
 
-        // Línea de ejemplo con datos ficticios para guiar al usuario:
-        // id, Orden, SKU, Descripcion, OBS, Cantidad, COSTOPAGO, Status, Naturaleza, fkTecnico
+        // Fila de ejemplo
         fputcsv($file, [
-            '1548', // ID real del registro en la base de datos a modificar
-            'ORD-100254',
-            'SKU-MO-001',
-            'INSTALACION TOMA DE LINEA RJ11',
-            'Actualización de tarifa por solicitud de soporte',            
-            '1.00',
-            '275.50', // Nuevo costo a sobreescribir
-            'C',      // Nuevo Status
-            'H',      // Nueva Naturaleza
-            '12'      // ID del Técnico
+            '1548', 'ORD-100254', 'SKU-MO-001', 'INSTALACION TOMA DE LINEA RJ11', 
+            'Actualizacion', '1.00', '275.50', 'C', 'H', '12'
         ]);
 
         fclose($file);
@@ -561,6 +556,7 @@ public function descargarFormatoModificacionPago()
 
     return response()->stream($callback, 200, $headers);
 }
+
 
 public function descargarinventariopago()
 {

@@ -71,14 +71,10 @@
         </div>
         
         <div class="card-body p-3">
-            <!-- Bloque de Acción de Subida -->
-            
+            <!-- Bloque A: Acción de Subida (Únicamente procesa el archivo seleccionado) -->
             <form action="{{ route('pagotecnico.importar') }}" method="POST" enctype="multipart/form-data" class="row align-items-center g-3 mb-3">
                 @csrf
                 <div class="col-auto d-flex align-items-center gap-2">
-                    <a href="{{route('pagotecnico.formato-pago')}}">
-                        <button type="button" class="fa fa-download">descargar formato</button>
-                    </a>
                     <button type="submit" class="btn btn-success px-4">
                         <i class="fa fa-check me-1"></i> Subir
                     </button>
@@ -92,9 +88,22 @@
                     <span id="nombre-archivo" class="text-muted small">Ningún archivo seleccionado</span>
                 </div>
             </form>
+
+            <!-- Línea divisoria estética -->
+            <hr class="text-muted my-2">
+
+            <!-- Bloque B: Descarga de Plantilla (Aislado del Formulario para evitar el submit accidental) -->
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <a href="{{ route('pagotecnico.formato-pago') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fa fa-download me-1"></i> Descargar Formato de Pagos
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 @endcan
+
 
 @can('modificar-materialmanoobra')
     <!-- Contenedor alineado con el estilo de "Insertar Movimientos" -->
@@ -108,28 +117,45 @@
         
         <div class="card-body p-3">
             <!-- Bloque de Acción de Subida -->
-            
             <form action="{{ route('pagotecnico.editar-masivo') }}" method="POST" enctype="multipart/form-data" class="row align-items-center g-3 mb-3">
                 @csrf
                 <div class="col-auto d-flex align-items-center gap-2">
-                    <a href="{{route('pagotecnico.formato-modificacion-pago')}}">
-                        <button type="button" class="fa fa-download">descargar formato</button>
-                    </a>
                     <button type="submit" class="btn btn-success px-4">
                         <i class="fa fa-check me-1"></i> Subir
                     </button>
                     
-                    <label for="archivo" class="btn btn-primary custom-upload-btn mb-0">
+                    <label for="archivo_edicion" class="btn btn-primary custom-upload-btn mb-0">
                         <i class="fa fa-upload"></i> Seleccionar Archivo
                     </label>
-                    <input type="file" id="archivo" name="archivo" class="custom-file-input d-none" onchange="mostrarNombre(this)">
+                    <input type="file" id="archivo_edicion" name="archivo" class="custom-file-input d-none" onchange="mostrarNombreEdicion(this)">
                 </div>
                 <div class="col">
-                    <span id="nombre-archivo" class="text-muted small">Ningún archivo seleccionado</span>
+                    <span id="nombre-archivo-edicion" class="text-muted small">Ningún archivo seleccionado</span>
                 </div>
             </form>
+
+            <!-- Separador visual -->
+            <hr class="text-muted my-2">
+
+            <!-- Bloque de Descarga con la nueva ruta unificada -->
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <a href="{{ route('pagotecnico.nuevo_formato_descarga') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fa fa-download me-1"></i> Descargar Formato de Modificación
+                    </a>
+                </div>
+            </div>
+
         </div>
     </div>
+
+    <!-- Script rápido auxiliar por si tienes dos inputs de archivo en la misma vista y no choquen sus IDs -->
+    <script>
+    function mostrarNombreEdicion(input) {
+        var nombre = input.files[0] ? input.files[0].name : "Ningún archivo seleccionado";
+        document.getElementById('nombre-archivo-edicion').innerText = nombre;
+    }
+    </script>
 @endcan
 
 
