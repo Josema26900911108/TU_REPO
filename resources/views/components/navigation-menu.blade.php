@@ -278,7 +278,7 @@
                 @endcan
 
                 @can('ver-tecnico')
-                <a class="nav-link" href="{{ route('pagotecnico.lista') }}">
+                <a class="nav-link" href="{{ route('pagotecnico.index') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-credit-card"></i></div>
                     Pagos Tecnicos
                 </a>

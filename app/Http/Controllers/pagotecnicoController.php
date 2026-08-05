@@ -85,7 +85,7 @@ public function index(Request $request)
 
     // Obtener lista de técnicos para el select del filtro
     $tecnicos = DB::table('tecnico')->select('id', 'nombre')->get();
-
+  
     // 7. Retornar todas las variables calculadas a la vista
     return view('pagotecnicos.index', compact(
         'pagostecnico', 
@@ -96,6 +96,8 @@ public function index(Request $request)
         'tecnicos'
     ));
 }
+
+
 public function movimiento(Request $request)
 {
     if (!Auth::check()) {

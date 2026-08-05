@@ -366,16 +366,6 @@ Route::post('arqueocaja/compra/{arqueocaja}', [compraController::class, 'generar
 
 
 
-Route::post('/clientes', [clienteController::class, 'store'])
-    ->name('clientes.store')
-
-    ->middleware('permission:crear-cliente');  // Mantener la restricción de permisos
-
-Route::post('/clientes/existente', [clienteController::class, 'exist'])
-    ->name('clientes.storexist')
-
-    ->middleware('permission:crear-cliente');  // Mantener la restricción de permisos
-
 
 Route::get('/compras/detalles/{idComprobante}', [compraController::class, 'mostrarDetalles']);
 Route::get('/compras/detallesSCAN/{SKU}', [compraController::class, 'mostrarDetallesScanner']);
@@ -471,7 +461,7 @@ route::get('/materialmanoobra/lista',[materialmanoobraController::class,'index']
 Route::get('/materialmanoobra/descargarformato',[materialmanoobraController::class,'descargarFormato'])->name('manoobramaterial.formato');
 Route::post('/materialmanoobra/importar',[materialmanoobraController::class,'importarMAMO'])->name('manoobramaterial.importar');
 
-Route::get('/pagotecnico/lista', [PagotecnicoController::class, 'index'])->name('pagotecnico.lista');
+//Route::get('/pagotecnico/lista', [PagotecnicoController::class, 'index'])->name('pagotecnico.lista');
 Route::post('/pagotecnico/importar', [PagotecnicoController::class, 'importarPagosTecnico'])->name('pagotecnico.importar');
 Route::get('/pagos-tecnico/exportar-fotos', [PagotecnicoController::class, 'exportarFotosZip'])->name('pagostecnico.exportarfotos');
 
@@ -592,6 +582,16 @@ Route::post('/plantilla/PDF', [tiendaController::class, 'PDF'])->name('plantilla
 
 //Route::get('/clientes/lista', [clienteController::class, 'lista'])->name('lista');
 //Route::get('/clientes/lista', [compraController::class, 'lista'])->middleware('web')->name('clientes.lista');
+
+Route::post('/clientes', [clienteController::class, 'store'])
+    ->name('clientes.store')
+
+    ->middleware('permission:crear-cliente');  // Mantener la restricción de permisos
+
+Route::post('/clientes/existente', [clienteController::class, 'exist'])
+    ->name('clientes.storexist')
+
+    ->middleware('permission:crear-cliente');  // Mantener la restricción de permisos
 
 Route::get('clientes/lista', [clienteController::class, 'listaClientes'])
     ->name('clientes.lista')
