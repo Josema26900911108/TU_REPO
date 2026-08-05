@@ -68,7 +68,7 @@
                                 </svg>
                             </button>
                             <ul class="dropdown-menu text-bg-light" style="font-size: small;">
-                                @can('ver-producto')
+                                @can('ver-opciones-material')
                                 <li>
                                     <a class="dropdown-item" role="button" data-bs-toggle="modal" data-bs-target="#verModal-{{$item->id}}">Ver detalles</a>
                                 </li>

@@ -191,6 +191,7 @@ class PermissionSeeder extends Seeder
             'editar-movimientomateriales',
             'crear-movimientomateriales',
             'eliminar-movimientomateriales',
+            'ver-opciones-material',
 
             //tecnico
             'ver-tecnico',
