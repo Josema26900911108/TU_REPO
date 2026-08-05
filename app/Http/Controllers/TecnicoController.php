@@ -2492,25 +2492,7 @@ $manoObra->fill([
             $docRef      = 'INS-' . $expediente->Orden . ';' . $ahora->format('dmY:H:i:s') . ';' . $serie;
             $POSICION    = str_pad($contar, 4, '0', STR_PAD_LEFT);
 
-            if ($tipoItem === 'MO') {
-                // -------------------------------------------------------------
-                // CASO A: MANO DE OBRA (Se registra directo, no consume stock)
-                // -------------------------------------------------------------
-                $manoObraInstalada = MovimientoMaterial::firstOrNew([
-                    'fkExpediente'   => $expediente->id,
-                    'fkTecnico'      => $id_tecnico,
-                    'SKU'            => $skuActual,
-                    'TIPO'           => 'MO',
-                    'serie'          => $serie,
-                    'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
-                    'TIPOMOVIMIENTO' => 'INSTALADO',
-                ]);
-
-                if (!$manoObraInstalada->exists) {
-                    $manoObraInstalada->Creado_el  = $ahora;
-                    $manoObraInstalada->Creado_por = $nombreUsuario;
-                }
-// 1. Obtenemos el código alfanumérico del técnico de forma rápida y segura
+            // 1. Obtenemos el código alfanumérico del técnico de forma rápida y segura
 $tecnicoCodigo = DB::table('tecnico')
     ->where('id', $id_tecnico)
     ->value('codigo') ?? '';
@@ -2532,6 +2514,26 @@ $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
     END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
     ->latest() // Si hay colisión exacta en el mismo nivel de prioridad, toma el más reciente
     ->first();
+    
+            if ($tipoItem === 'MO') {
+                // -------------------------------------------------------------
+                // CASO A: MANO DE OBRA (Se registra directo, no consume stock)
+                // -------------------------------------------------------------
+                $manoObraInstalada = MovimientoMaterial::firstOrNew([
+                    'fkExpediente'   => $expediente->id,
+                    'fkTecnico'      => $id_tecnico,
+                    'SKU'            => $skuActual,
+                    'TIPO'           => 'MO',
+                    'serie'          => $serie,
+                    'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
+                    'TIPOMOVIMIENTO' => 'INSTALADO',
+                ]);
+
+                if (!$manoObraInstalada->exists) {
+                    $manoObraInstalada->Creado_el  = $ahora;
+                    $manoObraInstalada->Creado_por = $nombreUsuario;
+                }
+
 
 // 3. Cálculo seguro del costo basado en el tipo de registro y la protección contra nulos
 $costoFinal = 0;
@@ -2722,150 +2724,153 @@ $manoObraInstalada->save();
         // =================================================================
         // SECCIÓN C: FINALIZACIÓN Y AUDITORÍA DEL EXPEDIENTE
         // =================================================================
-        if ($request->input('estatus') === 'S') {
-        foreach ($skusInput as $contar => $sku) {
-            $cantidadRequerida = floatval($cantidadesInput[$contar] ?? 1);
-            $serie             = ($seriesInput[$contar] ?? null) ?: '-';
-            $iditem            = $iditemsInput[$contar] ?? 0;
-            
-            $skuActual         = strtoupper(trim($sku));
-            $docRef      = 'INS-' . $expediente->Orden . ';' . $ahora->format('dmY:H:i:s') . ';' . $serie;
-            $POSICION    = str_pad($contar+1, 4, '0', STR_PAD_LEFT);
+if ($request->input('estatus') === 'S') {
+    foreach ($skusInput as $contar => $sku) {
+        $cantidadRequerida = floatval($cantidadesInput[$contar] ?? 1);
+        $serie             = ($seriesInput[$contar] ?? null) ?: '-';
+        $iditem            = $iditemsInput[$contar] ?? 0;
+        
+        $skuActual         = strtoupper(trim($sku));
+        $docRef            = 'INS-' . $expediente->Orden . ';' . $ahora->format('dmY:H:i:s') . ';' . $serie;
+        $POSICION          = str_pad($contar+1, 4, '0', STR_PAD_LEFT);
 
-                        // Identificar el tipo de ítem de forma segura
-            $tipoItem = DB::table('movimientomateriales')
-                ->where('SKU', $skuActual)
-                ->where('fkTecnico', $id_tecnico)
-                ->where('fkTienda', $fkTienda)
-                ->where('fkExpediente', $expediente->id)
-                ->value('TIPO') ?? 'MO';
-            
-            // Excluir Mano de Obra explícita por texto en SKU
+        // Identificar el tipo de ítem de forma segura
+        $tipoItem = DB::table('movimientomateriales')
+            ->where('SKU', $skuActual)
+            ->where('fkTecnico', $id_tecnico)
+            ->where('fkTienda', $fkTienda)
+            ->where('fkExpediente', $expediente->id)
+            ->value('TIPO') ?? 'MO';
+        
+        $producto = Producto::where('codigo', $skuActual)->where('fkTienda', $fkTienda)->first();
+                    
+        // Cálculo seguro del costo a pagar de Mano de Obra (Evita duplicados)
+        // 1. Obtenemos el código alfanumérico del técnico de forma rápida
+        $tecnicoCodigo = DB::table('tecnico')
+            ->where('id', $id_tecnico)
+            ->value('codigo') ?? '';
 
+        // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
+        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+            ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+                $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
+                      ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
+                      ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Genérico (NULL)
+                      ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Genérico (Vacío)
+            })
+            ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida', 'centrocostoespecifico','CATEGORIA')
+            // Ordenamos prioritariamente: Técnico (1), Tienda (2), Genérico (3)
+            ->orderByRaw("CASE 
+                WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+                WHEN centrocostoespecifico = ? THEN 2
+                ELSE 3 
+            END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+            ->latest()
+            ->first();
 
-            $producto = Producto::where('codigo', $skuActual)->where('fkTienda', $fkTienda)->first();
-                        
+        // 3. Historial de Movimiento de Servicio (Solo si el estatus es 'MO')
+        if ($tipoItem === "MO") {
+            // Calculamos el precio unitario base de forma segura protegiendo contra nulos
+            $precioUnitario = 0;
+            if ($costoUnidad) {
+                $precioUnitario = ($costoUnidad->CATEGORIA === 'MANO DE OBRA') 
+                    ? $costoUnidad->COSTOPAGO 
+                    : ($costoUnidad->CATEGORIACOBRO ?? 0);
+            }
 
-                                            // Cálculo seguro del costo a pagar de Mano de Obra (Evita duplicados)
-// 1. Obtenemos el código alfanumérico del técnico de forma rápida
-$tecnicoCodigo = DB::table('tecnico')
-    ->where('id', $id_tecnico)
-    ->value('codigo') ?? '';
+            // Ejecutamos el updateOrCreate con el cálculo matemático corregido
+            Pagotecnico::updateOrCreate(
+                [
+                    'Orden'     => $expediente->Orden,
+                    'SKU'       => $skuActual,
+                    'fkTienda'  => $fkTienda,
+                    'fkTecnico' => $id_tecnico,
+                    'Naturaleza' => 'H',
+                ], 
+                [
+                    'Descripcion' => $producto->nombre ?? $costoUnidad->Descripcion ?? "Servicio $skuActual",
+                    'OBS'         => 'Pago por servicio tecnico (Mano de Obra)',
+                    'Cantidad'    => $cantidadRequerida,
+                    // Multiplicación limpia y segura entre la cantidad y el precio unitario obtenido
+                    'COSTOPAGO'   => $cantidadRequerida * $precioUnitario,
+                    'Status'      => 'S',
+                ]
+            );  
+        }
 
-// 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
-$costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
-        $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
-              ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
-              ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Genérico (NULL)
-              ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Genérico (Vacío)
-    })
-    ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida', 'centrocostoespecifico','CATEGORIA')
-    // Ordenamos prioritariamente: Técnico (1), Tienda (2), Genérico (3)
-    ->orderByRaw("CASE 
-        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
-        WHEN centrocostoespecifico = ? THEN 2
-        ELSE 3 
-    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
-    ->latest()
-    ->first();
+        // SE MOVIÓ LA ACTUALIZACIÓN MASIVA DE AQUÍ PARA EL FINAL DEL FOREACH
 
-// 3. Historial de Movimiento de Servicio (Solo si el estatus es 'MO')
-if ($tipoItem === "MO") {
+        if (empty($tipoItem) || str_contains($tipoItem, 'MO') || str_contains($tipoItem, 'MANO')) {
+            continue; 
+        }
 
-    // Calculamos el precio unitario base de forma segura protegiendo contra nulos
-    $precioUnitario = 0;
-    if ($costoUnidad) {
-        $precioUnitario = ($costoUnidad->CATEGORIA === 'MANO DE OBRA') 
-            ? $costoUnidad->COSTOPAGO 
-            : ($costoUnidad->CATEGORIACOBRO ?? 0);
-    }
+        // Registrar Historial de Salida Negativa (Clase 221)
+        if ($producto) {
+            MovimientoMateriales::create([
+                'fkTienda'               => $fkTienda,
+                'fkMateriales'           => $producto->id,
+                'contrata'               => $id_tecnico,
+                'clase_movimiento'       => '221',
+                'cantidad'               => $cantidadRequerida * -1,
+                'referencia'             => "CONSUMO INSTALACION | EXPEDIENTE: " . $expediente->id . " | SERIE: $serie",
+                'tipo_movimiento'        => 'CONSUMO_INSTALACION',
+                'documento_material'     => $docRef,
+                'posicion_documento'     => $POSICION,
+                'fecha_contabilizacion'  => $ahora->format('Y-m-d'),
+                'almacen'                => 'CLIENTE_FINAL',
+                'centro'                 => $centroTecnico,
+                'unidad_medida_base'     => $costoUnidad->unidadmedida ?? 'UNIDAD',
+                'centro_sap'             => session('centro'),
+                'origen_uso'             => 'consumo_instalacion',
+                'texto_clase_movimiento' => 'Salida por instalación a cliente final'
+            ]);                   
+        }
+    } // <--- AQUÍ TERMINA EL FOREACH
 
-    // Ejecutamos el updateOrCreate con el cálculo matemático corregido
-    Pagotecnico::updateOrCreate(
-        [
-            'Orden'     => $expediente->Orden,
-            'SKU'       => $skuActual,
-            'fkTienda'  => $fkTienda,
-            'fkTecnico' => $id_tecnico,
-            'Naturaleza' => 'H',
-        ], 
-        [
-            'Descripcion' => $producto->nombre ?? $costoUnidad->Descripcion ?? "Servicio $skuActual",
-            'OBS'         => 'Pago por servicio tecnico (Mano de Obra)',
-            'Cantidad'    => $cantidadRequerida,
-            // Multiplicación limpia y segura entre la cantidad y el precio unitario obtenido
-            'COSTOPAGO'   => $cantidadRequerida * $precioUnitario,
-            'Status'      => 'S',
-        ]
-    );  
+    // =========================================================================
+    // CORRECCIÓN: Las actualizaciones masivas se ejecutan una sola vez al terminar todo el ciclo
+    // =========================================================================
+    $updateData = [
+        'Status'           => 'A',
+        'ESTATUS'          => 'C',
+        'AUTORIZA'         => $id_tecnico,
+        'FECHAINSTALACION' => $ahora,
+    ];      
+
+    DB::table('movimientomateriales')
+        ->where('fkExpediente', $expediente->id)
+        ->where('fkTecnico', $id_tecnico)
+        ->update([
+            'ESTATUS'        => 'INSTALADO_CERRADO',
+            'Status'         => 'A',
+            'ALMACEN'        => 'CLIENTE_FINAL',
+            'Modificado_el'  => $ahora,
+            'Modificado_por' => $nombreUsuario,
+            'updated_at'     => $ahora
+        ]);                                               
+    // =========================================================================
+
+} else {
+    $updateData = [
+        'Status'           => 'S',
+        'ESTATUS'          => 'I',
+        'AUTORIZA'         => $id_tecnico,
+        'FECHAINSTALACION' => $ahora,
+    ];
 }
 
+if ($request->filled('obs') && trim($request->input('obs')) !== '') {
+    $nuevaObs = 'OBS TECNICO: ' . trim($request->input('obs'));
+    
+    // Si ya existe una observación previa, se concatena con ' || '; de lo contrario, se asigna limpia
+    $updateData['OBS'] = !empty($expediente->OBS) 
+        ? $expediente->OBS . ' || ' . $nuevaObs 
+        : $nuevaObs;
+}
 
-                        $updateData = [
-                            'Status'           => 'A',
-                            'ESTATUS'          => 'C',
-                            'AUTORIZA'         => $id_tecnico,
-                            'FECHAINSTALACION' => $ahora,
-                        ];      
+$expediente->update($updateData);
 
-                        DB::table('movimientomateriales')
-                            ->where('fkExpediente', $expediente->id)
-                            ->where('fkTecnico', $id_tecnico)
-                            ->update([
-                                'ESTATUS'        => 'INSTALADO_CERRADO',
-                                'Status'         => 'A',
-                                'ALMACEN'        => 'CLIENTE_FINAL',
-                                'Modificado_el'  => $ahora,
-                                'Modificado_por' => $nombreUsuario,
-                                'updated_at'     => $ahora
-                        ]);                                               
-
-                if (empty($tipoItem) || str_contains($tipoItem, 'MO') || str_contains($tipoItem, 'MANO')) {
-                    continue; 
-                }
-
-                        // Registrar Historial de Salida Negativa (Clase 251)
-                        MovimientoMateriales::create([
-                            'fkTienda'               => $fkTienda,
-                            'fkMateriales'           => $producto->id,
-                            'contrata'               => $id_tecnico,
-                            'clase_movimiento'       => '221',
-                            'cantidad'               => $cantidadRequerida * -1,
-                            'referencia'             => "CONSUMO INSTALACION | EXPEDIENTE: " . $expediente->id . " | SERIE: $serie",
-                            'tipo_movimiento'        => 'CONSUMO_INSTALACION',
-                            'documento_material'     => $docRef,
-                            'posicion_documento'     => $POSICION,
-                            'fecha_contabilizacion'  => $ahora->format('Y-m-d'),
-                            'almacen'                => 'CLIENTE_FINAL',
-                            'centro'                 => $centroTecnico,
-                            'unidad_medida_base'     => $costoUnidad->unidadmedida ?? 'UNIDAD',
-                            'centro_sap'              => session('centro'),
-                            'origen_uso'             => 'consumo_instalacion',
-                            'texto_clase_movimiento' => 'Salida por instalación a cliente final'
-                        ]);                   
-       
-
-        }
-        } else {
-            $updateData = [
-                'Status'           => 'S',
-                'ESTATUS'          => 'I',
-                'AUTORIZA'         => $id_tecnico,
-                'FECHAINSTALACION' => $ahora,
-            ];
-        }
-
-        if ($request->filled('obs') && trim($request->input('obs')) !== '') {
-            $nuevaObs = 'OBS TECNICO: ' . trim($request->input('obs'));
-            
-            // Si ya existe una observación previa, se concatena con ' || '; de lo contrario, se asigna limpia
-            $updateData['OBS'] = !empty($expediente->OBS) 
-                ? $expediente->OBS . ' || ' . $nuevaObs 
-                : $nuevaObs;
-        }
-
-        $expediente->update($updateData);
+        
 
         DB::commit();
 
@@ -3149,7 +3154,8 @@ public function fetchrelacionP(Request $request)
         $query->where(function($q) {
             $q->where('Naturaleza', 'H')
               ->orWhere('Status', 'S');
-        })->where('Status', '!=', 'B'); // Esto garantiza que nunca muestre los 'B'
+        })->where('Status', '!=', 'B')
+        ->where('Status', '!=', 'C'); 
 
         if ($Estatus !== 'ER') {
             $query->where('fkTienda', $fkTienda);
