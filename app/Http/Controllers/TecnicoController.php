@@ -3149,7 +3149,8 @@ public function fetchrelacionP(Request $request)
         // CORRECCIÓN: Agrupación del OR para no romper los filtros de Tienda, Técnico y Fechas
         $query->where(function($q) {
             $q->where('Naturaleza', 'H')
-              ->orWhere('Status', 'S');
+              ->orWhere('Status', 'S')
+              ->wherenot('Status', 'B'); 
         });
 
         if ($Estatus !== 'ER') {
