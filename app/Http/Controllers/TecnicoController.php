@@ -2330,6 +2330,8 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     ->delete();
             }
         }
+
+        
         // =================================================================
         // SECCIÓN B: PROCESAR ITEMS ACTUALES (AGREGAR NUEVO O MANTIENE)
         // =================================================================
@@ -2339,7 +2341,8 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
             $iditem            = $iditemsInput[$contar] ?? 0;
             $skuActual         = strtoupper(trim($sku));
             
-            // Excluir Mano de Obra explícita por texto en SKU
+            // NOTA: Si vas a registrar Mano de Obra, te sugiero comentar o borrar 
+            // este "if" de abajo, ya que si el SKU dice 'MO' o 'MANO' va a ignorar el código.
             if (empty($skuActual) || str_contains($skuActual, 'MO') || str_contains($skuActual, 'MANO')) {
                 continue; 
             }
@@ -2356,13 +2359,22 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                 continue; // Saltar al siguiente ítem si no fue modificado
             }
 
-            // Identificar el tipo de ítem de forma segura
-            $tipoItem = DB::table('movimientomateriales')
+            // =================================================================
+            // ¡AQUÍ COLOCAS EL NUEVO CÓDIGO! (Reemplaza la consulta vieja)
+            // =================================================================
+            $maestroItem = DB::table('MaterialManoObra')
                 ->where('SKU', $skuActual)
-                ->where('fkTecnico', $id_tecnico)
                 ->where('fkTienda', $fkTienda)
-                ->where('fkExpediente', $expediente->id)
-                ->value('TIPO') ?? 'MO';
+                ->first();
+
+            // Si existe en el maestro usamos su CATEGORIA, si no, asumimos 'MATERIAL'
+            $tipoItem = $maestroItem ? $maestroItem->CATEGORIA : 'MATERIAL'; 
+            
+            // Homologamos la palabra para que sea compatible con tus "if" de abajo
+            if ($tipoItem === 'MANO DE OBRA') {
+                $tipoItem = 'MO';
+            }
+            // =================================================================
 
             // MANO DE OBRA PURA DIRECTA: Se registra de manera independiente
             if ($iditem == 0 && $tipoItem === 'MO') {
@@ -2374,6 +2386,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     'serie'          => $serie,
                     'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                 ]);
+
 
                 if (!$manoObra->exists) {
                     $manoObra->Creado_el  = $ahora;
