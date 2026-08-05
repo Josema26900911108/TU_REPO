@@ -3131,14 +3131,13 @@ public function fetchrelacionP(Request $request)
         }
 
         $Estatus   = session('user_estatus');
-        // Nota: Asegúrate si en tu sesión es user_fkTienda o user_fktienda (en tus anteriores prompts usaste minúscula)
         $fkTienda  = session('user_fkTienda') ?? session('user_fktienda'); 
         $idtecnico = $request->input('id');
         $fechain   = $request->input('fechainP');
         $fechafin  = $request->input('fechafinP');
 
         $query = Pagotecnico::with(['arbolmanoobra' => function($q) {
-                $q->select('SKU', 'nombre as descripcion'); // Asegúrate de incluir la FK/PK para la relación en el select si falla
+                $q->select('SKU', 'nombre as descripcion'); 
             }])
             ->where('fkTecnico', $idtecnico)
             ->whereNotNull('fkTecnico')
@@ -3146,12 +3145,11 @@ public function fetchrelacionP(Request $request)
                 $q->where('Tipo_servicio', 'MO');
             });
 
-        // CORRECCIÓN: Agrupación del OR para no romper los filtros de Tienda, Técnico y Fechas
+        // CORRECCIÓN: Filtra por Naturaleza o Status, pero SIEMPRE excluye 'B'
         $query->where(function($q) {
             $q->where('Naturaleza', 'H')
-              ->orWhere('Status', 'S')
-              ->wherenot('Status', 'B'); 
-        });
+              ->orWhere('Status', 'S');
+        })->where('Status', '!=', 'B'); // Esto garantiza que nunca muestre los 'B'
 
         if ($Estatus !== 'ER') {
             $query->where('fkTienda', $fkTienda);
@@ -3186,11 +3184,10 @@ public function fetchrelacionC(Request $request)
         $fechain   = $request->input('fechainC');
         $fechafin  = $request->input('fechafinC');
 
-        // Se eliminaron las condiciones repetidas de fkTecnico y fkTienda
+        // Se simplificaron los filtros de Status y Naturaleza
         $query = Pagotecnico::where('fkTecnico', $idtecnico)
             ->whereNotNull('fkTecnico')
-            ->where('Status', 'S')            
-            ->wherenot('Status', 'B')
+            ->where('Status', 'S') // Al ser 'S', automáticamente NO es 'B'
             ->where('Naturaleza', 'D');
 
         if ($Estatus !== 'ER') {
