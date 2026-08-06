@@ -1156,11 +1156,9 @@ function prepareForm(estatus, MSJ) {
                 // ESTRATEGIA DE DESTRUCCIÓN DE CACHÉ EXCLUSIVA AL CERRAR LA ORDEN
                 // ====================================================================
                 if (MSJ === 'S') {
-                    // 1. Borramos la tabla de materiales de esta orden
                     if (typeof llaveCache !== 'undefined') {
                         localStorage.removeItem(llaveCache);
                     }
-                    // 2. Borramos las selecciones de los comboboxes de esta orden
                     if (window.CLAVE_CACHE_COMBOS) {
                         localStorage.removeItem(window.CLAVE_CACHE_COMBOS);
                     }
@@ -1174,7 +1172,16 @@ function prepareForm(estatus, MSJ) {
                     text: data.message || 'La operación se realizó con éxito.',
                     icon: 'success'
                 }).then(() => {
-                    window.location.href = "{{ route('tecnico.buckettecnico') }}";
+                    // =============================================================
+                    // 🚨 REDIRECCIÓN DINÁMICA INTELIGENTE (SOLUClÓN AQUÍ)
+                    // =============================================================
+                    // Si el backend envió una ruta de redirección en el JSON, la usamos.
+                    // Si no la envió, recurrimos por defecto a tu ruta estándar de Blade.
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                    } else {
+                        window.location.href = "{{ route('tecnico.buckettecnico') }}";
+                    }
                 });
             })
             .catch(error => {
@@ -1862,10 +1869,21 @@ function agregarItem(datosScanner = null) {
                         document.getElementById("SKU").value = "";
                         document.getElementById("SKU").focus(); 
                     }
+
+                    // =============================================================
+                    // CORRECCIÓN DEFINITIVA: LIMPIA LA DUPLICACIÓN SIN BORRAR DATOS
+                    // =============================================================
+                    let $materialSelect = $('#itemmanoobraamterial');
                     
-                    $('#itemmanoobraamterial').val('');
-                    if (typeof $('#itemmanoobraamterial').selectpicker === 'function') {
-                        $('#itemmanoobraamterial').selectpicker('refresh');
+                    // 1. Regresamos el selector nativo al valor vacío
+                    $materialSelect.val(''); 
+
+                    if (typeof $materialSelect.selectpicker === 'function') {
+                        // 2. Destruimos la interfaz duplicada del DOM
+                        $materialSelect.selectpicker('destroy');
+                        
+                        // 3. Re-inicializamos el plugin leyendo limpiamente las opciones intactas
+                        $materialSelect.selectpicker();
                     }
                 },
                 error: function(xhr) {
@@ -1878,6 +1896,7 @@ function agregarItem(datosScanner = null) {
         }
     }
 }
+
 
 
 function validarRelacionMateriales() {
@@ -1982,10 +2001,10 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
 $(document).ready(function () {
 
 
-//boton para agregar materiales a utilizarse
-            $('#btn_agregar').click(function() {
-                agregarItem();
-            });
+
+            $('#btn_agregar').off('click').on('click', function() {
+                    agregarItem();
+                });
 
 window.CLAVE_CACHE_COMBOS = "combos_orden_{{ $orden->Orden }}";
 
