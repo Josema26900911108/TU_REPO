@@ -2567,7 +2567,7 @@ $manoObraInstalada->save();
 
 
 
-            }     else {
+            }        else {
         // -------------------------------------------------------------
         // CASO B: MATERIALES (Usa inventario real y lógica FIFO)
         // -------------------------------------------------------------
@@ -2576,8 +2576,8 @@ $manoObraInstalada->save();
             ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
             ->where('cantidad', '>', 0)
             ->where('Status', 'I')
-            ->when($esSeriado, function ($query) use ($serie) {
-                return $query->where('serie', $serie);
+            ->when($esSeriado, function ($query) use ($serieBusqueda) {
+                return $query->where('serie', $serieBusqueda);
             })
             ->orderBy('created_at', 'asc')
             ->get();
@@ -2616,7 +2616,7 @@ $manoObraInstalada->save();
                     'fkTecnico'         => $id_tecnico,
                     'fkTienda'          => $fkTienda,
                     'SKU'               => $skuActual,
-                    'serie'             => $serie, 
+                    'serie'             => $serieBusqueda, 
                     'cantidad'          => $cantidadAExtraer,
                     'TIPO'              => $entrada->TIPO,
                     'ESTATUS'           => 'TRANSITO_INSTALACION',
@@ -2671,7 +2671,7 @@ $manoObraInstalada->save();
             DB::table('movimientomateriales')->updateOrInsert(
                 [
                     'fkExpediente'      => $expediente->id, 
-                    'serie'             => $serie,
+                    'serie'             => $serieBusqueda,
                     'SKU'               => $skuActual,
                     'fkTienda'          => $fkTienda,
                     'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
@@ -2680,7 +2680,7 @@ $manoObraInstalada->save();
                     'almacen'         => 'CLIENTE_FINAL',
                     'Lote'            => 'VALORADO',
                     'COSTO'           => $costoSeguroCliente, 
-                    'TIPO'            => $entrada->TIPO, // Mantiene la familia real del inventario ('TE02', 'TE04')
+                    'TIPO'            => $entrada->TIPO, 
                     'ESTATUS'         => 'INSTALADO',
                     'Status'          => 'S',
                     'Naturaleza'      => 'H',
@@ -2688,6 +2688,12 @@ $manoObraInstalada->save();
                     'cantidad'        => $cantidadAExtraer,
                     'unidadmedida'    => $unidadSeguraCliente, 
                     'TIPOMOVIMIENTO'  => 'CONSUMO_INSTALACION',
+                    
+                    // CORRECCIÓN: Se añaden campos MAC para evitar error 1364 de inserción inicial
+                    'MAC1'            => $entrada->MAC1 ?? '0',
+                    'MAC2'            => $entrada->MAC2 ?? '0',
+                    'MAC3'            => $entrada->MAC3 ?? '0',
+
                     'Creado_el'       => $ahora,
                     'Creado_por'      => $nombreUsuario,
                     'Modificado_el'   => $ahora->format('Y-m-d'),
@@ -2710,7 +2716,7 @@ $manoObraInstalada->save();
             DB::table('movimientomateriales')->updateOrInsert(
                 [
                     'fkExpediente'      => $expediente->id,
-                    'serie'             => $serie,
+                    'serie'             => $serieBusqueda,
                     'SKU'               => $skuActual,
                     'fkTienda'          => $fkTienda,
                     'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
@@ -2727,6 +2733,12 @@ $manoObraInstalada->save();
                     'cantidad'        => $porDescontar,
                     'unidadmedida'    => $unidadSeguraFailsafe,
                     'TIPOMOVIMIENTO'  => 'CONSUMO_INSTALACION_SIN_STOCK',
+                    
+                    // CORRECCIÓN: Se añaden campos MAC preventivos en el Failsafe
+                    'MAC1'            => '0',
+                    'MAC2'            => '0',
+                    'MAC3'            => '0',
+
                     'Creado_el'       => $ahora,         
                     'Creado_por'      => $nombreUsuario, 
                     'Modificado_el'   => $ahora->format('Y-m-d'),
@@ -2738,7 +2750,8 @@ $manoObraInstalada->save();
         }
     } // Fin de la bifurcación de Tipo de Ítem (MO vs MA)
 
-} // <<< AQUÍ TERMINA DE MANERA CORRECTA EL FOREACH GENERAL DE SKUS >>>
+} // <<< FIN DEL FOREACH GENERAL >>>
+
 
 
                     // -------------------------------------------------------------
