@@ -2615,12 +2615,13 @@ $manoObraInstalada->save();
                     // Registrar o Clonar el movimiento del Técnico a INSTALADO (Historial de tránsito)
                     if ($entrada->getOriginal('cantidad') > $cantidadAExtraer && !$esSeriado) {
                         // RAMA A: Inserción de renglón histórico parcial (Misceláneos)
+
                         DB::table('movimientomateriales')->insert([
                             'fkExpediente'   => $expediente->id,
                             'fkTecnico'      => $id_tecnico,
                             'fkTienda'       => $fkTienda,
                             'SKU'            => $skuActual,
-                            'serie'          => $serie,
+                            'serie'          => $serieBusqueda,
                             'cantidad'       => $cantidadAExtraer,
                             'TIPO'           => $entrada->TIPO, 
                             'ESTATUS'        => 'TRANSITO_INSTALACION',
@@ -2628,7 +2629,8 @@ $manoObraInstalada->save();
                             'Lote'           => $entrada->Lote ?? 'VALORADO',
                             'Naturaleza'     => $entrada->Naturaleza ?? 'E',
                             'COSTO'          => $entrada->COSTO ?? $costoFinal,
-                            'MAC1'           => $entrada->MAC1 ?? '0', // Solución al error 1364
+                            'CENTRO'         => $entrada->CENTRO ?? $centroTecnico ?? 'CF', // CORRECCIÓN: Soluciona error 1364 de CENTRO
+                            'MAC1'           => $entrada->MAC1 ?? '0', 
                             'MAC2'           => $entrada->MAC2 ?? '0',
                             'MAC3'           => $entrada->MAC3 ?? '0',
                             'Status'         => 'I',
