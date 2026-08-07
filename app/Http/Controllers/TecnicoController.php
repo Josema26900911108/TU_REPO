@@ -2620,6 +2620,7 @@ $manoObraInstalada->save();
                             'fkTienda'       => $fkTienda,
                             'SKU'            => $skuActual,
                             'serie'          => $serie,
+                            'Lote'           => 'A000',
                             'cantidad'       => $cantidadAExtraer,
                             'TIPO'           => $entrada->TIPO, 
                             'ESTATUS'        => 'TRANSITO_INSTALACION',
