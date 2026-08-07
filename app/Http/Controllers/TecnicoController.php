@@ -2625,6 +2625,7 @@ $manoObraInstalada->save();
                         'TIPO'              => $entrada->TIPO,
                         'ESTATUS'           => 'TRANSITO_INSTALACION',
                         'Status'            => 'I',
+                        'TIPOMOVIMIENTO'    => 'TRANSITO_INSTALACION', 
                         
                         // CAMPOS COMPLETADOS (Evitan errores SQLSTATE 1364 de valores por defecto)
                         'almacen'           => $entrada->almacen ?? 'ALMA', 
@@ -2684,6 +2685,7 @@ $manoObraInstalada->save();
                             'TIPOMOVIMIENTO'  => 'CONSUMO_INSTALACION',
                             'Modificado_el'   => $ahora->format('Y-m-d'),
                             'Modificado_por'  => $nombreUsuario,
+                            
                             'updated_at'      => $ahora
                         ]
                     );
