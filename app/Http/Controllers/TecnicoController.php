@@ -2619,7 +2619,7 @@ $manoObraInstalada->save();
                             'fkTecnico'      => $id_tecnico,
                             'fkTienda'       => $fkTienda,
                             'SKU'            => $skuActual,
-                            'serie'          => $serieBusqueda,
+                            'serie'          => $serie,
                             'cantidad'       => $cantidadAExtraer,
                             'TIPO'           => $entrada->TIPO, 
                             'ESTATUS'        => 'TRANSITO_INSTALACION',
