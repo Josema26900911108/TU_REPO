@@ -2576,8 +2576,8 @@ $manoObraInstalada->save();
             ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
             ->where('cantidad', '>', 0)
             ->where('Status', 'I')
-            ->when($esSeriado, function ($query) use ($serieBusqueda) {
-                return $query->where('serie', $serieBusqueda);
+            ->when($esSeriado, function ($query) use ($serie) {
+                return $query->where('serie', $serie);
             })
             ->orderBy('created_at', 'asc')
             ->get();
@@ -2616,7 +2616,7 @@ $manoObraInstalada->save();
                     'fkTecnico'         => $id_tecnico,
                     'fkTienda'          => $fkTienda,
                     'SKU'               => $skuActual,
-                    'serie'             => $serieBusqueda, 
+                    'serie'             => $serie, 
                     'cantidad'          => $cantidadAExtraer,
                     'TIPO'              => $entrada->TIPO,
                     'ESTATUS'           => 'TRANSITO_INSTALACION',
@@ -2671,7 +2671,7 @@ $manoObraInstalada->save();
             DB::table('movimientomateriales')->updateOrInsert(
                 [
                     'fkExpediente'      => $expediente->id, 
-                    'serie'             => $serieBusqueda,
+                    'serie'             => $serie,
                     'SKU'               => $skuActual,
                     'fkTienda'          => $fkTienda,
                     'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
@@ -2716,7 +2716,7 @@ $manoObraInstalada->save();
             DB::table('movimientomateriales')->updateOrInsert(
                 [
                     'fkExpediente'      => $expediente->id,
-                    'serie'             => $serieBusqueda,
+                    'serie'             => $serie,
                     'SKU'               => $skuActual,
                     'fkTienda'          => $fkTienda,
                     'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
