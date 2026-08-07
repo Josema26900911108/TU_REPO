@@ -2767,23 +2767,39 @@ if ($request->input('estatus') === 'S') {
             ->where('id', $id_tecnico)
             ->value('codigo') ?? '';
 
-        // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
-        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-            ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
-                $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
-                      ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
-                      ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Genérico (NULL)
-                      ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Genérico (Vacío)
-            })
-            ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida', 'centrocostoespecifico','CATEGORIA')
-            // Ordenamos prioritariamente: Técnico (1), Tienda (2), Genérico (3)
-            ->orderByRaw("CASE 
-                WHEN centrocostoespecifico = ? AND ? != '' THEN 1
-                WHEN centrocostoespecifico = ? THEN 2
-                ELSE 3 
-            END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
-            ->latest()
-            ->first();
+            // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
+            $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+                ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+                    $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
+                          ->orWhere('centrocostoespecifico', '=', $fkTienda)    
+                          ->orWhereNull('centrocostoespecifico')               
+                          ->orWhere('centrocostoespecifico', '=', '');         
+                })
+                ->select('CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
+                ->orderByRaw("CASE 
+                    WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+                    WHEN centrocostoespecifico = ? THEN 2
+                    ELSE 3 
+                END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+                ->latest() 
+                ->first();
+
+            // =================================================================
+            // CORRECCIÓN PROTEGIDA: Evita el error "Attempt to read property on null"
+            // =================================================================
+            $costoFinal = 0;
+            $unidadMedidaFinal = 'PZA';
+            $tipoCatalogoMaestro = 'MATERIAL';
+
+            if ($costoUnidad) {
+                // Si el registro existe en el catálogo, extraemos sus valores reales
+                $costoFinal = ($costoUnidad->CATEGORIA === 'MANO DE OBRA' || $costoUnidad->TIPO === 'MO') 
+                    ? $costoUnidad->COSTOPAGO 
+                    : ($costoUnidad->CATEGORIACOBRO ?? 0);
+                
+                $unidadMedidaFinal   = $costoUnidad->unidadmedida ?? 'PZA';
+                $tipoCatalogoMaestro = $costoUnidad->TIPO ?? 'MATERIAL';
+            }
 
         // 3. Historial de Movimiento de Servicio (Solo si el estatus es 'MO')
         if ($tipoItem === "MO") {
