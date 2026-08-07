@@ -2575,8 +2575,7 @@ $manoObraInstalada->save();
                     ->where('SKU', $skuActual)
                     ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
                     ->where('cantidad', '>', 0)
-                    ->where('Status', 'I') 
-                    ->where('TIPO', 'MA') 
+                    ->where('Status', 'I')
                     ->when($esSeriado, function ($query) use ($serie) {
                         return $query->where('serie', trim($serie));
                     })
