@@ -2622,7 +2622,7 @@ $manoObraInstalada->save();
                         'SKU'               => $skuActual,
                         'serie'             => $serie, // CORRECCIÓN: Usa la serie limpia de espacios
                         'cantidad'          => $cantidadAExtraer,
-                        'TIPO'              => $entrada->TIPO,
+                        'TIPO'              => $tipoItem,
                         'ESTATUS'           => 'TRANSITO_INSTALACION',
                         'Status'            => 'I',
                         'TIPOMOVIMIENTO'    => 'TRANSITO_INSTALACION', 
