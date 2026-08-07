@@ -2571,17 +2571,13 @@ $manoObraInstalada->save();
                 // -------------------------------------------------------------
                 // CASO B: MATERIALES (Usa inventario real y lógica FIFO)
                 // -------------------------------------------------------------
-                
-                // Aseguramos una limpieza estricta de la serie para evitar fallos por espacios en blanco
-                $serieBusqueda = trim($serie);
-
                 $entradasDisponibles = MovimientoMaterial::where('fkTecnico', $id_tecnico)
                     ->where('SKU', $skuActual)
-                    ->where('Status', 'I') 
-                    ->where('cantidad', '>', 0)
                     ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
-                    ->when($esSeriado, function ($query) use ($serieBusqueda) {
-                        return $query->where('serie', $serieBusqueda);
+                    ->where('cantidad', '>', 0)
+                    ->where('Status', 'I')
+                    ->when($esSeriado, function ($query) use ($serie) {
+                        return $query->where('serie', trim($serie));
                     })
                     ->orderBy('created_at', 'asc')
                     ->get();
@@ -2597,11 +2593,13 @@ $manoObraInstalada->save();
 
                     // Determinar si es un misceláneo con stock remanente en la entrada
                     if ($entrada->cantidad > $cantidadAExtraer && !$esSeriado) {
+                        // Restar stock parcial manteniendo el registro disponible
                         $entrada->decrement('cantidad', $cantidadAExtraer, [
                             'Modificado_el'  => $ahora,
                             'Modificado_por' => $nombreUsuario
                         ]);
                     } else {
+                        // Agotar por completo el registro de entrada
                         $entrada->decrement('cantidad', $cantidadAExtraer);
                         $entrada->refresh();
                         $entrada->update([
@@ -2612,45 +2610,51 @@ $manoObraInstalada->save();
                         ]);
                     }
 
-                    // Registrar o Clonar el movimiento del Técnico a INSTALADO (Historial de tránsito)
+
+
+                    // Registrar o Clonar el movimiento del Técnico a INSTALADO
                     if ($entrada->getOriginal('cantidad') > $cantidadAExtraer && !$esSeriado) {
-                        DB::table('movimientomateriales')->insert([
-                            'fkExpediente'   => $expediente->id,
-                            'fkTecnico'      => $id_tecnico,
-                            'fkTienda'       => $fkTienda,
-                            'SKU'            => $skuActual,
-                            'serie'          => $serieBusqueda,
-                            'cantidad'       => $cantidadAExtraer,
-                            'TIPO'           => $entrada->TIPO, 
-                            'ESTATUS'        => 'TRANSITO_INSTALACION',
-                            'almacen'        => $entrada->almacen ?? 'ALMA', 
-                            'Lote'           => $entrada->Lote ?? 'VALORADO',
-                            'Naturaleza'     => $entrada->Naturaleza ?? 'E',
-                            'COSTO'          => $entrada->COSTO ?? $costoFinal,
-                            'CENTRO'         => $entrada->CENTRO ?? $centroTecnico ?? 'CF', 
-                            'MAC1'           => $entrada->MAC1 ?? '0', 
-                            'MAC2'           => $entrada->MAC2 ?? '0',
-                            'MAC3'           => $entrada->MAC3 ?? '0',
-                            'Status'         => 'I',
-                            'Creado_el'      => $ahora,          // CORRECCIÓN: Soluciona error 1364
-                            'Creado_por'     => $nombreUsuario,  // CORRECCIÓN: Soluciona error 1364
-                            'Modificado_el'  => $ahora,
-                            'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
-                            'Modificado_por' => $nombreUsuario,
-                            'created_at'     => $ahora,
-                            'updated_at'     => $ahora
-                        ]);
+                        // Insertar nuevo renglón histórico de lo instalado para el misceláneo
+                    DB::table('movimientomateriales')->insert([
+                        'fkExpediente'      => $expediente->id,
+                        'fkTecnico'         => $id_tecnico,
+                        'fkTienda'          => $fkTienda,
+                        'SKU'               => $skuActual,
+                        'serie'             => $serie, // CORRECCIÓN: Usa la serie limpia de espacios
+                        'cantidad'          => $cantidadAExtraer,
+                        'TIPO'              => $entrada->TIPO,
+                        'ESTATUS'           => 'TRANSITO_INSTALACION',
+                        'Status'            => 'I',
+                        
+                        // CAMPOS COMPLETADOS (Evitan errores SQLSTATE 1364 de valores por defecto)
+                        'almacen'           => $entrada->almacen ?? 'ALMA', 
+                        'Lote'              => $entrada->Lote ?? 'VALORADO',
+                        'Naturaleza'        => $entrada->Naturaleza ?? 'E',
+                        'COSTO'             => $entrada->COSTO ?? $costoFinal ?? 0,
+                        'CENTRO'            => $entrada->CENTRO ?? $centroTecnico ?? 'CF',
+                        'MAC1'              => $entrada->MAC1 ?? '0',
+                        'MAC2'              => $entrada->MAC2 ?? '0',
+                        'MAC3'              => $entrada->MAC3 ?? '0',
+                        'unidadmedida'      => $entrada->unidadmedida ?? 'PZA',
+                        
+                        // CAMPOS DE AUDITORÍA COMPLETADOS
+                        'Creado_el'         => $ahora,
+                        'Creado_por'        => $nombreUsuario,
+                        'Modificado_el'     => $ahora,
+                        'Modificado_por'    => $nombreUsuario,
+                        'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
+                        'created_at'        => $ahora,
+                        'updated_at'        => $ahora
+                    ]);
+
                     } else {
+                        // Marcar el registro existente como consumado (Seriado o Misceláneo agotado)
                         DB::table('movimientomateriales')
                             ->where('id', $entrada->id)
                             ->update([
                                 'fkExpediente'   => $expediente->id,
                                 'ESTATUS'        => 'AGOTADO',
                                 'Status'         => 'A',
-                                'Lote'           => $entrada->Lote ?? 'VALORADO', 
-                                'MAC1'           => $entrada->MAC1 ?? '0',       
-                                'MAC2'           => $entrada->MAC2 ?? '0',       
-                                'MAC3'           => $entrada->MAC3 ?? '0',       
                                 'Modificado_el'  => $ahora,
                                 'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                                 'Modificado_por' => $nombreUsuario,
@@ -2658,75 +2662,36 @@ $manoObraInstalada->save();
                             ]);
                     }
 
-                    // Asignar el material de forma definitiva al Cliente
+                    // Asignar el material de forma definitiva a la Planta Externa / Cliente
                     DB::table('movimientomateriales')->updateOrInsert(
                         [
-                            'fkExpediente'      => $expediente->id,
-                            'serie'             => $serieBusqueda,
-                            'SKU'               => $skuActual,
-                            'fkTienda'          => $fkTienda,
+                            'serie'    => $serie,
+                            'SKU'      => $skuActual,
+                            'fkTienda' => $fkTienda,
                             'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                         ],
                         [
                             'almacen'         => 'CLIENTE_FINAL',
-                            'Lote'            => 'VALORADO', 
-                            'COSTO'           => $costoFinal,
-                            'TIPO'            => $entrada->TIPO, 
+                            'Lote'            => 'N/A',
+                            'COSTO' => ($costoUnidad->TIPO === 'MANO DE OBRA') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
+                            'TIPO'            => $tipoItem,
                             'ESTATUS'         => 'INSTALADO',
                             'Status'          => 'S',
                             'Naturaleza'      => 'H',
-                            'CENTRO'          => $centroTecnico ?? 'CF',
+                            'CENTRO'          => $centroTecnico,
                             'cantidad'        => $cantidadAExtraer,
-                            'unidadmedida'    => $entrada->unidadmedida ?? 'PZA', 
+                            'unidadmedida'    => $costoUnidad->unidadmedida ?? 'UNIDAD',
                             'TIPOMOVIMIENTO'  => 'CONSUMO_INSTALACION',
-                            'Creado_el'       => $ahora,         // Agregado por prevención
-                            'Creado_por'      => $nombreUsuario, // Agregado por prevención
                             'Modificado_el'   => $ahora->format('Y-m-d'),
                             'Modificado_por'  => $nombreUsuario,
                             'updated_at'      => $ahora
                         ]
                     );
+
 
                     $porDescontar -= $cantidadAExtraer;
-                } // Fin del bucle FIFO
-
-                // =================================================================
-                // FAILSAFE AUTOMÁTICO: Si no había stock o faltó cantidad
-                // =================================================================
-                if ($porDescontar > 0) {
-                    $tipoFailsafe = $costoUnidad->TIPO ?? 'MATERIAL';
-
-                    DB::table('movimientomateriales')->updateOrInsert(
-                        [
-                            'fkExpediente'      => $expediente->id,
-                            'serie'             => $serieBusqueda,
-                            'SKU'               => $skuActual,
-                            'fkTienda'          => $fkTienda,
-                            'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
-                        ],
-                        [
-                            'almacen'         => 'CLIENTE_FINAL',
-                            'Lote'            => 'VALORADO',
-                            'COSTO'           => $costoFinal,
-                            'TIPO'            => $tipoFailsafe, 
-                            'ESTATUS'         => 'INSTALADO',
-                            'Status'          => 'S',
-                            'Naturaleza'      => 'H',
-                            'CENTRO'          => $centroTecnico ?? 'CF',
-                            'cantidad'        => $porDescontar,
-                            'unidadmedida'    => $unidadMedidaFinal,
-                            'TIPOMOVIMIENTO'  => 'CONSUMO_INSTALACION_SIN_STOCK',
-                            'Creado_el'       => $ahora,         // Agregado por prevención en Failsafe
-                            'Creado_por'      => $nombreUsuario, // Agregado por prevención en Failsafe
-                            'Modificado_el'   => $ahora->format('Y-m-d'),
-                            'Modificado_por'  => $nombreUsuario,
-                            'created_at'      => $ahora,
-                            'updated_at'      => $ahora
-                        ]
-                    );
-                }
+                } // Fin del bucle foreach ($entradasDisponibles)
             } // Fin de la bifurcación de Tipo de Ítem (MO vs MA)
-
 
         } // <<< AQUÍ TERMINA DE MANERA CORRECTA EL FOREACH GENERAL DE SKUS >>>
 
