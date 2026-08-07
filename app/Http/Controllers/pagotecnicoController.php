@@ -272,7 +272,7 @@ public function generarMemoriaFotografica(Request $request)
                 $filaOrdenTexto   = $filaImagenFin + 1;
 
                 $colLetra = $columnaLetras[$subColIndex];
-                $colSiguiente = $subColIndex == 0 ? 'C' : ($subColIndex == 1 ? 'F' : 'I');
+                $colSiguiente = $subColIndex == 0 ? 'C' : ($subColIndex == 1 ? 'F' : 'S');
 
                 $urlCompleta = $fotoItem->fotografia;
                 $pathBucket = $urlCompleta;
@@ -323,7 +323,7 @@ public function generarMemoriaFotografica(Request $request)
             // Ancho simétrico de columnas
             $sheet->getColumnDimension('B')->setWidth(16); $sheet->getColumnDimension('C')->setWidth(16);
             $sheet->getColumnDimension('E')->setWidth(16); $sheet->getColumnDimension('F')->setWidth(16);
-            $sheet->getColumnDimension('H')->setWidth(16); $sheet->getColumnDimension('I')->setWidth(16);
+            $sheet->getColumnDimension('H')->setWidth(16); $sheet->getColumnDimension('S')->setWidth(16);
             
             $sheetIndex++;
         }
@@ -467,7 +467,7 @@ public function descargarFormatoPago()
         "Expires"             => "0"
     ];
 
-    // Columnas exactas que requiere tu tabla pagostecnico
+    // Columnas exactas que requiere tu tabla pagostecnico (10 columnas)
     $columnas = [
         'Orden',
         'SKU',
@@ -487,10 +487,10 @@ public function descargarFormatoPago()
         // Añadir el BOM UTF-8 para que Excel reconozca los acentos correctamente al abrir el CSV
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
         
-        fputcsv($file, $columnas); // Encabezado de la tabla
+        // === CORRECCIÓN AQUÍ: Se añade el delimitador '|' como cuarto parámetro ===
+        fputcsv($file, $columnas, '|'); // Encabezado de la tabla separado por |
 
-        // Línea de ejemplo con datos ficticios pero coherentes con tu negocio:
-        // Orden, SKU, Descripcion, Cantidad, COSTOPAGO, Status, Naturaleza, fkTecnico
+        // Línea de ejemplo con datos ficticios coherentes (10 valores para emparejar las columnas)
         fputcsv($file, [
             'ORD-100254',
             'SKU-MO-001',
@@ -498,16 +498,18 @@ public function descargarFormatoPago()
             'Instalación Caja Adicional Servicio Técnico',            
             1,
             250.00,
-            'C', // Status (ej: S para aprobado/pendiente)
-            'H', // Naturaleza (H para Suma, D para Resta)
-            12   // ID del Técnico asignado
-        ]);
+            'C',  // Status
+            'H',  // Naturaleza
+            12,   // fkTecnico
+            5     // fkTienda (Agregado para completar los 10 campos)
+        ], '|'); // Datos separados por |
 
         fclose($file);
     };
 
     return response()->stream($callback, 200, $headers);
 }
+
 
 public function descargarFormatoModificacionPago()
 {
@@ -558,59 +560,7 @@ public function descargarFormatoModificacionPago()
 }
 
 
-public function descargarinventariopago()
-{
-    $headers = [
-        "Content-type"        => "text/csv; charset=UTF-8",
-        "Content-Disposition" => "attachment; filename=Formato_Expediente_Pago_Tecnico.csv",
-        "Pragma"              => "no-cache",
-        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-        "Expires"             => "0"
-    ];
 
-    // Columnas ordenadas de acuerdo a la estructura de tu tabla 'pagotecnico'
-    $columnas = [
-        'Orden',
-        'SKU',
-        'Descripcion',
-        'OBS',
-        'Cantidad',
-        'COSTOPAGO',
-        'fkTienda',
-        'fkTecnico',
-        'Naturaleza',
-        'Status'
-    ];
-
-    $callback = function () use ($columnas) {
-        $file = fopen('php://output', 'w');
-        
-        // Inyectar BOM UTF-8 para evitar errores de codificación en Excel
-        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-        
-        fputcsv($file, $columnas); // encabezado
-
-        $fkTienda = session('user_fkTienda') ?? 1;
-
-        // Línea de ejemplo adaptada fielmente a los tipos de columnas de tu base de datos:
-        fputcsv($file, [
-            'ORD-23450285',                // Orden (varchar)
-            '4013896',                     // SKU (varchar)
-            'Mano de Obra Instalación',    // Descripcion (text)
-            'Pago correspondiente a cajas adicionales', // OBS (text)
-            1.00,                          // Cantidad (double)
-            350.00,                        // COSTOPAGO (double)
-            $fkTienda,                     // fkTienda (bigint)
-            12,                            // fkTecnico (bigint)
-            'D',                           // Naturaleza (char 1 - ej: D o H)
-            'I'                            // Status (char 2)
-        ]);
-
-        fclose($file);
-    };
-
-    return response()->stream($callback, 200, $headers);
-}
 
 public function exportarExcel(Request $request)
 {
@@ -821,7 +771,7 @@ if ($valorcosto == 0) {
     $data['COSTOPAGO'] = $valorcosto;
 }
 
-$status = substr(trim($data['Status'] ?? 'I'), 0, 2);
+$status = substr(trim($data['Status'] ?? 'S'), 0, 2);
 
 // Mapear el lote alineado a las columnas exactas de tu tabla 'pagotecnico'
 $batchData[] = [
@@ -976,7 +926,7 @@ public function modificarPagosTecnicoMasivo(Request $request)
                 $data['COSTOPAGO'] = $valorcosto;
             }
 
-            $status = substr(trim($data['Status'] ?? 'I'), 0, 2);
+            $status = substr(trim($data['Status'] ?? 'S'), 0, 2);
 
             // Mapeo del lote incluyendo explícitamente la llave primaria 'id'
             $batchData[] = [
