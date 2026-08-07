@@ -2612,18 +2612,18 @@ $manoObraInstalada->save();
 
 
 
-                    // Registrar o Clonar el movimiento del Técnico a INSTALADO
+                    // Registrar o Clonar el movimiento del Técnico a INSTALADO (Historial de tránsito)
                     if ($entrada->getOriginal('cantidad') > $cantidadAExtraer && !$esSeriado) {
-                        // Insertar nuevo renglón histórico de lo instalado para el misceláneo
                         DB::table('movimientomateriales')->insert([
                             'fkExpediente'   => $expediente->id,
                             'fkTecnico'      => $id_tecnico,
                             'fkTienda'       => $fkTienda,
                             'SKU'            => $skuActual,
-                            'serie'          => $serie,
+                            'serie'          => $serieBusqueda,
                             'cantidad'       => $cantidadAExtraer,
-                            'TIPO'           => $entrada->TIPO,
+                            'TIPO'           => $entrada->TIPO, 
                             'ESTATUS'        => 'TRANSITO_INSTALACION',
+                            'almacen'        => $entrada->almacen ?? 'ALMA', // CORRECCIÓN: Evita el error 1364
                             'Status'         => 'I',
                             'Modificado_el'  => $ahora,
                             'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
@@ -2655,14 +2655,14 @@ $manoObraInstalada->save();
                             'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                         ],
                         [
-                            'almacen'         => 'CLIENTE_FINAL',
+                            'almacen'         => 'INSTALACION',
                             'Lote'            => 'N/A',
                             'COSTO' => ($costoUnidad->TIPO === 'MANO DE OBRA') ? $costoUnidad->COSTOPAGO : ($costoUnidad->CATEGORIACOBRO ?? 0),
                             'TIPO'            => $tipoItem,
                             'ESTATUS'         => 'INSTALADO',
                             'Status'          => 'S',
                             'Naturaleza'      => 'H',
-                            'CENTRO'          => $centroTecnico,
+                            'CENTRO'          => 'CF',
                             'cantidad'        => $cantidadAExtraer,
                             'unidadmedida'    => $costoUnidad->unidadmedida ?? 'UNIDAD',
                             'TIPOMOVIMIENTO'  => 'CONSUMO_INSTALACION',
