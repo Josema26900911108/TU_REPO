@@ -2614,17 +2614,23 @@ $manoObraInstalada->save();
 
                     // Registrar o Clonar el movimiento del Técnico a INSTALADO (Historial de tránsito)
                     if ($entrada->getOriginal('cantidad') > $cantidadAExtraer && !$esSeriado) {
+                        // RAMA A: Inserción de renglón histórico parcial (Misceláneos)
                         DB::table('movimientomateriales')->insert([
                             'fkExpediente'   => $expediente->id,
                             'fkTecnico'      => $id_tecnico,
                             'fkTienda'       => $fkTienda,
                             'SKU'            => $skuActual,
                             'serie'          => $serie,
-                            'Lote'           => 'A000',
                             'cantidad'       => $cantidadAExtraer,
                             'TIPO'           => $entrada->TIPO, 
                             'ESTATUS'        => 'TRANSITO_INSTALACION',
-                            'almacen'        => $entrada->almacen ?? 'ALMA', // CORRECCIÓN: Evita el error 1364
+                            'almacen'        => $entrada->almacen ?? 'ALMA', 
+                            'Lote'           => $entrada->Lote ?? 'VALORADO',
+                            'Naturaleza'     => $entrada->Naturaleza ?? 'E',
+                            'COSTO'          => $entrada->COSTO ?? $costoFinal,
+                            'MAC1'           => $entrada->MAC1 ?? '0', // Solución al error 1364
+                            'MAC2'           => $entrada->MAC2 ?? '0',
+                            'MAC3'           => $entrada->MAC3 ?? '0',
                             'Status'         => 'I',
                             'Modificado_el'  => $ahora,
                             'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
@@ -2633,19 +2639,25 @@ $manoObraInstalada->save();
                             'updated_at'     => $ahora
                         ]);
                     } else {
-                        // Marcar el registro existente como consumado (Seriado o Misceláneo agotado)
+                        // RAMA B: CORRECCIÓN AQUÍ - Marcar el registro existente del técnico como consumado
+                        // Como usas un UPDATE, asegúrate de actualizar también los campos obligatorios si tu lógica lo requiere
                         DB::table('movimientomateriales')
                             ->where('id', $entrada->id)
                             ->update([
                                 'fkExpediente'   => $expediente->id,
                                 'ESTATUS'        => 'AGOTADO',
                                 'Status'         => 'A',
+                                'Lote'           => $entrada->Lote ?? 'VALORADO', // Sincroniza por seguridad
+                                'MAC1'           => $entrada->MAC1 ?? '0',       // Asegura consistencia en vacíos
+                                'MAC2'           => $entrada->MAC2 ?? '0',
+                                'MAC3'           => $entrada->MAC3 ?? '0',
                                 'Modificado_el'  => $ahora,
                                 'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                                 'Modificado_por' => $nombreUsuario,
                                 'updated_at'     => $ahora
                             ]);
                     }
+
 
                     // Asignar el material de forma definitiva a la Planta Externa / Cliente
                     DB::table('movimientomateriales')->updateOrInsert(
