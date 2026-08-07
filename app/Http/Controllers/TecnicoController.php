@@ -2576,8 +2576,8 @@ $manoObraInstalada->save();
             ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
             ->where('cantidad', '>', 0)
             ->where('Status', 'I')
-            ->when($esSeriado, function ($query) use ($serieBusqueda) {
-                return $query->where('serie', $serieBusqueda);
+            ->when($esSeriado, function ($query) use ($serie) {
+                return $query->where('serie', $serie);
             })
             ->orderBy('created_at', 'asc')
             ->get();
