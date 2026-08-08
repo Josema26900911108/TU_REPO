@@ -29,6 +29,7 @@ use App\Http\Controllers\PilotoDespachoController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\CashRegisterController;
+use App\Http\Controllers\ReporteOrdenesFirmadasController;
 use App\Http\Controllers\centroController;
 use App\Http\Controllers\CentrosOrganizacionController;
 use App\Http\Controllers\RecetaController;
@@ -525,7 +526,9 @@ Route::get('buckettecnicoconstruccion/{tecbucket}', [TecnicoController::class,'i
 // Cambia Route::get por Route::delete
 Route::delete('/eliminartecnico/{id}', [TecnicoController::class, 'destroy'])->name('tecnico.destroy');
 
-
+// Ruta para procesar el archivo Excel y descargar el ZIP con las firmas
+Route::post('/reportes/exportar-firmas', [ReporteOrdenesFirmadasController::class, 'generarReporteFirmas'])
+    ->name('reportes.exportarFirmas');
 
 Route::get('/verbtecnico/{usbucket}/ver-bucket',[TecnicoController::class,'bucket'])->name('tecnico.bucket');
 Route::get('/buckettecnicos',[TecnicoController::class,'bucketlista'])->name('tecnico.buckettecnico');

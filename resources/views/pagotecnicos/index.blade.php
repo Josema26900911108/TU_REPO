@@ -226,7 +226,44 @@
                 <button type="button" class="btn btn-dark btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalMemoriaFotografica">
             <i class="fas fa-file-archive me-1.5"></i> Memoria Fotográfica (ZIP)
         </button>
+        <button type="button" class="btn btn-primary btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalLiquidacionFirmas">
+    <i class="fas fa-file-signature me-1.5"></i> Exportar Liquidaciones Firmadas (ZIP)
+</button>
     </div>
+
+    <!-- Ventana Modal para el Reporte de Firmas Digitales -->
+<div class="modal fade" id="modalLiquidacionFirmas" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold text-dark fs-14">
+                    <i class="fas fa-pen-fancy text-primary me-2"></i> Reporte de Liquidaciones con Firmas
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <!-- Apunta a la ruta del nuevo controlador de firmas que creamos -->
+            <form action="{{ route('reportes.exportarFirmas') }}" method="POST" enctype="multipart/form-data" id="form-liquidacion-firmas">
+                @csrf
+                <div class="modal-body p-4 fs-13">
+                    <div class="alert alert-primary border-0 shadow-sm mb-3 fs-12" style="background-color: #e3f2fd; color: #0d47a1;">
+                        <i class="fas fa-info-circle me-1"></i> Suba el archivo Excel con el listado de órdenes en la <b>primera columna (Columna A)</b>. El sistema descargará e incrustará las firmas de conformidad de GCS.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-dark">Seleccionar Excel de Órdenes (.xlsx, .xls, .csv)</label>
+                        <!-- Se expande el 'accept' para admitir formatos nativos de Excel además de CSV -->
+                        <input type="file" name="excel_ordenes" class="form-control form-control-sm" accept=".xlsx, .xls, .csv" required>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0 py-2">
+                    <button type="button" class="btn btn-light btn-sm border" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm px-3" id="btn-submit-firmas">
+                        <i class="fas fa-spinner fa-spin me-1 d-none" id="loader-firmas"></i> Generar Hojas Firmadas
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <div class="modal fade" id="modalExtraccionMasiva" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -568,6 +605,20 @@ function exportarFotos() {
     });
 }
 
+document.getElementById('form-liquidacion-firmas').addEventListener('submit', function() {
+    // Deshabilitar botón para evitar envíos dobles
+    const btn = document.getElementById('btn-submit-firmas');
+    const loader = document.getElementById('loader-firmas');
+    
+    btn.disabled = true;
+    loader.classList.remove('d-none');
+    
+    // Reactivar el botón de forma preventiva tras 10 segundos en caso de descargas largas
+    setTimeout(() => {
+        btn.disabled = false;
+        loader.classList.add('d-none');
+    }, 10000);
+});
 
 </script>
 @endpush
