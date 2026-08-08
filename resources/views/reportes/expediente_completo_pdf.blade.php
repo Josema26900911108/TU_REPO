@@ -134,8 +134,8 @@
         <table class="header-table" style="margin-bottom: 5px; width: 100%;">
             <tr>
                 <td style="width: 40%; vertical-align: middle; border: none;">
-                    @if(!empty($logo_fisico_path))
-                        <img src="{{ $logo_fisico_path }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
+                    @if(!empty($logo_tienda ))
+                        <img src="{{ $logo_tienda  }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
                     @else
                         <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
                     @endif
@@ -334,12 +334,11 @@
             <table class="header-table" style="margin-bottom: 5px; width: 100%;">
                 <tr>
                     <td style="width: 40%; vertical-align: middle; border: none;">
-                        @if(!empty($logo_crudo))
-                            <!-- chunk_split fragmenta el binario largo para evitar desbordamientos de búfer en DomPDF -->
-                            <img src="data:image/jpeg;base64,{{ chunk_split(base64_encode($logo_crudo)) }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
-                        @else
-                            <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
-                        @endif
+                    @if(!empty($logo_tienda ))
+                        <img src="{{ $logo_tienda  }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
+                    @else
+                        <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
+                    @endif
                     </td>
                     <td style="text-align: right; font-weight: bold; font-size: 11px; color: #444; width: 60%; vertical-align: middle; border: none;">
                         ORDEN DE SERVICIO INDIVIDUAL ({{ strtoupper($tec['nombre']) }})
