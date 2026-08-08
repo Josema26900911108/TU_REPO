@@ -527,7 +527,7 @@ Route::get('buckettecnicoconstruccion/{tecbucket}', [TecnicoController::class,'i
 Route::delete('/eliminartecnico/{id}', [TecnicoController::class, 'destroy'])->name('tecnico.destroy');
 
 // Ruta para procesar el archivo Excel y descargar el ZIP con las firmas
-Route::post('/reportes/exportar-firmas', [ReporteOrdenesFirmadasController::class, 'generarReporteFirmas'])
+Route::post('/reportes/exportar-firmas', [ReporteOrdenesFirmadasController::class, 'generarExpedientePdf'])
     ->name('reportes.exportarFirmas');
 
 Route::get('/verbtecnico/{usbucket}/ver-bucket',[TecnicoController::class,'bucket'])->name('tecnico.bucket');

@@ -11,6 +11,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use Carbon\Carbon;
 use ZipArchive;
+use Barryvdh\DomPDF\Facade\Pdf; // Requiere: composer require barryvdh/laravel-dompdf
+
 
 class ReporteOrdenesFirmadasController extends Controller
 {
@@ -253,4 +255,183 @@ class ReporteOrdenesFirmadasController extends Controller
 
         return back()->with('error', 'No se pudieron generar las hojas de liquidación firmadas.');
     }
+
+        public function generarExpedientePdf(Request $request)
+    {
+        // 1. Validar archivo de entrada con órdenes
+        if (!$request->hasFile('excel_ordenes')) {
+            return back()->with('error', 'No se recibió ningún archivo de órdenes.');
+        }
+
+        $file = $request->file('excel_ordenes');
+        $path = $file->getRealPath();
+        $ordenesRaw = [];
+        
+        try {
+            $spreadsheetInput = IOFactory::load($path);
+            $worksheetInput = $spreadsheetInput->getActiveSheet();
+            $highestRow = $worksheetInput->getHighestRow();
+
+            for ($row = 2; $row <= $highestRow; $row++) {
+                $valorCelda = $worksheetInput->getCell('A' . $row)->getCalculatedValue();
+                $valorCelda = trim(preg_replace('/[\s\x{00a0}]+/u', ' ', $valorCelda));
+                if ($valorCelda !== '' && !is_null($valorCelda)) {
+                    $ordenesRaw[] = (string)$valorCelda;
+                }
+            }
+        } catch (\Exception $e) {
+            return back()->with('error', 'Error al leer el archivo de órdenes: ' . $e->getMessage());
+        }
+
+        $ordenes = array_values(array_unique($ordenesRaw));
+        if (empty($ordenes)) {
+            return back()->with('error', 'El archivo Excel no contiene órdenes legibles.');
+        }
+
+        $tiendaId = session('user_fkTienda');
+
+        // 2. Extraer expedientes con firmas e información general
+        $expedientes = DB::table('expedientetecnico as ex')
+            ->leftJoin('tecnico as t', 'ex.fkTecnico', '=', 't.id')
+            ->whereIn('ex.Orden', $ordenes)
+            ->where('ex.fkTienda', $tiendaId)
+            ->select([
+                'ex.id', 'ex.Orden', 'ex.virtual', 'ex.Tipo_orden', 'ex.Tipo_servicio',
+                'ex.NOMBRECLIENTE', 'ex.DIRECCION', 'ex.FECHAINSTALACION', 'ex.OBS',
+                'ex.TECNOLOGIA', 'ex.firma_cliente', 'ex.SIGLASCENTRAL', 'ex.AREA',
+                't.nombre as tecnico_nombre', 't.codigo as tecnico_codigo'
+            ])
+            ->get();
+
+        if ($expedientes->isEmpty()) {
+            return back()->with('error', 'No se encontraron expedientes válidos para las órdenes.');
+        }
+
+        $expedientesIds = $expedientes->pluck('id')->toArray();
+
+        // 3. Extraer catálogo de Materiales Físicos (Excluyendo Mano de Obra)
+        $materialesRaw = DB::table('movimientomateriales as mm')
+            ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
+            ->whereIn('mm.fkExpediente', $expedientesIds)
+            ->where('mamo.CATEGORIA', '!=', 'MANO DE OBRA')
+            ->select(['mm.fkExpediente', 'mm.SKU', 'mm.cantidad', 'mm.serie', 'mamo.Descripcion'])
+            ->get();
+
+        // 4. Extraer catálogo de Mano de Obra para Cuadro de Costos (Página 4)
+        $manoObraRaw = DB::table('movimientomateriales as mm')
+            ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
+            ->whereIn('mm.fkExpediente', $expedientesIds)
+            ->where('mamo.CATEGORIA', '=', 'MANO DE OBRA')
+            ->select([
+                'mm.cantidad', 
+                'mamo.Descripcion',
+                'mamo.unidadmedida',
+                DB::raw("CASE WHEN mamo.unidadmedida = '' OR mamo.unidadmedida IS NULL THEN 'UNIDAD' ELSE mamo.unidadmedida END AS unidad_auditada"),
+                DB::raw("CAST(mamo.CATEGORIACOBRO AS DECIMAL(10,2)) as precio_unitario")
+            ])
+            ->get();
+
+        // Agrupar y resumir conceptos de Mano de Obra para las páginas globales 1 y 4
+        $resumenManoObra = [];
+        $totalManoObra = 0;
+
+        foreach ($manoObraRaw->groupBy('Descripcion') as $descripcion => $items) {
+            $cantidadTotal = $items->sum('cantidad');
+            $precio = $items->first()->precio_unitario ?? 0;
+            $subtotal = $cantidadTotal * $precio;
+            $totalManoObra += $subtotal;
+
+            $resumenManoObra[] = [
+                'descripcion' => $descripcion,
+                'unidad' => $items->first()->unidad_auditada,
+                'cantidad' => $cantidadTotal,
+                'precio' => $precio,
+                'total' => $subtotal
+            ];
+        }
+
+        // Cálculos Fiscales Finales
+        $iva = $totalManoObra * 0.12;
+        $totalConIva = $totalManoObra + $iva;
+
+        // Convertir firmas de GCS a Base64 para que DomPDF pueda renderizarlas en línea sin bloqueos de red
+        $nombreBucket = 'sistema-pv-imagenes-tienda';
+        $expedientesProcesados = [];
+                foreach ($expedientes as $exp) {
+            $firmaBase64 = null;
+
+            if (!empty($exp->firma_cliente)) {
+                $urlFirma = $exp->firma_cliente;
+                $pathBucketFirma = $urlFirma;
+
+                if (str_contains($urlFirma, $nombreBucket)) {
+                    $posBucket = strpos($urlFirma, $nombreBucket);
+                    $pathBucketFirma = substr($urlFirma, $posBucket + strlen($nombreBucket));
+                    $pathBucketFirma = ltrim($pathBucketFirma, '/');
+                } else {
+                    $pathBucketFirma = ltrim(parse_url($urlFirma, PHP_URL_PATH), '/');
+                }
+
+                // Descargar el binario de la firma de GCS e incrustarlo en línea como Data URI
+                if (Storage::disk('gcs_images')->exists($pathBucketFirma)) {
+                    $binaryFirma = Storage::disk('gcs_images')->get($pathBucketFirma);
+                    $type = pathinfo($pathBucketFirma, PATHINFO_EXTENSION);
+                    $type = empty($type) ? 'png' : $type;
+                    $firmaBase64 = 'data:image/' . $type . ';base64,' . base64_encode($binaryFirma);
+                }
+            }
+
+            // Filtrar los materiales específicos de esta orden para asignárselos en la vista
+            $materialesDeEstaOrden = $materialesRaw->where('fkExpediente', $exp->id);
+
+            $expedientesProcesados[] = [
+                'id' => $exp->id,
+                'Orden' => $exp->Orden,
+                'virtual' => $exp->virtual,
+                'Tipo_orden' => $exp->Tipo_orden,
+                'Tipo_servicio' => $exp->Tipo_servicio,
+                'NOMBRECLIENTE' => $exp->NOMBRECLIENTE,
+                'DIRECCION' => $exp->DIRECCION,
+                'FECHAINSTALACION' => $exp->FECHAINSTALACION,
+                'OBS' => $exp->OBS,
+                'SIGLASCENTRAL' => $exp->SIGLASCENTRAL,
+                'AREA' => $exp->AREA,
+                'TECNOLOGIA' => $exp->TECNOLOGIA,
+                'tecnico_nombre' => $exp->tecnico_nombre,
+                'tecnico_codigo' => $exp->tecnico_codigo,
+                'firma_base64' => $firmaBase64,
+                'materiales' => $materialesDeEstaOrden
+            ];
+        }
+
+        // 5. Consolidar el listado general de materiales consumidos en todo el mes (Para la Página 2 y 5)
+        $resumenMaterialesGlobal = [];
+        foreach ($materialesRaw->groupBy('SKU') as $sku => $items) {
+            $resumenMaterialesGlobal[] = [
+                'sku' => $sku,
+                'descripcion' => $items->first()->Descripcion ?? 'MATERIAL',
+                'cantidad' => $items->sum('cantidad')
+            ];
+        }
+
+        // Pack de variables unificado para pasarle a la plantilla Blade
+        $dataReporte = [
+            'fecha_reporte' => Carbon::now()->format('d/m/Y'),
+            'periodo_mes' => 'DEL 01 AL 31 DE MAYO 2026',
+            'resumenManoObra' => $resumenManoObra,
+            'totalManoObra' => $totalManoObra,
+            'iva' => $iva,
+            'totalConIva' => $totalConIva,
+            'materialesGlobales' => $resumenMaterialesGlobal,
+            'expedientes' => $expedientesProcesados
+        ];
+
+        // 6. Cargar la vista HTML, aplicar orientación horizontal (Landscape) y forzar descarga
+        $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte);
+        $pdf->setPaper('letter', 'landscape'); // Formato horizontal exacto al reporte del operador
+
+        return $pdf->download('Expediente_Consolidado_Firmado_' . date('Ymd_His') . '.pdf');
+    }
+
+
 }
