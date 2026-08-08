@@ -492,405 +492,439 @@ public function generarMemoriaFotografica(Request $request)
 }
 
 
-
     public function extraccionMasiva(Request $request)
-{
-    // 1. Validar la existencia del archivo cargado
-    if (!$request->hasFile('excel_ordenes')) {
-        return back()->with('error', 'No se recibió ningún archivo en el servidor.');
-    }
-
-    $file = $request->file('excel_ordenes');
-    $path = $file->getRealPath();
-    $ordenesRaw = [];
-    
-    try {
-        $spreadsheet = IOFactory::load($path);
-        $worksheet = $spreadsheet->getActiveSheet();
-        $highestRow = $worksheet->getHighestRow();
-
-        for ($row = 2; $row <= $highestRow; $row++) {
-            $valorCelda = $worksheet->getCell('A' . $row)->getCalculatedValue();
-            $valorCelda = trim(preg_replace('/[\s\x{00a0}]+/u', ' ', $valorCelda));
-
-            if ($valorCelda !== '' && !is_null($valorCelda)) {
-                $ordenesRaw[] = (string)$valorCelda;
-            }
+    {
+        // 1. Validar la existencia del archivo cargado
+        if (!$request->hasFile('excel_ordenes')) {
+            return back()->with('error', 'No se recibió ningún archivo en el servidor.');
         }
-    } catch (\Exception $e) {
-        return back()->with('error', 'Error al leer el formato del archivo Excel: ' . $e->getMessage());
-    }
 
-    $ordenes = array_values(array_unique($ordenesRaw));
+        $file = $request->file('excel_ordenes');
+        $path = $file->getRealPath();
+        $ordenesRaw = [];
+        
+        try {
+            $spreadsheet = IOFactory::load($path);
+            $worksheet = $spreadsheet->getActiveSheet();
+            $highestRow = $worksheet->getHighestRow();
 
-    if (empty($ordenes)) {
-        return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
-    }
+            for ($row = 2; $row <= $highestRow; $row++) {
+                $valorCelda = $worksheet->getCell('A' . $row)->getCalculatedValue();
+                $valorCelda = trim(preg_replace('/[\s\x{00a0}]+/u', ' ', $valorCelda));
 
-    // 2. Consultar Base de Datos mediante el Triple Cruce de Tablas
-    $registrosPagos = DB::table('pagotecnico')->whereIn('Orden', $ordenes)->get();
-    
-    if ($registrosPagos->isEmpty()) {
-        return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la tabla pagotecnico.');
-    }
+                if ($valorCelda !== '' && !is_null($valorCelda)) {
+                    $ordenesRaw[] = (string)$valorCelda;
+                }
+            }
+        } catch (\Exception $e) {
+            return back()->with('error', 'Error al leer el formato del archivo Excel: ' . $e->getMessage());
+        }
 
-    $ordenesEncontradas = $registrosPagos->pluck('Orden')->unique()->toArray();
+        $ordenes = array_values(array_unique($ordenesRaw));
 
-    // 1. Extraer los movimientos planos desde la base de datos a máxima velocidad
-    // 1. Extraer los movimientos planos desde la base de datos a máxima velocidad
-$tiendaId = session('user_fkTienda');
+        if (empty($ordenes)) {
+            return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
+        }
 
-$movimientosRaw = DB::table('movimientomateriales as mm')
-    ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
-    ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
-    // 1. Modificamos el LEFT JOIN para abrir el abanico al código específico o al genérico
-    ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
-        $join->on('mm.SKU', '=', 'mamo.SKU')
-             ->where(function ($query) use ($tiendaId) {
-                 $query->whereColumn('mamo.centrocostoespecifico', '=', 't.codigo') // Coincide Técnico
-                       ->orWhere('mamo.centrocostoespecifico', '=', $tiendaId)    // Coincide Tienda
-                       ->orWhereNull('mamo.centrocostoespecifico')               // Aplica para todos (NULL)
-                       ->orWhere('mamo.centrocostoespecifico', '=', '');         // Aplica para todos (Vacío)
-             });
-    })
-    ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
-    ->where('mm.fkTienda', $tiendaId)
-    ->whereIn('ex.Orden', $ordenesEncontradas)
-    ->select([
-        'ex.id as expediente_id',
-        'ex.Orden as orden_tecnica',
-        'ex.virtual',
-        'ex.Status as expediente_status',
-        'ex.Tipo_servicio',
-        'ex.Tipo_orden',
-        'ex.NOMBRECLIENTE',
-        'ex.DIRECCION',
-        'ex.OBS as expediente_obs',
-        'ex.SIGLASCENTRAL',
-        'ex.AREA',
-        'ex.FECHAINSTALACION',
-        'abmamo.nombre as Tecnologia',
-        'mm.ESTATUS as movimiento_estatus',
-        'mm.SKU',
-        'mamo.Descripcion',
-        'mamo.TIPO',
-        'mamo.CATEGORIA',
-        'mm.id as movimiento_id', 
-        'mm.serie',
-        'mm.MAC1',
-        'mm.MAC2',
-        'mm.MAC3',
-        't.nombre as tecnico_nombre', 
-        't.codigo as tecnico_codigo', 
-        't.especialidad as tecnico_esp',
-        'mm.cantidad',
-        // Tu CASE matemático se mantiene idéntico, ya que operará sobre la fila priorizada
-        DB::raw("CASE 
-            WHEN mamo.SKU IS NULL THEN NULL 
-            WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
-            ELSE mamo.CATEGORIACOBRO 
-        END AS COSTO"),
-        DB::raw("CASE 
-            WHEN mamo.SKU IS NULL THEN NULL 
-            WHEN mamo.unidadmedida = '' OR mamo.unidadmedida IS NULL THEN 'UNIDAD' 
-            ELSE mamo.unidadmedida 
-        END AS unidadmedida_auditada")
-    ])
-    // 2. Obligamos a la BD a ordenar poniendo los códigos específicos arriba y los vacíos abajo
-    ->orderByRaw("CASE 
-        WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
-        WHEN mamo.centrocostoespecifico = ? THEN 2 
-        ELSE 3 
-    END ASC", [$tiendaId])
-    ->get()
-    // 3. Procesamos por cada movimiento individual para eliminar duplicados del catálogo
-    ->groupBy('movimiento_id')
-    ->flatMap(function ($movimientoRows) {
-        // Al usar unique() sobre los criterios clave, se quedará estrictamente con el primero (el específico)
-        // y descartará el genérico sobrante.
-        return $movimientoRows->unique(function ($item) {
-            return $item->SKU . '-' . $item->TIPO . '-' . $item->unidadmedida_auditada . '-' . $item->CATEGORIA;
-        });
-    })
-    ->values();
+        // 2. Consultar Base de Datos mediante el Triple Cruce de Tablas
+        $registrosPagos = DB::table('pagotecnico')->whereIn('Orden', $ordenes)->get();
+        
+        if ($registrosPagos->isEmpty()) {
+            return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la tabla pagotecnico.');
+        }
 
-    // 2. Colapsar duplicados usando colecciones de Laravel en memoria RAM
-    $movimientos = $movimientosRaw->unique('movimiento_id');
- 
+        $ordenesEncontradas = $registrosPagos->pluck('Orden')->unique()->toArray();
 
-    // Obtener las evidencias fotográficas ligadas de Google Cloud
-    $fotografias = DB::table('expedientefotograficotecnico')->whereIn('Orden', $ordenesEncontradas)->get();
+        // 3. Extraer los movimientos planos desde la base de datos a máxima velocidad
+        $tiendaId = session('user_fkTienda');
 
-    // Agrupar los datos por tecnología identificada
-    $movimientosPorTecnologia = $movimientos->groupBy('Tecnologia');
+        $movimientosRaw = DB::table('movimientomateriales as mm')
+            ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
+            ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
+            ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
+                $join->on('mm.SKU', '=', 'mamo.SKU')
+                     ->where(function ($query) use ($tiendaId) {
+                         $query->whereColumn('mamo.centrocostoespecifico', '=', 't.codigo') // Coincide Técnico
+                               ->orWhere('mamo.centrocostoespecifico', '=', $tiendaId)    // Coincide Tienda
+                               ->orWhereNull('mamo.centrocostoespecifico')               // Aplica para todos (NULL)
+                               ->orWhere('mamo.centrocostoespecifico', '=', '');         // Aplica para todos (Vacío)
+                     });
+            })
+            ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
+            ->where('mm.fkTienda', $tiendaId)
+            ->whereIn('ex.Orden', $ordenesEncontradas)
+            ->select([
+                'ex.id as expediente_id',
+                'ex.Orden as orden_tecnica',
+                'ex.virtual',
+                'ex.Status as expediente_status',
+                'ex.Tipo_servicio',
+                'ex.Tipo_orden',
+                'ex.NOMBRECLIENTE',
+                'ex.DIRECCION',
+                'ex.OBS as expediente_obs',
+                'ex.SIGLASCENTRAL',
+                'ex.AREA',
+                'ex.FECHAINSTALACION',
+                'abmamo.nombre as Tecnologia',
+                'mm.ESTATUS as movimiento_estatus',
+                'mm.SKU',
+                'mamo.Descripcion',
+                'mamo.TIPO',
+                'mamo.CATEGORIA',
+                'mm.id as movimiento_id', 
+                'mm.serie',
+                'mm.MAC1',
+                'mm.MAC2',
+                'mm.MAC3',
+                't.nombre as tecnico_nombre', 
+                't.codigo as tecnico_codigo', 
+                't.especialidad as tecnico_esp',
+                'mm.cantidad',
+                DB::raw("CASE 
+                    WHEN mamo.SKU IS NULL THEN NULL 
+                    WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
+                    ELSE mamo.CATEGORIACOBRO 
+                END AS COSTO"),
+                DB::raw("CASE 
+                    WHEN mamo.SKU IS NULL THEN NULL 
+                    WHEN mamo.unidadmedida = '' OR mamo.unidadmedida IS NULL THEN 'UNIDAD' 
+                    ELSE mamo.unidadmedida 
+                END AS unidadmedida_auditada")
+            ])
+            ->orderByRaw("CASE 
+                WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
+                WHEN mamo.centrocostoespecifico = ? THEN 2 
+                ELSE 3 
+            END ASC", [$tiendaId])
+            ->get()
+            ->groupBy('movimiento_id')
+            ->flatMap(function ($movimientoRows) {
+                return $movimientoRows->unique(function ($item) {
+                    return $item->SKU . '-' . $item->TIPO . '-' . $item->unidadmedida_auditada . '-' . $item->CATEGORIA;
+                });
+            })
+            ->values();
 
-    // Inicializar el ZIP temporal en el servidor
-    $zipFileName = 'Extraccion_Pivot_Tecnologias_' . date('Ymd_His') . '.zip';
-    $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipFileName; 
-    $zip = new ZipArchive;
+        // 4. Colapsar duplicados usando colecciones de Laravel en memoria RAM
+        $movimientos = $movimientosRaw->unique('movimiento_id');
+     
+        // Obtener las evidencias fotográficas ligadas de Google Cloud
+        $fotografias = DB::table('expedientefotograficotecnico')->whereIn('Orden', $ordenesEncontradas)->get();
 
-    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-        return back()->with('error', 'No se pudo inicializar la librería de compresión ZipArchive.');
-    }
+        // Agrupar los datos por tecnología identificada
+        $movimientosPorTecnologia = $movimientos->groupBy('Tecnologia');
+
+        // Inicializar el ZIP temporal en el servidor
+        $zipFileName = 'Extraccion_Pivot_Tecnologias_' . date('Ymd_His') . '.zip';
+        $zipPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $zipFileName; 
+        $zip = new ZipArchive;
+
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return back()->with('error', 'No se pudo inicializar la librería de compresión ZipArchive.');
+        }
+
         // Columnas base comunes para las cabeceras horizontales
-    $columnasBaseGenerales = [
-        'No', 'Orden', 'virtual', 'Status', 'Tipo_servicio', 'Tipo_orden', 
-        'NOMBRECLIENTE', 'DIRECCION', 'OBS', 'SIGLASCENTRAL', 'AREA', 'FECHAINSTALACION', 'TECNICO'
-    ];
-
-    // Iterar por cada tecnología para construir sus archivos independientes
-    foreach ($movimientosPorTecnologia as $nombreTecnologia => $registrosTecnologia) {
-        
-        $nombreTecnologiaLimpio = empty($nombreTecnologia) ? 'OTRAS_TECNOLOGIAS' : str_replace(['/', '\\', '?', '*', ':', '[', ']'], '_', $nombreTecnologia);
-        $spreadsheet = new Spreadsheet();
-        
-        // --- CONFIGURACIÓN HOJA 1: MANO DE OBRA ---
-        $sheetMO = $spreadsheet->getActiveSheet();
-        $sheetMO->setTitle('Mano de Obra');
-        
-        // Identificar qué conceptos únicos de Mano de Obra existen en ESTA tecnología
-        $itemsMO = $registrosTecnologia->where('CATEGORIA', 'MANO DE OBRA');
-        $descripcionesMOUnicas = $itemsMO->pluck('Descripcion')->unique()->toArray();
-        
-        // Ensamblar cabecera horizontal unificada para Mano de Obra
-        $cabeceraMOCompleta = array_merge($columnasBaseGenerales, $descripcionesMOUnicas);
-        $sheetMO->fromArray($cabeceraMOCompleta, NULL, 'A1');
-        
-        // Aplicar estilos a la cabecera
-        $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFont()->setBold(true);
-        $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('D0E1F9');
-        
-        // Agrupar filas de mano de obra por cada orden técnica única
-        $expedientesMO = $itemsMO->groupBy('orden_tecnica');
-        $filaMO = 2;
-        
-        foreach ($expedientesMO as $orden => $detallesOrden) {
-            $primerItem = $detallesOrden->first();
+        $columnasBaseGenerales = [
+            'No', 'Orden', 'virtual', 'Status', 'Tipo_servicio', 'Tipo_orden', 
+            'NOMBRECLIENTE', 'DIRECCION', 'OBS', 'SIGLASCENTRAL', 'AREA', 'FECHAINSTALACION', 'TECNICO'
+        ];
+        // Iterar por cada tecnología para construir sus archivos independientes
+        foreach ($movimientosPorTecnologia as $nombreTecnologia => $registrosTecnologia) {
             
-            $datosFilaMO = [
-                $primerItem->expediente_id,
-                $primerItem->orden_tecnica,
-                $primerItem->virtual,
-                $primerItem->expediente_status,
-                $primerItem->Tipo_servicio,
-                $primerItem->Tipo_orden,
-                $primerItem->NOMBRECLIENTE,
-                $primerItem->DIRECCION,
-                $primerItem->expediente_obs,
-                $primerItem->SIGLASCENTRAL,
-                $primerItem->AREA,
-                $primerItem->FECHAINSTALACION,
-                $primerItem->tecnico_nombre
-            ];
+            $nombreTecnologiaLimpio = empty($nombreTecnologia) ? 'OTRAS_TECNOLOGIAS' : str_replace(['/', '\\', '?', '*', ':', '[', ']'], '_', $nombreTecnologia);
+            $spreadsheet = new Spreadsheet();
             
-            // Colocar de forma dinámica la cantidad debajo de la columna del concepto correspondiente
-            foreach ($descripcionesMOUnicas as $moColumna) {
-                $matchConcepto = $detallesOrden->where('Descripcion', $moColumna)->first();
-                $datosFilaMO[] = $matchConcepto ? $matchConcepto->cantidad : 0;
+            // --- CONFIGURACIÓN HOJA 1: MANO DE OBRA ---
+            $sheetMO = $spreadsheet->getActiveSheet();
+            $sheetMO->setTitle('Mano de Obra');
+            
+            $itemsMO = $registrosTecnologia->where('CATEGORIA', 'MANO DE OBRA');
+            $descripcionesMOUnicas = $itemsMO->pluck('Descripcion')->unique()->toArray();
+            
+            $cabeceraMOCompleta = array_merge($columnasBaseGenerales, $descripcionesMOUnicas);
+            $sheetMO->fromArray($cabeceraMOCompleta, NULL, 'A1');
+            
+            $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFont()->setBold(true);
+            $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('D0E1F9');
+            
+            $expedientesMO = $itemsMO->groupBy('orden_tecnica');
+            $filaMO = 2;
+            
+            foreach ($expedientesMO as $orden => $detallesOrden) {
+                $primerItem = $detallesOrden->first();
+                
+                $datosFilaMO = [
+                    $primerItem->expediente_id,
+                    $primerItem->orden_tecnica,
+                    $primerItem->virtual,
+                    $primerItem->expediente_status,
+                    $primerItem->Tipo_servicio,
+                    $primerItem->Tipo_orden,
+                    $primerItem->NOMBRECLIENTE,
+                    $primerItem->DIRECCION,
+                    $primerItem->expediente_obs,
+                    $primerItem->SIGLASCENTRAL,
+                    $primerItem->AREA,
+                    $primerItem->FECHAINSTALACION,
+                    $primerItem->tecnico_nombre
+                ];
+                
+                foreach ($descripcionesMOUnicas as $moColumna) {
+                    $matchConcepto = $detallesOrden->where('Descripcion', $moColumna)->first();
+                    $datosFilaMO[] = $matchConcepto ? $matchConcepto->cantidad : 0;
+                }
+                
+                $sheetMO->fromArray($datosFilaMO, NULL, 'A' . $filaMO);
+                $filaMO++;
             }
             
-            $sheetMO->fromArray($datosFilaMO, NULL, 'A' . $filaMO);
-            $filaMO++;
-        }
-        
-        foreach (range('A', $sheetMO->getHighestColumn()) as $col) {
-            $sheetMO->getColumnDimension($col)->setAutoSize(true);
-        }
-        // --- CONFIGURACIÓN HOJA 2: MATERIALES ---
-        $sheetMat = $spreadsheet->createSheet();
-        $sheetMat->setTitle('Materiales');
-        
-        // Identificar los SKUs únicos de materiales físicos de esta tecnología
-        $itemsMateriales = $registrosTecnologia->where('CATEGORIA', '!=', 'MANO DE OBRA');
-        $skusMaterialesUnicos = $itemsMateriales->pluck('SKU')->unique()->toArray();
-        
-        // Ensamblar cabecera horizontal unificada para Materiales
-        $cabeceraMatCompleta = array_merge($columnasBaseGenerales, $skusMaterialesUnicos);
-        $sheetMat->fromArray($cabeceraMatCompleta, NULL, 'A1');
-        
-        // Estilos de la cabecera de materiales
-        $sheetMat->getStyle('A1:' . $sheetMat->getHighestColumn() . '1')->getFont()->setBold(true);
-        $sheetMat->getStyle('A1:' . $sheetMat->getHighestColumn() . '1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('D1E7DD');
-        
-        // Agrupar filas de materiales por cada orden técnica única
-        $expedientesMat = $itemsMateriales->groupBy('orden_tecnica');
-        $filaMat = 2;
-        
-        foreach ($expedientesMat as $orden => $detallesMateriales) {
-            $primerMat = $detallesMateriales->first();
+            foreach (range('A', $sheetMO->getHighestColumn()) as $col) {
+                $sheetMO->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            // --- CONFIGURACIÓN HOJA 2: MATERIALES ---
+            $sheetMat = $spreadsheet->createSheet();
+            $sheetMat->setTitle('Materiales');
             
-            $datosFilaMat = [
-                $primerMat->expediente_id,
-                $primerMat->orden_tecnica,
-                $primerMat->virtual,
-                $primerMat->expediente_status,
-                $primerMat->Tipo_servicio,
-                $primerMat->Tipo_orden,
-                $primerMat->NOMBRECLIENTE,
-                $primerMat->DIRECCION,
-                $primerMat->expediente_obs,
-                $primerMat->SIGLASCENTRAL,
-                $primerMat->AREA,
-                $primerMat->FECHAINSTALACION,
-                $primerMat->tecnico_nombre
-            ];
+            $itemsMateriales = $registrosTecnologia->where('CATEGORIA', '!=', 'MANO DE OBRA');
+            $skusMaterialesUnicos = $itemsMateriales->pluck('SKU')->unique()->toArray();
             
-            // Colocar la cantidad consumida exactamente debajo de la columna del SKU correspondiente
-            foreach ($skusMaterialesUnicos as $skuColumna) {
-                $matchSku = $detallesMateriales->where('SKU', $skuColumna)->first();
-                $datosFilaMat[] = $matchSku ? $matchSku->cantidad : 0;
+            $cabeceraMatCompleta = array_merge($columnasBaseGenerales, $skusMaterialesUnicos);
+            $sheetMat->fromArray($cabeceraMatCompleta, NULL, 'A1');
+            
+            $sheetMat->getStyle('A1:' . $sheetMat->getHighestColumn() . '1')->getFont()->setBold(true);
+            $sheetMat->getStyle('A1:' . $sheetMat->getHighestColumn() . '1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('D1E7DD');
+            
+            $expedientesMat = $itemsMateriales->groupBy('orden_tecnica');
+            $filaMat = 2;
+
+            foreach ($expedientesMat as $orden => $detallesMateriales) {
+                $primerMat = $detallesMateriales->first();
+                
+                $datosBaseOrden = [
+                    $primerMat->expediente_id,
+                    $primerMat->orden_tecnica,
+                    $primerMat->virtual,
+                    $primerMat->expediente_status,
+                    $primerMat->Tipo_servicio,
+                    $primerMat->Tipo_orden,
+                    $primerMat->NOMBRECLIENTE,
+                    $primerMat->DIRECCION,
+                    $primerMat->expediente_obs,
+                    $primerMat->SIGLASCENTRAL,
+                    $primerMat->AREA,
+                    $primerMat->FECHAINSTALACION,
+                    $primerMat->tecnico_nombre
+                ];
+
+                $registroSkusSeriados = [];
+                $registroSkusMiscelaneos = [];
+                $maxFilasNecesarias = 1;
+
+                foreach ($skusMaterialesUnicos as $skuColumna) {
+                    $movimientosSku = $detallesMateriales->where('SKU', $skuColumna);
+
+                    if ($movimientosSku->isEmpty()) {
+                        continue;
+                    }
+
+                    $seriesValidas = [];
+                    foreach ($movimientosSku as $mov) {
+                        $serieLimpia = trim($mov->serie);
+                        $upperSerie = strtoupper($serieLimpia);
+                        
+                        if ($serieLimpia !== '' && $upperSerie !== 'N/A' && $upperSerie !== '0' && !is_null($mov->serie)) {
+                            $seriesValidas[] = $serieLimpia;
+                        }
+                    }
+
+                    if (!empty($seriesValidas)) {
+                        $registroSkusSeriados[$skuColumna] = $seriesValidas;
+                        $maxFilasNecesarias = max($maxFilasNecesarias, count($seriesValidas));
+                    } else {
+                        $registroSkusMiscelaneos[$skuColumna] = $movimientosSku->sum('cantidad');
+                    }
+                }
+
+                for ($i = 0; $i < $maxFilasNecesarias; $i++) {
+                    $datosFilaMat = $datosBaseOrden;
+
+                    foreach ($skusMaterialesUnicos as $skuColumna) {
+                        if (isset($registroSkusSeriados[$skuColumna])) {
+                            $datosFilaMat[] = isset($registroSkusSeriados[$skuColumna][$i]) 
+                                ? $registroSkusSeriados[$skuColumna][$i] 
+                                : 0;
+                        } else if (isset($registroSkusMiscelaneos[$skuColumna])) {
+                            $datosFilaMat[] = ($i === 0) ? $registroSkusMiscelaneos[$skuColumna] : 0;
+                        } else {
+                            $datosFilaMat[] = 0;
+                        }
+                    }
+
+                    $sheetMat->fromArray($datosFilaMat, NULL, 'A' . $filaMat);
+                    $filaMat++;
+                }
             }
             
-            $sheetMat->fromArray($datosFilaMat, NULL, 'A' . $filaMat);
-            $filaMat++;
-        }
-        
-        foreach (range('A', $sheetMat->getHighestColumn()) as $col) {
-            $sheetMat->getColumnDimension($col)->setAutoSize(true);
-        }
-        // --- CONFIGURACIÓN HOJA 3: RESUMEN DE COBROS ---
-        $sheetResumen = $spreadsheet->createSheet();
-        $sheetResumen->setTitle('Resumen de Cobros');
-        
-        // Títulos e informativos superiores del cuadro de costos
-        $sheetResumen->setCellValue('B2', 'CUADRO DE COSTOS INSTALACIONES SERVICIOS ' . strtoupper($nombreTecnologiaLimpio));
-        $sheetResumen->setCellValue('B3', 'REGION: OCCIDENTE');
-        $sheetResumen->setCellValue('B4', 'PERIODO DEL ' . (request('fecha_inicio') ? Carbon::parse(request('fecha_inicio'))->format('d/m/Y') : '01/05/2026') . ' AL ' . (request('fecha_fin') ? Carbon::parse(request('fecha_fin'))->format('d/m/Y') : '31/05/2026'));
-        $sheetResumen->getStyle('B2:B4')->getFont()->setBold(true);
-        
-        // Banner Rojo de Sección
-        $sheetResumen->mergeCells('B6:G6');
-        $sheetResumen->setCellValue('B6', 'REPORTE DE MANO DE OBRA');
-        $sheetResumen->getStyle('B6')->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_WHITE));
-        $sheetResumen->getStyle('B6')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FF0000');
-        $sheetResumen->getStyle('B6')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-        
-        // Encabezados de la tabla liquidación
-        $cabeceraTablaResumen = ['No', 'DESCRIPCION', 'UNIDAD', 'CANTIDAD REALIZADA', 'PRECIO MANO DE OBRA/UNIDAD', 'TOTAL DE MANO DE OBRA'];
-        $sheetResumen->fromArray($cabeceraTablaResumen, NULL, 'B7');
-        
-        $sheetResumen->getStyle('B7:G7')->getFont()->setBold(true);
-        $sheetResumen->getStyle('B7:G7')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('E0E0E0');
-        $sheetResumen->getStyle('B7:G7')->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
-        
-        // Agrupar los conceptos de mano de obra para calcular acumulados verticales
-        $resumenCobrosConceptos = $itemsMO->groupBy('Descripcion');
-        $filaResumen = 8;
-        $numNo = 1;
-        
-        foreach ($resumenCobrosConceptos as $conceptoTexto => $movimientosConcepto) {
-            $sumaCantidad = $movimientosConcepto->sum('cantidad');
-            $precioUnitario = $movimientosConcepto->first()->COSTO ?? 0;
-            $unidadMedida = $movimientosConcepto->first()->unidadmedida_auditada ?? 'UNIDAD';
+            foreach (range('A', $sheetMat->getHighestColumn()) as $col) {
+                $sheetMat->getColumnDimension($col)->setAutoSize(true);
+            }
+            // --- CONFIGURACIÓN HOJA 3: RESUMEN DE COBROS ---
+            $sheetResumen = $spreadsheet->createSheet();
+            $sheetResumen->setTitle('Resumen de Cobros');
             
-            $sheetResumen->setCellValue('B' . $filaResumen, $numNo);
-            $sheetResumen->setCellValue('C' . $filaResumen, $conceptoTexto);
-            $sheetResumen->setCellValue('D' . $filaResumen, $unidadMedida);
-            $sheetResumen->setCellValue('E' . $filaResumen, $sumaCantidad);
-            $sheetResumen->setCellValue('F' . $filaResumen, $precioUnitario);
+            // Títulos e informativos superiores del cuadro de costos
+            $sheetResumen->setCellValue('B2', 'CUADRO DE COSTOS INSTALACIONES SERVICIOS ' . strtoupper($nombreTecnologiaLimpio));
+            $sheetResumen->setCellValue('B3', 'REGION: OCCIDENTE');
+            $sheetResumen->setCellValue('B4', 'PERIODO DEL ' . (request('fecha_inicio') ? Carbon::parse(request('fecha_inicio'))->format('d/m/Y') : '01/05/2026') . ' AL ' . (request('fecha_fin') ? Carbon::parse(request('fecha_fin'))->format('d/m/Y') : '31/05/2026'));
+            $sheetResumen->getStyle('B2:B4')->getFont()->setBold(true);
             
-            // Fórmula automática de Excel: Cantidad * Precio Unitario
-            $sheetResumen->setCellValue('G' . $filaResumen, "=E{$filaResumen}*F{$filaResumen}");
+            // Banner Rojo de Sección
+            $sheetResumen->mergeCells('B6:G6');
+            $sheetResumen->setCellValue('B6', 'REPORTE DE MANO DE OBRA');
+            $sheetResumen->getStyle('B6')->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_WHITE));
+            $sheetResumen->getStyle('B6')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FF0000');
+            $sheetResumen->getStyle('B6')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
             
-            $sheetResumen->getStyle("B{$filaResumen}:G{$filaResumen}")->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
-            $sheetResumen->getStyle("F{$filaResumen}:G{$filaResumen}")->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+            // Encabezados de la tabla liquidación
+            $cabeceraTablaResumen = ['No', 'DESCRIPCION', 'UNIDAD', 'CANTIDAD REALIZADA', 'PRECIO MANO DE OBRA/UNIDAD', 'TOTAL DE MANO DE OBRA'];
+            $sheetResumen->fromArray($cabeceraTablaResumen, NULL, 'B7');
             
-            $filaResumen++;
-            $numNo++;
+            $sheetResumen->getStyle('B7:G7')->getFont()->setBold(true);
+            $sheetResumen->getStyle('B7:G7')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('E0E0E0');
+            $sheetResumen->getStyle('B7:G7')->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+            
+            // Agrupar los conceptos de mano de obra para calcular acumulados verticales
+            $resumenCobrosConceptos = $itemsMO->groupBy('Descripcion');
+            $filaResumen = 8;
+            $numNo = 1;
+            
+            foreach ($resumenCobrosConceptos as $conceptoTexto => $movimientosConcepto) {
+                $sumaCantidad = $movimientosConcepto->sum('cantidad');
+                $precioUnitario = $movimientosConcepto->first()->COSTO ?? 0;
+                $unidadMedida = $movimientosConcepto->first()->unidadmedida_auditada ?? 'UNIDAD';
+                
+                $sheetResumen->setCellValue('B' . $filaResumen, $numNo);
+                $sheetResumen->setCellValue('C' . $filaResumen, $conceptoTexto);
+                $sheetResumen->setCellValue('D' . $filaResumen, $unidadMedida);
+                $sheetResumen->setCellValue('E' . $filaResumen, $sumaCantidad);
+                $sheetResumen->setCellValue('F' . $filaResumen, $precioUnitario);
+                
+                // Fórmula automática de Excel: Cantidad * Precio Unitario
+                $sheetResumen->setCellValue('G' . $filaResumen, "=E{$filaResumen}*F{$filaResumen}");
+                
+                $sheetResumen->getStyle("B{$filaResumen}:G{$filaResumen}")->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                $sheetResumen->getStyle("F{$filaResumen}:G{$filaResumen}")->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+                
+                $filaResumen++;
+                $numNo++;
+            }
+            
+            // Bloque dinámico adaptativo de Impuestos y Liquidación
+            $fTotalMO  = $filaResumen + 2;
+            $fTotalMes = $fTotalMO + 2;
+            $fIva      = $fTotalMes + 1;
+            $fConIva   = $fIva + 1;
+            
+            // Inyección de Fórmulas de Cierre Financiero
+            $sheetResumen->mergeCells("E{$fTotalMO}:F{$fTotalMO}");
+            $sheetResumen->setCellValue("E{$fTotalMO}", 'TOTAL MANO DE OBRA');
+            $sheetResumen->setCellValue("G{$fTotalMO}", "=SUM(G8:G" . ($filaResumen - 1) . ")");
+            
+            $sheetResumen->mergeCells("E{$fTotalMes}:F{$fTotalMes}");
+            $sheetResumen->setCellValue("E{$fTotalMes}", 'TOTAL DEL MES');
+            $sheetResumen->setCellValue("G{$fTotalMes}", "=G{$fTotalMO}");
+            
+            $sheetResumen->mergeCells("E{$fIva}:F{$fIva}");
+            $sheetResumen->setCellValue("E{$fIva}", 'IVA 12%');
+            $sheetResumen->setCellValue("G{$fIva}", "=G{$fTotalMes}*0.12");
+            
+            $sheetResumen->mergeCells("E{$fConIva}:F{$fConIva}");
+            $sheetResumen->setCellValue("E{$fConIva}", 'TOTAL CON IVA');
+            $sheetResumen->setCellValue("G{$fConIva}", "=G{$fTotalMes}+G{$fIva}");
+            
+            $filasTotalesFinales = [$fTotalMO, $fTotalMes, $fIva, $fConIva];
+            foreach ($filasTotalesFinales as $f) {
+                $sheetResumen->getStyle("E{$f}:G{$f}")->getFont()->setBold(true);
+                $sheetResumen->getStyle("E{$f}:G{$f}")->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+                $sheetResumen->getStyle("G{$f}")->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+            }
+            
+            // Dimensionamiento de anchos fijos de la liquidación para calcar la imagen
+            $sheetResumen->getColumnDimension('B')->setWidth(6);
+            $sheetResumen->getColumnDimension('C')->setWidth(50);
+            $sheetResumen->getColumnDimension('D')->setWidth(12);
+            $sheetResumen->getColumnDimension('E')->setWidth(22);
+            $sheetResumen->getColumnDimension('F')->setWidth(26);
+            $sheetResumen->getColumnDimension('G')->setWidth(26);
+            
+            // 5. Guardar libro Excel de la tecnología actual e insertarlo en la raíz del ZIP
+            $writer = new Xlsx($spreadsheet);
+            $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Reporte_' . $nombreTecnologiaLimpio . '.xlsx';
+            $writer->save($excelTemporalPath);
+            
+            $zip->addFile($excelTemporalPath, 'Reporte_Tecnologia_' . $nombreTecnologiaLimpio . '.xlsx');
         }
-        
-        // Bloque dinámico adaptativo de Impuestos y Liquidación
-        $fTotalMO  = $filaResumen + 2;
-        $fTotalMes = $fTotalMO + 2;
-        $fIva      = $fTotalMes + 1;
-        $fConIva   = $fIva + 1;
-        
-        // Inyección de Fórmulas de Cierre Financiero
-        $sheetResumen->mergeCells("E{$fTotalMO}:F{$fTotalMO}");
-        $sheetResumen->setCellValue("E{$fTotalMO}", 'TOTAL MANO DE OBRA');
-        $sheetResumen->setCellValue("G{$fTotalMO}", "=SUM(G8:G" . ($filaResumen - 1) . ")");
-        
-        $sheetResumen->mergeCells("E{$fTotalMes}:F{$fTotalMes}");
-        $sheetResumen->setCellValue("E{$fTotalMes}", 'TOTAL DEL MES');
-        $sheetResumen->setCellValue("G{$fTotalMes}", "=G{$fTotalMO}");
-        
-        $sheetResumen->mergeCells("E{$fIva}:F{$fIva}");
-        $sheetResumen->setCellValue("E{$fIva}", 'IVA 12%');
-        $sheetResumen->setCellValue("G{$fIva}", "=G{$fTotalMes}*0.12");
-        
-        $sheetResumen->mergeCells("E{$fConIva}:F{$fConIva}");
-        $sheetResumen->setCellValue("E{$fConIva}", 'TOTAL CON IVA');
-        $sheetResumen->setCellValue("G{$fConIva}", "=G{$fTotalMes}+G{$fIva}");
-        
-        $filasTotalesFinales = [$fTotalMO, $fTotalMes, $fIva, $fConIva];
-        foreach ($filasTotalesFinales as $f) {
-            $sheetResumen->getStyle("E{$f}:G{$f}")->getFont()->setBold(true);
-            $sheetResumen->getStyle("E{$f}:G{$f}")->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
-            $sheetResumen->getStyle("G{$f}")->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+
+        // --- SECCIÓN DE EVIDENCIAS FOTOGRÁFICAS ---
+        $nombreBucket = 'sistema-pv-imagenes-tienda';
+        $fotosContador = 0;
+
+        foreach ($fotografias as $foto) {
+            $urlCompleta = $foto->fotografia;
+            $pathBucket = $urlCompleta;
+
+            if (str_contains($urlCompleta, $nombreBucket)) {
+                $posicionBucket = strpos($urlCompleta, $nombreBucket);
+                $pathBucket = substr($urlCompleta, $posicionBucket + strlen($nombreBucket));
+                $pathBucket = ltrim($pathBucket, '/');
+            } else {
+                $pathBucket = ltrim(parse_url($urlCompleta, PHP_URL_PATH), '/');
+            }
+
+            if (Storage::disk('gcs_images')->exists($pathBucket)) {
+                $imageContent = Storage::disk('gcs_images')->get($pathBucket);
+                $nombreArchivoOriginal = pathinfo($pathBucket, PATHINFO_BASENAME);
+                
+                // Almacenamiento clasificado en subcarpetas internas por Número de Orden
+                $nombreArchivoInterno = "fotografias/Orden_{$foto->Orden}/" . $nombreArchivoOriginal;
+                
+                $zip->addFromString($nombreArchivoInterno, $imageContent);
+                $fotosContador++;
+            }
         }
-        
-        // Dimensionamiento de anchos fijos de la liquidación para calcar la imagen
-        $sheetResumen->getColumnDimension('B')->setWidth(6);
-        $sheetResumen->getColumnDimension('C')->setWidth(50);
-        $sheetResumen->getColumnDimension('D')->setWidth(12);
-        $sheetResumen->getColumnDimension('E')->setWidth(22);
-        $sheetResumen->getColumnDimension('F')->setWidth(26);
-        $sheetResumen->getColumnDimension('G')->setWidth(26);
-        
-        // 5. Guardar libro Excel de la tecnología actual e insertarlo en la raíz del ZIP
-        $writer = new Xlsx($spreadsheet);
-        $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Reporte_' . $nombreTecnologiaLimpio . '.xlsx';
-        $writer->save($excelTemporalPath);
-        
-        $zip->addFile($excelTemporalPath, 'Reporte_Tecnologia_' . $nombreTecnologiaLimpio . '.xlsx');
+
+        $zip->close();
+
+        // Eliminar los archivos Excel temporales del disco del servidor para no saturar almacenamiento
+        foreach ($movimientosPorTecnologia as $nombreTecnologia => $registrosTecnologia) {
+            $nombreTecnologiaLimpio = empty($nombreTecnologia) ? 'OTRAS_TECNOLOGIAS' : str_replace(['/', '\\', '?', '*', ':', '[', ']'], '_', $nombreTecnologia);
+            $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Reporte_' . $nombreTecnologiaLimpio . '.xlsx';
+            if (file_exists($excelTemporalPath)) {
+                @unlink($excelTemporalPath);
+            }
+        }
+
+        // Validar peso y consistencia del entregable
+        if (!file_exists($zipPath) || filesize($zipPath) <= 22) { 
+            @unlink($zipPath);
+            return back()->with('error', 'El proceso concluyó sin datos empaquetables.');
+        }
+
+        // Alertas informativas de la bitácora Flash
+        $fotosStatus = $fotosContador > 0 ? "Fotografías OK ({$fotosContador} descargadas)" : "Fotografías: No descargado";
+        session()->flash('notificacion_extraccion', [
+            'pago' => 'Pago Técnico OK',
+            'materiales' => 'Reportes de Tecnologías Generados OK',
+            'fotos' => $fotosStatus
+        ]);
+
+        // Descarga inmediata del archivo binario y purga automática del temporal del servidor
+        return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
     }
-    // --- SECCIÓN DE EVIDENCIAS FOTOGRÁFICAS ---
-    $nombreBucket = 'sistema-pv-imagenes-tienda';
-    $fotosContador = 0;
 
-    foreach ($fotografias as $foto) {
-        $urlCompleta = $foto->fotografia;
-        $pathBucket = $urlCompleta;
 
-        if (str_contains($urlCompleta, $nombreBucket)) {
-            $posicionBucket = strpos($urlCompleta, $nombreBucket);
-            $pathBucket = substr($urlCompleta, $posicionBucket + strlen($nombreBucket));
-            $pathBucket = ltrim($pathBucket, '/');
-        } else {
-            $pathBucket = ltrim(parse_url($urlCompleta, PHP_URL_PATH), '/');
-        }
-
-        if (Storage::disk('gcs_images')->exists($pathBucket)) {
-            $imageContent = Storage::disk('gcs_images')->get($pathBucket);
-            $nombreArchivoOriginal = pathinfo($pathBucket, PATHINFO_BASENAME);
-            
-            // Almacenamiento clasificado en subcarpetas internas por Número de Orden
-            $nombreArchivoInterno = "fotografias/Orden_{$foto->Orden}/" . $nombreArchivoOriginal;
-            
-            $zip->addFromString($nombreArchivoInterno, $imageContent);
-            $fotosContador++;
-        }
-    }
-
-    $zip->close();
-
-    // Validar peso y consistencia del entregable
-    if (!file_exists($zipPath) || filesize($zipPath) <= 22) { 
-        @unlink($zipPath);
-        return back()->with('error', 'El proceso concluyó sin datos empaquetables.');
-    }
-
-    // Alertas informativas de la bitácora Flash
-    $fotosStatus = $fotosContador > 0 ? "Fotografías OK ({$fotosContador} descargadas)" : "Fotografías: No descargado";
-    session()->flash('notificacion_extraccion', [
-        'pago' => 'Pago Técnico OK',
-        'materiales' => 'Reportes de Tecnologías Generados OK',
-        'fotos' => $fotosStatus
-    ]);
-
-    // Descarga inmediata del archivo binario y purga automática del temporal del servidor
-    return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
-}
 
 public function extraccionMasiva1(Request $request)
 {
