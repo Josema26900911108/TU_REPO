@@ -117,11 +117,12 @@
             font-size: 10px;
         }
         .img-firma {
-            max-height: 55px;
-            max-width: 170px;
+            max-height: 150px; /* 🌟 Triplicado: Antes 55px */
+            max-width: 320px;  /* 🌟 Expandido para firmas extendidas: Antes 170px */
             display: block;
-            margin: 0 auto -8px auto;
+            margin: 0 auto -5px auto;
         }
+
     </style>
 </head>
 <body>
@@ -130,19 +131,18 @@
         <!-- ================================================================= -->
         <!-- SECCIÓN: CARTA DE PRESENTACIÓN (POR TECNOLOGÍA)                   -->
         <!-- ================================================================= -->
-        <table class="header-table">
+        <table class="header-table" style="margin-bottom: 5px; width: 100%;">
             <tr>
-                <td>
+                <td style="width: 40%; vertical-align: middle; border: none;">
                     @if(!empty($logo_tienda))
-                        <img src="{{ $logo_tienda }}" class="logo-img" alt="Logo Corporativo">
+                        <!-- Añadimos inline dimensiones estrictas para obligar a DomPDF a pintar el blob -->
+                        <img src="{{ $logo_tienda }}" style="height: 55px; width: auto; display: block;" alt="Logo Corporativo">
                     @else
-                        <span class="logo-text">{{ $nombre_tienda }}</span>
+                        <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
                     @endif
                 </td>
-                <td class="subheader-text">
-                    Imagina, crea... Evoluciona<br>
-                    Instalaciones de Servicios de Telecomunicaciones<br>
-                    Especialidad: <strong>{{ strtoupper($tec['nombre']) }}</strong>
+                <td style="text-align: right; font-weight: bold; font-size: 11px; color: #444; width: 60%; vertical-align: middle; border: none;">
+                    ORDEN DE SERVICIO INDIVIDUAL ({{ strtoupper($tec['nombre']) }})
                 </td>
             </tr>
         </table>
@@ -358,25 +358,27 @@
                 NOTA: HAGO CONSTAR QUE EL DÍA DE HOY SE INSTALÓ EN MI DOMICILIO EL SERVICIO ESPECIFICADO DE MANERA CORRECTA, QUEDANDO TOTALMENTE SATISFECHO CON LOS MATERIALES Y EL TRABAJO REALIZADO POR EL PERSONAL TÉCNICO AUTORIZADO.
             </p>
 
-            <table class="signature-table">
-                <tr>
-                    <td>
-                        <div style="height: 45px;"></div>
-                        <div class="signature-line">Firma del Técnico</div>
-                        <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['tecnico_nombre'] }}</div>
-                    </td>
-                    <td style="width: 10%;"></td>
-                    <td>
-                        @if($exp['firma_base64'])
-                            <img src="{{ $exp['firma_base64'] }}" class="img-firma" alt="Firma Cliente">
-                        @else
-                            <div style="height: 45px; color: #bbb; font-size: 9px; padding-top: 20px;">FIRMA NO DIGITALIZADA</div>
-                        @endif
-                        <div class="signature-line">Firma y Aceptación del Cliente</div>
-                        <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['NOMBRECLIENTE'] }}</div>
-                    </td>
-                </tr>
-            </table>
+        <table class="signature-table" style="width: 100%; margin-top: 30px;">
+            <tr>
+                <td style="width: 45%; text-align: center; vertical-align: bottom;">
+                    <!-- Espacio en blanco limpio para firma física del técnico -->
+                    <div style="height: 100px;"></div> 
+                    <div class="signature-line">Firma del Técnico</div>
+                    <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['tecnico_nombre'] }}</div>
+                </td>
+                <td style="width: 10%;"></td>
+                <td style="width: 45%; text-align: center; vertical-align: bottom;">
+                    <!-- Renderizado de la firma digital del cliente a escala triple -->
+                    @if($exp['firma_base64'])
+                        <img src="{{ $exp['firma_base64'] }}" class="img-firma" alt="Firma Cliente">
+                    @else
+                        <div style="height: 100px; color: #bbb; font-size: 9px; padding-top: 50px; font-weight: bold;">FIRMA NO DIGITALIZADA</div>
+                    @endif
+                    <div class="signature-line">Firma y Aceptación del Cliente</div>
+                    <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['NOMBRECLIENTE'] }}</div>
+                </td>
+            </tr>
+        </table>
 
             @if(!$loop->last || !$loop->parent->last)
                 <div class="page-break"></div>
