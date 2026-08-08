@@ -467,49 +467,38 @@ public function descargarFormatoPago()
         "Expires"             => "0"
     ];
 
-    // Columnas exactas que requiere tu tabla pagostecnico (10 columnas)
     $columnas = [
-        'Orden',
-        'SKU',
-        'Descripcion',
-        'OBS',
-        'Cantidad',
-        'COSTOPAGO',
-        'Status',
-        'Naturaleza',
-        'fkTecnico',
-        'fkTienda'
+        'Orden', 'SKU', 'Descripcion', 'OBS', 'Cantidad',
+        'COSTOPAGO', 'Status', 'Naturaleza', 'fkTecnico', 'fkTienda'
     ];
 
     $callback = function () use ($columnas) {
         $file = fopen('php://output', 'w');
         
-        // Añadir el BOM UTF-8 para que Excel reconozca los acentos correctamente al abrir el CSV
+        // Añadir el BOM UTF-8 para que Excel reconozca los acentos correctamente
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
         
-        // === CORRECCIÓN AQUÍ: Se añade el delimitador '|' como cuarto parámetro ===
-        fputcsv($file, $columnas, '|'); // Encabezado de la tabla separado por |
+        // === CONFIGURACIÓN SEGURA DE COMAS ===
+        fputcsv($file, $columnas, ',', '"'); // Delimitador: , Enclosure: "
 
-        // Línea de ejemplo con datos ficticios coherentes (10 valores para emparejar las columnas)
         fputcsv($file, [
             'ORD-100254',
             'SKU-MO-001',
-            'INSTALACION TOMA DE LINEA RJ11',
+            'INSTALACION TRIPLE PLAY TV VOZ Y DATOS', // Texto protegido contra rupturas
             'Instalación Caja Adicional Servicio Técnico',            
             1,
             250.00,
-            'C',  // Status
-            'H',  // Naturaleza
-            12,   // fkTecnico
-            5     // fkTienda (Agregado para completar los 10 campos)
-        ], '|'); // Datos separados por |
+            'C', 
+            'H', 
+            12,
+            5
+        ], ',', '"'); // Delimitador: , Enclosure: "
 
         fclose($file);
     };
 
     return response()->stream($callback, 200, $headers);
 }
-
 
 public function descargarFormatoModificacionPago()
 {
@@ -560,7 +549,59 @@ public function descargarFormatoModificacionPago()
 }
 
 
+public function descargarinventariopago()
+{
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=Formato_Expediente_Pago_Tecnico.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
 
+    // Columnas ordenadas de acuerdo a la estructura de tu tabla 'pagotecnico'
+    $columnas = [
+        'Orden',
+        'SKU',
+        'Descripcion',
+        'OBS',
+        'Cantidad',
+        'COSTOPAGO',
+        'fkTienda',
+        'fkTecnico',
+        'Naturaleza',
+        'Status'
+    ];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        
+        // Inyectar BOM UTF-8 para evitar errores de codificación en Excel
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        fputcsv($file, $columnas); // encabezado
+
+        $fkTienda = session('user_fkTienda') ?? 1;
+
+        // Línea de ejemplo adaptada fielmente a los tipos de columnas de tu base de datos:
+        fputcsv($file, [
+            'ORD-23450285',                // Orden (varchar)
+            '4013896',                     // SKU (varchar)
+            'Mano de Obra Instalación',    // Descripcion (text)
+            'Pago correspondiente a cajas adicionales', // OBS (text)
+            1.00,                          // Cantidad (double)
+            350.00,                        // COSTOPAGO (double)
+            $fkTienda,                     // fkTienda (bigint)
+            12,                            // fkTecnico (bigint)
+            'D',                           // Naturaleza (char 1 - ej: D o H)
+            'S'                            // Status (char 2)
+        ]);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
 
 public function exportarExcel(Request $request)
 {
@@ -664,8 +705,8 @@ public function exportarExcel(Request $request)
 
 public function importarPagosTecnico(Request $request)
 {
-
-DB::connection()->disableQueryLog(); 
+    // Desactivar logs de consultas inmediatamente para proteger la memoria RAM
+    DB::connection()->disableQueryLog(); 
 
     if (!Auth::check()) {
         return redirect()->route('login');
@@ -673,158 +714,196 @@ DB::connection()->disableQueryLog();
 
     $fkTienda = session('user_fkTienda') ?? 0;
     
-    // Configuraciones de alto rendimiento para archivos masivos
+    // Configuraciones de alto rendimiento para procesamiento masivo
     set_time_limit(0); 
     ini_set('memory_limit', '512M');
-    
-    // Desactivar logs de consultas (Crucial para no colapsar la memoria RAM con miles de inserts)
-    DB::connection()->disableQueryLog();
 
     $request->validate([
-        'archivo' => 'required|file|mimes:csv,txt',
+        'archivo' => 'required|file|mimes:csv,txt,xlsx',
     ]);
 
-    $file = fopen($request->file('archivo')->getRealPath(), 'r');
+    $path = $request->file('archivo')->getRealPath();
+    $file = fopen($path, 'r');
     
-    // Leer el encabezado del CSV y limpiar el posible carácter invisible BOM UTF-8
-    $encabezadoRaw = fgetcsv($file);
-    if ($encabezadoRaw && str_contains($encabezadoRaw[0], chr(0xEF).chr(0xBB).chr(0xBF))) {
+    // 1. DETECCIÓN AUTOMÁTICA MEJORADA (Soporta Tabuladores, Comas y Puntos y comas)
+    $primeraLinea = fgets($file);
+    
+    // Si contiene un tabulador, asignamos "\t". Si contiene ';', asignamos ';'. De lo contrario ','
+    if (strpos($primeraLinea, "\t") !== false) {
+        $delimitador = "\t";
+    } elseif (strpos($primeraLinea, ';') !== false) {
+        $delimitador = ';';
+    } else {
+        $delimitador = ',';
+    }
+    
+    $enclosure = '"';
+    
+    // Volver al inicio del archivo para procesar formalmente
+    rewind($file);
+
+    // 2. LEER EL ENCABEZADO CON EL DELIMITADOR DETECTADO
+    $encabezadoRaw = fgetcsv($file, 0, $delimitador, $enclosure);
+    
+    // Limpiar el posible carácter invisible BOM UTF-8 del inicio si existe
+    if ($encabezadoRaw && isset($encabezadoRaw[0]) && str_contains($encabezadoRaw[0], chr(0xEF).chr(0xBB).chr(0xBF))) {
         $encabezadoRaw[0] = str_replace(chr(0xEF).chr(0xBB).chr(0xBF), '', $encabezadoRaw[0]);
     }
-    $encabezado = $encabezadoRaw;
+    
+    // Sanitizar nombres de columnas (Quitar espacios, comillas accidentales y normalizar a UTF-8)
+    $encabezado = array_map(function($col) {
+        $colClean = trim(str_replace(['"', "'"], '', $col));
+        return mb_convert_encoding($colClean, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
+    }, $encabezadoRaw);
+
 
     $insertados = 0;
     $omitidos = 0;
-    
-    $batchSize = 500; 
+    $batchSize = 200; // Bloques óptimos para evitar bloqueos en el servidor
     $batchData = [];
     $now = now();
 
     try {
-        while (($linea = fgetcsv($file)) !== false) {
-            // Validar que la línea tenga el mismo número de campos que las columnas del encabezado
-            if (count($encabezado) !== count($linea)) {
+        // 3. CICLO PRINCIPAL DE LECTURA
+        while (($lineaRaw = fgetcsv($file, 0, $delimitador, $enclosure)) !== false) {
+            
+            // Omitir de forma segura líneas que resulten completamente vacías
+            if (empty($lineaRaw) || (count($lineaRaw) === 1 && $lineaRaw[0] === null)) {
+                continue;
+            }
+
+            // Sanitizar y reparar la codificación corrupta (Acentos/Eñes) de la fila antes de procesar
+            $lineaLimpia = array_map(function($campo) {
+                if ($campo === null || $campo === '') return '';
+                return mb_convert_encoding(trim($campo), 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
+            }, $lineaRaw);
+
+            // Validar consistencia estructural de columnas
+            if (count($encabezado) !== count($lineaLimpia)) {
+                // Registra la fila en storage/logs/laravel.log para auditoría si llega a fallar
+                \Log::warning("Fila omitida por discrepancia de columnas. Cabecera: " . count($encabezado) . " | Fila: " . count($lineaLimpia), [
+                    'fila_datos' => $lineaLimpia
+                ]);
                 $omitidos++;
                 continue;
             }
 
-            $data = array_combine($encabezado, $linea);
+            // Combinar la cabecera limpia con los datos limpios de la fila
+            $data = array_combine($encabezado, $lineaLimpia);
 
-            // Validaciones de campos mandatorios para la tabla pagotecnico
-            if (empty($data['Orden']) || empty($data['SKU']) || !isset($data['COSTOPAGO'])) {
+            // Validaciones estrictas de campos obligatorios
+            $orden = trim($data['Orden'] ?? '');
+            $sku = trim($data['SKU'] ?? '');
+
+            if (empty($orden) || empty($sku)) {
                 $omitidos++;
                 continue;
             }
 
-            // Normalización y limpieza profunda de Naturaleza (D / H) y Status
+            // Normalización del campo Naturaleza (D / H)
             $naturaleza = strtoupper(trim($data['Naturaleza'] ?? 'D'));
             if (!in_array($naturaleza, ['D', 'H'])) {
-                $naturaleza = 'D'; // Forzar valor contable base si el usuario escribe otra letra
+                $naturaleza = 'D'; 
             }
 
-$valorcosto = floatval($data['COSTOPAGO'] ?? 0.00);
+            // Procesamiento dinámico de costos contables
+            $valorcosto = isset($data['COSTOPAGO']) ? floatval(trim($data['COSTOPAGO'])) : 0.00;
 
-if ($valorcosto == 0) {
-    // 1. Obtenemos el código alfanumérico del técnico usando su fkTecnico de forma rápida
-    $tecnicoId = intval($data['fkTecnico'] ?? 0);
-    $tecnicoCodigo = '';
-    
-    if ($tecnicoId > 0) {
-        $tecnicoCodigo = DB::table('tecnico')
-            ->where('id', $tecnicoId)
-            ->value('codigo') ?? '';
-    }
+            if ($valorcosto == 0) {
+                $tecnicoId = intval($data['fkTecnico'] ?? 0);
+                $tecnicoCodigo = '';
+                
+                if ($tecnicoId > 0) {
+                    $tecnicoCodigo = DB::table('tecnico')->where('id', $tecnicoId)->value('codigo') ?? '';
+                }
 
-    // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
-    $obtenervalor = Materialmanoobra::where('SKU', $data['SKU'])
-        ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
-            $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
-                  ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
-                  ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Global (NULL)
-                  ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Global (Vacío)
-        })
-        ->select('CATEGORIACOBRO', 'COSTOPAGO', 'CATEGORIA', 'TIPO', 'centrocostoespecifico')
-        ->orderByRaw("CASE 
-            WHEN centrocostoespecifico = ? AND ? != '' THEN 1
-            WHEN centrocostoespecifico = ? THEN 2
-            ELSE 3 
-        END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
-        ->latest()
-        ->first();
+                // Búsqueda jerárquica en el catálogo de materiales y mano de obra
+                $obtenervalor = Materialmanoobra::where('SKU', $sku)
+                    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+                        $query->where('centrocostoespecifico', '=', $tecnicoCodigo)
+                              ->orWhere('centrocostoespecifico', '=', $fkTienda)
+                              ->orWhereNull('centrocostoespecifico')
+                              ->orWhere('centrocostoespecifico', '=', '');
+                    })
+                    ->select('CATEGORIACOBRO', 'COSTOPAGO', 'CATEGORIA', 'TIPO')
+                    ->orderByRaw("CASE 
+                        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+                        WHEN centrocostoespecifico = ? THEN 2
+                        ELSE 3 
+                    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+                    ->latest()
+                    ->first();
 
-    // 3. Evaluamos la categoría o tipo de forma segura (evita errores si el SKU no existe)
-    if ($obtenervalor) {
-        if ($obtenervalor->CATEGORIA === 'MANO DE OBRA' || $obtenervalor->TIPO === 'MANO DE OBRA') {
-            $data['COSTOPAGO'] = floatval($obtenervalor->COSTOPAGO);
-        } elseif ($obtenervalor->CATEGORIA === 'MATERIAL' || $obtenervalor->TIPO === 'MATERIAL') {
-            $data['COSTOPAGO'] = floatval($obtenervalor->CATEGORIACOBRO);
-        } else {
-            // Si tiene otra categoría pero el registro existe, usamos COSTOPAGO por defecto
-            $data['COSTOPAGO'] = floatval($obtenervalor->COSTOPAGO ?? 0.00);
-        }
-    } else {
-        $data['COSTOPAGO'] = 0.00; // Valor por defecto si el SKU no existe en el catálogo
-    }
+                if ($obtenervalor) {
+                    if ($obtenervalor->CATEGORIA === 'MANO DE OBRA' || $obtenervalor->TIPO === 'MANO DE OBRA') {
+                        $valorcosto = floatval($obtenervalor->COSTOPAGO);
+                    } elseif ($obtenervalor->CATEGORIA === 'MATERIAL' || $obtenervalor->TIPO === 'MATERIAL') {
+                        $valorcosto = floatval($obtenervalor->CATEGORIACOBRO);
+                    } else {
+                        $valorcosto = floatval($obtenervalor->COSTOPAGO ?? 0.00);
+                    }
+                }
+            }
 
-} else {
-    // Si ya venía un costo mayor a cero en el archivo, se respeta ese valor
-    $data['COSTOPAGO'] = $valorcosto;
-}
+            $status = substr(trim($data['Status'] ?? 'S'), 0, 2);
 
-$status = substr(trim($data['Status'] ?? 'S'), 0, 2);
+            // Estructuración del registro para el lote
+            $batchData[] = [
+                'Orden'       => $orden,
+                'SKU'         => $sku,
+                'Descripcion' => $data['Descripcion'] ?? '', 
+                'OBS'         => $data['OBS'] ?? 'Importacion masiva', 
+                'Cantidad'    => isset($data['Cantidad']) ? floatval($data['Cantidad']) : 1.00,
+                'COSTOPAGO'   => $valorcosto,
+                'fkTienda'    => $fkTienda,
+                'fkTecnico'   => intval($data['fkTecnico'] ?? 0),
+                'Naturaleza'  => $naturaleza,
+                'Status'      => $status,
+                'created_at'  => $now,
+                'updated_at'  => $now,
+            ];
 
-// Mapear el lote alineado a las columnas exactas de tu tabla 'pagotecnico'
-$batchData[] = [
-    'Orden'       => $data['Orden'],
-    'SKU'         => $data['SKU'],
-    'Descripcion' => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
-    'OBS'         => mb_convert_encoding($data['OBS'] ?? 'Importación masiva', 'UTF-8', 'ISO-8859-1'),
-    'Cantidad'    => floatval($data['Cantidad'] ?? 1.00),
-    'COSTOPAGO'   => floatval($data['COSTOPAGO'] ?? 0.00),
-    'fkTienda'    => $fkTienda,
-    'fkTecnico'   => intval($data['fkTecnico'] ?? 0),
-    'Naturaleza'  => $naturaleza,
-    'Status'      => $status,
-    'created_at'  => $now,
-    'updated_at'  => $now,
-];
+            $insertados++;
 
-$insertados++;
-
-
-            // Inserción masiva en transacciones atómicas parciales al alcanzar el tamaño del lote
-if (count($batchData) >= $batchSize) {
-    DB::transaction(function () use ($batchData) {
-        DB::table('pagotecnico')->upsert(
-            $batchData, 
-            ['Orden', 'SKU'], // 1. Columnas que definen si el registro ya existe (Deben tener índice UNIQUE en la BD)
-            ['Descripcion', 'OBS', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status', 'updated_at'] // 2. Columnas a actualizar si se halla duplicado
-        );
-    });
-    $batchData = [];
-    gc_collect_cycles();
-}
-
+            // Ejecución segura por bloques usando Sincronización updateOrInsert
+            if (count($batchData) >= $batchSize) {
+                DB::transaction(function () use ($batchData) {
+                    foreach ($batchData as $row) {
+                        DB::table('pagotecnico')->updateOrInsert(
+                            ['Orden' => $row['Orden'], 'SKU' => $row['SKU']], 
+                            $row 
+                        );
+                    }
+                });
+                $batchData = [];
+                gc_collect_cycles(); // Liberación de memoria interna de PHP
+            }
         }
 
-        // Procesar remanentes que no alcanzaron a completar el último múltiplo de 500
+        // 4. PROCESAR REGISTROS REMANENTES FINALES
         if (!empty($batchData)) {
             DB::transaction(function () use ($batchData) {
-                DB::table('pagotecnico')->insert($batchData);
+                foreach ($batchData as $row) {
+                    DB::table('pagotecnico')->updateOrInsert(
+                        ['Orden' => $row['Orden'], 'SKU' => $row['SKU']],
+                        $row
+                    );
+                }
             });
         }
 
         fclose($file);
 
-        return back()->with('success', "Importación de pagos exitosa: {$insertados} filas procesadas con éxito, {$omitidos} omitidas por errores.");
+        return back()->with('success', "Importación de pagos exitosa: {$insertados} filas procesadas y sincronizadas, {$omitidos} omitidas por inconsistencias.");
 
     } catch (\Exception $e) {
         if (is_resource($file)) {
             fclose($file);
         }
-        return back()->with('error', 'Error crítico en procesamiento Cloud de Pagos: ' . $e->getMessage());
+        return back()->with('error', 'Error crítico en procesamiento de archivo: ' . $e->getMessage());
     }
 }
+
 
 public function modificarPagosTecnicoMasivo(Request $request)
 {

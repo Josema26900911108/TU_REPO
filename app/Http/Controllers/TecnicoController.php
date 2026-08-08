@@ -587,7 +587,7 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
         // Tu CASE matemático se mantiene idéntico, ya que operará sobre la fila priorizada
         DB::raw("CASE 
             WHEN mamo.SKU IS NULL THEN NULL 
-            WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.COSTOPAGO 
+            WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
             ELSE mamo.CATEGORIACOBRO 
         END AS COSTO"),
         DB::raw("CASE 
