@@ -193,7 +193,7 @@
 
         <div class="page-break"></div>
 
-                <!-- ================================================================= -->
+        <!-- ================================================================= -->
         <!-- SECCIÓN: REPORTE GENERAL DE MATERIALES (POR TECNOLOGÍA)           -->
         <!-- ================================================================= -->
         <div class="title-section">Uso Consolidado de Materiales - Tecnología: {{ $tec['nombre'] }}</div>
@@ -275,20 +275,73 @@
 
         <div class="page-break"></div>
 
-                <!-- ================================================================= -->
+
+
+        <!-- ================================================================= -->
+        <!-- SECCIÓN: CUADRO DE COSTOS FINANCIERO (POR TECNOLOGÍA)             -->
+        <!-- ================================================================= -->
+        <div class="title-section" style="color: #cc0000;">Cuadro de Costos de Instalación - {{ $tec['nombre'] }}</div>
+        <p style="text-align: center; margin-top: -10px; color: #555;">REGIÓN: OCCIDENTE | LIQUIDACIÓN DE MANO DE OBRA</p>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%; background-color: #d0e1f9; text-align: center;">No</th>
+                    <th style="width: 45%; background-color: #d0e1f9;">DESCRIPCIÓN DE MANO DE OBRA</th>
+                    <th style="width: 10%; background-color: #d0e1f9; text-align: center;">UNIDAD</th>
+                    <th style="width: 12%; background-color: #d0e1f9; text-align: center;">CANTIDAD</th>
+                    <th style="width: 13%; background-color: #d0e1f9; text-align: right;">PRECIO U.</th>
+                    <th style="width: 15%; background-color: #d0e1f9; text-align: right;">TOTAL COBRO</th>
+                </tr>
+            </thead>
+            <tbody>
+                @php $numCo = 1; @endphp
+                @foreach($tec['resumenManoObra'] as $cobro)
+                    <tr>
+                        <td style="text-align: center;">{{ $numCo++ }}</td>
+                        <td>{{ $cobro['descripcion'] }}</td>
+                        <td style="text-align: center;">{{ $cobro['unidad'] }}</td>
+                        <td style="text-align: center; font-weight: bold;">{{ $cobro['cantidad'] }}</td>
+                        <td style="text-align: right;">Q {{ number_format($cobro['precio'], 2) }}</td>
+                        <td style="text-align: right; font-weight: bold;">Q {{ number_format($cobro['total'], 2) }}</td>
+                    </tr>
+                @endforeach
+                
+                <tr>
+                    <td colspan="4" style="border: none;"></td>
+                    <td style="font-weight: bold; text-align: right; background-color: #fcfcfc;">TOTAL M.O.</td>
+                    <td style="text-align: right; font-weight: bold; background-color: #fcfcfc;">Q {{ number_format($tec['totalManoObra'], 2) }}</td>
+                </tr>
+                <tr>
+                    <td colspan="4" style="border: none;"></td>
+                    <td style="font-weight: bold; text-align: right; background-color: #fcfcfc;">IVA (12%)</td>
+                    <td style="text-align: right; font-weight: bold; background-color: #fcfcfc;">Q {{ number_format($tec['iva'], 2) }}</td>
+                </tr>
+                <tr style="font-size: 11px;">
+                    <td colspan="4" style="border: none;"></td>
+                    <td style="font-weight: bold; text-align: right; background-color: #e6f4ea; color: #137333;">TOTAL CON IVA</td>
+                    <td style="text-align: right; font-weight: bold; background-color: #e6f4ea; color: #137333;">Q {{ number_format($tec['totalConIva'], 2) }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- ================================================================= -->
         <!-- SECCIÓN: ORDENES DE SERVICIO INDIVIDUALES LIQUIDADAS              -->
         <!-- ================================================================= -->
         @foreach($tec['expedientes'] as $exp)
-            <table class="header-table" style="margin-bottom: 5px;">
+            <table class="header-table" style="margin-bottom: 5px; width: 100%;">
                 <tr>
-                    <td>
-                        @if(!empty($logo_tienda))
-                            <img src="{{ $logo_tienda }}" style="max-height: 45px; object-fit: contain;" alt="Logo">
+                    <td style="width: 40%; vertical-align: middle; border: none;">
+                        @if(!empty($logo_crudo))
+                            <!-- chunk_split fragmenta el binario largo para evitar desbordamientos de búfer en DomPDF -->
+                            <img src="data:image/jpeg;base64,{{ chunk_split(base64_encode($logo_crudo)) }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
                         @else
-                            <span style="font-weight: bold; color: #0d47a1;">{{ $nombre_tienda }}</span>
+                            <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
                         @endif
                     </td>
-                    <td style="text-align: right; font-weight: bold; font-size: 12px; color: #444;">
+                    <td style="text-align: right; font-weight: bold; font-size: 11px; color: #444; width: 60%; vertical-align: middle; border: none;">
                         ORDEN DE SERVICIO INDIVIDUAL ({{ strtoupper($tec['nombre']) }})
                     </td>
                 </tr>
@@ -358,27 +411,25 @@
                 NOTA: HAGO CONSTAR QUE EL DÍA DE HOY SE INSTALÓ EN MI DOMICILIO EL SERVICIO ESPECIFICADO DE MANERA CORRECTA, QUEDANDO TOTALMENTE SATISFECHO CON LOS MATERIALES Y EL TRABAJO REALIZADO POR EL PERSONAL TÉCNICO AUTORIZADO.
             </p>
 
-        <table class="signature-table" style="width: 100%; margin-top: 30px;">
-            <tr>
-                <td style="width: 45%; text-align: center; vertical-align: bottom;">
-                    <!-- Espacio en blanco limpio para firma física del técnico -->
-                    <div style="height: 100px;"></div> 
-                    <div class="signature-line">Firma del Técnico</div>
-                    <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['tecnico_nombre'] }}</div>
-                </td>
-                <td style="width: 10%;"></td>
-                <td style="width: 45%; text-align: center; vertical-align: bottom;">
-                    <!-- Renderizado de la firma digital del cliente a escala triple -->
-                    @if($exp['firma_base64'])
-                        <img src="{{ $exp['firma_base64'] }}" class="img-firma" alt="Firma Cliente">
-                    @else
-                        <div style="height: 100px; color: #bbb; font-size: 9px; padding-top: 50px; font-weight: bold;">FIRMA NO DIGITALIZADA</div>
-                    @endif
-                    <div class="signature-line">Firma y Aceptación del Cliente</div>
-                    <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['NOMBRECLIENTE'] }}</div>
-                </td>
-            </tr>
-        </table>
+            <table class="signature-table">
+                <tr>
+                    <td>
+                        <div style="height: 140px;"></div>
+                        <div class="signature-line">Firma del Técnico</div>
+                        <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['tecnico_nombre'] }}</div>
+                    </td>
+                    <td style="width: 10%;"></td>
+                    <td>
+                        @if($exp['firma_base64'])
+                            <img src="{{ $exp['firma_base64'] }}" class="img-firma" alt="Firma Cliente">
+                        @else
+                            <div style="height: 140px; color: #bbb; font-size: 9px; padding-top: 60px; font-weight: bold;">FIRMA NO DIGITALIZADA</div>
+                        @endif
+                        <div class="signature-line">Firma y Aceptación del Cliente</div>
+                        <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['NOMBRECLIENTE'] }}</div>
+                    </td>
+                </tr>
+            </table>
 
             @if(!$loop->last || !$loop->parent->last)
                 <div class="page-break"></div>
