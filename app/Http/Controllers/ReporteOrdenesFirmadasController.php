@@ -469,12 +469,18 @@ class ReporteOrdenesFirmadasController extends Controller
 
         // 2. Extraer el logotipo LONGBLOB de la tabla tienda local (Máquina Virtual)
         $tienda = DB::table('tienda')->where('idTienda', $tiendaId)->first();
-        $logoBase64 = null;
+        $logoBinario = null;
 
         if ($tienda && !empty($tienda->logo)) {
-            // Convertir el chorro de bytes (LONGBLOB) directamente a cadena legible por DomPDF
-            $logoBase64 = 'data:image/png;base64,' . base64_encode($tienda->logo);
+            // Eliminar caracteres de control invisibles que puedan corromper el inicio del binario JPG/PNG
+            $logoBinario = preg_replace('/[^\x20-\x7E\t\r\n]/', '', $tienda->logo);
+            
+            // Si el paso anterior lo deja vacío, usamos el original
+            if (empty($logoBinario)) {
+                $logoBinario = $tienda->logo;
+            }
         }
+
 
         // 3. Extraer expedientes cruzados con técnicos
         $expedientesRaw = DB::table('expedientetecnico as ex')
@@ -602,18 +608,38 @@ class ReporteOrdenesFirmadasController extends Controller
         }
 
         // 6. Enviar datos compactados a DomPDF
+        // Pack de variables unificado enviado a la vista
         $dataReporte = [
             'fecha_reporte' => Carbon::now()->format('d/m/Y'),
             'periodo_mes' => 'DEL 01 AL 31 DE MAYO 2026',
-            'logo_tienda' => $logoBase64,
+            'logo_fisico_path' => file_exists($logoBinario) ? $logoBinario : null, // 🌟 Pasamos la ruta del archivo físico
             'nombre_tienda' => $tienda->Nombre ?? 'Distribuidor Autorizado',
             'tecnologias' => $tecnologiasAgrupadas
         ];
 
-        $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte);
-        $pdf->setPaper('letter', 'portrait'); 
+        // Cargar vista con las opciones nativas de DomPDF para archivos locales habilitadas
+        $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
+            ->setPaper('letter', 'portrait')
+            ->setOptions([
+                'isRemoteEnabled' => true,      // Luz verde para protocolos y rutas del sistema
+                'isHtml5ParserEnabled' => true,
+                'chroot' => sys_get_temp_dir()  // Autoriza a DomPDF a leer dentro de la carpeta /tmp
+            ]);
 
-        return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
+        // Guardamos el PDF en memoria antes de despacharlo para poder borrar el archivo temporal del disco
+        $pdfRenderizado = $pdf->output();
+
+        // 🌟 Purga preventiva: Eliminamos el archivo del logo temporal para no acumular basura en el servidor
+        if ($logoBinario && file_exists($logoBinario)) {
+            @unlink($logoBinario);
+        }
+
+        // Forzamos la descarga del PDF binario al navegador
+        return response($pdfRenderizado, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf"',
+        ]);
+
     }
 
 }

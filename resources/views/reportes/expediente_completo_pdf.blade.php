@@ -134,9 +134,8 @@
         <table class="header-table" style="margin-bottom: 5px; width: 100%;">
             <tr>
                 <td style="width: 40%; vertical-align: middle; border: none;">
-                    @if(!empty($logo_tienda))
-                        <!-- Añadimos inline dimensiones estrictas para obligar a DomPDF a pintar el blob -->
-                        <img src="{{ $logo_tienda }}" style="height: 55px; width: auto; display: block;" alt="Logo Corporativo">
+                    @if(!empty($logo_fisico_path))
+                        <img src="{{ $logo_fisico_path }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
                     @else
                         <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
                     @endif
@@ -146,6 +145,7 @@
                 </td>
             </tr>
         </table>
+
 
         <p style="text-align: right; font-weight: bold; margin-bottom: 25px;">Quetzaltenango, {{ $fecha_reporte }}.</p>
 
