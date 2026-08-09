@@ -17,9 +17,9 @@ use Database\Seeders\DatosestaticosSeeder;
 use Dom\Document;
 use Illuminate\Support\Facades\Auth;
 use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Illuminate\Support\Facades\Storage;
-
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Encoders\WebpEncoder;
 use function Laravel\Prompts\select;
 
 class tiendaController extends Controller
@@ -417,7 +417,7 @@ public function update(Request $request, Tienda $tienda)
 
     $request->validate([
         'Nombre' => 'max:150',
-        'firma_base64' => 'nullable' // Añadimos la regla de validación para la firma
+        'firma_base64' => 'nullable'
     ], [
         'Nombre.max' => 'El nombre de la tienda es muy largo.'
     ]);
@@ -434,26 +434,54 @@ public function update(Request $request, Tienda $tienda)
             'fkCentro'    => $request->centro,
         ];
 
-        // 2. Solo si hay una imagen nueva, la agregamos al array de actualización
+        // Inicializamos el gestor de Intervention Image V3
+        $manager = new ImageManager(new Driver());
+
+        // 2. ⚡ REDUCIR Y COMPRIMIR EL LOGO (IMAGEN)
         if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $data['logo'] = base64_encode(file_get_contents($image->path()));
+            $imageFile = $request->file('image');
+            
+            // Leemos la imagen subida, la redimensionamos manteniendo el aspecto
+            $logoProcesado = $manager->read($imageFile->path())
+                                     ->resize(800, 800, function ($constraint) {
+                                         $constraint->aspectRatio();
+                                         $constraint->upsize();
+                                     });
+
+            // La codificamos en formato WebP con calidad optimizada (70)
+            $encodedLogo = $logoProcesado->encode(new WebpEncoder(quality: 70));
+
+            // Guardamos el Base64 ultraligero resultante
+            $data['logo'] = base64_encode($encodedLogo->toString());
         }
 
-        // 3. 🌟 SECCIÓN ADAPTADA: Procesar y limpiar la firma digital del representante
+        // 3. ⚡ REDUCIR Y COMPRIMIR LA FIRMA DIGITAL
         if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
             $firmaRaw = $request->input('firma_base64');
             
-            // Si el string contiene la cabecera del Canvas, la removemos
+            // Limpiamos la cabecera del Canvas para obtener el binario puro
             if (str_contains($firmaRaw, ',')) {
                 $parts = explode(',', $firmaRaw);
-                $data['firma_representante'] = trim($parts[1]); // Guardamos estrictamente el Base64 puro
+                $firmaBinaria = base64_decode($parts[1]); 
             } else {
-                $data['firma_representante'] = trim($firmaRaw);
+                $firmaBinaria = base64_decode($firmaRaw);
             }
+
+            // Leemos los datos binarios de la firma en memoria
+            $firmaProcesada = $manager->read($firmaBinaria)
+                                       ->resize(600, 600, function ($constraint) {
+                                           $constraint->aspectRatio();
+                                           $constraint->upsize();
+                                       });
+
+            // Codificamos la firma en WebP (ideal para trazos monocromáticos, pesa poquísimo)
+            $encodedFirma = $firmaProcesada->encode(new WebpEncoder(quality: 60));
+
+            // Guardamos el Base64 de la firma optimizada
+            $data['firma_representante'] = base64_encode($encodedFirma->toString());
         }
 
-        // 4. Ejecutamos la actualización con el array dinámico consolidado
+        // 4. Ejecutamos la actualización con los Base64 optimizados
         $tienda->update($data);
 
         DB::commit();
