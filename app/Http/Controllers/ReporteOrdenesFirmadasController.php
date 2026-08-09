@@ -433,7 +433,7 @@ class ReporteOrdenesFirmadasController extends Controller
         return $pdf->download('Expediente_Consolidado_Firmado_' . date('Ymd_His') . '.pdf');
     }
 
-    public function generarExpedientePdf(Request $request)
+       public function generarExpedientePdf(Request $request)
     {
         // 1. Validar archivo de entrada con órdenes
         if (!$request->hasFile('excel_ordenes')) {
@@ -467,19 +467,14 @@ class ReporteOrdenesFirmadasController extends Controller
 
         $tiendaId = session('user_fkTienda');
 
-        // 2. Extraer el logotipo LONGBLOB de la tabla tienda local (Máquina Virtual)
+        // 2. Extraer el logotipo que ya está guardado como Base64 puro en la tabla tienda local
         $tienda = DB::table('tienda')->where('idTienda', $tiendaId)->first();
-        
-        // Al estar guardado como Base64 de texto en la BD, la pasamos directamente
         $logoBase64Completo = null;
         if ($tienda && !empty($tienda->logo)) {
-            // Aseguramos el prefijo de datos PNG e inyectamos la cadena limpia
             $logoBase64Completo = 'data:image/png;base64,' . trim($tienda->logo);
         }
 
-
-
-        // 3. Extraer expedientes cruzados con técnicos
+        // 3. Extraer expedientes e información general cruzados con técnicos
         $expedientesRaw = DB::table('expedientetecnico as ex')
             ->leftJoin('tecnico as t', 'ex.fkTecnico', '=', 't.id')
             ->whereIn('ex.Orden', $ordenes)
@@ -487,7 +482,7 @@ class ReporteOrdenesFirmadasController extends Controller
             ->select([
                 'ex.id', 'ex.Orden', 'ex.virtual', 'ex.Tipo_orden', 'ex.Tipo_servicio',
                 'ex.NOMBRECLIENTE', 'ex.DIRECCION', 'ex.FECHAINSTALACION', 'ex.OBS',
-                'ex.TECNOLOGIA', 'ex.firma_cliente', 'ex.SIGLASCENTRAL', 'ex.AREA',
+                'ex.firma_cliente', 'ex.SIGLASCENTRAL', 'ex.AREA',
                 't.nombre as tecnico_nombre', 't.codigo as tecnico_codigo'
             ])
             ->get();
@@ -499,28 +494,37 @@ class ReporteOrdenesFirmadasController extends Controller
         $expedientesIds = $expedientesRaw->pluck('id')->toArray();
         $nombreBucket = 'sistema-pv-imagenes-tienda';
 
-        // 4. Extraer todos los movimientos de materiales e insumos de una sola vez
+        // 4. Extraer movimientos haciendo LEFT JOIN con arbolmaterial mediante fkTecnologiaarbol
         $todosMateriales = DB::table('movimientomateriales as mm')
             ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
+            ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
             ->whereIn('mm.fkExpediente', $expedientesIds)
             ->select([
                 'mm.fkExpediente', 'mm.SKU', 'mm.cantidad', 'mm.serie', 
                 'mamo.Descripcion', 'mamo.TIPO', 'mamo.CATEGORIA', 'mamo.unidadmedida',
+                'abmamo.nombre as TecnologiaCatalogo',
                 DB::raw("CAST(mamo.CATEGORIACOBRO AS DECIMAL(10,2)) as precio_unitario")
             ])
             ->get();
 
-        // 5. Agrupar e iterar por cada rama de Tecnología única
+        // 5. Agrupar la información por cada Tecnología ÚNICA obtenida del Árbol de Materiales
         $tecnologiasAgrupadas = [];
-        $expedientesPorTecnologia = $expedientesRaw->groupBy(function($item) {
-            return empty($item->TECNOLOGIA) ? 'OTRAS_TECNOLOGIAS' : $item->TECNOLOGIA;
+        $materialesPorTecnologia = $todosMateriales->groupBy(function($item) {
+            return empty($item->TecnologiaCatalogo) ? 'OTRAS_TECNOLOGIAS' : $item->TecnologiaCatalogo;
         });
 
-        foreach ($expedientesPorTecnologia as $nombreTecnologia => $listaExpedientes) {
-            $idsDeEstaTecnologia = $listaExpedientes->pluck('id')->toArray();
-            
-            $materialesTec = $todosMateriales->whereIn('fkExpediente', $idsDeEstaTecnologia)->where('CATEGORIA', '!=', 'MANO DE OBRA');
-            $manoObraTec = $todosMateriales->whereIn('fkExpediente', $idsDeEstaTecnologia)->where('CATEGORIA', '==', 'MANO DE OBRA');
+        foreach ($materialesPorTecnologia as $nombreTecnologia => $materialesTec) {
+            // Obtener qué IDs de expedientes tienen movimientos asignados a ESTA tecnología
+            $idsDeEstaTecnologia = $materialesTec->pluck('fkExpediente')->unique()->toArray();
+            $listaExpedientes = $expedientesRaw->whereIn('id', $idsDeEstaTecnologia);
+
+            if ($listaExpedientes->isEmpty()) {
+                continue;
+            }
+
+            // Separar insumos físicos de Mano de Obra
+            $materialesFisicosTec = $materialesTec->where('CATEGORIA', '!=', 'MANO DE OBRA');
+            $manoObraTec = $materialesTec->where('CATEGORIA', '==', 'MANO DE OBRA');
 
             // Procesar Cuadro Financiero de Mano de Obra para ESTA tecnología
             $resumenMO = [];
@@ -543,9 +547,9 @@ class ReporteOrdenesFirmadasController extends Controller
             $iva = $totalMO * 0.12;
             $totalConIva = $totalMO + $iva;
 
-            // Consolidador global de materiales de esta tecnología
+            // Consolidador global de materiales físicos de esta tecnología
             $materialesGlobales = [];
-            foreach ($materialesTec->groupBy('SKU') as $sku => $itemsMat) {
+            foreach ($materialesFisicosTec->groupBy('SKU') as $sku => $itemsMat) {
                 $materialesGlobales[] = [
                     'sku' => $sku,
                     'descripcion' => $itemsMat->first()->Descripcion,
@@ -553,7 +557,7 @@ class ReporteOrdenesFirmadasController extends Controller
                 ];
             }
 
-            // Procesar expedientes individuales e inyectar firmas
+            // Procesar los expedientes e inyectar firmas digitales de GCS
             $expedientesProcesados = [];
             foreach ($listaExpedientes as $exp) {
                 $firmaBase64 = null;
@@ -589,7 +593,7 @@ class ReporteOrdenesFirmadasController extends Controller
                     'tecnico_nombre' => $exp->tecnico_nombre,
                     'tecnico_codigo' => $exp->tecnico_codigo,
                     'firma_base64' => $firmaBase64,
-                    'materiales' => $materialesTec->where('fkExpediente', $exp->id)
+                    'materiales' => $materialesFisicosTec->where('fkExpediente', $exp->id)
                 ];
             }
 
@@ -604,21 +608,19 @@ class ReporteOrdenesFirmadasController extends Controller
             ];
         }
 
-        // 6. Enviar datos compactados a DomPDF
-        // Pack de variables unificado enviado a la vista
+        // 6. Configurar y compilar los datos estructurados en DomPDF
         $dataReporte = [
             'fecha_reporte' => Carbon::now()->format('d/m/Y'),
-            'periodo_mes' => 'DEL 01 AL 31 DE MAYO 2026',
-            'logo_tienda' => $logoBase64Completo, // 🌟 Enviamos la cadena Base64 lista
+            'periodo_mes' => 'DEL 01 AL 31 DE MAYO del 2026',
+            'logo_tienda' => $logoBase64Completo,
             'nombre_tienda' => $tienda->Nombre ?? 'Distribuidor Autorizado',
             'tecnologias' => $tecnologiasAgrupadas
         ];
 
-    $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte);
+        $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte);
         $pdf->setPaper('letter', 'portrait'); 
 
         return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
-
     }
 
 }
