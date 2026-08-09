@@ -433,7 +433,7 @@ class ReporteOrdenesFirmadasController extends Controller
         return $pdf->download('Expediente_Consolidado_Firmado_' . date('Ymd_His') . '.pdf');
     }
 
-       public function generarExpedientePdf(Request $request)
+    public function generarExpedientePdf(Request $request)
     {
         // 1. Validar archivo de entrada con órdenes
         if (!$request->hasFile('excel_ordenes')) {
@@ -464,7 +464,6 @@ class ReporteOrdenesFirmadasController extends Controller
         if (empty($ordenes)) {
             return back()->with('error', 'El archivo Excel no contiene órdenes legibles.');
         }
-
         $tiendaId = session('user_fkTienda');
 
         // 2. Extraer el logotipo que ya está guardado como Base64 puro en la tabla tienda local
@@ -474,16 +473,18 @@ class ReporteOrdenesFirmadasController extends Controller
             $logoBase64Completo = 'data:image/png;base64,' . trim($tienda->logo);
         }
 
-        // 3. Extraer expedientes e información general cruzados con técnicos
+        // 3. Extraer expedientes e información general cruzados con técnicos y usuarios compañeros
         $expedientesRaw = DB::table('expedientetecnico as ex')
             ->leftJoin('tecnico as t', 'ex.fkTecnico', '=', 't.id')
+            ->leftJoin('users as u', 't.nombre', '=', 'u.name') // Left Join para resguardar que aparezcan los clientes siempre
             ->whereIn('ex.Orden', $ordenes)
             ->where('ex.fkTienda', $tiendaId)
             ->select([
                 'ex.id', 'ex.Orden', 'ex.virtual', 'ex.Tipo_orden', 'ex.Tipo_servicio',
                 'ex.NOMBRECLIENTE', 'ex.DIRECCION', 'ex.FECHAINSTALACION', 'ex.OBS',
                 'ex.firma_cliente', 'ex.SIGLASCENTRAL', 'ex.AREA',
-                't.nombre as tecnico_nombre', 't.codigo as tecnico_codigo'
+                't.nombre as tecnico_nombre', 't.codigo as tecnico_codigo',
+                'u.firma as firma_usuario' // Extraemos la firma del usuario técnico
             ])
             ->get();
 
@@ -493,7 +494,6 @@ class ReporteOrdenesFirmadasController extends Controller
 
         $expedientesIds = $expedientesRaw->pluck('id')->toArray();
         $nombreBucket = 'sistema-pv-imagenes-tienda';
-
         // 4. Extraer movimientos haciendo LEFT JOIN con arbolmaterial mediante fkTecnologiaarbol
         $todosMateriales = DB::table('movimientomateriales as mm')
             ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
@@ -512,7 +512,6 @@ class ReporteOrdenesFirmadasController extends Controller
         $materialesPorTecnologia = $todosMateriales->groupBy(function($item) {
             return empty($item->TecnologiaCatalogo) ? 'OTRAS_TECNOLOGIAS' : $item->TecnologiaCatalogo;
         });
-
         foreach ($materialesPorTecnologia as $nombreTecnologia => $materialesTec) {
             // Obtener qué IDs de expedientes tienen movimientos asignados a ESTA tecnología
             $idsDeEstaTecnologia = $materialesTec->pluck('fkExpediente')->unique()->toArray();
@@ -522,7 +521,7 @@ class ReporteOrdenesFirmadasController extends Controller
                 continue;
             }
 
-            // Separar insumos físicos de Mano de Obra
+            // Separar insumos físicos de Mano de Obra (Tus condiciones originales estables)
             $materialesFisicosTec = $materialesTec->where('CATEGORIA', '!=', 'MANO DE OBRA');
             $manoObraTec = $materialesTec->where('CATEGORIA', '==', 'MANO DE OBRA');
 
@@ -557,7 +556,7 @@ class ReporteOrdenesFirmadasController extends Controller
                 ];
             }
 
-            // Procesar los expedientes e inyectar firmas digitales de GCS
+            // Procesar los expedientes e inyectar firmas digitales de GCS y base de datos
             $expedientesProcesados = [];
             foreach ($listaExpedientes as $exp) {
                 $firmaBase64 = null;
@@ -581,6 +580,14 @@ class ReporteOrdenesFirmadasController extends Controller
                     }
                 }
 
+                // Dar formato e inyectar prefijo Base64 a la firma del usuario técnico si viene limpia
+                $firmaTecnicoUserBase64 = null;
+                if (!empty($exp->firma_usuario)) {
+                    $firmaLimpia = trim($exp->firma_usuario);
+                    $firmaTecnicoUserBase64 = str_starts_with($firmaLimpia, 'data:image') ? $firmaLimpia : 'data:image/png;base64,' . $firmaLimpia;
+                }
+
+                // Resguardamos tus mapeos exactos inyectando la nueva llave al final
                 $expedientesProcesados[] = [
                     'id' => $exp->id,
                     'Orden' => $exp->Orden,
@@ -592,7 +599,8 @@ class ReporteOrdenesFirmadasController extends Controller
                     'FECHAINSTALACION' => $exp->FECHAINSTALACION ? Carbon::parse($exp->FECHAINSTALACION)->format('d/m/Y H:i') : 'N/A',
                     'tecnico_nombre' => $exp->tecnico_nombre,
                     'tecnico_codigo' => $exp->tecnico_codigo,
-                    'firma_base64' => $firmaBase64,
+                    'firma_base64' => $firmaBase64, // Firma de tu cliente estable original
+                    'firma_tecnico_user' => $firmaTecnicoUserBase64, // Nueva firma del usuario/técnico
                     'materiales' => $materialesFisicosTec->where('fkExpediente', $exp->id)
                 ];
             }
@@ -607,20 +615,55 @@ class ReporteOrdenesFirmadasController extends Controller
                 'expedientes' => $expedientesProcesados
             ];
         }
+        // 🌟 CÁLCULO DINÁMICO DEL RANGO DE FECHAS REALES DE LAS ÓRDENES TRABAJADAS
+        $coleccionFechas = $expedientesRaw->pluck('FECHAINSTALACION')->filter()->map(function($fecha) {
+            return Carbon::parse($fecha);
+        });
 
-        // 6. Configurar y compilar los datos estructurados en DomPDF
+        if ($coleccionFechas->isNotEmpty()) {
+            $fechaMinima = $coleccionFechas->min();
+            $fechaMaxima = $coleccionFechas->max();
+            
+            // Si corresponden al mismo mes y año, se formatea simplificado, si no, completo
+            if ($fechaMinima->format('m-Y') === $fechaMaxima->format('m-Y')) {
+                $meseses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+                $nombreMes = $meseses[$fechaMinima->month - 1];
+                $periodoDinamico = "DEL {$fechaMinima->day} AL {$fechaMaxima->day} DE " . strtoupper($nombreMes) . " DEL " . $fechaMinima->year;
+            } else {
+                $periodoDinamico = "DEL " . $fechaMinima->format('d/m/Y') . " AL " . $fechaMaxima->format('d/m/Y');
+            }
+        } else {
+            $periodoDinamico = "PERIODO DE ÓRDENES PROCESADAS";
+        }
+
+        // 6. Configurar, compilar y descargar los datos estructurados en DomPDF
         $dataReporte = [
             'fecha_reporte' => Carbon::now()->format('d/m/Y'),
-            'periodo_mes' => 'DEL 01 AL 31 DE MAYO del 2026',
-            'logo_tienda' => $logoBase64Completo,
+            'representante' => $tienda->representante ?? 'Distribuidor Autorizado',
+            'periodo_mes'   => $periodoDinamico, // Inyección dinámica del rango de fechas reales
+            'logo_tienda'   => $logoBase64Completo,
+            'firma_representante' => $tienda->firma_representante ? 'data:image/png;base64,' . trim($tienda->firma_representante) : null,
             'nombre_tienda' => $tienda->Nombre ?? 'Distribuidor Autorizado',
-            'tecnologias' => $tecnologiasAgrupadas
+            'tecnologias'   => $tecnologiasAgrupadas
         ];
 
-        $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte);
-        $pdf->setPaper('letter', 'portrait'); 
+        try {
+            $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
+                ->setPaper('letter', 'portrait')
+                ->setOptions([
+                    'isRemoteEnabled' => true,      
+                    'isHtml5ParserEnabled' => true  
+                ]);
 
-        return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
+            return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
+
+        } catch (\Exception $e) {
+            \Log::error('Fallo controlado al compilar binario masivo DomPDF: ' . $e->getMessage(), [
+                'linea' => $e->getLine()
+            ]);
+
+            return back()->with('error', 'El reporte se procesó con éxito pero falló la descarga del PDF: ' . $e->getMessage());
+        }
     }
 
 }

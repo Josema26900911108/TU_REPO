@@ -234,6 +234,45 @@ if ($request->hasFile('image')) {
     return redirect()->route('users.index')->with('success','Usuario editado correctamente');
 }
 
+public function guardarFirmaUsuario(Request $request)
+{
+    try {
+        // 1. Validar que se reciba un ID de usuario existente y la firma
+        $request->validate([
+            'id' => 'required|exists:users,id',
+            'firma_base64' => 'required'
+        ]);
+
+        // 2. Buscar el registro del usuario en la base de datos local
+        $usuario = \App\Models\User::findOrFail($request->input('id'));
+
+        if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
+            $image_data = $request->input('firma_base64');
+            
+            // 3. Separar y aislar la cadena Base64 pura (eliminando el encabezado "data:image/...")
+            $image_split = explode(',', $image_data);
+            
+            // Si el JavaScript envía el prefijo, tomamos solo el contenido; si no, lo dejamos intacto
+            $firmaLimpia = isset($image_split[1]) ? trim($image_split[1]) : trim($image_data);
+
+            // 4. Actualizar directamente el campo de texto en la tabla local
+            $usuario->firma = $firmaLimpia;
+            $usuario->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Firma del usuario guardada en base de datos local con éxito.'
+            ]);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'No se recibieron datos de la firma.'], 400);
+
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+}
+
+
 
     /**
      * Remove the specified resource from storage.

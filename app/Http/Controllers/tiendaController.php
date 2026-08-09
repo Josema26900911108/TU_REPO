@@ -84,6 +84,51 @@ public function index()
     return view('tienda.index', compact('tiendas'));
 }
 
+public function guardarFirmaTienda(Request $request)
+{
+    try {
+        // 1. Validar que se reciba el ID correcto de la tienda y la firma
+        $request->validate([
+            'idTienda' => 'required|exists:tienda,idTienda',
+            'firma_base64' => 'required'
+        ]);
+
+        // 2. Buscar el registro de la tienda por su clave primaria exacta
+        $tienda = \Illuminate\Support\Facades\DB::table('tienda')
+            ->where('idTienda', $request->input('idTienda'))
+            ->first();
+
+        if (!$tienda) {
+            return response()->json(['status' => 'error', 'message' => 'La tienda especificada no existe.'], 404);
+        }
+
+        if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
+            $image_data = $request->input('firma_base64');
+            
+            // 3. Limpiar y sanitizar la cadena Base64 que viene del frontend
+            $image_split = explode(',', $image_data);
+            $firmaLimpia = isset($image_split[1]) ? trim($image_split[1]) : trim($image_data);
+
+            // 4. Ejecutar la actualización en la tabla local mediante Query Builder
+            \Illuminate\Support\Facades\DB::table('tienda')
+                ->where('idTienda', $request->input('idTienda'))
+                ->update([
+                    'firma_representante' => $firmaLimpia,
+                    'updated_at' => \Carbon\Carbon::now()
+                ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Firma del representante de la tienda actualizada con éxito.'
+            ]);
+        }
+
+        return response()->json(['status' => 'error', 'message' => 'No se recibieron datos de la firma.'], 400);
+
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+}
 
     /**
      * Show the form for creating a new resource.
@@ -364,14 +409,15 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
     //return view('tienda.editfactura', compact('desings','tienda','plantilla','fkTienda'))->with('success', 'Se guarda plantilla existosamente.');
 }
 
-  public function update(Request $request, Tienda $tienda)
+public function update(Request $request, Tienda $tienda)
 {
     if (!Auth::check()) {
         return redirect()->route('login');
     }
 
     $request->validate([
-        'Nombre' => 'max:150'
+        'Nombre' => 'max:150',
+        'firma_base64' => 'nullable' // Añadimos la regla de validación para la firma
     ], [
         'Nombre.max' => 'El nombre de la tienda es muy largo.'
     ]);
@@ -394,7 +440,20 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
             $data['logo'] = base64_encode(file_get_contents($image->path()));
         }
 
-        // 3. Ejecutamos la actualización con el array dinámico
+        // 3. 🌟 SECCIÓN ADAPTADA: Procesar y limpiar la firma digital del representante
+        if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
+            $firmaRaw = $request->input('firma_base64');
+            
+            // Si el string contiene la cabecera del Canvas, la removemos
+            if (str_contains($firmaRaw, ',')) {
+                $parts = explode(',', $firmaRaw);
+                $data['firma_representante'] = trim($parts[1]); // Guardamos estrictamente el Base64 puro
+            } else {
+                $data['firma_representante'] = trim($firmaRaw);
+            }
+        }
+
+        // 4. Ejecutamos la actualización con el array dinámico consolidado
         $tienda->update($data);
 
         DB::commit();
@@ -402,11 +461,9 @@ $plantilla = plantillahtml::where('id', $tienda['disdoc'])
 
     } catch (Exception $e) {
         DB::rollBack();
-        // Es mejor usar logs en producción, pero para debug:
         return back()->withErrors(['error' => 'Error al actualizar: ' . $e->getMessage()]);
     }
 }
-
 
     /**
      * Remove the specified resource from storage.

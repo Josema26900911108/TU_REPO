@@ -91,9 +91,11 @@
             background-color: #fafafa;
             margin-bottom: 12px;
             padding: 6px;
+            border-collapse: collapse;
+            font-size: 11px;
         }
         .info-box td {
-            padding: 3px 6px;
+            padding: 4px 6px;
             border: none;
         }
 
@@ -117,12 +119,11 @@
             font-size: 10px;
         }
         .img-firma {
-            max-height: 150px; /* 🌟 Triplicado: Antes 55px */
-            max-width: 320px;  /* 🌟 Expandido para firmas extendidas: Antes 170px */
-            display: block;
-            margin: 0 auto -5px auto;
+            max-height: 100px;
+            max-width: 200px;
+            display: inline-block;
+            vertical-align: bottom;
         }
-
     </style>
 </head>
 <body>
@@ -134,8 +135,8 @@
         <table class="header-table" style="margin-bottom: 5px; width: 100%;">
             <tr>
                 <td style="width: 40%; vertical-align: middle; border: none;">
-                    @if(!empty($logo_tienda ))
-                        <img src="{{ $logo_tienda  }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
+                    @if(!empty($logo_tienda))
+                        <img src="{{ $logo_tienda }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
                     @else
                         <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
                     @endif
@@ -145,7 +146,6 @@
                 </td>
             </tr>
         </table>
-
 
         <p style="text-align: right; font-weight: bold; margin-bottom: 25px;">Quetzaltenango, {{ $fecha_reporte }}.</p>
 
@@ -183,16 +183,22 @@
             trámites de facturación correspondientes.
         </p>
 
-        <div style="margin-top: 50px; width: 260px; text-align: center;">
-            <p style="margin-bottom: 45px;">Atentamente:</p>
+        <div style="margin-top: 50px; width: 260px; text-align: center; page-break-inside: avoid;">
+            <p style="margin-bottom: 5px;">Atentamente:</p>
+            
+            @if(!empty($firma_representante))
+                <img src="{{ $firma_representante }}" style="height: 60px; width: auto; display: block; margin: 0 auto -10px auto;" alt="Firma Representante">
+            @else
+                <div style="height: 50px;"></div> 
+            @endif
+
             <div style="border-top: 1px solid #333; padding-top: 5px; font-weight: bold; line-height: 1.3;">
-                Carlos Enrique López Camposeco<br>
-                <span style="font-weight: normal; color:#666; font-size: 10px;">Gerente General<br>{{ $nombre_tienda }}</span>
+                {{ $representante }}<br>
+                <span style="font-weight: normal; color:#666; font-size: 10px;">Representante Legal<br>{{ $nombre_tienda }}</span>
             </div>
         </div>
 
         <div class="page-break"></div>
-
         <!-- ================================================================= -->
         <!-- SECCIÓN: REPORTE GENERAL DE MATERIALES (POR TECNOLOGÍA)           -->
         <!-- ================================================================= -->
@@ -274,59 +280,6 @@
         </table>
 
         <div class="page-break"></div>
-
-
-
-        <!-- ================================================================= -->
-        <!-- SECCIÓN: CUADRO DE COSTOS FINANCIERO (POR TECNOLOGÍA)             -->
-        <!-- ================================================================= -->
-        <div class="title-section" style="color: #cc0000;">Cuadro de Costos de Instalación - {{ $tec['nombre'] }}</div>
-        <p style="text-align: center; margin-top: -10px; color: #555;">REGIÓN: OCCIDENTE | LIQUIDACIÓN DE MANO DE OBRA</p>
-
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th style="width: 5%; background-color: #d0e1f9; text-align: center;">No</th>
-                    <th style="width: 45%; background-color: #d0e1f9;">DESCRIPCIÓN DE MANO DE OBRA</th>
-                    <th style="width: 10%; background-color: #d0e1f9; text-align: center;">UNIDAD</th>
-                    <th style="width: 12%; background-color: #d0e1f9; text-align: center;">CANTIDAD</th>
-                    <th style="width: 13%; background-color: #d0e1f9; text-align: right;">PRECIO U.</th>
-                    <th style="width: 15%; background-color: #d0e1f9; text-align: right;">TOTAL COBRO</th>
-                </tr>
-            </thead>
-            <tbody>
-                @php $numCo = 1; @endphp
-                @foreach($tec['resumenManoObra'] as $cobro)
-                    <tr>
-                        <td style="text-align: center;">{{ $numCo++ }}</td>
-                        <td>{{ $cobro['descripcion'] }}</td>
-                        <td style="text-align: center;">{{ $cobro['unidad'] }}</td>
-                        <td style="text-align: center; font-weight: bold;">{{ $cobro['cantidad'] }}</td>
-                        <td style="text-align: right;">Q {{ number_format($cobro['precio'], 2) }}</td>
-                        <td style="text-align: right; font-weight: bold;">Q {{ number_format($cobro['total'], 2) }}</td>
-                    </tr>
-                @endforeach
-                
-                <tr>
-                    <td colspan="4" style="border: none;"></td>
-                    <td style="font-weight: bold; text-align: right; background-color: #fcfcfc;">TOTAL M.O.</td>
-                    <td style="text-align: right; font-weight: bold; background-color: #fcfcfc;">Q {{ number_format($tec['totalManoObra'], 2) }}</td>
-                </tr>
-                <tr>
-                    <td colspan="4" style="border: none;"></td>
-                    <td style="font-weight: bold; text-align: right; background-color: #fcfcfc;">IVA (12%)</td>
-                    <td style="text-align: right; font-weight: bold; background-color: #fcfcfc;">Q {{ number_format($tec['iva'], 2) }}</td>
-                </tr>
-                <tr style="font-size: 11px;">
-                    <td colspan="4" style="border: none;"></td>
-                    <td style="font-weight: bold; text-align: right; background-color: #e6f4ea; color: #137333;">TOTAL CON IVA</td>
-                    <td style="text-align: right; font-weight: bold; background-color: #e6f4ea; color: #137333;">Q {{ number_format($tec['totalConIva'], 2) }}</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="page-break"></div>
-
         <!-- ================================================================= -->
         <!-- SECCIÓN: ORDENES DE SERVICIO INDIVIDUALES LIQUIDADAS              -->
         <!-- ================================================================= -->
@@ -334,11 +287,11 @@
             <table class="header-table" style="margin-bottom: 5px; width: 100%;">
                 <tr>
                     <td style="width: 40%; vertical-align: middle; border: none;">
-                    @if(!empty($logo_tienda ))
-                        <img src="{{ $logo_tienda  }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
-                    @else
-                        <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
-                    @endif
+                        @if(!empty($logo_tienda))
+                            <img src="{{ $logo_tienda }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
+                        @else
+                            <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
+                        @endif
                     </td>
                     <td style="text-align: right; font-weight: bold; font-size: 11px; color: #444; width: 60%; vertical-align: middle; border: none;">
                         ORDEN DE SERVICIO INDIVIDUAL ({{ strtoupper($tec['nombre']) }})
@@ -410,25 +363,49 @@
                 NOTA: HAGO CONSTAR QUE EL DÍA DE HOY SE INSTALÓ EN MI DOMICILIO EL SERVICIO ESPECIFICADO DE MANERA CORRECTA, QUEDANDO TOTALMENTE SATISFECHO CON LOS MATERIALES Y EL TRABAJO REALIZADO POR EL PERSONAL TÉCNICO AUTORIZADO.
             </p>
 
-            <table class="signature-table">
-                <tr>
-                    <td>
-                        <div style="height: 140px;"></div>
-                        <div class="signature-line">Firma del Técnico</div>
-                        <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['tecnico_nombre'] }}</div>
-                    </td>
-                    <td style="width: 10%;"></td>
-                    <td>
-                        @if($exp['firma_base64'])
-                            <img src="{{ $exp['firma_base64'] }}" class="img-firma" alt="Firma Cliente">
-                        @else
-                            <div style="height: 140px; color: #bbb; font-size: 9px; padding-top: 60px; font-weight: bold;">FIRMA NO DIGITALIZADA</div>
-                        @endif
-                        <div class="signature-line">Firma y Aceptación del Cliente</div>
-                        <div style="font-size: 9px; color: #666; margin-top: 2px;">{{ $exp['NOMBRECLIENTE'] }}</div>
-                    </td>
-                </tr>
-            </table>
+            <!-- Bloque de firmas protegido contra divisiones -->
+            <div style="page-break-inside: avoid; margin-top: 30px; width: 100%;">
+                <table style="width: 100%; border-collapse: collapse; text-align: center;">
+                    <tr>
+                        <!-- COLUMNA TÉCNICO Sincronizada con $exp -->
+                        <td style="width: 45%; vertical-align: bottom; padding: 10px;">
+                            <div style="height: 110px; width: 100%; border-bottom: 1px solid #000000; text-align: center;">
+                                @if(!empty($exp['firma_tecnico_user']))
+                                    <img class="img-firma" src="{{ $exp['firma_tecnico_user'] }}" alt="Firma Técnico">
+                                @else
+                                    <div style="padding-top: 50px; color: #888888; font-size: 11px; font-style: italic;">Firma Digitalizada</div>
+                                @endif
+                            </div>
+                            <div style="margin-top: 8px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
+                                {{ $exp['tecnico_nombre'] ?? 'TÉCNICO ASIGNADO' }}
+                            </div>
+                            <div style="font-size: 10px; color: #555555;">
+                                Código: {{ $exp['tecnico_codigo'] ?? 'N/A' }}
+                            </div>
+                        </td>
+
+                        <!-- ESPACIADOR -->
+                        <td style="width: 10%;"></td>
+
+                        <!-- COLUMNA CLIENTE Sincronizada con $exp -->
+                        <td style="width: 45%; vertical-align: bottom; padding: 10px;">
+                            <div style="height: 110px; width: 100%; border-bottom: 1px solid #000000; text-align: center;">
+                                @if(!empty($exp['firma_base64']))
+                                    <img class="img-firma" src="{{ $exp['firma_base64'] }}" alt="Firma Cliente">
+                                @else
+                                    <div style="padding-top: 50px; color: #aaaaaa; font-size: 11px; font-style: italic;">
+                                        Sin firma registrada
+                                    </div>
+                                @endif
+                            </div>
+                            <div style="margin-top: 8px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
+                                {{ $exp['NOMBRECLIENTE'] ?? 'FIRMA DEL CLIENTE' }}
+                            </div>
+                            <div style="font-size: 10px; color: #555555;">Cliente / Receptor</div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
 
             @if(!$loop->last || !$loop->parent->last)
                 <div class="page-break"></div>

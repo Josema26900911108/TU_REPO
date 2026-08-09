@@ -683,6 +683,22 @@ Route::get('clientes/lista', [clienteController::class, 'listaClientes'])
 
 Route::resource('userstore', usuariotiendaController::class);
 
+use App\Http\Controllers\TuControladorName; // ⚠️ Reemplaza por el nombre real de tu controlador
+
+// Grupo de rutas para la gestión y actualización de firmas locales (Base64)
+Route::prefix('firmas')->name('firmas.')->group(function () {
+    
+    // Ruta para actualizar la firma del usuario (Tabla: users)
+    Route::post('/usuario', [UserController::class, 'guardarFirmaUsuario'])
+        ->name('usuario');
+        
+    // Ruta para actualizar la firma del representante (Tabla: tienda)
+    Route::post('/tienda', [TiendaController::class, 'guardarFirmaTienda'])
+        ->name('tienda');
+});
+
+
+
 Route::post('/tiendas', [userController::class, 'getTiendasByEmail'])->middleware('web');
 
 Route::get('/test-notification', function () {
