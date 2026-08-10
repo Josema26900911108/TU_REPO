@@ -118,12 +118,19 @@
             font-weight: bold;
             font-size: 10px;
         }
+
         .img-firma {
-            max-height: 100px;
-            max-width: 200px;
-            display: inline-block;
-            vertical-align: bottom;
-        }
+    max-height: 190px;
+    max-width: 290px;
+    /* 🌟 Cambiamos a block para eliminar el espacio de línea base que deja el inline-block */
+    display: block; 
+    /* 🌟 Centra la firma horizontalmente */
+    margin: 0 auto; 
+    /* 🌟 Margen negativo para jalar la firma visualmente hacia abajo (ajusta el número si es necesario) */
+    margin-bottom: -5px; 
+}
+
+
     </style>
 </head>
 <body>
@@ -183,20 +190,22 @@
             trámites de facturación correspondientes.
         </p>
 
-        <div style="margin-top: 50px; width: 260px; text-align: center; page-break-inside: avoid;">
-            <p style="margin-bottom: 5px;">Atentamente:</p>
-            
-            @if(!empty($firma_representante))
-                <img src="{{ $firma_representante }}" style="height: 60px; width: auto; display: block; margin: 0 auto -10px auto;" alt="Firma Representante">
-            @else
-                <div style="height: 50px;"></div> 
-            @endif
+<div style="margin-top: 50px; width: 260px; text-align: center; page-break-inside: avoid;">
+    <p style="margin-bottom: 5px;">Atentamente:</p>
+    
+    @if(!empty($firma_representante))
+        <!-- 🌟 SOLUCIÓN: Agregamos un margen superior de 40px para empujarla hacia abajo y un margen inferior negativo agresivo de -35px para absorber todo el espacio transparente y pegarla a la línea -->
+        <img src="{{ $firma_representante }}" class="img-firma" style="display: block; margin: 30px auto -40px auto; padding: 0;" alt="Firma Representante">
+    @else
+        <div style="height: 50px;"></div> 
+    @endif
 
-            <div style="border-top: 1px solid #333; padding-top: 5px; font-weight: bold; line-height: 1.3;">
-                {{ $representante }}<br>
-                <span style="font-weight: normal; color:#666; font-size: 10px;">Representante Legal<br>{{ $nombre_tienda }}</span>
-            </div>
-        </div>
+    <div style="border-top: 1px solid #333; padding-top: 5px; font-weight: bold; line-height: 1.3;">
+        {{ $representante }}<br>
+        <span style="font-weight: normal; color:#666; font-size: 10px;">Representante Legal<br>{{ $nombre_tienda }}</span>
+    </div>
+</div>
+
 
         <div class="page-break"></div>
         <!-- ================================================================= -->
@@ -363,49 +372,62 @@
                 NOTA: HAGO CONSTAR QUE EL DÍA DE HOY SE INSTALÓ EN MI DOMICILIO EL SERVICIO ESPECIFICADO DE MANERA CORRECTA, QUEDANDO TOTALMENTE SATISFECHO CON LOS MATERIALES Y EL TRABAJO REALIZADO POR EL PERSONAL TÉCNICO AUTORIZADO.
             </p>
 
-            <!-- Bloque de firmas protegido contra divisiones -->
-            <div style="page-break-inside: avoid; margin-top: 30px; width: 100%;">
-                <table style="width: 100%; border-collapse: collapse; text-align: center;">
-                    <tr>
-                        <!-- COLUMNA TÉCNICO Sincronizada con $exp -->
-                        <td style="width: 45%; vertical-align: bottom; padding: 10px;">
-                            <div style="height: 110px; width: 100%; border-bottom: 1px solid #000000; text-align: center;">
-                                @if(!empty($exp['firma_tecnico_user']))
-                                    <img class="img-firma" src="{{ $exp['firma_tecnico_user'] }}" alt="Firma Técnico">
-                                @else
-                                    <div style="padding-top: 50px; color: #888888; font-size: 11px; font-style: italic;">Firma Digitalizada</div>
-                                @endif
-                            </div>
-                            <div style="margin-top: 8px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
-                                {{ $exp['tecnico_nombre'] ?? 'TÉCNICO ASIGNADO' }}
-                            </div>
-                            <div style="font-size: 10px; color: #555555;">
-                                Código: {{ $exp['tecnico_codigo'] ?? 'N/A' }}
-                            </div>
-                        </td>
-
-                        <!-- ESPACIADOR -->
-                        <td style="width: 10%;"></td>
-
-                        <!-- COLUMNA CLIENTE Sincronizada con $exp -->
-                        <td style="width: 45%; vertical-align: bottom; padding: 10px;">
-                            <div style="height: 110px; width: 100%; border-bottom: 1px solid #000000; text-align: center;">
-                                @if(!empty($exp['firma_base64']))
-                                    <img class="img-firma" src="{{ $exp['firma_base64'] }}" alt="Firma Cliente">
-                                @else
-                                    <div style="padding-top: 50px; color: #aaaaaa; font-size: 11px; font-style: italic;">
-                                        Sin firma registrada
-                                    </div>
-                                @endif
-                            </div>
-                            <div style="margin-top: 8px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
-                                {{ $exp['NOMBRECLIENTE'] ?? 'FIRMA DEL CLIENTE' }}
-                            </div>
-                            <div style="font-size: 10px; color: #555555;">Cliente / Receptor</div>
-                        </td>
-                    </tr>
-                </table>
+<!-- Bloque de firmas protegido contra divisiones -->
+<div style="page-break-inside: avoid; margin-top: 30px; width: 100%;">
+    <table style="width: 100%; border-collapse: collapse; text-align: center;">
+        <tr>
+            <!-- COLUMNA TÉCNICO Sincronizada con $exp -->
+<td style="width: 45%; vertical-align: bottom; padding: 10px;">
+    <!-- 🌟 Añadimos flexbox para empujar todo el contenido hacia abajo de forma estricta -->
+    <div style="height: 110px; width: 100%; border-bottom: 1px solid #000000; display: flex; align-items: flex-end; justify-content: center;">
+        @if(!empty($exp['firma_tecnico_user']))
+            <img class="img-firma" src="{{ $exp['firma_tecnico_user'] }}" alt="Firma Técnico">
+        @else
+            <div style="padding-bottom: 10px; color: #888888; font-size: 11px; font-style: italic; width: 100%; text-align: center;">
+                Firma Digitalizada
             </div>
+        @endif
+    </div>
+    <div style="margin-top: 8px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
+        {{ $exp['tecnico_nombre'] ?? 'TÉCNICO ASIGNADO' }}
+    </div>
+    <div style="font-size: 10px; color: #555555;">
+        Código: {{ $exp['tecnico_codigo'] ?? 'N/A' }}
+    </div>
+</td>
+
+
+ 
+<td style="width: 45%; vertical-align: bottom; padding: 10px;">
+    
+    <!-- 1. CONTENEDOR DE LA FIRMA (Aquí se define la altura y la línea inferior) -->
+    <!-- 🌟 Quitamos los estilos de tabla simulada y dejamos un contenedor alto que empuja su contenido al fondo -->
+    <div style="height: 180px; width: 100%; border-bottom: 1px solid #000000; text-align: center; line-height: 0; font-size: 0;">
+        @if(!empty($exp['firma_base64']))
+            <!-- 🌟 display: inline-block y vertical-align: bottom aseguran que se pegue a la línea de abajo sin romper dompdf -->
+            <img class="img-firma" src="{{ $exp['firma_base64'] }}" alt="Firma Cliente" style="display: inline-block; vertical-align: bottom; max-height: 170px; max-width: 100%; margin: 0 auto; padding: 0;">
+        @else
+            <!-- 🌟 Si no hay firma, el texto se muestra con line-height normal para que sea legible -->
+            <div style="line-height: normal; font-size: 11px; color: #aaaaaa; font-style: italic; padding-top: 140px;">
+                Sin firma registrada
+            </div>
+        @endif
+    </div>                
+
+    <!-- 2. BLOQUE DE TEXTO (Queda perfectamente fuera de la línea negra, justo abajo) -->
+    <div style="margin-top: 8px; text-align: center; font-size: 11px; line-height: 1.3;">
+        <div style="font-weight: bold; text-transform: uppercase;">
+            {{ $exp['NOMBRECLIENTE'] ?? 'FIRMA DEL CLIENTE' }}
+        </div>
+        <div style="font-size: 10px; color: #555555;">Cliente / Receptor</div>
+    </div>
+
+</td>
+
+
+        </tr>
+    </table>
+</div>
 
             @if(!$loop->last || !$loop->parent->last)
                 <div class="page-break"></div>

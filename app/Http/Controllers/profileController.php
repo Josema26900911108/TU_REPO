@@ -10,6 +10,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver; // O Drivers\Imagick\Driver si usas Imagick
+use Intervention\Image\Encoders\WebpEncoder;
 
 class profileController extends Controller
 {
@@ -100,20 +103,52 @@ public function update(Request $request, User $profile)
     }
 
     /* 2. Procesar y limpiar la firma digital en Base64 */
-    if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
-        $firmaRaw = $request->input('firma_base64');
-        
-        // Si el string contiene la cabecera "data:image/png;base64,", la cortamos
-        if (str_contains($firmaRaw, ',')) {
-            $parts = explode(',', $firmaRaw);
-            $data['firma'] = trim($parts[1]); // Guardamos estrictamente el código Base64 puro
-        } else {
-            $data['firma'] = trim($firmaRaw);
-        }
-    }
+        // Inicializamos el gestor de Intervention Image V3
+        $manager = new ImageManager(new Driver());
 
-    // 3. Excluir el campo temporal "firma_base64" para que no choque con las columnas de SQL
-    $data = Arr::except($data, array('firma_base64'));
+        // 2. ⚡ REDUCIR Y COMPRIMIR EL LOGO (IMAGEN)
+        if ($request->hasFile('firma_base64') && $request->file('firma_base64')->isValid()) {
+            $imageFile = $request->file('firma_base64');
+            
+            // Leemos la imagen subida, la redimensionamos manteniendo el aspecto
+            $logoProcesado = $manager->read($imageFile->path())
+                                     ->resize(800, 800, function ($constraint) {
+                                         $constraint->aspectRatio();
+                                         $constraint->upsize();
+                                     });
+
+            // La codificamos en formato WebP con calidad optimizada (70)
+            $encodedLogo = $logoProcesado->encode(new WebpEncoder(quality: 70));
+
+            // Guardamos el Base64 ultraligero resultante
+            $data['logo'] = base64_encode($encodedLogo->toString());
+        }
+
+        // 3. ⚡ REDUCIR Y COMPRIMIR LA FIRMA DIGITAL
+        if ($request->has('firma_base64') && !empty($request->input('firma_base64'))) {
+            $firmaRaw = $request->input('firma_base64');
+            
+            // Limpiamos la cabecera del Canvas para obtener el binario puro
+            if (str_contains($firmaRaw, ',')) {
+                $parts = explode(',', $firmaRaw);
+                $firmaBinaria = base64_decode($parts[1]); 
+            } else {
+                $firmaBinaria = base64_decode($firmaRaw);
+            }
+
+            // Leemos los datos binarios de la firma en memoria
+            $firmaProcesada = $manager->read($firmaBinaria)
+                                       ->resize(600, 600, function ($constraint) {
+                                           $constraint->aspectRatio();
+                                           $constraint->upsize();
+                                       });
+
+            // Codificamos la firma en WebP (ideal para trazos monocromáticos, pesa poquísimo)
+            $encodedFirma = $firmaProcesada->encode(new WebpEncoder(quality: 60));
+
+            // Guardamos el Base64 de la firma optimizada
+            $data['firma'] = base64_encode($encodedFirma->toString());
+        }
 
     // 4. Actualizar el perfil del usuario de forma masiva y segura
     $profile->update($data);
