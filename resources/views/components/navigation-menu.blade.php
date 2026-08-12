@@ -329,7 +329,7 @@
                 </a>
                 @endcan
 
-                @can('ver-tecnico')
+                @can('buckets-tecnicos')
                 <a class="nav-link" href="{{ route('tecnico.lista') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-vcard"></i></div>
                     Tecnico/Piloto
