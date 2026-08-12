@@ -329,7 +329,7 @@
                 </a>
                 @endcan
 
-                @can('buckets-tecnicos')
+                @can('ver-tecnico')
                 <a class="nav-link" href="{{ route('tecnico.lista') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-vcard"></i></div>
                     Tecnico/Piloto
@@ -344,7 +344,7 @@
                 @endcan
 
 
-                @can('ver-tecnico')
+                @can('buckets-tecnicos')
                 <a class="nav-link" href="{{ route('tecnico.buckettecnico') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-vcard"></i></div>
                     Bucket Tecnico/Piloto
