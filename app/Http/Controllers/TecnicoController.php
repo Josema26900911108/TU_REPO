@@ -3530,13 +3530,18 @@ foreach ($datos as $item) {
     }
 public function importarMAMO(Request $request)
 {
-      DB::connection()->disableQueryLog();
+    DB::connection()->disableQueryLog();
 
     if (!Auth::check()) return redirect()->route('login');
 
     $fkTienda = session('user_fkTienda');
-    $idDestino = $request->input('id'); // Técnico que recibe las órdenes
+    $idDestino = $request->input('id'); // Técnico que recibe las órdenes (Debería pertenecer a la tienda activa)
     $nombreUsuario = session('nombreUsuario');
+
+    // CANDADO 1: Si no hay una tienda válida en la sesión, abortar inmediatamente
+    if (empty($fkTienda)) {
+        return back()->with('error', 'Error de seguridad: No se detectó una tienda activa en tu sesión.');
+    }
 
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
@@ -3550,16 +3555,16 @@ public function importarMAMO(Request $request)
         $fila = 1;
         while (($linea = fgetcsv($file)) !== false) {
             $fila++;
+            
+            if (count($encabezado) !== count($linea)) continue;
             $data = array_combine($encabezado, $linea);
 
-            // 1. VALIDACIÓN DE CAMPOS CRÍTICOS
             if (empty($data['Orden']) || empty($data['virtual'])) continue;
 
             $orden = trim($data['Orden']);
             $virtual = trim($data['virtual']);
             $ahora = now();
 
-            // 2. TRATAMIENTO DE FECHA
             $fechaInst = null;
             if (!empty($data['FECHAINSTALACION'])) {
                 try {
@@ -3569,42 +3574,50 @@ public function importarMAMO(Request $request)
                 }
             }
 
-            // 3. LOGICA DE REASIGNACIÓN (Trazabilidad)
-            // Buscamos si la orden ya existe y está activa con otro técnico
+            // 3. LOGICA DE REASIGNACIÓN (Con triple validación de Tienda)
             $expedientePrevio = DB::table('expedientetecnico')
                 ->where('orden', $orden)
                 ->where('virtual', $virtual)
-                ->where('fkTienda', $fkTienda)
-                ->where('Estatus', '!=', 'RE') // Evitamos los ya procesados
+                ->where('fkTienda', $fkTienda) // Asegura buscar SOLO en la tienda de la sesión (ej: Tienda 7)
+                ->where('Estatus', '!=', 'RE') 
                 ->first();
 
             if ($expedientePrevio) {
-                // Si el técnico es el mismo, solo actualizamos datos y saltamos
+                
+                // CANDADO 2: Si por algún error de base de datos el registro encontrado no coincide con la tienda activa, ignorar update
+                if ($expedientePrevio->fkTienda != $fkTienda) {
+                    continue; 
+                }
+
+                // Si el técnico es el mismo DENTRO DE LA MISMA TIENDA, actualiza estatus
                 if ($expedientePrevio->fkTecnico == $idDestino) {
-                    DB::table('expedientetecnico')->where('id', $expedientePrevio->id)->update([
-                        'status' => $data['Status'] ?? $expedientePrevio->status,
-                        'updated_at' => $ahora
-                    ]);
+                    DB::table('expedientetecnico')
+                        ->where('id', $expedientePrevio->id)
+                        ->where('fkTienda', $fkTienda) // Candado en el WHERE del UPDATE
+                        ->update([
+                            'status' => $data['Status'] ?? $expedientePrevio->status,
+                            'updated_at' => $ahora
+                        ]);
                     continue;
                 }
 
-                // Si es un técnico diferente, "cerramos" el expediente anterior
+                // Si es un técnico diferente DENTRO DE LA MISMA TIENDA, cerramos el previo
                 DB::table('expedientetecnico')
                     ->where('id', $expedientePrevio->id)
+                    ->where('fkTienda', $fkTienda) // Candado en el WHERE del UPDATE
                     ->update([
                         'Estatus' => 'RE',
-                        'obs' => ($expedientePrevio->OBS . " | Reasignada a técnico ID: $idDestino por $nombreUsuario"),
+                        'obs' => (($expedientePrevio->obs ?? '') . " | Reasignada a técnico ID: $idDestino por $nombreUsuario"),
                         'updated_at' => $ahora
                     ]);
             }
 
-            // 4. INSERTAR LA ORDEN PARA EL NUEVO TÉCNICO
-            // Usamos insert para mantener el historial de quién ha tenido la orden
+            // 4. INSERTAR LA ORDEN LIMPIA PARA LA NUEVA TIENDA / TÉCNICO
             DB::table('expedientetecnico')->insert([
                 'orden'            => $orden,
                 'virtual'          => $virtual,
-                'fkTienda'         => $fkTienda,
-                'fkTecnico'        => $idDestino,
+                'fkTienda'         => $fkTienda, // Guarda rigurosamente el ID de la tienda actual (ej: 7)
+                'fkTecnico'        => $idDestino, // ID del técnico de la Tienda 7
                 'status'           => $data['Status'] ?? 'PENDIENTE',
                 'tipo_servicio'    => mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'ISO-8859-1'),
                 'tipo_orden'       => mb_convert_encoding($data['Tipo_orden'] ?? '', 'UTF-8', 'ISO-8859-1'),
@@ -3624,7 +3637,7 @@ public function importarMAMO(Request $request)
 
         fclose($file);
         DB::commit();
-        return back()->with('success', 'Expedientes técnicos procesados y reasignados correctamente.');
+        return back()->with('success', 'Expedientes técnicos procesados y asignados correctamente.');
 
     } catch (\Exception $e) {
         DB::rollBack();
@@ -3633,6 +3646,7 @@ public function importarMAMO(Request $request)
         return back()->with('error', 'Error en fila ' . $fila . ': ' . $e->getMessage());
     }
 }
+
 
 
 public function importarInvTecnico(Request $request)
