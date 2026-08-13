@@ -3528,7 +3528,9 @@ foreach ($datos as $item) {
 
 
     }
-public function importarMAMO(Request $request)
+
+    
+    public function importarMAMO(Request $request)
 {
     DB::connection()->disableQueryLog();
 
@@ -3592,15 +3594,22 @@ public function importarMAMO(Request $request)
                 ->first();
 
             if ($expedientePrevio) {
-                // Si el técnico asignado en el CSV es idéntico al actual en la misma tienda -> SE ACTUALIZA
+                // Si el técnico asignado en el CSV es idéntico al actual en la misma tienda
                 if ((int)$expedientePrevio->fkTecnico === (int)$idDestino) {
+                    
+                    // REGLA DE NEGOCIO: Si ya está en estatus 'C', NO se actualiza nada
+                    if ($expedientePrevio->Estatus === 'C') {
+                        Log::info("Fila $fila: Orden $orden saltada. Ya se encuentra con Estatus 'C'.");
+                        continue; // Salta a la siguiente fila del CSV de inmediato
+                    }
+
                     Log::info("Fila $fila: Actualizando datos de orden existente para el mismo técnico en tienda $fkTienda.");
                     
                     DB::table('expedientetecnico')
                         ->where('id', $expedientePrevio->id)
                         ->update([
-                            'status'           => $data['Status'] ?? $expedientePrevio->status,
-                            'Estatus'          => $data['ESTATUS'] ?? $expedientePrevio->Estatus,
+                            'status'           => $data['status'] ?? $expedientePrevio->status,
+                            'Estatus'          => $data['Estatus'] ?? $expedientePrevio->Estatus,
                             'FECHAINSTALACION' => $fechaInst,
                             'updated_at'       => $ahora
                         ]);
@@ -3627,7 +3636,7 @@ public function importarMAMO(Request $request)
                 'virtual'          => $virtual,
                 'fkTienda'         => $fkTienda,
                 'fkTecnico'        => $idDestino,
-                'status'           => $data['Status'] ?? 'PENDIENTE',
+                'status'           => $data['status'] ?? 'PENDIENTE',
                 'tipo_servicio'    => mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'ISO-8859-1'),
                 'tipo_orden'       => mb_convert_encoding($data['Tipo_orden'] ?? '', 'UTF-8', 'ISO-8859-1'),
                 'nombrecliente'    => mb_convert_encoding($data['NOMBRECLIENTE'] ?? '', 'UTF-8', 'ISO-8859-1'),
@@ -3637,7 +3646,7 @@ public function importarMAMO(Request $request)
                 'area'             => $data['AREA'] ?? '',
                 'FECHAINSTALACION' => $fechaInst,
                 'autoriza'         => $data['AUTORIZA'] ?? '',
-                'Estatus'          => $data['ESTATUS'] ?? 'AC',
+                'Estatus'          => $data['Estatus'] ?? 'AC',
                 'TECNOLOGIA'       => $data['TECNOLOGIA'] ?? '',
                 'created_at'       => $ahora,
                 'updated_at'       => $ahora,
@@ -3657,7 +3666,6 @@ public function importarMAMO(Request $request)
         return back()->with('error', 'Error en fila ' . $fila . ': ' . $e->getMessage());
     }
 }
-
 
 
 

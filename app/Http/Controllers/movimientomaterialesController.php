@@ -351,28 +351,91 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
             $costoFinal = $costoUnidad ? doubleval($costoUnidad->COSTOPAGO) : doubleval($data['COSTO'] ?? 0);
 
             // EJECUCIÓN DEL TRASLADO (HISTORIAL DE SALIDA Y REDUCCIÓN EN ORIGEN)
-            if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
-                \App\Models\MovimientoMateriales::create([
-                    'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoOrigen,
-                    'clase_movimiento' => '311', 'cantidad' => $cantidad * -1,
-                    'referencia' => "SALIDA TRASLADO SERIE: " . $serie . " | AL DESTINO " . $centroDestino,
-                    'tipo_movimiento' => 'TRASPASO_SALIDA', 'documento_material' => $docRef,
-                    'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
-                    'almacen' => $data['ALMACEN'] ?? 'ALMA', 'centro' => $centroOrigen,
-                    'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
-                ]);
+// EJECUCIÓN DEL TRASLADO (HISTORIAL DE SALIDA Y REDUCCIÓN EN ORIGEN)
+if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
+    \App\Models\MovimientoMateriales::create([
+        'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoOrigen,
+        'clase_movimiento' => '311', 'cantidad' => $cantidad * -1,
+        'referencia' => "SALIDA TRASLADO SERIE: " . $serie . " | AL DESTINO " . $centroDestino,
+        'tipo_movimiento' => 'TRASPASO_SALIDA', 'documento_material' => $docRef,
+        'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
+        'almacen' => $data['ALMACEN'] ?? 'ALMA', 'centro' => $centroOrigen,
+        'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
+    ]);
 
-                if (!empty($serie)) {
-                    DB::table('movimientomateriales')
-                        ->where('SKU', $sku)->where('serie', $serie)->where('CENTRO', $centroOrigen)
-                        ->where('fkTienda', $fkTienda)->where('Status', 'I')
-                        ->update(['ESTATUS' => 'TRASLADADO', 'Status' => 'T', 'COSTO' => $costoFinal, 'updated_at' => $ahora]);
-                } else {
-                    DB::table('movimientomateriales')
-                        ->where('SKU', $sku)->where('CENTRO', $centroOrigen)->where('fkTienda', $fkTienda)->where('Status', 'I')
-                        ->update(['cantidad' => DB::raw("cantidad - $cantidad"), 'COSTO' => $costoFinal, 'updated_at' => $ahora]);
-                }
+    if (!empty($serie) && !in_array(trim($serie), ['N/A', '0', '', '-', "'"])) {
+        // CON SERIE REAL: Funciona correctamente cambiando estados del artículo único
+        DB::table('movimientomateriales')
+            ->where('SKU', $sku)->where('serie', $serie)->where('CENTRO', $centroOrigen)
+            ->where('fkTienda', $fkTienda)->where('Status', 'I')
+            ->update(['ESTATUS' => 'TRASLADADO', 'Status' => 'T', 'COSTO' => $costoFinal, 'updated_at' => $ahora]);
+    } else {
+        // SIN SERIE / MISCELÁNEO: Buscamos el registro activo cazando todas las variantes posibles
+        $stockOrigenExistente = DB::table('movimientomateriales')
+            ->where('SKU', $sku)
+            ->where('CENTRO', $centroOrigen)
+            ->where('fkTienda', $fkTienda)
+            ->where('Status', 'I')
+            ->where(function($query) {
+                $query->whereNull('serie')
+                      ->orWhere('serie', '')
+                      ->orWhere('serie', '0')
+                      ->orWhere('serie', '-')
+                      ->orWhere('serie', "'")
+                      ->orWhere('serie', 'N/A')
+                      ->orWhereRaw('TRIM(serie) = ""');
+            })
+            ->first();
+
+        if ($stockOrigenExistente) {
+            $nuevaCantidad = $stockOrigenExistente->cantidad - $cantidad;
+
+            if ($nuevaCantidad <= 0) {
+                DB::table('movimientomateriales')
+                    ->where('id', $stockOrigenExistente->id)
+                    ->update([
+                        'cantidad' => 0,
+                        'ESTATUS' => 'TRASLADADO',
+                        'Status' => 'T',
+                        'COSTO' => $costoFinal,
+                        'updated_at' => $ahora
+                    ]);
+            } else {
+                DB::table('movimientomateriales')
+                    ->where('id', $stockOrigenExistente->id)
+                    ->update([
+                        'cantidad' => $nuevaCantidad,
+                        'COSTO' => $costoFinal,
+                        'updated_at' => $ahora
+                    ]);
             }
+        } else {
+            // PLAN DE CONTINGENCIA ABSOLUTO: Si el filtro de textos extraños falló por milímetros,
+            // tomamos el primer registro activo disponible del técnico para este SKU.
+            $registroEmergencia = DB::table('movimientomateriales')
+                ->where('SKU', $sku)
+                ->where('CENTRO', $centroOrigen)
+                ->where('fkTienda', $fkTienda)
+                ->where('Status', 'I')
+                ->first();
+
+            if ($registroEmergencia) {
+                $nuevaCantidadEmergencia = $registroEmergencia->cantidad - $cantidad;
+                
+                DB::table('movimientomateriales')
+                    ->where('id', $registroEmergencia->id)
+                    ->update([
+                        'cantidad' => $nuevaCantidadEmergencia <= 0 ? 0 : $nuevaCantidadEmergencia,
+                        'ESTATUS'  => $nuevaCantidadEmergencia <= 0 ? 'TRASLADADO' : $registroEmergencia->ESTATUS,
+                        'Status'   => $nuevaCantidadEmergencia <= 0 ? 'T' : 'I',
+                        'COSTO'    => $costoFinal,
+                        'updated_at' => $ahora
+                    ]);
+            }
+        }
+    }
+}
+
 
             // REGISTRO DEL MOVIMIENTO (HISTORIAL DE ENTRADA EN DESTINO)
             \App\Models\MovimientoMateriales::create([
@@ -1692,7 +1755,7 @@ private function evaluarFormula
         $ahora = now();
 
         $items = $request->input('items');
-        $filasRechazadas = [];
+        $filasRechazadas = [];  
         $insertadosContador = 0;
         $instaladosContador = 0;
 
