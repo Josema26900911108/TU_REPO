@@ -350,18 +350,25 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
 
             $costoFinal = $costoUnidad ? doubleval($costoUnidad->COSTOPAGO) : doubleval($data['COSTO'] ?? 0);
 
-            // EJECUCIÓN DEL TRASLADO (HISTORIAL DE SALIDA Y REDUCCIÓN EN ORIGEN)
+            
 // EJECUCIÓN DEL TRASLADO (HISTORIAL DE SALIDA Y REDUCCIÓN EN ORIGEN)
 if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
-    \App\Models\MovimientoMateriales::create([
-        'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoOrigen,
-        'clase_movimiento' => '311', 'cantidad' => $cantidad * -1,
-        'referencia' => "SALIDA TRASLADO SERIE: " . $serie . " | AL DESTINO " . $centroDestino,
-        'tipo_movimiento' => 'TRASPASO_SALIDA', 'documento_material' => $docRef,
-        'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
-        'almacen' => $data['ALMACEN'] ?? 'ALMA', 'centro' => $centroOrigen,
-        'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
-    ]);
+            \App\Models\MovimientoMateriales::create([
+                'fkTienda' => $fkTienda, 
+                'fkMateriales' => $producto->id, 
+                'contrata' => $idTecnicoDestino,
+                'clase_movimiento' => !empty($centroOrigen) ? '252' : '101', 
+                'cantidad' => $cantidad,
+                'referencia' => !empty($centroOrigen) ? "ENTRADA TRASLADO SERIE: " . ($serie ?: 'N/A') . " | ORIGEN: " . $centroOrigen : "INSERCION INICIAL DE STOCK SERIE: " . ($serie ?: 'N/A'),
+                'tipo_movimiento' => !empty($centroOrigen) ? 'TRASPASO_ENTRADA' : 'INSERCION_STOCK', 
+                'documento_material' => $docRef, 
+                'posicion_documento' => '0001', 
+                'fecha_contabilizacion' => $ahora->format('Y-m-d'),
+                'centro' => $centroDestino, 
+                'almacen' => $data['ALMACEN'] ?? 'ALMA', 
+                'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
+            ]);
+
 
     if (!empty($serie) && !in_array(trim($serie), ['N/A', '0', '', '-', "'"])) {
         // CON SERIE REAL: Funciona correctamente cambiando estados del artículo único
@@ -447,32 +454,65 @@ if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
                 'centro' => $centroDestino, 'almacen' => $data['ALMACEN'] ?? 'ALMA', 'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
             ]);
 
-            // INCREMENTAR O REGISTRAR INVENTARIO ACTIVO EN EL DESTINO
+            $esMiscelaneoDestino = empty($serie) || in_array(trim($serie), ['N/A', '0', '-', "'"]);
+
             $stockDestinoExistente = DB::table('movimientomateriales')
-                ->where('SKU', $sku)->where('CENTRO', $centroDestino)
-                ->when(!empty($serie), function($q) use ($serie) { return $q->where('serie', $serie); })
-                ->where('fkTienda', $fkTienda)->where('Status', 'I') 
+                ->where('SKU', $sku)
+                ->where('CENTRO', $centroDestino)
+                ->where('fkTienda', $fkTienda)
+                ->where('Status', 'I') 
+                ->when(!$esMiscelaneoDestino, function($q) use ($serie) { 
+                    return $q->where('serie', $serie); 
+                })
+                ->when($esMiscelaneoDestino, function($q) {
+                    return $q->where(function($sub) {
+                        $sub->whereNull('serie')
+                            ->orWhere('serie', '')
+                            ->orWhere('serie', '0')
+                            ->orWhere('serie', '-')
+                            ->orWhere('serie', "'")
+                            ->orWhere('serie', 'N/A')
+                            ->orWhereRaw('TRIM(serie) = ""');
+                    });
+                })
                 ->first();
 
-            if ($stockDestinoExistente && empty($serie)) {
+            if ($stockDestinoExistente && $esMiscelaneoDestino) {
                 DB::table('movimientomateriales')
                     ->where('id', $stockDestinoExistente->id)
                     ->update([
-                        'cantidad' => $stockDestinoExistente->cantidad + $cantidad, 'COSTO' => $costoFinal,
-                        'Modificado_el' => $ahora->format('Y-m-d'), 'Modificado_por' => $nombreUsuario, 'updated_at' => $ahora
+                        'cantidad' => $stockDestinoExistente->cantidad + $cantidad, 
+                        'COSTO' => $costoFinal,
+                        'Modificado_el' => $ahora->format('Y-m-d'), 
+                        'Modificado_por' => $nombreUsuario, 
+                        'updated_at' => $ahora
                     ]);
             } else {
                 DB::table('movimientomateriales')->insert([
-                    'serie' => $serie, 'SKU' => $sku, 'fkTienda' => $fkTienda, 'fkTecnico' => $idTecnicoDestino, 
-                    'almacen' => $data['ALMACEN'] ?? 'ALMA', 'Lote' => $data['LOTE'] ?? 'A000',
-                    'MAC1' => $data['MAC1'] ?? '', 'MAC2' => $data['MAC2'] ?? '', 'MAC3' => $data['MAC3'] ?? '',
-                    'COSTO' => $costoFinal, 'TIPO' => $costoUnidad->TIPO ?? $data['TIPO'] ?? 'DA',
-                    'ESTATUS' => 'DISPONIBLE', 'Status' => 'I', 'Naturaleza' => 'E', 'CENTRO' => $centroDestino,
-                    'cantidad' => $cantidad, 'unidadmedida' => $costoUnidad->unidadmedida ?? $data['UNIDADMEDIDA'] ?? 'PZ',
+                    'serie' => $serie, 
+                    'SKU' => $sku, 
+                    'fkTienda' => $fkTienda, 
+                    'fkTecnico' => $idTecnicoDestino, 
+                    'almacen' => $data['ALMACEN'] ?? 'ALMA', 
+                    'Lote' => $data['LOTE'] ?? 'A000',
+                    'MAC1' => $data['MAC1'] ?? '', 
+                    'MAC2' => $data['MAC2'] ?? '', 
+                    'MAC3' => $data['MAC3'] ?? '',
+                    'COSTO' => $costoFinal, 
+                    'TIPO' => $costoUnidad->TIPO ?? $data['TIPO'] ?? 'DA',
+                    'ESTATUS' => 'DISPONIBLE', 
+                    'Status' => 'I', 
+                    'Naturaleza' => 'E', 
+                    'CENTRO' => $centroDestino,
+                    'cantidad' => $cantidad, 
+                    'unidadmedida' => $costoUnidad->unidadmedida ?? $data['UNIDADMEDIDA'] ?? 'PZ',
                     'TIPOMOVIMIENTO' => !empty($centroOrigen) ? 'ENTRADA' : 'INSERCION',
-                    'Modificado_el' => $ahora->format('Y-m-d'), 'Modificado_por' => $nombreUsuario,
-                    'Creado_el' => $ahora->format('Y-m-d'), 'Creado_por' => $nombreUsuario,
-                    'created_at' => $ahora, 'updated_at' => $ahora
+                    'Modificado_el' => $ahora->format('Y-m-d'), 
+                    'Modificado_por' => $nombreUsuario,
+                    'Creado_el' => $ahora->format('Y-m-d'), 
+                    'Creado_por' => $nombreUsuario,
+                    'created_at' => $ahora, 
+                    'updated_at' => $ahora
                 ]);
             }
             $contadorLocal++;
@@ -480,6 +520,8 @@ if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
     });
 
     return $contadorLocal;
+
+
 }
 
 
