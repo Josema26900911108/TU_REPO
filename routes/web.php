@@ -122,7 +122,9 @@ Route::get('/privacidad', [LegalController::class, 'privacidad'])->name('legal.p
 Route::get('/terminos-y-condiciones', [LegalController::class, 'terminos'])->name('legal.terminos');
 
 //CENTROS
-Route::post('/centrosstore', [centroController::class, 'store'])->name('centros.store');
+//Route::post('/centrosstore', [centroController::class, 'store'])->name('centros.store');
+Route::post('centrosstore', [centroController::class, 'store'])->name('centros.store_alterno');
+
 Route::get('/centros', [centroController::class, 'index'])->name('centro.index');
 Route::get('/panelcentros', [centroController::class, 'index'])->name('centros.index');
 
