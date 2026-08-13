@@ -3583,25 +3583,29 @@ public function importarMAMO(Request $request)
                 }
             }
 
-            // 3. LOGICA DE REASIGNACIÓN (Filtrada estrictamente por la tienda actual)
+            // 3. LOGICA DE REASIGNACIÓN Y ACTUALIZACIÓN (Filtrada por la tienda actual)
             $expedientePrevio = DB::table('expedientetecnico')
                 ->where('orden', $orden)
                 ->where('virtual', $virtual)
-                ->where('fkTienda', $fkTienda) // Solo busca si existe en la TIENDA ACTUAL (ej: Tienda 7)
+                ->where('fkTienda', $fkTienda) // Solo busca en la TIENDA ACTUAL
                 ->where('Estatus', '!=', 'RE') 
                 ->first();
 
             if ($expedientePrevio) {
-                // Si el técnico asignado en el CSV/Formulario es idéntico al actual en la misma tienda
+                // Si el técnico asignado en el CSV es idéntico al actual en la misma tienda -> SE ACTUALIZA
                 if ((int)$expedientePrevio->fkTecnico === (int)$idDestino) {
-                    Log::info("Fila $fila: Actualizando estatus de orden existente en tienda $fkTienda.");
+                    Log::info("Fila $fila: Actualizando datos de orden existente para el mismo técnico en tienda $fkTienda.");
+                    
                     DB::table('expedientetecnico')
                         ->where('id', $expedientePrevio->id)
                         ->update([
-                            'status' => $data['Status'] ?? $expedientePrevio->status,
-                            'updated_at' => $ahora
+                            'status'           => $data['Status'] ?? $expedientePrevio->status,
+                            'Estatus'          => $data['ESTATUS'] ?? $expedientePrevio->Estatus,
+                            'FECHAINSTALACION' => $fechaInst,
+                            'updated_at'       => $ahora
                         ]);
-                    continue; // Pasa a la siguiente fila del CSV sin insertar
+                        
+                    continue; // Pasa a la siguiente fila del CSV sin duplicar ni insertar
                 }
 
                 // Si es un técnico diferente dentro de la MISMA tienda, se marca como reasignado (RE)
@@ -3614,16 +3618,14 @@ public function importarMAMO(Request $request)
                         'updated_at' => $ahora
                     ]);
             } else {
-                // Si entra aquí, significa que la combinación Orden + Virtual no existe activa en la Tienda Actual
                 Log::info("Fila $fila: No se encontró registro previo activo en la tienda $fkTienda. Se procederá a insertar.");
             }
 
-            // 4. INSERCIÓN ABSOLUTA EN LA TIENDA DE LA SESIÓN
-            // Si la orden existía en la tienda 6, al estar en la sesión de la tienda 7, $expedientePrevio fue null, por lo que llegará directo aquí.
+            // 4. INSERCIÓN ABSOLUTA EN LA TIENDA DE LA SESIÓN (Si no existía o si cambió de tienda)
             DB::table('expedientetecnico')->insert([
                 'orden'            => $orden,
                 'virtual'          => $virtual,
-                'fkTienda'         => $fkTienda, // Se guarda obligatoriamente el entero de la tienda actual (7)
+                'fkTienda'         => $fkTienda,
                 'fkTecnico'        => $idDestino,
                 'status'           => $data['Status'] ?? 'PENDIENTE',
                 'tipo_servicio'    => mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'ISO-8859-1'),
