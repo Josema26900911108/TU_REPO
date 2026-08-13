@@ -214,6 +214,38 @@ public function importarmamo(Request $request)
                     ->first();
 
                 // LA CORRECCIÓN CLAVE: Solo valida la ubicación física si es un equipo con SERIE REAL
+            // ============================================================================
+            // VALIDACIÓN D: CUADRE CONTABLE - UBICACIÓN DE SERIE Y STOCK DISPONIBLE
+            // ============================================================================
+            
+            // Detectamos y normalizamos si la fila es un material misceláneo sin serie real
+            $esMiscelaneoCSV = empty($serie) || in_array(trim($serie), ['N/A', '0', '-', "'"]);
+            $serieLimpia = $esMiscelaneoCSV ? '' : trim($serie);
+
+            if (!empty($centroOrigen)) {
+                // Buscamos el inventario en el origen con un criterio flexible si es misceláneo
+                $inventarioOrigen = DB::table('movimientomateriales')
+                    ->where('SKU', $sku)
+                    ->where('CENTRO', $centroOrigen)
+                    ->where('fkTienda', $fkTienda)
+                    ->where('Status', 'I') 
+                    ->when(!$esMiscelaneoCSV, function($q) use ($serieLimpia) {
+                        return $q->where('serie', $serieLimpia);
+                    })
+                    ->when($esMiscelaneoCSV, function($q) {
+                        return $q->where(function($sub) {
+                            $sub->whereNull('serie')
+                                ->orWhere('serie', '')
+                                ->orWhere('serie', '0')
+                                ->orWhere('serie', '-')
+                                ->orWhere('serie', "'")
+                                ->orWhere('serie', 'N/A')
+                                ->orWhereRaw('TRIM(serie) = ""');
+                        });
+                    })
+                    ->first();
+
+                // LA CORRECCIÓN CLAVE: Solo valida la ubicación física si es un equipo con SERIE REAL
                 if (!$esMiscelaneoCSV) {
                     $ubicacionRealSerie = DB::table('movimientomateriales')
                         ->where('SKU', $sku)
@@ -238,6 +270,28 @@ public function importarmamo(Request $request)
                         continue;
                     }
                 }
+
+                // Si es misceláneo y no encontró inventario con las series comodín, usamos el plan de contingencia general
+                if ($esMiscelaneoCSV && !$inventarioOrigen) {
+                    $inventarioOrigen = DB::table('movimientomateriales')
+                        ->where('SKU', $sku)
+                        ->where('CENTRO', $centroOrigen)
+                        ->where('fkTienda', $fkTienda)
+                        ->where('Status', 'I')
+                        ->first();
+                }
+
+                $stockDisponible = $inventarioOrigen ? $inventarioOrigen->cantidad : 0;
+
+                if ($stockDisponible < $cantidad) {
+                    $filasRechazadas[] = [
+                        'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
+                        'motivo' => "Stock insuficiente en origen '$centroOrigen' (Disponible: " . number_format($stockDisponible, 2) . ")"
+                    ];
+                    continue; 
+                }
+            }
+
 
                 // Si es misceláneo y no encontró inventario con las series comodín, usamos el plan de contingencia general
                 if ($esMiscelaneoCSV && !$inventarioOrigen) {
