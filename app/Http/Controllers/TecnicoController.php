@@ -3534,13 +3534,15 @@ public function importarMAMO(Request $request)
 
     if (!Auth::check()) return redirect()->route('login');
 
-    $fkTienda = session('user_fkTienda');
-    $idDestino = $request->input('id'); // Técnico que recibe las órdenes (Debería pertenecer a la tienda activa)
+    // Forzamos que la tienda de la sesión sea un entero limpio
+    $fkTienda = session('user_fkTienda') ? (int)session('user_fkTienda') : null;
+    $idDestino = $request->input('id'); 
     $nombreUsuario = session('nombreUsuario');
 
-    // CANDADO 1: Si no hay una tienda válida en la sesión, abortar inmediatamente
+    // Validación de seguridad para la tienda
     if (empty($fkTienda)) {
-        return back()->with('error', 'Error de seguridad: No se detectó una tienda activa en tu sesión.');
+        Log::error('Importación MAMO rechazada: El usuario no tiene fkTienda en su sesión.');
+        return back()->with('error', 'Error de seguridad: Tu sesión no tiene una tienda asignada.');
     }
 
     $request->validate([
@@ -3556,10 +3558,17 @@ public function importarMAMO(Request $request)
         while (($linea = fgetcsv($file)) !== false) {
             $fila++;
             
-            if (count($encabezado) !== count($linea)) continue;
+            if (count($encabezado) !== count($linea)) {
+                Log::warning("Fila $fila saltada: El número de columnas no coincide con el encabezado.");
+                continue;
+            }
+            
             $data = array_combine($encabezado, $linea);
 
-            if (empty($data['Orden']) || empty($data['virtual'])) continue;
+            if (empty($data['Orden']) || empty($data['virtual'])) {
+                Log::warning("Fila $fila saltada: Campo 'Orden' o 'virtual' vacío.");
+                continue;
+            }
 
             $orden = trim($data['Orden']);
             $virtual = trim($data['virtual']);
@@ -3574,50 +3583,48 @@ public function importarMAMO(Request $request)
                 }
             }
 
-            // 3. LOGICA DE REASIGNACIÓN (Con triple validación de Tienda)
+            // 3. LOGICA DE REASIGNACIÓN (Filtrada estrictamente por la tienda actual)
             $expedientePrevio = DB::table('expedientetecnico')
                 ->where('orden', $orden)
                 ->where('virtual', $virtual)
-                ->where('fkTienda', $fkTienda) // Asegura buscar SOLO en la tienda de la sesión (ej: Tienda 7)
+                ->where('fkTienda', $fkTienda) // Solo busca si existe en la TIENDA ACTUAL (ej: Tienda 7)
                 ->where('Estatus', '!=', 'RE') 
                 ->first();
 
             if ($expedientePrevio) {
-                
-                // CANDADO 2: Si por algún error de base de datos el registro encontrado no coincide con la tienda activa, ignorar update
-                if ($expedientePrevio->fkTienda != $fkTienda) {
-                    continue; 
-                }
-
-                // Si el técnico es el mismo DENTRO DE LA MISMA TIENDA, actualiza estatus
-                if ($expedientePrevio->fkTecnico == $idDestino) {
+                // Si el técnico asignado en el CSV/Formulario es idéntico al actual en la misma tienda
+                if ((int)$expedientePrevio->fkTecnico === (int)$idDestino) {
+                    Log::info("Fila $fila: Actualizando estatus de orden existente en tienda $fkTienda.");
                     DB::table('expedientetecnico')
                         ->where('id', $expedientePrevio->id)
-                        ->where('fkTienda', $fkTienda) // Candado en el WHERE del UPDATE
                         ->update([
                             'status' => $data['Status'] ?? $expedientePrevio->status,
                             'updated_at' => $ahora
                         ]);
-                    continue;
+                    continue; // Pasa a la siguiente fila del CSV sin insertar
                 }
 
-                // Si es un técnico diferente DENTRO DE LA MISMA TIENDA, cerramos el previo
+                // Si es un técnico diferente dentro de la MISMA tienda, se marca como reasignado (RE)
+                Log::info("Fila $fila: Reasignando orden internamente dentro de la tienda $fkTienda.");
                 DB::table('expedientetecnico')
                     ->where('id', $expedientePrevio->id)
-                    ->where('fkTienda', $fkTienda) // Candado en el WHERE del UPDATE
                     ->update([
                         'Estatus' => 'RE',
                         'obs' => (($expedientePrevio->obs ?? '') . " | Reasignada a técnico ID: $idDestino por $nombreUsuario"),
                         'updated_at' => $ahora
                     ]);
+            } else {
+                // Si entra aquí, significa que la combinación Orden + Virtual no existe activa en la Tienda Actual
+                Log::info("Fila $fila: No se encontró registro previo activo en la tienda $fkTienda. Se procederá a insertar.");
             }
 
-            // 4. INSERTAR LA ORDEN LIMPIA PARA LA NUEVA TIENDA / TÉCNICO
+            // 4. INSERCIÓN ABSOLUTA EN LA TIENDA DE LA SESIÓN
+            // Si la orden existía en la tienda 6, al estar en la sesión de la tienda 7, $expedientePrevio fue null, por lo que llegará directo aquí.
             DB::table('expedientetecnico')->insert([
                 'orden'            => $orden,
                 'virtual'          => $virtual,
-                'fkTienda'         => $fkTienda, // Guarda rigurosamente el ID de la tienda actual (ej: 7)
-                'fkTecnico'        => $idDestino, // ID del técnico de la Tienda 7
+                'fkTienda'         => $fkTienda, // Se guarda obligatoriamente el entero de la tienda actual (7)
+                'fkTecnico'        => $idDestino,
                 'status'           => $data['Status'] ?? 'PENDIENTE',
                 'tipo_servicio'    => mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'ISO-8859-1'),
                 'tipo_orden'       => mb_convert_encoding($data['Tipo_orden'] ?? '', 'UTF-8', 'ISO-8859-1'),
@@ -3633,19 +3640,22 @@ public function importarMAMO(Request $request)
                 'created_at'       => $ahora,
                 'updated_at'       => $ahora,
             ]);
+            
+            Log::info("Fila $fila: Inserción exitosa de la orden $orden en la tienda $fkTienda.");
         }
 
         fclose($file);
         DB::commit();
-        return back()->with('success', 'Expedientes técnicos procesados y asignados correctamente.');
+        return back()->with('success', 'Expedientes técnicos procesados correctamente.');
 
     } catch (\Exception $e) {
         DB::rollBack();
         if (isset($file)) fclose($file);
-        Log::error('Error al importar Expediente: ' . $e->getMessage());
+        Log::error('Error crítico al importar Expediente en fila ' . $fila . ': ' . $e->getMessage());
         return back()->with('error', 'Error en fila ' . $fila . ': ' . $e->getMessage());
     }
 }
+
 
 
 
