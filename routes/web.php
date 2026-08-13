@@ -121,21 +121,29 @@ Route::resources([
 Route::get('/privacidad', [LegalController::class, 'privacidad'])->name('legal.privacidad');
 Route::get('/terminos-y-condiciones', [LegalController::class, 'terminos'])->name('legal.terminos');
 
-//CENTROS
-//Route::post('/centrosstore', [centroController::class, 'store'])->name('centros.store');
+// ============================================================================
+// RUTAS: CENTROS
+// ============================================================================
 Route::post('centrosstore', [centroController::class, 'store'])->name('centros.store_alterno');
-
 Route::get('/centros', [centroController::class, 'index'])->name('centro.index');
-Route::get('/panelcentros', [centroController::class, 'index'])->name('centros.index');
+Route::get('/panelcentros', [centroController::class, 'index'])->name('centros.index_panel'); // Nombre único
 
 
-//centros organizacion
-Route::post('/organizacioncentros',[CentrosOrganizacionController::class,'store'])->name('centroorganizacion.store');
-Route::post('/organizacioncentros',[CentrosOrganizacionController::class,'storeTraslado'])->name('centroorganizacion.storetraslado');
-Route::get('/trasladarcentro',[CentrosOrganizacionController::class,'createTraslado'])->name('centroorganizacion.createtraslado');
-Route::get('/orgcentro',[CentrosOrganizacionController::class,'index'])->name('centroorganizacion.index');
-Route::get('/panelorgcent',[CentrosOrganizacionController::class,'index'])->name('centroorganizaciones.index');
+// ============================================================================
+// RUTAS: CENTROS ORGANIZACIÓN
+// ============================================================================
+// CORRECCIÓN: Se cambió la URL del traslado para evitar que choque con el store normal
+Route::post('/organizacioncentros', [CentrosOrganizacionController::class, 'store'])->name('centroorganizacion.store');
+Route::post('/organizacioncentros-traslado', [CentrosOrganizacionController::class, 'storeTraslado'])->name('centroorganizacion.storetraslado');
+
+Route::get('/trasladarcentro', [CentrosOrganizacionController::class, 'createTraslado'])->name('centroorganizacion.createtraslado');
+
+// CORRECCIÓN: Nombres index únicos para evitar el error LogicException
+Route::get('/orgcentro', [CentrosOrganizacionController::class, 'index'])->name('orgcentro.index');
+Route::get('/panelorgcent', [CentrosOrganizacionController::class, 'index'])->name('centroorganizaciones.index_panel');
+
 Route::get('centroorganizacion/{centroorganizacion}/edit', [CentrosOrganizacionController::class, 'edit'])->name('centroorganizacion.edit');
+
 
 //recetas
 Route::resource('recetas', RecetaController::class);
