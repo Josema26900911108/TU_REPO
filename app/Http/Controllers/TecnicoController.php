@@ -3217,7 +3217,8 @@ public function fetchrelacioninv(Request $request)
         $fkTienda  = session('user_fkTienda');
         $idtecnico = $request->input('id');
 
-        // 🌟 1. Subconsulta Maestra dándole PRIORIDAD ABSOLUTA a la columna 'serie'
+        // 🌟 1. Subconsulta Maestra: Solo lee el STOCK DISPONIBLE ACTUAL (Status = 'I')
+        // Esto evita leer el historial duplicado de entradas y salidas pasadas
         $subconsultaBase = DB::table('movimientomateriales')
             ->select(
                 'id',
@@ -3225,12 +3226,8 @@ public function fetchrelacioninv(Request $request)
                 'ESTATUS',
                 'CENTRO',
                 'created_at',
-                'Naturaleza',
                 'cantidad',
-                // EVALUACIÓN DE PRIORIDAD:
-                // 1. Si la columna 'serie' tiene un valor real y válido, se queda con la serie.
-                // 2. Si la serie es inválida ('-', '0', vacía) pero 'MAC1' tiene valor real, toma MAC1.
-                // 3. Si ninguno es válido, es un material genérico sin serie ('N/A').
+                // EVALUACIÓN DE PRIORIDAD DE SERIES
                 DB::raw("
                     CASE 
                         WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
@@ -3241,9 +3238,10 @@ public function fetchrelacioninv(Request $request)
             )
             ->where('fkTienda', $fkTienda)
             ->where('fkTecnico', $idtecnico)
-            ->whereIn('Status', ['I', 'A']);
+            ->where('Status', 'I') // <--- CRÍTICO: 'I' es el inventario real activo del técnico. Quitando 'A' (Historial/Auditorías) eliminamos la duplicidad.
+            ->where('ESTATUS', 'DISPONIBLE'); // <--- Solo lo que el técnico tiene físicamente disponible para usar
 
-        // 🌟 2. Consulta Eloquent que lee desde la subconsulta unificada (Compatibilidad total con tu Blade)
+        // 🌟 2. Consulta que consolida y agrupa los saldos para tu Blade
         $relacion = MovimientoMaterial::with(['treematerialcategoria' => function($query) {
                 $query->select('SKU', 'nombre as descripcion');
             }])
@@ -3251,26 +3249,18 @@ public function fetchrelacioninv(Request $request)
             ->select(
                 DB::raw('MAX(mov.id) as id'),
                 'mov.SKU',
-                'mov.serie_maestra as serie', // Se expone con el nombre 'serie' que tu vista Blade necesita
+                'mov.serie_maestra as serie', 
                 DB::raw("MAX(mov.ESTATUS) as ESTATUS"),
                 DB::raw("MAX(mov.CENTRO) as CENTRO"),
                 DB::raw("MAX(mov.created_at) as created_at"),
-                // Operación matemática neta
-                DB::raw("
-                    SUM(
-                        CASE 
-                            WHEN mov.Naturaleza = 'E' THEN IFNULL(mov.cantidad, 0)
-                            WHEN mov.Naturaleza = 'H' THEN -IFNULL(mov.cantidad, 0)
-                            ELSE IFNULL(mov.cantidad, 0)
-                        END
-                    ) as cantidad
-                ")
+                // Suma directa limpia del stock real remanente en las filas activas
+                DB::raw("SUM(IFNULL(mov.cantidad, 0)) as cantidad")
             )
             ->groupBy(
                 'mov.SKU',
-                'mov.serie_maestra' // Agrupamos por la serie unificada
+                'mov.serie_maestra' 
             )
-            ->having('cantidad', '>', 0) // Quita de la lista los saldos que queden en 0
+            ->having('cantidad', '>', 0) 
             ->orderBy('created_at', 'desc')
             ->paginate($request->input('count', 15));
 
@@ -3530,7 +3520,7 @@ foreach ($datos as $item) {
     }
 
     
-    public function importarMAMO(Request $request)
+public function importarMAMO(Request $request)
 {
     DB::connection()->disableQueryLog();
 
@@ -3541,7 +3531,6 @@ foreach ($datos as $item) {
     $idDestino = $request->input('id'); 
     $nombreUsuario = session('nombreUsuario');
 
-    // Validación de seguridad para la tienda
     if (empty($fkTienda)) {
         Log::error('Importación MAMO rechazada: El usuario no tiene fkTienda en su sesión.');
         return back()->with('error', 'Error de seguridad: Tu sesión no tiene una tienda asignada.');
@@ -3579,7 +3568,7 @@ foreach ($datos as $item) {
             $fechaInst = null;
             if (!empty($data['FECHAINSTALACION'])) {
                 try {
-                    $fechaInst = Carbon::createFromFormat('d/m/Y', $data['FECHAINSTALACION'])->format('Y-m-d H:i:s');
+                    $fechaInst = \Carbon\Carbon::createFromFormat('d/m/Y', $data['FECHAINSTALACION'])->format('Y-m-d H:i:s');
                 } catch (\Exception $e) {
                     $fechaInst = $ahora; 
                 }
@@ -3589,27 +3578,20 @@ foreach ($datos as $item) {
             $expedientePrevio = DB::table('expedientetecnico')
                 ->where('orden', $orden)
                 ->where('virtual', $virtual)
-                ->where('fkTienda', $fkTienda) // Solo busca en la TIENDA ACTUAL
+                ->where('fkTienda', $fkTienda) 
                 ->where('Estatus', '!=', 'RE') 
                 ->first();
 
             if ($expedientePrevio) {
-                // Si el técnico asignado en el CSV es idéntico al actual en la misma tienda
+                // Si el técnico asignado en el CSV es idéntico al actual en la misma tienda -> SE ACTUALIZA
                 if ((int)$expedientePrevio->fkTecnico === (int)$idDestino) {
-                    
-                    // REGLA DE NEGOCIO: Si ya está en estatus 'C', NO se actualiza nada
-                    if ($expedientePrevio->Estatus === 'C') {
-                        Log::info("Fila $fila: Orden $orden saltada. Ya se encuentra con Estatus 'C'.");
-                        continue; // Salta a la siguiente fila del CSV de inmediato
-                    }
-
                     Log::info("Fila $fila: Actualizando datos de orden existente para el mismo técnico en tienda $fkTienda.");
                     
                     DB::table('expedientetecnico')
                         ->where('id', $expedientePrevio->id)
                         ->update([
-                            'status'           => $data['status'] ?? $expedientePrevio->status,
-                            'Estatus'          => $data['Estatus'] ?? $expedientePrevio->Estatus,
+                            'status'           => isset($data['Status']) ? trim($data['Status']) : $expedientePrevio->status,
+                            'Estatus'          => isset($data['ESTATUS']) ? trim($data['ESTATUS']) : $expedientePrevio->status,
                             'FECHAINSTALACION' => $fechaInst,
                             'updated_at'       => $ahora
                         ]);
@@ -3629,14 +3611,13 @@ foreach ($datos as $item) {
             } else {
                 Log::info("Fila $fila: No se encontró registro previo activo en la tienda $fkTienda. Se procederá a insertar.");
             }
-
             // 4. INSERCIÓN ABSOLUTA EN LA TIENDA DE LA SESIÓN (Si no existía o si cambió de tienda)
             DB::table('expedientetecnico')->insert([
                 'orden'            => $orden,
                 'virtual'          => $virtual,
                 'fkTienda'         => $fkTienda,
                 'fkTecnico'        => $idDestino,
-                'status'           => $data['status'] ?? 'PENDIENTE',
+                'status'           => isset($data['Status']) ? trim($data['Status']) : 'I',
                 'tipo_servicio'    => mb_convert_encoding($data['Tipo_servicio'] ?? '', 'UTF-8', 'ISO-8859-1'),
                 'tipo_orden'       => mb_convert_encoding($data['Tipo_orden'] ?? '', 'UTF-8', 'ISO-8859-1'),
                 'nombrecliente'    => mb_convert_encoding($data['NOMBRECLIENTE'] ?? '', 'UTF-8', 'ISO-8859-1'),
@@ -3646,14 +3627,14 @@ foreach ($datos as $item) {
                 'area'             => $data['AREA'] ?? '',
                 'FECHAINSTALACION' => $fechaInst,
                 'autoriza'         => $data['AUTORIZA'] ?? '',
-                'Estatus'          => $data['Estatus'] ?? 'AC',
+                'Estatus'          => isset($data['ESTATUS']) ? trim($data['ESTATUS']) : 'I',
                 'TECNOLOGIA'       => $data['TECNOLOGIA'] ?? '',
                 'created_at'       => $ahora,
                 'updated_at'       => $ahora,
             ]);
             
             Log::info("Fila $fila: Inserción exitosa de la orden $orden en la tienda $fkTienda.");
-        }
+        } // Fin del bucle while
 
         fclose($file);
         DB::commit();

@@ -146,6 +146,36 @@
                 </a>
             </div>
         </div>
+<!-- Bloque de Formulario para Reporte de Kardex -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-primary text-white d-flex align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold"><i class="fas fa-file-excel mr-2"></i> Reportes de Kardex de Inventario</h6>
+    </div>
+    <div class="card-body">
+        <form action="{{ route('kardexmov.excel') }}" method="GET" target="_blank">
+            <div class="row align-items-end">
+                <!-- Filtro por Centro -->
+                <div class="col-md-4 mb-3">
+                    <label for="centro" class="font-weight-bold text-secondary text-sm">Centro Organizativo (Opcional)</label>
+                    <input type="text" name="centro" id="centro" class="form-control" placeholder="Ej: D0001, D077018">
+                </div>
+
+                <!-- Filtro por Código de Material / SKU -->
+                <div class="col-md-4 mb-3">
+                    <label for="codigo_producto" class="font-weight-bold text-secondary text-sm">Código de Material / SKU (Opcional)</label>
+                    <input type="text" name="codigo_producto" id="codigo_producto" class="form-control" placeholder="Ej: 1001495">
+                </div>
+
+                <!-- Botón de Descarga -->
+                <div class="col-md-4 mb-3">
+                    <button type="submit" class="btn btn-success btn-block shadow-sm">
+                        <i class="fas fa-download mr-1"></i> Descargar Kardex en Excel
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
 
         <!-- SECCIÓN 2: FORMULARIOS DE PROCESAMIENTO -->
         <div class="row g-4">

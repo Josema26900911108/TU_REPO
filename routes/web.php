@@ -511,6 +511,9 @@ Route::post('/movimientomateriales-AutomataValidarMamoOrden',[movimientomaterial
 Route::get('/exportar-movimientomateriales-excel', [App\Http\Controllers\movimientomaterialesController::class, 'exportarExcelMovimientos'])
     ->name('exportar.movimientomateriales.excel');
 Route::get('/movimientomaterialesTtabla', [movimientomaterialesController::class, 'fetchrelacionmovimientosmat'])->name('fetchrelacionmovimientomateriales');
+// Reportes de Kardex de Inventario
+Route::get('/reportes/kardex-excel', [movimientomaterialesController::class, 'exportarKardexExcelResumen'])->name('kardexmov.excel');
+
 
 use App\Http\Controllers\MaterialSapController;
 

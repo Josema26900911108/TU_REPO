@@ -181,7 +181,6 @@ public function importarmamo(Request $request)
                     continue; 
                 }
             }
-
             // ============================================================================
             // VALIDACIÓN D: CUADRE CONTABLE - UBICACIÓN DE SERIE Y STOCK DISPONIBLE
             // ============================================================================
@@ -191,61 +190,47 @@ public function importarmamo(Request $request)
             $serieLimpia = $esMiscelaneoCSV ? '' : trim($serie);
 
             if (!empty($centroOrigen)) {
-                // Buscamos el inventario en el origen con un criterio flexible si es misceláneo
-                $inventarioOrigen = DB::table('movimientomateriales')
+                // CORRECCIÓN CLAVE PARA LA NUBE: Sumamos el stock disponible en Cloud SQL en lugar de usar first()
+                $stockDisponible = DB::table('movimientomateriales')
                     ->where('SKU', $sku)
                     ->where('CENTRO', $centroOrigen)
                     ->where('fkTienda', $fkTienda)
                     ->where('Status', 'I') 
-                    ->when(!$esMiscelaneoCSV, function($q) use ($serieLimpia) {
-                        return $q->where('serie', $serieLimpia);
-                    })
-                    ->when($esMiscelaneoCSV, function($q) {
-                        return $q->where(function($sub) {
-                            $sub->whereNull('serie')
-                                ->orWhere('serie', '')
-                                ->orWhere('serie', '0')
-                                ->orWhere('serie', '-')
-                                ->orWhere('serie', "'")
-                                ->orWhere('serie', 'N/A')
-                                ->orWhereRaw('TRIM(serie) = ""');
-                        });
-                    })
-                    ->first();
+                    ->where(function($q) use ($esMiscelaneoCSV, $serieLimpia) {
+                        if (!$esMiscelaneoCSV) {
+                            $q->where('serie', $serieLimpia);
+                        } else {
+                            $q->whereNull('serie')
+                              ->orWhere('serie', '')
+                              ->orWhere('serie', '0')
+                              ->orWhere('serie', '-')
+                              ->orWhere('serie', "'")
+                              ->orWhere('serie', 'N/A')
+                              ->orWhereRaw('TRIM(serie) = ""');
+                        }
+                    })->sum('cantidad');
 
-                // LA CORRECCIÓN CLAVE: Solo valida la ubicación física si es un equipo con SERIE REAL
-            // ============================================================================
-            // VALIDACIÓN D: CUADRE CONTABLE - UBICACIÓN DE SERIE Y STOCK DISPONIBLE
-            // ============================================================================
-            
-            // Detectamos y normalizamos si la fila es un material misceláneo sin serie real
-            $esMiscelaneoCSV = empty($serie) || in_array(trim($serie), ['N/A', '0', '-', "'"]);
-            $serieLimpia = $esMiscelaneoCSV ? '' : trim($serie);
+                // Plan de contingencia general si la serie comodín falló por espacios invisibles en la nube
+                if ($esMiscelaneoCSV && $stockDisponible <= 0) {
+                    $stockDisponible = DB::table('movimientomateriales')
+                        ->where('SKU', $sku)
+                        ->where('CENTRO', $centroOrigen)
+                        ->where('fkTienda', $fkTienda)
+                        ->where('Status', 'I')
+                        ->sum('cantidad');
+                }
 
-            if (!empty($centroOrigen)) {
-                // Buscamos el inventario en el origen con un criterio flexible si es misceláneo
-                $inventarioOrigen = DB::table('movimientomateriales')
-                    ->where('SKU', $sku)
-                    ->where('CENTRO', $centroOrigen)
-                    ->where('fkTienda', $fkTienda)
-                    ->where('Status', 'I') 
-                    ->when(!$esMiscelaneoCSV, function($q) use ($serieLimpia) {
-                        return $q->where('serie', $serieLimpia);
-                    })
-                    ->when($esMiscelaneoCSV, function($q) {
-                        return $q->where(function($sub) {
-                            $sub->whereNull('serie')
-                                ->orWhere('serie', '')
-                                ->orWhere('serie', '0')
-                                ->orWhere('serie', '-')
-                                ->orWhere('serie', "'")
-                                ->orWhere('serie', 'N/A')
-                                ->orWhereRaw('TRIM(serie) = ""');
-                        });
-                    })
-                    ->first();
+                $stockDisponible = floatval($stockDisponible);
 
-                // LA CORRECCIÓN CLAVE: Solo valida la ubicación física si es un equipo con SERIE REAL
+                if ($stockDisponible < $cantidad) {
+                    $filasRechazadas[] = [
+                        'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
+                        'motivo' => "Stock insuficiente en origen '$centroOrigen' (Disponible Total: " . number_format($stockDisponible, 2) . ")"
+                    ];
+                    continue; 
+                }
+
+                // Solo valida la ubicación física si es un equipo con SERIE REAL
                 if (!$esMiscelaneoCSV) {
                     $ubicacionRealSerie = DB::table('movimientomateriales')
                         ->where('SKU', $sku)
@@ -261,63 +246,14 @@ public function importarmamo(Request $request)
                         ];
                         continue;
                     }
-
-                    if (!$inventarioOrigen) {
-                        $filasRechazadas[] = [
-                            'fila' => $fila, 'sku' => $sku, 'serie' => $serie, 'cantidad' => $cantidad,
-                            'motivo' => "La serie no cuenta con inventario disponible en el centro '$centroOrigen'."
-                        ];
-                        continue;
-                    }
-                }
-
-                // Si es misceláneo y no encontró inventario con las series comodín, usamos el plan de contingencia general
-                if ($esMiscelaneoCSV && !$inventarioOrigen) {
-                    $inventarioOrigen = DB::table('movimientomateriales')
-                        ->where('SKU', $sku)
-                        ->where('CENTRO', $centroOrigen)
-                        ->where('fkTienda', $fkTienda)
-                        ->where('Status', 'I')
-                        ->first();
-                }
-
-                $stockDisponible = $inventarioOrigen ? $inventarioOrigen->cantidad : 0;
-
-                if ($stockDisponible < $cantidad) {
-                    $filasRechazadas[] = [
-                        'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
-                        'motivo' => "Stock insuficiente en origen '$centroOrigen' (Disponible: " . number_format($stockDisponible, 2) . ")"
-                    ];
-                    continue; 
                 }
             }
 
-
-                // Si es misceláneo y no encontró inventario con las series comodín, usamos el plan de contingencia general
-                if ($esMiscelaneoCSV && !$inventarioOrigen) {
-                    $inventarioOrigen = DB::table('movimientomateriales')
-                        ->where('SKU', $sku)
-                        ->where('CENTRO', $centroOrigen)
-                        ->where('fkTienda', $fkTienda)
-                        ->where('Status', 'I')
-                        ->first();
-                }
-
-                $stockDisponible = $inventarioOrigen ? $inventarioOrigen->cantidad : 0;
-
-                if ($stockDisponible < $cantidad) {
-                    $filasRechazadas[] = [
-                        'fila' => $fila, 'sku' => $sku, 'serie' => $serie ?: 'N/A', 'cantidad' => $cantidad,
-                        'motivo' => "Stock insuficiente en origen '$centroOrigen' (Disponible: " . number_format($stockDisponible, 2) . ")"
-                    ];
-                    continue; 
-                }
-            }
-
-
+            // ============================================================================
+            // PROCESAMIENTO MASA: CHUNKING Y CONTROL DE BLOQUES DE 250 FILAS
+            // ============================================================================
             $registrosEnEsteArchivo[] = $huellaMovimiento;
 
-            // ACUMULAR EN EL BLOQUE ACTUAL PARA PROCESADO EN MASA
             $bloqueOperaciones[] = [
                 'sku' => $sku,
                 'cantidad' => $cantidad,
@@ -327,12 +263,11 @@ public function importarmamo(Request $request)
                 'data' => $data
             ];
 
-            // Si el bloque alcanza el tamaño límite, se procesa de golpe
             if (count($bloqueOperaciones) >= $tamañoBloque) {
                 $insertadosContador += $this->procesarBloqueTransaccional($bloqueOperaciones, $fkTienda, $nombreUsuario, $ahora);
                 $bloqueOperaciones = [];
             }
-        } // Fin del bucle while
+        } // <--- Cierre del bucle while principal
 
         // Procesar los registros que quedaron huérfanos en el último bloque
         if (count($bloqueOperaciones) > 0) {
@@ -340,6 +275,7 @@ public function importarmamo(Request $request)
         }
 
         fclose($file);
+
         // STREAMING DE DESCARGA DIRECTA PARA EL ARCHIVO DE ERRORES DETECTADOS
         if (count($filasRechazadas) > 0) {
             $fileName = 'Errores_Importacion_ETA_' . date('Y-m-d_H-i') . '.csv';
@@ -353,9 +289,9 @@ public function importarmamo(Request $request)
             $callbackErrores = function() use ($filasRechazadas) {
                 $out = fopen('php://output', 'w');
                 fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); 
-                fputcsv($out, ['Fila CSV', 'SKU', 'Número de Serie', 'Cantidad Evaluada', 'Motivo del Rechazo / Alerta']);
+                fputcsv($out, ['Fila CSV', 'SKU', 'Número de Serie', 'Cantidad Evaluada', 'Motivo del Rechazo / Alerta'], ';');
                 foreach ($filasRechazadas as $err) {
-                    fputcsv($out, [$err['fila'], $err['sku'], $err['serie'], $err['cantidad'], $err['motivo']]);
+                    fputcsv($out, [$err['fila'], $err['sku'], $err['serie'], $err['cantidad'], $err['motivo']], ';');
                 }
                 fclose($out);
             };
@@ -376,6 +312,7 @@ public function importarmamo(Request $request)
         return redirect()->to('movimientomateriales/lista')->withInput()->withErrors(['archivo' => 'Error crítico: ' . $e->getMessage()]);
     }
 }
+
 /**
  * Función auxiliar encargada de procesar el bloque bajo una única transacción de Base de Datos.
  */
@@ -385,16 +322,26 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
 
     DB::transaction(function() use ($bloque, $fkTienda, $nombreUsuario, $ahora, &$contadorLocal) {
         foreach ($bloque as $operacion) {
-            $sku = $operacion['sku'];
-            $cantidad = $operacion['cantidad'];
-            $serie = $operacion['serie'];
-            $centroOrigen = $operacion['centroOrigen'];
-            $centroDestino = $operacion['centroDestino'];
-            $data = $operacion['data'];
+            $sku = trim($operacion['sku']);
+            $cantidad = floatval($operacion['cantidad']);
+            $serieRaw = trim($operacion['serie'] ?? '');
+            
+            // NORMALIZACIÓN DE CENTROS REBELDES EN LA NUBE
+            $centroOrigen = strtoupper(trim($operacion['centroOrigen'] ?? ''));
+            if (empty($centroOrigen)) { $centroOrigen = 'SE001'; }
+            if ($centroOrigen === 'S001' || $centroOrigen === 'S0001') { $centroOrigen = 'SE001'; }
+            
+            $centroDestino = strtoupper(trim($operacion['centroDestino'] ?? ''));
+            if ($centroDestino === 'S001' || $centroDestino === 'S0001') { $centroDestino = 'SE001'; }
 
-            $idTecnicoOrigen = !empty($centroOrigen) ? DB::table('tecnico')->where('codigo', $centroOrigen)->value('id') : null;
-            $idTecnicoDestino = !empty($centroDestino) ? DB::table('tecnico')->where('codigo', $centroDestino)->value('id') : null;
-            $docRef = 'ETA-' . ($idTecnicoOrigen ?? '0') . ";" . ($idTecnicoDestino ?? '0') . ";" . $ahora->format('dmY:H:i:s') . ';' . $serie;
+            $data = $operacion['data'] ?? [];
+
+            $esMiscelaneo = empty($serieRaw) || in_array(strtoupper($serieRaw), ['N/A', '0', '-', "'", 'NULL']);
+            $serie = $esMiscelaneo ? '0' : $serieRaw;
+
+            $idTecnicoOrigen = !empty($centroOrigen) ? DB::table('tecnico')->whereRaw('UPPER(codigo) = ?', [$centroOrigen])->value('id') : null;
+            $idTecnicoDestino = !empty($centroDestino) ? DB::table('tecnico')->whereRaw('UPPER(codigo) = ?', [$centroDestino])->value('id') : null;
+            $docRef = 'ETA-' . ($idTecnicoOrigen ?? '0') . ";" . ($idTecnicoDestino ?? '0') . ";" . $ahora->format('dmY:H:i:s') . ';' . ($serieRaw ?: 'N/A');
             
             $nombreProducto = null;
             $productoExistente = \App\Models\Producto::where('codigo', $sku)->where('fkTienda', $fkTienda)->select('nombre')->first();
@@ -405,16 +352,6 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
                 $materialExiste = \App\Models\Materialmanoobra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('Descripcion')->first();
                 if ($materialExiste) {
                     $nombreProducto = $materialExiste->text ?? $materialExiste->Descripcion;
-                } else {
-                    $arbMaterialExiste = \App\Models\Arbmanoobra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('nombre')->first();
-                    if ($arbMaterialExiste) {
-                        $nombreProducto = $arbMaterialExiste->nombre;
-                    } else {
-                        $treeMateriales = \App\Models\Treematerialescategoria::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('nombre')->first();
-                        if ($treeMateriales) {
-                            $nombreProducto = $treeMateriales->nombre;
-                        }
-                    }
                 }
             }
 
@@ -422,149 +359,92 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
                 ['codigo' => $sku, 'fkTienda' => $fkTienda],
                 [
                     'nombre' => mb_convert_encoding($nombreProducto ?? "Producto $sku", 'UTF-8', 'ISO-8859-1'),
-                    'estado' => 1, 'marca_id' => 1, 'presentacione_id' => 1,
-                    'stock' => 0, 'precio_base' => 0, 'stock_minimo' => 1, 'perecedero' => 0
+                    'estado' => 1, 'marca_id' => 1, 'presentacione_id' => 1, 'stock' => 0, 'precio_base' => 0, 'stock_minimo' => 1, 'perecedero' => 0
                 ]
             );
 
-            $costoUnidad = \App\Models\Materialmanoobra::where('SKU', $sku)
-                ->where('fkTienda', $fkTienda)
-                ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida')
-                ->latest()
-                ->first();
-
+            $costoUnidad = \App\Models\Materialmanoobra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('COSTOPAGO', 'TIPO', 'unidadmedida')->latest()->first();
             $costoFinal = $costoUnidad ? doubleval($costoUnidad->COSTOPAGO) : doubleval($data['COSTO'] ?? 0);
 
-            
-// EJECUCIÓN DEL TRASLADO (HISTORIAL DE SALIDA Y REDUCCIÓN EN ORIGEN)
-if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
+            // ============================================================================
+            // 📥 1. HISTORIAL DE SALIDA Y REDUCCIÓN EN ORIGEN (Forzado para SE001)
+            // ============================================================================
+            if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
+                \App\Models\MovimientoMateriales::create([
+                    'fkTienda' => $fkTienda, 
+                    'fkMateriales' => $producto->id, 
+                    'contrata' => $idTecnicoOrigen,
+                    'clase_movimiento' => '311', // Clase de movimiento de traspaso/salida
+                    'cantidad' => $cantidad * -1, // Seteamos obligatoriamente el saldo negativo
+                    'referencia' => "SALIDA TRASLADO SERIE: " . ($serieRaw ?: 'N/A') . " | AL DESTINO " . $centroDestino,
+                    'tipo_movimiento' => 'TRASPASO_SALIDA', 
+                    'documento_material' => $docRef,
+                    'posicion_documento' => '0001', 
+                    'fecha_contabilizacion' => $ahora->format('Y-m-d'),
+                    'almacen' => $data['ALMACEN'] ?? 'ALMA', 
+                    'centro' => $centroOrigen, 
+                    'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ',
+                    'origen_uso' => 'traslado_entre_bodegas'
+                ]);
+
+                if (!$esMiscelaneo) {
+                    DB::table('movimientomateriales')
+                        ->where('SKU', $sku)->where('serie', $serie)->where('CENTRO', $centroOrigen)
+                        ->where('fkTienda', $fkTienda)->where('Status', 'I')
+                        ->update(['ESTATUS' => 'TRASLADADO', 'Status' => 'T', 'COSTO' => $costoFinal, 'updated_at' => $ahora]);
+                } else {
+                    $stockOrigenExistente = DB::table('movimientomateriales')
+                        ->where('SKU', $sku)->where('CENTRO', $centroOrigen)->where('fkTienda', $fkTienda)->where('Status', 'I')
+                        ->where(function($query) {
+                            $query->whereNull('serie')->orWhere('serie', '')->orWhere('serie', '0')->orWhere('serie', 'N/A');
+                        })->first();
+
+                    if ($stockOrigenExistente) {
+                        $nuevaCantidad = $stockOrigenExistente->cantidad - $cantidad;
+                        DB::table('movimientomateriales')->where('id', $stockOrigenExistente->id)
+                            ->update([
+                                'cantidad' => $nuevaCantidad <= 0 ? 0 : $nuevaCantidad,
+                                'ESTATUS' => $nuevaCantidad <= 0 ? 'TRASLADADO' : $stockOrigenExistente->ESTATUS,
+                                'Status' => $nuevaCantidad <= 0 ? 'T' : 'I',
+                                'updated_at' => $ahora
+                            ]);
+                    }
+                }
+            }
+            // ============================================================================
+            // 📤 2. HISTORIAL DE ENTRADA EN DESTINO (D087018 - UNIFICADO)
+            // ============================================================================
             \App\Models\MovimientoMateriales::create([
                 'fkTienda' => $fkTienda, 
                 'fkMateriales' => $producto->id, 
                 'contrata' => $idTecnicoDestino,
                 'clase_movimiento' => !empty($centroOrigen) ? '252' : '101', 
-                'cantidad' => $cantidad,
-                'referencia' => !empty($centroOrigen) ? "ENTRADA TRASLADO SERIE: " . ($serie ?: 'N/A') . " | ORIGEN: " . $centroOrigen : "INSERCION INICIAL DE STOCK SERIE: " . ($serie ?: 'N/A'),
+                'cantidad' => $cantidad, // Cantidad positiva para el ingreso
+                'referencia' => !empty($centroOrigen) ? "ENTRADA TRASLADO SERIE: " . ($serieRaw ?: 'N/A') . " | ORIGEN: " . $centroOrigen : "INSERCION INICIAL DE STOCK",
                 'tipo_movimiento' => !empty($centroOrigen) ? 'TRASPASO_ENTRADA' : 'INSERCION_STOCK', 
                 'documento_material' => $docRef, 
                 'posicion_documento' => '0001', 
                 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
                 'centro' => $centroDestino, 
                 'almacen' => $data['ALMACEN'] ?? 'ALMA', 
-                'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
+                'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ',
+                'origen_uso' => 'traslado_entre_bodegas'
             ]);
 
-
-    if (!empty($serie) && !in_array(trim($serie), ['N/A', '0', '', '-', "'"])) {
-        // CON SERIE REAL: Funciona correctamente cambiando estados del artículo único
-        DB::table('movimientomateriales')
-            ->where('SKU', $sku)->where('serie', $serie)->where('CENTRO', $centroOrigen)
-            ->where('fkTienda', $fkTienda)->where('Status', 'I')
-            ->update(['ESTATUS' => 'TRASLADADO', 'Status' => 'T', 'COSTO' => $costoFinal, 'updated_at' => $ahora]);
-    } else {
-        // SIN SERIE / MISCELÁNEO: Buscamos el registro activo cazando todas las variantes posibles
-        $stockOrigenExistente = DB::table('movimientomateriales')
-            ->where('SKU', $sku)
-            ->where('CENTRO', $centroOrigen)
-            ->where('fkTienda', $fkTienda)
-            ->where('Status', 'I')
-            ->where(function($query) {
-                $query->whereNull('serie')
-                      ->orWhere('serie', '')
-                      ->orWhere('serie', '0')
-                      ->orWhere('serie', '-')
-                      ->orWhere('serie', "'")
-                      ->orWhere('serie', 'N/A')
-                      ->orWhereRaw('TRIM(serie) = ""');
-            })
-            ->first();
-
-        if ($stockOrigenExistente) {
-            $nuevaCantidad = $stockOrigenExistente->cantidad - $cantidad;
-
-            if ($nuevaCantidad <= 0) {
-                DB::table('movimientomateriales')
-                    ->where('id', $stockOrigenExistente->id)
-                    ->update([
-                        'cantidad' => 0,
-                        'ESTATUS' => 'TRASLADADO',
-                        'Status' => 'T',
-                        'COSTO' => $costoFinal,
-                        'updated_at' => $ahora
-                    ]);
-            } else {
-                DB::table('movimientomateriales')
-                    ->where('id', $stockOrigenExistente->id)
-                    ->update([
-                        'cantidad' => $nuevaCantidad,
-                        'COSTO' => $costoFinal,
-                        'updated_at' => $ahora
-                    ]);
-            }
-        } else {
-            // PLAN DE CONTINGENCIA ABSOLUTO: Si el filtro de textos extraños falló por milímetros,
-            // tomamos el primer registro activo disponible del técnico para este SKU.
-            $registroEmergencia = DB::table('movimientomateriales')
-                ->where('SKU', $sku)
-                ->where('CENTRO', $centroOrigen)
-                ->where('fkTienda', $fkTienda)
-                ->where('Status', 'I')
-                ->first();
-
-            if ($registroEmergencia) {
-                $nuevaCantidadEmergencia = $registroEmergencia->cantidad - $cantidad;
-                
-                DB::table('movimientomateriales')
-                    ->where('id', $registroEmergencia->id)
-                    ->update([
-                        'cantidad' => $nuevaCantidadEmergencia <= 0 ? 0 : $nuevaCantidadEmergencia,
-                        'ESTATUS'  => $nuevaCantidadEmergencia <= 0 ? 'TRASLADADO' : $registroEmergencia->ESTATUS,
-                        'Status'   => $nuevaCantidadEmergencia <= 0 ? 'T' : 'I',
-                        'COSTO'    => $costoFinal,
-                        'updated_at' => $ahora
-                    ]);
-            }
-        }
-    }
-}
-
-
-            // REGISTRO DEL MOVIMIENTO (HISTORIAL DE ENTRADA EN DESTINO)
-            \App\Models\MovimientoMateriales::create([
-                'fkTienda' => $fkTienda, 'fkMateriales' => $producto->id, 'contrata' => $idTecnicoDestino,
-                'clase_movimiento' => !empty($centroOrigen) ? '252' : '101', 'cantidad' => $cantidad,
-                'referencia' => !empty($centroOrigen) ? "ENTRADA TRASLADO SERIE: " . $serie . " | ORIGEN: " . $centroOrigen : "INSERCION INICIAL DE STOCK SERIE: " . $serie,
-                'tipo_movimiento' => !empty($centroOrigen) ? 'TRASPASO_ENTRADA' : 'INSERCION_STOCK', 
-                'documento_material' => $docRef, 'posicion_documento' => '0001', 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
-                'centro' => $centroDestino, 'almacen' => $data['ALMACEN'] ?? 'ALMA', 'unidad_medida_base' => $data['UNIDADMEDIDA'] ?? 'PZ'
-            ]);
-
+            // ⚙️ 3. INCREMENTAR O REGISTRAR INVENTARIO ACTIVO EN EL DESTINO
             $esMiscelaneoDestino = empty($serie) || in_array(trim($serie), ['N/A', '0', '-', "'"]);
 
             $stockDestinoExistente = DB::table('movimientomateriales')
-                ->where('SKU', $sku)
-                ->where('CENTRO', $centroDestino)
-                ->where('fkTienda', $fkTienda)
-                ->where('Status', 'I') 
-                ->when(!$esMiscelaneoDestino, function($q) use ($serie) { 
-                    return $q->where('serie', $serie); 
-                })
+                ->where('SKU', $sku)->where('CENTRO', $centroDestino)->where('fkTienda', $fkTienda)->where('Status', 'I') 
+                ->when(!$esMiscelaneoDestino, function($q) use ($serie) { return $q->where('serie', $serie); })
                 ->when($esMiscelaneoDestino, function($q) {
                     return $q->where(function($sub) {
-                        $sub->whereNull('serie')
-                            ->orWhere('serie', '')
-                            ->orWhere('serie', '0')
-                            ->orWhere('serie', '-')
-                            ->orWhere('serie', "'")
-                            ->orWhere('serie', 'N/A')
-                            ->orWhereRaw('TRIM(serie) = ""');
+                        $sub->whereNull('serie')->orWhere('serie', '')->orWhere('serie', '0')->orWhere('serie', 'N/A')->orWhereRaw('TRIM(serie) = ""');
                     });
-                })
-                ->first();
+                })->first();
 
             if ($stockDestinoExistente && $esMiscelaneoDestino) {
-                DB::table('movimientomateriales')
-                    ->where('id', $stockDestinoExistente->id)
+                DB::table('movimientomateriales')->where('id', $stockDestinoExistente->id)
                     ->update([
                         'cantidad' => $stockDestinoExistente->cantidad + $cantidad, 
                         'COSTO' => $costoFinal,
@@ -573,40 +453,30 @@ if (!empty($centroOrigen) && $centroOrigen != $centroDestino) {
                         'updated_at' => $ahora
                     ]);
             } else {
-                DB::table('movimientomateriales')->insert([
-                    'serie' => $serie, 
-                    'SKU' => $sku, 
-                    'fkTienda' => $fkTienda, 
-                    'fkTecnico' => $idTecnicoDestino, 
-                    'almacen' => $data['ALMACEN'] ?? 'ALMA', 
-                    'Lote' => $data['LOTE'] ?? 'A000',
-                    'MAC1' => $data['MAC1'] ?? '', 
-                    'MAC2' => $data['MAC2'] ?? '', 
-                    'MAC3' => $data['MAC3'] ?? '',
-                    'COSTO' => $costoFinal, 
-                    'TIPO' => $costoUnidad->TIPO ?? $data['TIPO'] ?? 'DA',
-                    'ESTATUS' => 'DISPONIBLE', 
-                    'Status' => 'I', 
-                    'Naturaleza' => 'E', 
-                    'CENTRO' => $centroDestino,
-                    'cantidad' => $cantidad, 
-                    'unidadmedida' => $costoUnidad->unidadmedida ?? $data['UNIDADMEDIDA'] ?? 'PZ',
-                    'TIPOMOVIMIENTO' => !empty($centroOrigen) ? 'ENTRADA' : 'INSERCION',
-                    'Modificado_el' => $ahora->format('Y-m-d'), 
-                    'Modificado_por' => $nombreUsuario,
-                    'Creado_el' => $ahora->format('Y-m-d'), 
-                    'Creado_por' => $nombreUsuario,
-                    'created_at' => $ahora, 
-                    'updated_at' => $ahora
-                ]);
+                // ESCUDO ANTI-DUPLICADOS PARA EQUIPOS CON SERIE REAL
+                $yaExisteSerieEnDestino = !$esMiscelaneoDestino ? DB::table('movimientomateriales')
+                    ->where('SKU', $sku)->where('serie', $serie)->where('CENTRO', $centroDestino)->where('fkTienda', $fkTienda)->where('Status', 'I')->exists() : false;
+
+                if (!$yaExisteSerieEnDestino) {
+                    DB::table('movimientomateriales')->insert([
+                        'serie' => $serie, 'SKU' => $sku, 'fkTienda' => $fkTienda, 'fkTecnico' => $idTecnicoDestino, 
+                        'almacen' => $data['ALMACEN'] ?? 'ALMA', 'Lote' => $data['LOTE'] ?? 'VALORADO',
+                        'MAC1' => $data['MAC1'] ?? '', 'MAC2' => $data['MAC2'] ?? '', 'MAC3' => $data['MAC3'] ?? '',
+                        'COSTO' => $costoFinal, 'TIPO' => $costoUnidad->TIPO ?? $data['TIPO'] ?? 'DA',
+                        'ESTATUS' => 'DISPONIBLE', 'Status' => 'I', 'Naturaleza' => 'E', 'CENTRO' => $centroDestino,
+                        'cantidad' => $cantidad, 'unidadmedida' => $costoUnidad->unidadmedida ?? $data['UNIDADMEDIDA'] ?? 'PZ',
+                        'TIPOMOVIMIENTO' => !empty($centroOrigen) ? 'ENTRADA' : 'INSERCION',
+                        'Modificado_el' => $ahora->format('Y-m-d'), 'Modificado_por' => $nombreUsuario,
+                        'Creado_el' => $ahora->format('Y-m-d'), 'Creado_por' => $nombreUsuario,
+                        'created_at' => $ahora, 'updated_at' => $ahora
+                    ]);
+                }
             }
             $contadorLocal++;
         }
     });
 
     return $contadorLocal;
-
-
 }
 
 
