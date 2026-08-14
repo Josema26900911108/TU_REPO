@@ -24,11 +24,11 @@ public function index(Request $request)
     $page = $request->input('page', 1) ?? 1;
 
     // CORREGIDO: Se cambia 'MaterialExistenteSap' por 'movimientomaterial'
-    $query = MaterialExistenteSap::select('MaterialExistenteSap.*', 'tienda.Nombre as nombre_tienda')
-        ->leftJoin('tienda', 'MaterialExistenteSap.fkTienda', '=', 'tienda.idTienda'); 
+    $query = MaterialExistenteSap::select('materialexistentesap.*', 'tienda.Nombre as nombre_tienda')
+        ->leftJoin('tienda', 'materialexistentesap.fkTienda', '=', 'tienda.idTienda'); 
 
     if ($Estatus != 'ER') {
-        $query->where('MaterialExistenteSap.fkTienda', $fkTienda);
+        $query->where('materialexistentesap.fkTienda', $fkTienda);
     }
 
     // Paginamos 15 registros por página desde el servidor
