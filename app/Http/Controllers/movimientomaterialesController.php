@@ -77,19 +77,29 @@ public function exportarKardexMateriales(Request $request)
     $serieFiltro  = trim($request->input('serie'));
 
     // ============================================================================
-    // CONSULTA BASE CONTABLE DE MOVIMIENTOS
+    // CONSULTA BASE CONTABLE DE MOVIMIENTOS CON ACCESO A CATÁLOGOS Y ÓRDENES
     // ============================================================================
     $query = DB::table('movimientomateriales as mm')
+        // 1. Cruce para obtener el número de orden de la tabla expedientetecnico
+        ->leftJoin('expedientetecnico as et', 'et.id', '=', 'mm.fkExpediente')
+        // 2. Cruce para obtener la descripción / nombre del material desde materialmanoobra
+        ->leftJoin('materialmanoobra as mmo', function($join) use ($fkTienda) {
+            $join->on('mmo.SKU', '=', 'mm.SKU')
+                 ->where('mmo.fkTienda', '=', $fkTienda);
+        })
         ->where('mm.fkTienda', $fkTienda)
         ->select([
             'mm.id',
             'mm.SKU',
+            'mmo.Descripcion as nombre_material', // Descripcion obtenida de materialmanoobra
+            'et.orden as numero_orden',          // Campo orden obtenido de expedientetecnico
             'mm.CENTRO',
             'mm.almacen',
             'mm.TIPOMOVIMIENTO',
             'mm.ESTATUS',
             'mm.Naturaleza',
             'mm.cantidad',
+            'mm.unidadmedida',
             'mm.COSTO',
             'mm.created_at',
             'mm.Creado_por',
@@ -122,7 +132,6 @@ public function exportarKardexMateriales(Request $request)
     }
 
     $movimientos = $query->orderBy('mm.created_at', 'desc')->get();
-
     // ============================================================================
     // GENERACIÓN DEL EXCEL (FORMATO STREAMING CSV)
     // ============================================================================
@@ -136,10 +145,24 @@ public function exportarKardexMateriales(Request $request)
         "Expires"             => "0"
     ];
 
+    // Encabezados contables actualizados
     $columns = [
-        'ID Registro', 'SKU / Código', 'Número de Serie / MAC', 'Centro', 'Almacén', 
-        'Tipo Movimiento', 'Estatus', 'Naturaleza', 'Cantidad Flujo', 
-        'Costo Unitario', 'Costo Total Valorizado', 'Fecha Transacción', 'Procesado Por'
+        'ID Registro', 
+        'SKU / Código', 
+        'Nombre del Material', 
+        'Número de Orden', 
+        'Número de Serie / MAC', 
+        'Centro', 
+        'Almacén', 
+        'Tipo Movimiento', 
+        'Estatus', 
+        'Naturaleza', 
+        'Cantidad Flujo', 
+        'Unidad', 
+        'Costo Unitario', 
+        'Costo Total Valorizado', 
+        'Fecha Transacción', 
+        'Procesado Por'
     ];
 
     $callback = function() use ($movimientos, $columns) {
@@ -148,7 +171,7 @@ public function exportarKardexMateriales(Request $request)
         // BOM UTF-8 para evitar errores de visualización de caracteres en Excel
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
         
-        // Encabezados con separador regional punto y coma (;)
+        // Encabezados con separador regional punto y coma (Anclaje Visual para Excel)
         fputcsv($file, $columns, ';');
 
         foreach ($movimientos as $mov) {
@@ -162,6 +185,8 @@ public function exportarKardexMateriales(Request $request)
             fputcsv($file, [
                 $mov->id,
                 $mov->SKU,
+                mb_convert_encoding($mov->nombre_material ?? "Material {$mov->SKU}", 'UTF-8', 'UTF-8'), // Inyección del nombre del catálogo
+                $mov->numero_orden ?? 'N/A', // Inyección del número de orden de la tabla expedientetecnico
                 $mov->serie_unificada,
                 $mov->CENTRO,
                 $mov->almacen,
@@ -169,6 +194,7 @@ public function exportarKardexMateriales(Request $request)
                 $mov->ESTATUS,
                 $mov->Naturaleza,
                 number_format($flujoCantidad, 3, '.', ''),
+                $mov->unidadmedida ?? 'PZ',
                 number_format($costoFloat, 2, '.', ''),
                 number_format($costoTotalValorizado, 2, '.', ''),
                 $mov->created_at,
