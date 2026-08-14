@@ -83,7 +83,7 @@ public function exportarKardexMateriales(Request $request)
         // 1. Cruce para obtener el número de orden de la tabla expedientetecnico
         ->leftJoin('expedientetecnico as et', 'et.id', '=', 'mm.fkExpediente')
         // 2. Cruce para obtener la descripción / nombre del material desde materialmanoobra
-        ->leftJoin('materialmanoobra as mmo', function($join) use ($fkTienda) {
+        ->leftJoin('MaterialManoObra as mmo', function($join) use ($fkTienda) {
             $join->on('mmo.SKU', '=', 'mm.SKU')
                  ->where('mmo.fkTienda', '=', $fkTienda);
         })
