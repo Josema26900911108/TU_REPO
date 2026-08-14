@@ -10,7 +10,7 @@ class MaterialExistenteSap extends Model
     use HasFactory;
 
     // Vincula explícitamente este modelo con la tabla indicada
-    protected $table = 'MaterialExistenteSap';
+    protected $table = 'materialexistentesap';
 
     // Declaración de columnas aptas para llenado masivo / asignación masiva
     protected $fillable = [
