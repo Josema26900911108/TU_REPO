@@ -2134,9 +2134,9 @@ public function InventarioLista(Request $request)
         $idPadre = $request->input('id1'); 
         $idtecnico = $request->input('id2');
         
-        $idTecnologiaSelect = $request->input('id_tecnologia'); 
+        $idTecnoligiaSelect = $request->input('id_tecnologia'); 
 
-        // Consulta SQL recursiva original
+        // Consulta SQL recursiva original para extraer el árbol de categorías
         $sqlll = "
 WITH RECURSIVE nodo_padre AS (
     SELECT id, padre_id, nombre, SKU, aplicafotografia as apf, Tipo_servicio as TP
@@ -2206,7 +2206,7 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ->where('fkTienda', $fkTienda)
                 ->groupBy('SKU');
 
-            // 🌟 Subconsulta inteligente para unificar materiales genéricos y mantener equipos seriados
+            // 🌟 1. Subconsulta Maestra: Mantiene tu lógica de unificación de series intacta
             $subconsultaMovimientos = DB::table('movimientomateriales')
                 ->select(
                     'id',
@@ -2215,10 +2215,8 @@ LEFT JOIN treematerialescategoria AS am_padre
                     'SKU',
                     'Status',
                     'CENTRO',
-                    'Naturaleza',
                     'cantidad',
-                    // 🌟 SI EL MATERIAL NO TIENE UNA SERIE REAL O ES GENÉRICO ('0', '-', etc.), LO FORZAMOS A 'N/A'
-                    // SI TIENE UNA SERIE EXTENSA O MAC REAL, CONSERVA SU IDENTIFICADOR INDIVIDUAL
+                    // 🌟 MANTENEMOS TU LÓGICA DE SERIES ORIGINAL: Omite y agrupa de forma correcta
                     DB::raw("
                         CASE 
                             WHEN TRIM(serie) IN ('', '-', '0', 'N/A') AND TRIM(MAC1) IN ('', '-', '0', 'N/A') THEN 'N/A'
@@ -2230,34 +2228,27 @@ LEFT JOIN treematerialescategoria AS am_padre
                 ->where('movimientomateriales.fkTienda', $fkTienda)
                 ->where('movimientomateriales.fkTecnico', $idtecnico)
                 ->whereIn('movimientomateriales.SKU', $skusValidos)
-                ->whereIn('movimientomateriales.Status', ['I', 'A']);
+                ->where('movimientomateriales.Status', 'I') 
+                ->where('movimientomateriales.ESTATUS', 'DISPONIBLE');
 
-            // Consulta final agrupada
+            // 🌟 2. Consulta Final: Agrupa por la serie unificada aplicando la suma directa sin Naturaleza
             $final = DB::table($subconsultaMovimientos, 'mov')
                 ->leftJoinSub($subconsultaCatalogo, 'tmc_unica', function ($join) {
                     $join->on('tmc_unica.SKU', '=', 'mov.SKU');
                 })
                 ->select(
                     DB::raw('MAX(mov.id) as id'),
-                    'mov.serie_unificada as serie',
+                    'mov.serie_unificada as serie', // Mantiene la serie agrupada/filtrada para el Blade
                     DB::raw('MAX(mov.CENTRO) as CENTRO'),
                     'tmc_unica.nombre as categoria_nombre',
                     'mov.SKU as sku',
-                    // Cálculo matemático neto
-                    DB::raw("
-                        SUM(
-                            CASE 
-                                WHEN mov.Naturaleza = 'E' THEN IFNULL(mov.cantidad, 0)
-                                WHEN mov.Naturaleza = 'H' THEN -IFNULL(mov.cantidad, 0)
-                                ELSE IFNULL(mov.cantidad, 0)
-                            END
-                        ) as cantidad
-                    ")
+                    // 🌟 LA CORRECCIÓN SOLICITADA: Suma directa limpia del campo cantidad rebajado
+                    DB::raw("SUM(IFNULL(mov.cantidad, 0)) as cantidad")
                 )
                 ->groupBy(
                     'tmc_unica.nombre',
                     'mov.SKU',
-                    'mov.serie_unificada'
+                    'mov.serie_unificada' // Agrupa de forma estricta por la serie unificada
                 )
                 ->having('cantidad', '>', 0) 
                 ->get();
@@ -2269,6 +2260,7 @@ LEFT JOIN treematerialescategoria AS am_padre
         return response()->json(['error' => $e->getMessage()], 500);
     }
 }
+
 
 
 
@@ -3205,7 +3197,6 @@ public function fetchrelacionC(Request $request)
     }
 }
 
-
 public function fetchrelacioninv(Request $request)
 {
     DB::connection()->disableQueryLog();
@@ -3218,7 +3209,7 @@ public function fetchrelacioninv(Request $request)
         $idtecnico = $request->input('id');
 
         // 🌟 1. Subconsulta Maestra: Solo lee el STOCK DISPONIBLE ACTUAL (Status = 'I')
-        // Esto evita leer el historial duplicado de entradas y salidas pasadas
+        // Mantiene intacta la lógica de unificación y prioridad de tus series
         $subconsultaBase = DB::table('movimientomateriales')
             ->select(
                 'id',
@@ -3227,7 +3218,7 @@ public function fetchrelacioninv(Request $request)
                 'CENTRO',
                 'created_at',
                 'cantidad',
-                // EVALUACIÓN DE PRIORIDAD DE SERIES
+                // EVALUACIÓN DE PRIORIDAD DE SERIES ORIGINAL (Se mantiene al 100%)
                 DB::raw("
                     CASE 
                         WHEN TRIM(serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(serie)
@@ -3238,9 +3229,8 @@ public function fetchrelacioninv(Request $request)
             )
             ->where('fkTienda', $fkTienda)
             ->where('fkTecnico', $idtecnico)
-            ->where('Status', 'I') // <--- CRÍTICO: 'I' es el inventario real activo del técnico. Quitando 'A' (Historial/Auditorías) eliminamos la duplicidad.
-            ->where('ESTATUS', 'DISPONIBLE'); // <--- Solo lo que el técnico tiene físicamente disponible para usar
-
+            ->where('Status', 'I') // Filtro estricto para ignorar bitácoras históricas duplicadas
+            ->where('ESTATUS', 'DISPONIBLE'); // Solo lo que el técnico tiene físicamente listo para usar
         // 🌟 2. Consulta que consolida y agrupa los saldos para tu Blade
         $relacion = MovimientoMaterial::with(['treematerialcategoria' => function($query) {
                 $query->select('SKU', 'nombre as descripcion');
@@ -3249,24 +3239,27 @@ public function fetchrelacioninv(Request $request)
             ->select(
                 DB::raw('MAX(mov.id) as id'),
                 'mov.SKU',
-                'mov.serie_maestra as serie', 
+                'mov.serie_maestra as serie', // Se expone con el nombre 'serie' que tu vista Blade necesita
                 DB::raw("MAX(mov.ESTATUS) as ESTATUS"),
                 DB::raw("MAX(mov.CENTRO) as CENTRO"),
                 DB::raw("MAX(mov.created_at) as created_at"),
-                // Suma directa limpia del stock real remanente en las filas activas
+                // SUMATORIA DIRECTA REPARADA: Suma limpia del campo cantidad rebajado previamente en vivo
                 DB::raw("SUM(IFNULL(mov.cantidad, 0)) as cantidad")
             )
             ->groupBy(
                 'mov.SKU',
-                'mov.serie_maestra' 
+                'mov.serie_maestra' // Agrupamos por la serie unificada de forma estricta
             )
-            ->having('cantidad', '>', 0) 
+            ->having('cantidad', '>', 0) // Remueve de la vista los saldos que ya queden en cero
             ->orderBy('created_at', 'desc')
             ->paginate($request->input('count', 15));
 
         if ($request->ajax()) {
             return view('buckettecnico.table.tablainv', compact('relacion'))->render();
         }
+
+        // Retorno de seguridad si no es una petición AJAX
+        return view('buckettecnico.index', compact('relacion'));
 
     } catch (\Exception $e) {
         if ($request->ajax()) {

@@ -177,6 +177,43 @@
     </div>
 </div>
 
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-dark text-white d-flex align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold"><i class="fas fa-boxes mr-2"></i> Kardex de Movimiento de Materiales</h6>
+    </div>
+    <div class="card-body">
+        <form action="{{ route('kardex.materiales') }}" method="GET" target="_blank">
+            <div class="row">
+                <!-- Filtro por Centro -->
+                <div class="col-md-3 mb-3">
+                    <label class="font-weight-bold text-secondary text-sm">Centro Organizativo</label>
+                    <input type="text" name="centro" class="form-control" placeholder="Ej: SE001, D087018">
+                </div>
+
+                <!-- Filtro por SKU -->
+                <div class="col-md-3 mb-3">
+                    <label class="font-weight-bold text-secondary text-sm">SKU / Código Material</label>
+                    <input type="text" name="sku" class="form-control" placeholder="Ej: 1000954">
+                </div>
+
+                <!-- Filtro por Serie -->
+                <div class="col-md-3 mb-3">
+                    <label class="font-weight-bold text-secondary text-sm">Número de Serie / MAC</label>
+                    <input type="text" name="serie" class="form-control" placeholder="Ej: ECS0322..., N/A">
+                </div>
+
+                <!-- Botón de Acción -->
+                <div class="col-md-3 mb-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-dark btn-block shadow-sm">
+                        <i class="fas fa-file-excel mr-1"></i> Generar Kardex
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+
         <!-- SECCIÓN 2: FORMULARIOS DE PROCESAMIENTO -->
         <div class="row g-4">
             

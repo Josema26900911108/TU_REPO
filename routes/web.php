@@ -514,6 +514,10 @@ Route::get('/movimientomaterialesTtabla', [movimientomaterialesController::class
 // Reportes de Kardex de Inventario
 Route::get('/reportes/kardex-excel', [movimientomaterialesController::class, 'exportarKardexExcelResumen'])->name('kardexmov.excel');
 
+// Ruta para descargar el Kardex de movimiento de materiales
+Route::get('/reportes/kardex-materiales', [movimientomaterialesController::class, 'exportarKardexMateriales'])->name('kardex.materiales');
+
+
 
 use App\Http\Controllers\MaterialSapController;
 

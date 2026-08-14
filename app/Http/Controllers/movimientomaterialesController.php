@@ -65,6 +65,219 @@ public function index()
     return view('materialmovorganizaciones.index', compact('materialmanoobra'));
 }
 
+public function exportarKardexMateriales(Request $request)
+{
+    if (!Auth::check()) return redirect()->route('login');
+
+    $fkTienda = session('user_fkTienda') ?? session('user_fktienda');
+    
+    // Captura y limpieza de filtros
+    $centroFiltro = trim($request->input('centro'));
+    $skuFiltro    = trim($request->input('sku'));
+    $serieFiltro  = trim($request->input('serie'));
+
+    // ============================================================================
+    // CONSULTA BASE CONTABLE DE MOVIMIENTOS
+    // ============================================================================
+    $query = DB::table('movimientomateriales as mm')
+        ->where('mm.fkTienda', $fkTienda)
+        ->select([
+            'mm.id',
+            'mm.SKU',
+            'mm.CENTRO',
+            'mm.almacen',
+            'mm.TIPOMOVIMIENTO',
+            'mm.ESTATUS',
+            'mm.Naturaleza',
+            'mm.cantidad',
+            'mm.COSTO',
+            'mm.created_at',
+            'mm.Creado_por',
+            // Unificación inteligente de la columna serie
+            DB::raw("
+                CASE 
+                    WHEN TRIM(mm.serie) NOT IN ('', '-', '0', 'N/A') THEN TRIM(mm.serie)
+                    WHEN TRIM(mm.MAC1) NOT IN ('', '-', '0', 'N/A') THEN TRIM(mm.MAC1)
+                    ELSE 'N/A'
+                END as serie_unificada
+            ")
+        ]);
+
+    // Aplicación estricta de filtros dinámicos
+    if (!empty($centroFiltro)) {
+        $query->where('mm.CENTRO', $centroFiltro);
+    }
+    if (!empty($skuFiltro)) {
+        $query->where('mm.SKU', $skuFiltro);
+    }
+    if (!empty($serieFiltro)) {
+        if (in_array(strtoupper($serieFiltro), ['N/A', '0', '-', ''])) {
+            $query->where(function($q) {
+                $q->whereNull('mm.serie')
+                  ->orWhereIn('mm.serie', ['', '0', '-', 'N/A']);
+            });
+        } else {
+            $query->where('mm.serie', $serieFiltro);
+        }
+    }
+
+    $movimientos = $query->orderBy('mm.created_at', 'desc')->get();
+
+    // ============================================================================
+    // GENERACIÓN DEL EXCEL (FORMATO STREAMING CSV)
+    // ============================================================================
+    $fileName = 'kardex_movimientos_materiales_' . now()->format('Ymd_His') . '.csv';
+    
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=$fileName",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    $columns = [
+        'ID Registro', 'SKU / Código', 'Número de Serie / MAC', 'Centro', 'Almacén', 
+        'Tipo Movimiento', 'Estatus', 'Naturaleza', 'Cantidad Flujo', 
+        'Costo Unitario', 'Costo Total Valorizado', 'Fecha Transacción', 'Procesado Por'
+    ];
+
+    $callback = function() use ($movimientos, $columns) {
+        $file = fopen('php://output', 'w');
+        
+        // BOM UTF-8 para evitar errores de visualización de caracteres en Excel
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Encabezados con separador regional punto y coma (;)
+        fputcsv($file, $columns, ';');
+
+        foreach ($movimientos as $mov) {
+            $cantidadFloat = floatval($mov->cantidad);
+            $costoFloat = floatval($mov->COSTO);
+            
+            // Si la naturaleza indica que es un egreso o salida, lo representamos con signo negativo para el Kardex
+            $flujoCantidad = ($mov->Naturaleza === 'H' || $cantidadFloat < 0) ? abs($cantidadFloat) * -1 : abs($cantidadFloat);
+            $costoTotalValorizado = abs($flujoCantidad) * $costoFloat;
+
+            fputcsv($file, [
+                $mov->id,
+                $mov->SKU,
+                $mov->serie_unificada,
+                $mov->CENTRO,
+                $mov->almacen,
+                $mov->TIPOMOVIMIENTO ?? 'TRASPASO',
+                $mov->ESTATUS,
+                $mov->Naturaleza,
+                number_format($flujoCantidad, 3, '.', ''),
+                number_format($costoFloat, 2, '.', ''),
+                number_format($costoTotalValorizado, 2, '.', ''),
+                $mov->created_at,
+                $mov->Creado_por ?? 'Sistema'
+            ], ';');
+        }
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+public function exportarKardexExcelResumen(Request $request)
+{
+    if (!Auth::check()) return redirect()->route('login');
+
+    $fkTienda = session('user_fkTienda') ?? session('user_fktienda');
+    $centroFiltro = trim($request->input('centro'));
+    $codigoFiltro = trim($request->input('codigo_producto'));
+
+    // ============================================================================
+    // CONSULTA CON CONTABILIZACIÓN MATEMÁTICA REAL (FILTRADA POR STOCK ACTIVO)
+    // ============================================================================
+    $queryKardex = DB::table('movimiento_materiales as mm')
+        ->join('productos as p', 'p.id', '=', 'mm.fkMateriales')
+        ->where('mm.fkTienda', $fkTienda)
+        ->select([
+            'p.id as id',
+            'p.codigo as sku',
+            'p.nombre as producto',
+            'mm.centro',
+            // SUMA TOTAL DE ENTRADAS: Unidades activas disponibles cargadas
+            DB::raw("SUM(CASE WHEN mm.cantidad > 0 THEN mm.cantidad ELSE 0 END) as total_entradas"),
+            // SUMA TOTAL DE SALIDAS: Convertimos remanentes negativos a absolutos si los hubiera en el activo
+            DB::raw("SUM(CASE WHEN mm.cantidad < 0 THEN ABS(mm.cantidad) ELSE 0 END) as total_salidas"),
+            // STOCK TOTAL NETO REAL: Saldo físico exacto en el almacén o bucket
+            DB::raw("SUM(mm.cantidad) as stock_total_neto"),
+            // Fecha de la última actividad del registro
+            DB::raw("MAX(mm.fecha_contabilizacion) as ultima_actividad")
+        ]);
+
+    // Aplicación estricta de filtros opcionales del formulario web
+    if (!empty($centroFiltro)) {
+        $queryKardex->where('mm.centro', $centroFiltro);
+    }
+    if (!empty($codigoFiltro)) {
+        $queryKardex->where('p.codigo', $codigoFiltro);
+    }
+
+    // Agrupamos para consolidar los saldos numéricos por artículo y centro organizativo
+    $reporteKardex = $queryKardex->groupBy('p.codigo', 'p.nombre', 'mm.centro',  'p.id')
+        ->orderBy('mm.centro')
+        ->orderBy('p.codigo')
+        ->get();
+
+    // ============================================================================
+    // CONFIGURACIÓN DE DESCARGA EN FORMATO EXCEL/CSV
+    // ============================================================================
+    $fileName = 'resumen_kardex_inventario_' . now()->format('Ymd_His') . '.csv';
+    
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=$fileName",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    $columns = [
+        'id',
+        'SKU / Código', 
+        'Descripción del Producto', 
+        'Centro / Almacén',
+        'Total Entradas (+)', 
+        'Total Salidas (-)', 
+        'Stock Total Neto (Disponible)', 
+        'Última Actividad'
+    ];
+
+    $callback = function() use ($reporteKardex, $columns) {
+        $file = fopen('php://output', 'w');
+        
+        // Inyección del BOM UTF-8 para garantizar compatibilidad nativa con Excel (tildes y eñes)
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Encabezados con delimitador regional de punto y coma (;)
+        fputcsv($file, $columns, ';');
+
+        // Volcado contable limpio fila por fila
+        foreach ($reporteKardex as $fila) {
+            fputcsv($file, [
+                $fila->id,    
+                $fila->sku,
+                $fila->producto,
+                $fila->centro,
+                number_format($fila->total_entradas, 3, '.', ''),
+                number_format($fila->total_salidas, 3, '.', ''),
+                number_format($fila->stock_total_neto, 3, '.', ''),
+                $fila->ultima_actividad
+            ], ';');
+        }
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
 
 
 public function importarmamo(Request $request)
@@ -254,24 +467,27 @@ public function importarmamo(Request $request)
             // ============================================================================
             $registrosEnEsteArchivo[] = $huellaMovimiento;
 
+            // ACUMULAR EN EL BLOQUE ACTUAL PARA PROCESADO EN MASA
             $bloqueOperaciones[] = [
                 'sku' => $sku,
                 'cantidad' => $cantidad,
                 'serie' => $serie,
                 'centroOrigen' => $centroOrigen,
                 'centroDestino' => $centroDestino,
-                'data' => $data
+                'data' => $data,
+                'fila' => $fila // <--- AGREGAR ESTA LÍNEA: Pasa el número de fila real del CSV (ej: 2, 3, 4...)
             ];
 
+
             if (count($bloqueOperaciones) >= $tamañoBloque) {
-                $insertadosContador += $this->procesarBloqueTransaccional($bloqueOperaciones, $fkTienda, $nombreUsuario, $ahora);
+                $insertadosContador += $this->procesarBloqueTransaccional($bloqueOperaciones, $fkTienda, $nombreUsuario, $ahora, $fila);
                 $bloqueOperaciones = [];
             }
         } // <--- Cierre del bucle while principal
 
         // Procesar los registros que quedaron huérfanos en el último bloque
         if (count($bloqueOperaciones) > 0) {
-            $insertadosContador += $this->procesarBloqueTransaccional($bloqueOperaciones, $fkTienda, $nombreUsuario, $ahora);
+            $insertadosContador += $this->procesarBloqueTransaccional($bloqueOperaciones, $fkTienda, $nombreUsuario, $ahora, $fila);
         }
 
         fclose($file);
@@ -316,16 +532,17 @@ public function importarmamo(Request $request)
 /**
  * Función auxiliar encargada de procesar el bloque bajo una única transacción de Base de Datos.
  */
-private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario, $ahora)
+private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario, $ahora, $fila)
 {
     $contadorLocal = 0;
 
-    DB::transaction(function() use ($bloque, $fkTienda, $nombreUsuario, $ahora, &$contadorLocal) {
+    DB::transaction(function() use ($bloque, $fkTienda, $nombreUsuario, $ahora, $fila, &$contadorLocal) {
         foreach ($bloque as $operacion) {
             $sku = trim($operacion['sku']);
             $cantidad = floatval($operacion['cantidad']);
             $serieRaw = trim($operacion['serie'] ?? '');
-            
+            $numFila = $operacion['fila'] ?? 1;
+
             // NORMALIZACIÓN DE CENTROS REBELDES EN LA NUBE
             $centroOrigen = strtoupper(trim($operacion['centroOrigen'] ?? ''));
             if (empty($centroOrigen)) { $centroOrigen = 'SE001'; }
@@ -341,7 +558,7 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
 
             $idTecnicoOrigen = !empty($centroOrigen) ? DB::table('tecnico')->whereRaw('UPPER(codigo) = ?', [$centroOrigen])->value('id') : null;
             $idTecnicoDestino = !empty($centroDestino) ? DB::table('tecnico')->whereRaw('UPPER(codigo) = ?', [$centroDestino])->value('id') : null;
-            $docRef = 'ETA-' . ($idTecnicoOrigen ?? '0') . ";" . ($idTecnicoDestino ?? '0') . ";" . $ahora->format('dmY:H:i:s') . ';' . ($serieRaw ?: 'N/A');
+            $docRef = 'ETA-' . ($idTecnicoOrigen ?? '0') . ";" . ($idTecnicoDestino ?? '0') . ";" . $ahora->format('dmY:H:i:s') . ';';
             
             $nombreProducto = null;
             $productoExistente = \App\Models\Producto::where('codigo', $sku)->where('fkTienda', $fkTienda)->select('nombre')->first();
@@ -364,8 +581,10 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
             );
 
             $costoUnidad = \App\Models\Materialmanoobra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('COSTOPAGO', 'TIPO', 'unidadmedida')->latest()->first();
-            $costoFinal = $costoUnidad ? doubleval($costoUnidad->COSTOPAGO) : doubleval($data['COSTO'] ?? 0);
 
+            $costoFinal = $costoUnidad->CATEGORIACOBRO ? doubleval($costoUnidad->CATEGORIACOBRO) : doubleval($data['COSTO'] ?? 0);
+
+            $posicionFila = str_pad($numFila, 4, '0', STR_PAD_LEFT); 
             // ============================================================================
             // 📥 1. HISTORIAL DE SALIDA Y REDUCCIÓN EN ORIGEN (Forzado para SE001)
             // ============================================================================
@@ -379,7 +598,7 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
                     'referencia' => "SALIDA TRASLADO SERIE: " . ($serieRaw ?: 'N/A') . " | AL DESTINO " . $centroDestino,
                     'tipo_movimiento' => 'TRASPASO_SALIDA', 
                     'documento_material' => $docRef,
-                    'posicion_documento' => '0001', 
+                    'posicion_documento' => $posicionFila ?? '0001', 
                     'fecha_contabilizacion' => $ahora->format('Y-m-d'),
                     'almacen' => $data['ALMACEN'] ?? 'ALMA', 
                     'centro' => $centroOrigen, 
@@ -423,7 +642,7 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
                 'referencia' => !empty($centroOrigen) ? "ENTRADA TRASLADO SERIE: " . ($serieRaw ?: 'N/A') . " | ORIGEN: " . $centroOrigen : "INSERCION INICIAL DE STOCK",
                 'tipo_movimiento' => !empty($centroOrigen) ? 'TRASPASO_ENTRADA' : 'INSERCION_STOCK', 
                 'documento_material' => $docRef, 
-                'posicion_documento' => '0001', 
+                'posicion_documento' => $posicionFila ?? '0001', 
                 'fecha_contabilizacion' => $ahora->format('Y-m-d'),
                 'centro' => $centroDestino, 
                 'almacen' => $data['ALMACEN'] ?? 'ALMA', 
