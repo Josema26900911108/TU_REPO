@@ -50,35 +50,90 @@
             <button type="button" class="fa fa-download">descargar formato</button>
         </a>
     </div>
+
+    <div class="card mb-4 bg-light">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <!-- Bloque Izquierdo: Descarga de Formato -->
+            <div class="col-md-4 mb-3 mb-md-0">
+                <p class="mb-1 text-muted small fw-bold">1. Descarga la plantilla con los IDs:</p>
+                <a href="{{ route('manoobramaterial.formato') }}" class="btn btn-outline-primary w-100">
+                    <i class="fa fa-download me-1"></i> Descargar Formato (.CSV)
+                </a>
+            </div>
+
+            <!-- Bloque Derecho: Formulario de Subida/Importación -->
+            <div class="col-md-8">
+                <p class="mb-1 text-muted small fw-bold">2. Sube el archivo modificado para actualizar por ID:</p>
+                <form action="{{ route('manoobramaterial.importar') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center gap-2">
+                    @csrf
+                    
+                    <!-- Botón visual para elegir archivo -->
+                    <label for="archivoedit" class="btn btn-secondary custom-upload-btn mb-0" title="Seleccionar archivo">
+                        <i class="fa fa-file-excel"></i> Examinar...
+                    </label>
+                    <input type="file" id="archivoedit" name="archivoedit" class="custom-file-input" onchange="mostrarNombreedit(this)" accept=".csv,.txt">
+                    
+                    <!-- Contenedor del nombre del archivo cargado -->
+                    <div class="flex-grow-1 px-2 border rounded bg-white text-truncate text-muted small" id="nombre-archivoedit" style="line-height: 34px; height: 38px;">
+                        Ningún archivo seleccionado
+                    </div>
+
+                    <!-- Botón para procesar la actualización -->
+                    <button type="submit" class="btn btn-success">
+                        <i class="fa fa-upload me-1"></i> Subir y Actualizar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
     @endcan
 
-    <div class="card">
-        <div class="card-header">
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
             <i class="fas fa-table me-1"></i>
             Tabla Manos de obra y Materiales
         </div>
-        <div class="card-body">
-            <table id="datatablesSimple" class="table table-striped fs-6">
-                <thead>
-                    <tr>
-                        <th>SKU</th>
-                        <th>Descripcion</th>
-                        <th>TIPO</th>
-                        <th>unidadmedida</th>
-                        <th>CATEGORIA</th>
-                        <th>COSTOPAGO</th>
-                        <th>CATEGORIACOBRO</th>
-                        <th>Centro Costo Específico</th>
-                        <!------Eliminar producto---->
-                        @can('vertienda-producto')
-                        <th>Tienda</th>
-                        @endcan
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
+        <!-- NUEVO: Botones de Exportación -->
+        <div class="btn-group" role="group" aria-label="Exportar datos">
+            <button type="button" id="btn-export-csv" class="btn btn-sm btn-outline-success">
+                <i class="fas fa-file-csv"></i> Exportar CSV
+            </button>
+            <button type="button" id="btn-export-json" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-file-code"></i> Exportar JSON
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <table id="datatablesSimple" class="table table-striped fs-6">
+            <!-- El contenido de tu table (thead y tbody) permanece exactamente igual -->
+            <thead>
+                <tr>
+                    <th>id</th>
+                    <th>SKU</th>
+                    <th>Descripcion</th>
+                    <th>TIPO</th>
+                    <th>unidadmedida</th>
+                    <th>CATEGORIA</th>
+                    <th>COSTOPAGO</th>
+                    <th>CATEGORIACOBRO</th>
+                    <th>Centro Costo Específico</th>
+                    @can('vertienda-producto')
+                    <th>Tienda</th>
+                    @endcan
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+
                     @foreach ($materialmanoobra as $item)
                     <tr>
+                        <td>
+                            {{$item->id}}
+                        </td>
                         <td>
                             {{$item->SKU}}
                         </td>
@@ -214,5 +269,43 @@
     const nombre = input.files.length > 0 ? input.files[0].name : "Ningún archivo seleccionado";
     document.getElementById('nombre-archivo').textContent = nombre;
   }
+
+    function mostrarNombreedit(input) {
+    const nombre = input.files.length > 0 ? input.files[0].name : "Ningún archivo seleccionado";
+    document.getElementById('nombre-archivoedit').textContent = nombre;
+  }
+  document.addEventListener("DOMContentLoaded", function() {
+    // 1. Inicializamos la tabla guardando la referencia en una constante
+    const datatableElement = document.getElementById("datatablesSimple");
+    
+    if (datatableElement) {
+        const myDataTable = new simpleDatatables.DataTable(datatableElement, {
+            searchable: true,
+            fixedHeight: false
+        });
+
+        // 2. Evento para Exportar a CSV (Estructura para versiones recientes)
+        document.getElementById("btn-export-csv").addEventListener("click", function() {
+            simpleDatatables.exportCSV(myDataTable, {
+                download: true,
+                lineDelimiter: "\n",
+                columnDelimiter: ",",
+                filename: "Mano_Obra_Materiales_" + new Date().toISOString().slice(0,10),
+                // Omitimos la última columna (índice 8 si hay tienda, o el correspondiente a tus "Acciones")
+                columnFilter: [0, 1, 2, 3, 4, 5, 6, 7] 
+            });
+        });
+
+        // 3. Evento para Exportar a JSON (Estructura para versiones recientes)
+        document.getElementById("btn-export-json").addEventListener("click", function() {
+            simpleDatatables.exportJSON(myDataTable, {
+                download: true,
+                filename: "Mano_Obra_Materiales_" + new Date().toISOString().slice(0,10),
+                columnFilter: [0, 1, 2, 3, 4, 5, 6, 7]
+            });
+        });
+    }
+});
+
 </script>
 @endpush

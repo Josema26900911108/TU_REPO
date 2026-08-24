@@ -173,6 +173,107 @@ public function importarMAMO(Request $request)
     }
 }
 
+public function descargarFormatoEditar()
+{
+    $headers = [
+        "Content-type"        => "text/csv",
+        "Content-Disposition" => "attachment; filename=formato_actualizacion_mamo.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // NUEVO: Añadimos 'id' al inicio del arreglo de columnas
+    $columnas = ['id', 'SKU', 'Descripcion', 'TIPO', 'unidadmedida', 'CATEGORIA', 'COSTOPAGO', 'CATEGORIACOBRO', 'centrocostoespecifico'];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        fputcsv($file, $columnas); // Encabezado con ID
+
+        // Línea de ejemplo indicando un ID existente
+        fputcsv($file, ['15', '663483', 'Ejemplo mano de obra material modificado', 'TE04', 'PZA', 'MATERIAL', 1525.89, 1525.89, 'D087018']);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+public function importarMAMOEditar(Request $request)
+{
+    DB::connection()->disableQueryLog();
+    if (!Auth::check()) {
+        return redirect()->route('login');
+    }
+
+    $fkTienda = session('user_fkTienda');
+    $request->validate([
+        'archivoedit' => 'required|file|mimes:csv,txt',
+    ]);
+
+    $realPath = $request->file('archivoedit')->getRealPath();
+    $fileData = file_get_contents($realPath);
+
+    // Detección y conversión de codificación (Mantiene acentos y eñes limpios)
+    $encoding = mb_detect_encoding($fileData, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+    if ($encoding !== 'UTF-8') {
+        $fileData = mb_convert_encoding($fileData, 'UTF-8', $encoding);
+    }
+
+    $file = fopen('php://temp', 'r+');
+    fwrite($file, $fileData);
+    rewind($file);
+
+    $encabezado = fgetcsv($file); 
+    
+    // Limpieza de caracteres invisibles en cabeceras
+    $encabezado = array_map(function($val) {
+        return trim(preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $val));
+    }, $encabezado);
+
+    DB::beginTransaction();
+
+    try {
+        while (($linea = fgetcsv($file)) !== false) {
+            // Unir columnas con llaves de encabezado
+            $data = array_combine($encabezado, $linea);
+
+            // CAMBIO CRÍTICO: Validar que el campo 'id' esté presente en la fila
+            if (!isset($data['id']) || empty(trim($data['id']))) {
+                continue; // Si la fila no tiene ID válido, la ignora para evitar duplicados incorrectos
+            }
+
+            // Buscamos estrictamente por ID para aplicar las modificaciones masivas
+            Materialmanoobra::updateOrCreate(
+                [
+                    'id' => trim($data['id']) // <--- Restricción de búsqueda WHERE id = :id
+                ],
+                [
+                    // Todos estos campos serán modificados basándose en el ID encontrado
+                    'SKU'                   => trim($data['SKU'] ?? ''),
+                    'Descripcion'           => trim($data['Descripcion'] ?? ''),
+                    'TIPO'                  => trim($data['TIPO'] ?? ''),
+                    'unidadmedida'          => trim($data['unidadmedida'] ?? ''),
+                    'CATEGORIA'             => trim($data['CATEGORIA'] ?? ''),
+                    'COSTOPAGO'             => (float) ($data['COSTOPAGO'] ?? 0),
+                    'CATEGORIACOBRO'        => (float) ($data['CATEGORIACOBRO'] ?? 0),
+                    'centrocostoespecifico' => !empty($data['centrocostoespecifico']) ? trim($data['centrocostoespecifico']) : null,
+                    'fkTienda'              => $fkTienda ?? 0 
+                ]
+            );
+        }
+
+        DB::commit();
+        fclose($file);
+        return back()->with('success', 'Registros actualizados masivamente por ID de forma correcta.');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        fclose($file);
+        return back()->with('error', 'Error al procesar la actualización por ID: ' . $e->getMessage());
+    }
+}
+
+
     public function store(StorePersonaRequest $request)
     {
         try {

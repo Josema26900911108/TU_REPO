@@ -475,6 +475,13 @@ Route::get('/tree-formatoRelaciones',[TreematerialescategoriaController::class,'
 route::get('/materialmanoobra/lista',[materialmanoobraController::class,'index'])->name('manoobramaterial.lista');
 Route::get('/materialmanoobra/descargarformato',[materialmanoobraController::class,'descargarFormato'])->name('manoobramaterial.formato');
 Route::post('/materialmanoobra/importar',[materialmanoobraController::class,'importarMAMO'])->name('manoobramaterial.importar');
+// Rutas para la gestión masiva de Mano de Obra y Materiales (MAMO)
+Route::get('/mano-obra-material/descargar-formato', [materialmanoobraController::class, 'descargarFormatoEditar'])
+    ->name('manoobramaterial.formato');
+
+Route::post('/mano-obra-material/importar', [materialmanoobraController::class, 'importarMAMOEditar'])
+    ->name('manoobramaterial.importar');
+
 
 //Route::get('/pagotecnico/lista', [PagotecnicoController::class, 'index'])->name('pagotecnico.lista');
 Route::post('/pagotecnico/importar', [pagotecnicoController::class, 'importarPagosTecnico'])->name('pagotecnico.importar');
