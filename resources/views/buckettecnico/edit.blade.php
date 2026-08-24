@@ -94,6 +94,10 @@
     padding:3px 8px;
     color:#000
 }
+/* Oculta los nodos del árbol que no coinciden con la búsqueda */
+.treeview .node-hidden {
+    display: none !important;
+}
 
 #contextMenu {
     background-color: white;
@@ -737,23 +741,29 @@
 
 
 <!-- Ventana Flotante (Inicia minimizada) -->
-    <div id="floating-window" class="floating-window minimized">
-        <div id="window-header" class="window-header">
-            <div class="window-title-container">
-                <!-- Icono de Materiales y Mano de Obra (Opción Emoji nativa o tu SVG) -->
-                <span class="window-icon">🧱🛠️</span>
-                <!-- Texto que se ocultará/mostrará -->
-                <span id="window-title-text" class="window-title-text">MA/MO</span>
-            </div>
-            <div class="window-controls">
-                <button id="btn-minimize" type="button" class="win-btn">+</button>
-                
-            </div>
+<div id="floating-window" class="floating-window minimized">
+    <div id="window-header" class="window-header">
+        <div class="window-title-container">
+            <span class="window-icon">🧱🛠️</span>
+            <span id="window-title-text" class="window-title-text">MA/MO</span>
         </div>
+        <div class="window-controls">
+            <button id="btn-minimize" type="button" class="win-btn">+</button>
+        </div>
+    </div>
+
+    <!-- Contenedor de Filtros y Ordenamiento -->
+    <div class="window-filters" style="padding: 8px; display: flex; gap: 5px; background: #f5f5f5; border-bottom: 1px solid #ddd;">
+        <!-- CAMBIO: type="search" para incluir la X nativa del navegador -->
+        <input type="search" id="tree-search" class="form-control form-control-sm" placeholder="Buscar material o SKU..." style="flex: 1; padding: 4px 8px; font-size: 13px;">
+<button type="button" id="btn-sort-tree" class="btn btn-sm btn-secondary" data-order="asc" title="Ordenar" style="padding: 4px 8px;">
+    Sort <span id="sort-icon">↑</span>
+</button>
+
+    </div>
 
     <div id="window-content" class="window-content">
         <div id="treeview-seleccionar" class="treeview">
-            <!-- Tu contenido aquí -->
             <ul>
                 <li>Nodo Raíz
                     <ul>
@@ -765,6 +775,7 @@
         </div>
     </div>
 </div>
+
 
 <button type="button" id="btnLimpiarSincronizar" class="btn btn-warning">
     <i class="fa-solid fa-rotate"></i> Limpiar Caché y Sincronizar
@@ -850,10 +861,9 @@
     let stream;
     let itemsEliminados = []; // Arreglo para registrar los IDs que el backend debe borrar
 
-    $('#btnLimpiarSincronizar').click(function(e) {
+$('#btnLimpiarSincronizar').click(function(e) {
     e.preventDefault();
     
-    // Mostramos una alerta estética antes de limpiar
     Swal.fire({
         title: '¿Re-sincronizar datos?',
         text: "Se limpiará la memoria local del navegador para descargar la información más reciente del servidor.",
@@ -865,65 +875,60 @@
         cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
-            // Ejecutamos la limpieza inteligente (Opción 1)
-       actualizarSoloTablaMateriales();      
-            // Recargamos la ventana
-            window.location.reload();
+            // Mostramos un loader estético para que el usuario sepa que se está conectando a la nube
+            Swal.showLoading();
+            
+            // Disparamos la actualización secuencial
+            actualizarSoloTablaMateriales();      
         }
     });
 });
 
 function actualizarSoloTablaMateriales() {
-    // 1. Marcamos los selectores para que no gatillen eventos de limpieza en cadena
-    $('#itemtecnologia, #itemmanoobra').data('sincronizando', true);
-
-    // 2. Guardamos los valores que el usuario tiene seleccionados actualmente en la pantalla
-    let valorTecnologiaActual = $('#itemtecnologia').val();
-    let valorManoObraActual = $('#itemmanoobra').val();
-
-    // 3. Ejecutamos la consulta limpia de la caché o BD para rehacer la tabla de materiales
-    let id = "{{ $id3 ?? 0 }}"; //
+    let id = "{{ $id3 ?? 0 }}"; 
     
     $.ajax({
-        url: "{{ route('inventariolistadetalles') }}", //
-        method: 'GET', //
-        data: { parametros: id }, //
-        success: function(response) { //
-            // Vaciamos única y exclusivamente el cuerpo de la tabla de materiales utilizados
-            $('#detalle_tbody').empty(); //
-            $("input[name^='items[']").remove(); //
-            allItems = []; //
+        url: "{{ route('inventariolistadetalles') }}", 
+        method: 'GET', 
+        data: { parametros: id }, 
+        success: function(response) { 
+            // 1. Limpiamos las variables globales de control de la pantalla
+            allItems = []; 
+            let idsProcesados = {}; 
             
-            let idsProcesados = {}; //
-            response.forEach(function(material, index) { //
-                if (idsProcesados[material.id]) return; //
-                if ($('#detalle_tbody').find("input[value='" + material.id + "']").length > 0) return; //
-                idsProcesados[material.id] = true; //
+            // 2. Procesamos el mapeo de los datos frescos devueltos por la base de datos
+            response.forEach(function(material, index) { 
+                if (idsProcesados[material.id]) return; 
+                idsProcesados[material.id] = true; 
                 
-                material.index = index; //
-                if (!material.photos) material.photos = []; //
-                material.cantidad = material.cantidad || 0; //
-                material.Descripcion = material.Descripcion || ""; //
-                material.sku = material.sku || ""; //
-                material.serie = material.serie || ""; //
-                material.fkTecnologiaarbol = material.fkTecnologiaarbol || ""; //
+                material.index = index; 
+                if (!material.photos) material.photos = []; 
+                material.cantidad = material.cantidad || 0; 
+                material.Descripcion = material.Descripcion || ""; 
+                material.sku = material.sku || ""; 
+                material.serie = material.serie || ""; 
+                material.fkTecnologiaarbol = material.fkTecnologiaarbol || ""; 
                 
-                // Renderizamos la fila en la tabla sin tocar los selectores superiores
-                renderizarFilaHTML(material); //
-                allItems.push(material); //
+                allItems.push(material); 
             });
             
-            // Guardamos el estado limpio en el almacenamiento local
-            localStorage.setItem(llaveCache, JSON.stringify(allItems)); //
+            // 3. Sobreescribimos el almacenamiento local garantizando la persistencia de datos limpios
+            localStorage.setItem(llaveCache, JSON.stringify(allItems)); 
 
-            // 4. RESTAURACIÓN DE SELECTORES: Devolvemos sus valores exactos previos a la actualización
-            $('#itemtecnologia').val(valorTecnologiaActual).selectpicker('refresh');
-            $('#itemmanoobra').val(valorManoObraActual).selectpicker('refresh');
+            console.log("Caché local sincronizada con éxito. Procediendo a recargar ventana...");
 
-            // Liberamos la bandera de sincronización
-            $('#itemtecnologia, #itemmanoobra').data('sincronizando', false);
-            
-            console.log("Tabla de materiales actualizada con éxito. Selectores preservados.");
+            // 4. 🌟 LA CORRECCIÓN CLAVE: La recarga se ejecuta estrictamente AQUÍ.
+            // Al ejecutarse dentro del success, garantizamos que la caché se guardó primero.
+            window.location.reload();
+        },
+        error: function(xhr, status, error) {
+            // Failsafe por si la nube de Google tarda en responder
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de sincronización',
+                text: 'No se pudo descargar la información del servidor. Intente de nuevo.'
+            });
+            console.error("Fallo al conectar con la ruta de inventario: ", error);
         }
     });
 }
@@ -2049,41 +2054,144 @@ window.guardarSeleccionActualManoObra = function() {
 };
 
 
+// Variable global para almacenar los datos del árbol temporalmente
+let currentTreeData = [];
 
-    // Función que llena el árbol y configura el evento de selección de nodo
-    function fill_treeview(id) {
-        $.ajax({
-            url: "{{ route('fetchabrestructura') }}",
-            dataType: "json",
-            data: { id: id },
-            success: function (data) {
-                // Limpia árbol previo
-                $('#treeview-seleccionar').treeview('remove');
+function fill_treeview(id) {
+    $.ajax({
+        url: "{{ route('fetchabrestructura') }}",
+        dataType: "json",
+        data: { id: id },
+        success: function (data) {
+            currentTreeData = data;
+            render_treeview(currentTreeData);
+        },
+        error: function (xhr) {
+            console.error('Error al cargar árbol:', xhr.responseText);
+        }
+    });
+}
 
-                $('#treeview-seleccionar').treeview({
-                    data: data,
-                    selectable: true,
-                    highlightSelected: true,
-                    showBorder: false,
-                    levels: 3,
-                    expandIcon: 'fa fa-plus',
-                    collapseIcon: 'fa fa-minus',
+// Función encargada exclusivamente de inicializar y dibujar el componente árbol
+function render_treeview(data) {
+    $('#treeview-seleccionar').treeview('remove');
+    $('#treeview-seleccionar').treeview({
+        data: data,
+        selectable: true,
+        highlightSelected: true,
+        showBorder: false,
+        levels: 3,
+        expandIcon: 'fa fa-plus',
+        collapseIcon: 'fa fa-minus',
+        searchResultColor: '#ffffff',
+        searchResultBackColor: '#28a745', 
 
-                    onNodeSelected: function (event, node) {
-                        console.log('Nodo seleccionado:', node);
-                        if (node.Cid !== undefined) {
-                            $('#nodoSeleccionado').val(node.Cid);
-                            // Llamas aquí la función que lista materiales
-                            listar_materiales_por_categoria(node.idpivote);
-                        }
-                    }
-                });
-            },
-            error: function (xhr) {
-                console.error('Error al cargar árbol:', xhr.responseText);
+        onNodeSelected: function (event, node) {
+            console.log('Nodo seleccionado:', node);
+            if (node.Cid !== undefined) {
+                $('#nodoSeleccionado').val(node.Cid);
+                listar_materiales_por_categoria(node.idpivote);
+            }
+        }
+    });
+
+    // Al renderizar (o re-renderizar por ordenar), si hay texto, aplicamos el filtro inmediatamente
+    aplicar_filtro_ocultacion();
+}
+
+// ==========================================
+// FUNCIÓN CENTRAL DE FILTRADO Y OCULTACIÓN
+// ==========================================
+function aplicar_filtro_ocultacion() {
+    let pattern = $('#tree-search').val().toLowerCase().trim();
+    let $tree = $('#treeview-seleccionar');
+
+    // Limpiamos estilos previos y aseguramos que todo sea visible antes de filtrar
+    $tree.find('li').css({ 'background-color': '', 'color': '' }).show();
+
+    if (pattern === '') {
+        $tree.treeview('clearSearch');
+        return;
+    }
+
+    // 1. Resaltamos las coincidencias con tu color verde de diseño
+    $tree.find('li').each(function () {
+        let $node = $(this);
+        let text = $node.text().toLowerCase();
+
+        if (text.includes(pattern)) {
+            $node.css({ 'background-color': '#28a745', 'color': '#ffffff' });
+            $node.addClass('custom-search-match'); 
+        } else {
+            $node.removeClass('custom-search-match');
+        }
+    });
+
+    // 2. Ocultamos los nodos innecesarios respetando las ramas padres
+    $tree.find('li').each(function () {
+        let $node = $(this);
+        let esResultado = $node.hasClass('custom-search-match');
+        let tieneHijoResultado = $node.find('.custom-search-match').length > 0;
+
+        if (esResultado || tieneHijoResultado) {
+            $node.show();
+            $node.parents('li').show(); 
+        } else {
+            $node.hide();
+        }
+    });
+}
+
+// ==========================================
+// EVENTOS DEL BUSCADOR (Escritura y botón X)
+// ==========================================
+$(document).on('keyup input', '#tree-search', function () {
+    aplicar_filtro_ocultacion();
+});
+
+// ==========================================
+// EVENTO: Botón para ordenar Asc / Desc por NOMBRE (Universal)
+// ==========================================
+$(document).on('click', '#btn-sort-tree', function () {
+    let currentOrder = $(this).attr('data-order');
+    let nextOrder = (currentOrder === 'asc') ? 'desc' : 'asc';
+    
+    // Cambiamos el estado del botón y las flechas de texto nativas
+    $(this).attr('data-order', nextOrder);
+    if(nextOrder === 'asc') {
+        $('#sort-icon').text('↑'); // Flecha Ascendente
+    } else {
+        $('#sort-icon').text('↓'); // Flecha Descendente
+    }
+
+    // Función recursiva para ordenar el array de datos por la propiedad .nombre
+    function sortNodesRecursive(nodesArray, order) {
+        if (!nodesArray || nodesArray.length === 0) return;
+        
+        nodesArray.sort(function (a, b) {
+            let textA = a.nombre ? a.nombre.toLowerCase() : '';
+            let textB = b.nombre ? b.nombre.toLowerCase() : '';
+            
+            if (order === 'asc') {
+                return textA.localeCompare(textB);
+            } else {
+                return textB.localeCompare(textA);
+            }
+        });
+
+        nodesArray.forEach(function(node) {
+            if (node.nodes && node.nodes.length > 0) {
+                sortNodesRecursive(node.nodes, order);
             }
         });
     }
+
+    // Ordenamos los datos y volvemos a generar el árbol
+    sortNodesRecursive(currentTreeData, nextOrder);
+    render_treeview(currentTreeData); 
+});
+
+
 
 function fill_manoobra(id) {
     $.ajax({

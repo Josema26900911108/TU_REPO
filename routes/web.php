@@ -417,6 +417,8 @@ Route::post('/cuentas/generarNumeroCuenta', [CuentaContableController::class, 'g
 Route::post('/update', [CuentaContableController::class, 'update'])->name('update');
 
 route::get('/etadirect',[etadirectController::class,'index'])->name('etadirect.lista');
+Route::post('/etadirect/reporte-discrepancias', [etadirectController::class, 'reporteDiscrepancias'])->name('etadirect.reporteDiscrepancias');
+
 Route::get('/etadirect-formatoEta',[etadirectController::class,'descargarFormeta'])->name('etadirect.formeta');
 Route::post('/etadirect-JoboCommand',[etadirectController::class,'JoboCommand'])->name('etadirect.JoboCommand');
 Route::post('/etadirect-AutomataValidarMamo',[etadirectController::class,'AutomataValidarMamo'])->name('etadirect.AutomataValidarMamo');

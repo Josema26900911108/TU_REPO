@@ -40,6 +40,154 @@ class etadirectController extends Controller
         return view('ETA.index');
     }
 
+    public function reporteDiscrepancias(Request $request)
+{
+    // 1. Validar las fechas que vienen del formulario
+    $request->validate([
+        'fechaincio' => 'required|date',
+        'fechafin'   => 'required|date',
+    ]);
+
+    // Ajustar horas para cubrir el día completo en el filtro BETWEEN
+    $fechaInicio = $request->fechaincio . ' 00:00:00';
+    $fechaFin    = $request->fechafin . ' 23:59:59';
+
+    // 2. Ejecutar la consulta SQL optimizada con enlaces de parámetros de Laravel
+    $query = "
+        SELECT 
+            IFNULL(t.nombre, 'Técnico No Registrado') AS Tecnico_Nombre,
+            IFNULL(t.codigo, m_e.Tecnico_Final) AS Tecnico_Codigo,
+            m_e.Orden_Plataforma AS Orden,
+            m_e.Serie_Original AS Serie,
+            m_e.SKU,
+            m_e.Cantidad_Interna,
+            m_e.Cantidad_Externa,
+            (m_e.Cantidad_Externa - m_e.Cantidad_Interna) AS Complemento_Requerido,
+            CASE 
+                WHEN m_e.Cantidad_Interna > 0 AND m_e.Cantidad_Externa = 0 THEN 'Solo en Interno (Falta reportar en ETA)'
+                WHEN m_e.Cantidad_Interna = 0 AND m_e.Cantidad_Externa > 0 THEN 'Solo en Externo (Falta registrar internamente)'
+                ELSE 'Discrepancia: Ajustar cantidades'
+            END AS Accion_Reporte
+        FROM (
+            SELECT 
+                TRIM(e.Orden) AS Orden_Plataforma,
+                e.SKU,
+                IF(e.serie_homologada = 'SIN_SERIE', '0', e.serie_homologada) AS Serie_Original,
+                IFNULL(m.Cantidad_Interna, 0) AS Cantidad_Interna,
+                e.Cantidad_Externa,
+                COALESCE(e.EMPLEADO, m.Tecnico_Interno) AS Tecnico_Final,
+                e.fecha_ref AS Fecha_Auditoria
+            FROM (
+                SELECT 
+                    TRIM(Orden) AS Orden, 
+                    SKU,
+                    EMPLEADO,
+                    CASE WHEN Serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR Serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(Serie) END AS serie_homologada,
+                    SUM(Cantidad) AS Cantidad_Externa,
+                    MIN(created_at) AS fecha_ref
+                FROM ETA 
+                GROUP BY TRIM(Orden), SKU, EMPLEADO, serie_homologada
+            ) e
+            LEFT JOIN (
+                SELECT 
+                    TRIM(ex_sub.Orden) AS Orden, 
+                    m_sub.SKU,
+                    MAX(COALESCE(m_sub.fkTecnico, ex_sub.fkTecnico)) AS Tecnico_Interno,
+                    CASE WHEN m_sub.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR m_sub.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(m_sub.serie) END AS serie_homologada,
+                    SUM(m_sub.cantidad) AS Cantidad_Interna
+                FROM movimientomateriales m_sub
+                INNER JOIN expedientetecnico ex_sub ON m_sub.fkExpediente = ex_sub.id
+                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, serie_homologada
+            ) m ON e.Orden = m.Orden AND e.SKU = m.SKU AND e.serie_homologada = m.serie_homologada
+
+            UNION ALL
+
+            SELECT 
+                TRIM(m.Orden) AS Orden_Plataforma,
+                m.SKU,
+                IF(m.serie_homologada = 'SIN_SERIE', '0', m.serie_homologada) AS Serie_Original,
+                m.Cantidad_Interna,
+                0 AS Cantidad_Externa,
+                m.Tecnico_Interno AS Tecnico_Final,
+                m.fecha_ref AS Fecha_Auditoria
+            FROM (
+                SELECT 
+                    TRIM(ex_sub.Orden) AS Orden, 
+                    m_sub.SKU,
+                    MAX(COALESCE(m_sub.fkTecnico, ex_sub.fkTecnico)) AS Tecnico_Interno,
+                    CASE WHEN m_sub.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR m_sub.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(m_sub.serie) END AS serie_homologada,
+                    SUM(m_sub.cantidad) AS Cantidad_Interna,
+                    MIN(COALESCE(ex_sub.FECHAINSTALACION, m_sub.created_at)) AS fecha_ref
+                FROM movimientomateriales m_sub
+                INNER JOIN expedientetecnico ex_sub ON m_sub.fkExpediente = ex_sub.id
+                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, serie_homologada
+            ) m
+            LEFT JOIN (
+                SELECT 
+                    TRIM(Orden) AS Orden, 
+                    SKU,
+                    CASE WHEN Serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR Serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(Serie) END AS serie_homologada
+                FROM ETA
+                GROUP BY TRIM(Orden), SKU, serie_homologada
+            ) e ON m.Orden = e.Orden AND m.SKU = e.SKU AND m.serie_homologada = e.serie_homologada
+            WHERE e.SKU IS NULL
+        ) m_e
+        LEFT JOIN tecnico t ON (m_e.Tecnico_Final = t.id OR m_e.Tecnico_Final = t.codigo)
+        WHERE m_e.Fecha_Auditoria BETWEEN :fecha_inicio AND :fecha_fin
+          AND m_e.Cantidad_Interna != m_e.Cantidad_Externa
+        ORDER BY Accion_Reporte ASC, m_e.Orden_Plataforma ASC
+    ";
+
+    $resultados = DB::select($query, [
+        'fecha_inicio' => $fechaInicio,
+        'fecha_fin'    => $fechaFin
+    ]);
+
+    // 3. Generar la respuesta en formato de archivo CSV descargable
+    $fileName = 'Reporte_Discrepancias_Materiales_' . date('Ymd_His') . '.csv';
+    
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=$fileName",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    $callback = function() use($resultados) {
+        $file = fopen('php://output', 'w');
+        
+        // Agregar la marca BOM UTF-8 para que Excel lea los acentos correctamente
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Encabezados de las columnas del CSV
+        fputcsv($file, [
+            'Técnico Nombre', 'Técnico Código', 'Orden', 'Serie', 'SKU', 
+            'Cantidad Interna', 'Cantidad Externa', 'Complemento Requerido', 'Acción Reporte'
+        ]);
+
+        // Escribir los registros obtenidos
+        foreach ($resultados as $fila) {
+            fputcsv($file, [
+                $fila->Tecnico_Nombre,
+                $fila->Tecnico_Codigo,
+                $fila->Orden,
+                $fila->Serie,
+                $fila->SKU,
+                $fila->Cantidad_Interna,
+                $fila->Cantidad_Externa,
+                $fila->Complemento_Requerido,
+                $fila->Accion_Reporte
+            ]);
+        }
+        
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+
     public function exportarExcel(Request $request)
 {
     // 1. Capturar exactamente los mismos filtros que tienes en tu consulta de la tabla

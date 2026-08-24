@@ -126,6 +126,30 @@
                 </form>
             </div>
 
+            <!-- Formulario B: Reporte de Discrepancias de Materiales -->
+<div class="col-12 col-lg-4">
+    <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-file-excel me-1"></i> Auditoría de Materiales</h6>
+    <form action="{{ route('etadirect.reporteDiscrepancias') }}" method="POST">
+        @csrf
+        <div class="row g-3">
+            <div class="col-12 col-sm-6">
+                <label for="rep_fechainicio" class="form-label small fw-bold text-muted mb-1">Fecha Inicio:</label>
+                <input type="date" name="fechaincio" id="rep_fechainicio" class="form-control" required value="{{ date('Y-m-d', strtotime('-7 day')) }}">
+            </div>
+            <div class="col-12 col-sm-6">
+                <label for="rep_fechafin" class="form-label small fw-bold text-muted mb-1">Fecha Fin:</label>
+                <input type="date" name="fechafin" id="rep_fechafin" class="form-control" required value="{{ date('Y-m-d', strtotime('+1 day')) }}">
+            </div>
+            <div class="col-12 text-end mt-4">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fa fa-download me-1"></i> Generar Reporte
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+
             <!-- Formulario B: Revisar Orden Individual -->
             <div class="col-12 col-lg-4 d-flex flex-column justify-content-between">
                 <div>

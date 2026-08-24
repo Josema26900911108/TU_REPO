@@ -1660,34 +1660,35 @@ try {
         echo json_encode(array_values($data));
     }
 
-    function get_node_data($parent_category_id)
-    {
-        // Obtenemos las arbolmateriales contables que tienen como padre el ID dado
-        $result = DB::table('arbolmaterial')
-            ->where('padre_id', $parent_category_id) // Buscamos por padre_id
-            ->where('fkTienda',session('user_fkTienda'))
-            ->get();
+function get_node_data($parent_category_id)
+{
+    $result = DB::table('arbolmaterial')
+        ->where('padre_id', $parent_category_id) 
+        ->where('fkTienda', session('user_fkTienda'))        
+        ->orderBy('nombre', 'asc') // <-- NUEVO: Desempata por nombre de material
+        ->orderBy('SKU', 'asc') 
+        ->get();
 
-        $output = []; // Inicializamos el arreglo de salida
+    $output = []; 
 
-        // Iteramos sobre los resultados y construimos el árbol de nodos
-        foreach ($result as $row) {
-            $sub_array = [];
-            $sub_array['nodeId'] = $row->id; // Usamos nodeId para cada nodo
-            $sub_array['Cid'] = $row->id; // Usamos nodeId para cada nodo
-            $sub_array['padre_id'] = $row->padre_id; // Usamos nodeId para cada nodo
-            $sub_array['cuenta_id'] = $row->SKU; // Usamos nodeId para cada nodo
-            $sub_array['text'] = $row->SKU."-".$row->nombre; // Mostrar el nombre de la cuenta
-            $sub_array['nombre'] = $row->nombre; // Mostrar el nombre de la cuenta
-            $sub_array['aplicafotografia'] = $row->aplicafotografia; // Mostrar el nombre de la cuenta
-            $sub_array['Tipo_servicio'] = $row->Tipo_servicio; // Mostrar el nombre de la cuenta
-            $sub_array['nodes'] = $this->get_node_data($row->id); // Recursión para obtener los hijos
-            $sub_array['idpivote'] = $row->idpivote; // Recursión para obtener los hijos
-            $output[] = $sub_array; // Agregar al array de salida
-        }
-
-        return $output;
+    foreach ($result as $row) {
+        $sub_array = [];
+        $sub_array['nodeId'] = $row->id; 
+        $sub_array['Cid'] = $row->id; 
+        $sub_array['padre_id'] = $row->padre_id; 
+        $sub_array['cuenta_id'] = $row->SKU; 
+        $sub_array['text'] = $row->SKU."-".$row->nombre; 
+        $sub_array['nombre'] = $row->nombre; 
+        $sub_array['aplicafotografia'] = $row->aplicafotografia; 
+        $sub_array['Tipo_servicio'] = $row->Tipo_servicio; 
+        $sub_array['nodes'] = $this->get_node_data($row->id); 
+        $sub_array['idpivote'] = $row->idpivote; 
+        $output[] = $sub_array; 
     }
+
+    return $output;
+}
+
 
     public function obtenerExistenciasSap(Request $request)
 {
@@ -2324,39 +2325,118 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
         // SECCIÓN A: PROCESAR ELEMENTOS BORRADOS (DEVOLUCIÓN FIFO)
         // =================================================================
         if (!empty($eliminadosInput)) {
+            // Buscamos las salidas eliminadas asegurando que apunte al TIPOMOVIMIENTO o ESTATUS real
             $salidasAEliminar = MovimientoMaterial::whereIn('id', $eliminadosInput)
                 ->where('fkExpediente', $expediente->id)
-                ->where('TIPOMOVIMIENTO', 'INSTALADO')
+                ->where(function($query) {
+                    $query->where('TIPOMOVIMIENTO', 'CONSUMO') // La bandera real de tus inserts anteriores
+                          ->orWhere('TIPOMOVIMIENTO', 'INSTALADO')
+                          ->orWhere('TIPOMOVIMIENTO', 'CONSUMO_INSTALACION')
+                          ->Where('ESTATUS', 'INSTALADO'); // Por si se guardó en la columna de estatus
+                })
                 ->get();
 
             foreach ($salidasAEliminar as $salida) {
-                // Revertir el stock al registro de entrada de donde salió originalmente
-                $origen = MovimientoMaterial::where('fkTecnico', $id_tecnico)
-                    ->where('SKU', $salida->SKU)
-                    ->where('serie', $salida->serie)
-                    ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
-                    ->orderBy('created_at', 'desc')
-                    ->first();
+                
+                // 1. Identificamos si el ítem que estamos borrando de la orden del cliente es seriado o misceláneo
+                $serieLimpia = preg_replace('/\s+/', '', strtoupper($salida->serie));
+                $esSeriadoEliminado = !in_array($serieLimpia, ['-', '0', 'N/A', 'NA', ''], true);
 
-                if ($origen) {
-                    $origen->increment('cantidad', floatval($salida->cantidad), [
-                        'Status'         => 'I',
-                        'ESTATUS'        => 'DISPONIBLE',
-                        'Modificado_el'  => $ahora,
-                        'Modificado_por' => $nombreUsuario
-                    ]);
+                if ($esSeriadoEliminado) {
+                    // =================================================================
+                    // CASO A: REVERTIR MATERIAL SERIADO (Revivir fila original)
+                    // =================================================================
+                    // Buscamos la fila original del técnico que el sistema apagó como 'AGOTADO'
+                    $origenSeriado = DB::table('movimientomateriales')
+                        ->where('fkTecnico', $id_tecnico)
+                        ->where('SKU', $salida->SKU)
+                        ->where('id', $salida->id)
+                        ->where('fkTienda', $fkTienda)
+                        ->orderBy('id', 'desc')
+                        ->first();
+
+                    if ($origenSeriado) {
+                        // Devolvemos la cantidad exacta, y la volvemos a encender en 'I' y 'DISPONIBLE'
+                        DB::table('movimientomateriales')
+                            ->where('id', $origenSeriado->id)
+                            ->update([
+                                'cantidad'       => 1,
+                                'Status'         => 'I', // Vuelve a estar activo en el bucket
+                                'ESTATUS'        => 'DISPONIBLE', // Vuelve a estar disponible para usar
+                                'Modificado_el'  => $ahora,
+                                'fkExpediente'   => null, 
+                                'Modificado_por' => $nombreUsuario,
+                                'updated_at'     => $ahora
+                            ]);
+                    }
+                } else {
+                    // =================================================================
+                    // CASO B: REVERTIR MATERIAL MISCELÁNEO (Adición de volumen por FIFO)
+                    // =================================================================
+                    // Buscamos la fila base activa del técnico donde reside el volumen del SKU
+         $origenMiscelaneo = DB::table('movimientomateriales')
+                        ->where('SKU', $salida->SKU)
+                        ->where('CENTRO', $salida->CENTRO)
+                        ->where('fkTienda', $fkTienda)
+                        ->where('Naturaleza', 'E') // Solo sumamos a entradas legítimas
+                        ->orderBy('id', 'desc')
+                        ->first();
+
+                    if ($origenMiscelaneo) {
+                        // Le sumamos de vuelta la cantidad que se había descontado
+                        DB::table('movimientomateriales')
+                            ->where('id', $origenMiscelaneo->id)
+                            ->update([
+                                'cantidad'       => $origenMiscelaneo->cantidad + floatval($salida->cantidad),
+                                'ESTATUS'        => 'DISPONIBLE', // Aseguramos que vuelva a estar disponible
+                                'TIPOMOVIMIENTO' => 'ENTRADA', // Revertimos a entrada para FIFO
+                                'Status'         => 'I', // Vuelve a estar activo en el bucket
+                                'Modificado_el'  => $ahora,
+                                'fkExpediente'   => null,
+                                'fkTecnico'      => $id_tecnico,
+                                'Modificado_por' => $nombreUsuario,
+                                'updated_at'     => $ahora
+                            ]);
+                    }
+
+                    // LIMPIEZA DE BITÁCORA: Eliminamos la fila clonada de 'TRANSITO_INSTALACION' 
+                    // que tu código inyectó en el insert del Caso B de materiales para no dejar basura.
+                    DB::table('movimientomateriales')
+                        ->where('fkExpediente', $expediente->id)
+                        ->where('fkTecnico', $id_tecnico)
+                        ->where('SKU', $salida->SKU)
+                        ->where('id', $salida->id)
+                        ->delete();
+
+                    DB::table('pagotecnico')
+                    ->where('id', $salida->id)
+                    ->delete();
+                
+
                 }
 
-                $salida->delete(); 
 
-                // Eliminar el pago asociado a este registro borrado
-                Pagotecnico::where('Orden', $expediente->Orden)
+                // 3. Eliminamos el registro de pago o destajo asociado a esta acción borrada
+                DB::table('pagotecnico')
+                    ->where('Orden', $expediente->Orden)
                     ->where('fkTecnico', $id_tecnico)
                     ->where('SKU', $salida->SKU)
                     ->delete();
-            }
+
+            } // <<< FIN DEL BUCLE FOREACH DE ELIMINADOS >>>
+
         }
 
+                if (empty($skusInput)) {
+            DB::commit();
+            
+            Log::info("Proceso concluido: Se procesaron únicamente eliminaciones. El archivo/formulario no contenía nuevos SKUs.");
+            
+            return response()->json([
+                'status' => 'success', 
+                'message' => 'Devoluciones de inventario procesadas y guardadas correctamente.'
+            ]);
+        }
         
         // =================================================================
         // SECCIÓN B: PROCESAR ITEMS ACTUALES (AGREGAR NUEVO O MANTIENE)
@@ -2392,6 +2472,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                 ->first();
 
             $tipoItem = $maestroItem ? $maestroItem->CATEGORIA : 'MATERIAL'; 
+
             if ($tipoItem === 'MANO DE OBRA' || $tipoItem === 'MANO OBRA') {
                 $tipoItem = 'MO';
             }
@@ -2468,12 +2549,13 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                 continue; 
             } 
             // -------------------------------------------------------------
-            // B.2. BIFURCACIÓN: CASO B - MATERIALES (FIFO e Historial)
+            // B.2. BIFURCACIÓN: CASO B - MATERIALES (CORREGIDO PARA SERIES)
             // -------------------------------------------------------------
             else {
                 $entradasDisponibles = MovimientoMaterial::where('fkTecnico', $id_tecnico)
                     ->where('SKU', $skuActual)
                     ->where('TIPOMOVIMIENTO', '!=', 'INSTALADO')
+                    ->where('ESTATUS', '!=', 'INSTALADO')
                     ->where('cantidad', '>', 0)
                     ->where('Status', 'I')
                     ->when($esSeriado, function ($query) use ($serieBusqueda) {
@@ -2491,70 +2573,6 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
 
                     $cantidadAExtraer = min($entrada->cantidad, $porDescontar);
 
-                    if ($entrada->cantidad > $cantidadAExtraer && !$esSeriado) {
-                        $entrada->decrement('cantidad', $cantidadAExtraer, [
-                            'Modificado_el'  => $ahora,
-                            'Modificado_por' => $nombreUsuario
-                        ]);
-                    } else {
-                        $entrada->decrement('cantidad', $cantidadAExtraer);
-                        $entrada->refresh();
-                        $entrada->update([
-                            'Status'         => 'A',
-                            'ESTATUS'        => 'AGOTADO',
-                            'Modificado_el'  => $ahora,
-                            'Modificado_por' => $nombreUsuario
-                        ]);
-                    }
-
-                    if ($entrada->getOriginal('cantidad') > $cantidadAExtraer && !$esSeriado) {
-                        DB::table('movimientomateriales')->insert([
-                            'fkExpediente'      => $expediente->id,
-                            'fkTecnico'         => $id_tecnico,
-                            'fkTienda'          => $fkTienda,
-                            'SKU'               => $skuActual,
-                            'serie'             => $serieBusqueda, 
-                            'cantidad'          => $cantidadAExtraer,
-                            'TIPO'              => $entrada->TIPO,
-                            'ESTATUS'           => 'TRANSITO_INSTALACION',
-                            'Status'            => 'I',
-                            'TIPOMOVIMIENTO'    => 'TRANSITO_INSTALACION', 
-                            'almacen'           => $entrada->almacen ?? 'ALMA', 
-                            'Lote'              => $entrada->Lote ?? 'VALORADO',
-                            'Naturaleza'        => $entrada->Naturaleza ?? 'E',
-                            'COSTO'             => $entrada->COSTO ?? $costoFinal ?? 0,
-                            'CENTRO'            => $entrada->CENTRO ?? $centroTecnico ?? 'CF',
-                            'MAC1'              => $entrada->MAC1 ?? '0',
-                            'MAC2'              => $entrada->MAC2 ?? '0',
-                            'MAC3'              => $entrada->MAC3 ?? '0',
-                            'unidadmedida'      => $entrada->unidadmedida ?? 'PZA',
-                            'Creado_el'         => $ahora,
-                            'Creado_por'        => $nombreUsuario,
-                            'Modificado_el'     => $ahora,
-                            'Modificado_por'    => $nombreUsuario,
-                            'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
-                            'created_at'        => $ahora,
-                            'updated_at'        => $ahora
-                        ]);
-                    } else {
-                        DB::table('movimientomateriales')
-                            ->where('id', $entrada->id)
-                            ->update([
-                                'fkExpediente'   => $expediente->id,
-                                'ESTATUS'        => 'AGOTADO',
-                                'Status'         => 'A',
-                                'Lote'           => $entrada->Lote ?? 'VALORADO', 
-                                'MAC1'           => $entrada->MAC1 ?? '0',       
-                                'MAC2'           => $entrada->MAC2 ?? '0',       
-                                'MAC3'              => $entrada->MAC3 ?? '0',       
-                                'Modificado_el'     => $ahora,
-                                'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
-                                'Modificado_por'    => $nombreUsuario,
-                                'updated_at'        => $ahora
-                            ]);
-                    }
-
-                    // Extracción segura de costos y tipos para evitar el error "on null"
                     $costoSeguroCliente  = 0;
                     $tipoSeguroCliente   = $entrada->TIPO ?? $tipoCatalogoMaestro ?? 'MATERIAL';
                     $unidadSeguraCliente = $costoUnidad->unidadmedida ?? $entrada->unidadmedida ?? 'PZA';
@@ -2564,24 +2582,74 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                             ? $costoUnidad->COSTOPAGO 
                             : ($costoUnidad->CATEGORIACOBRO ?? 0);
                     }
+                    if ($esSeriado) {
+                        // ============================================================================
+                        // 🌟 REGLA PARA SERIES: ACTUALIZACIÓN DIRECTA DE LA FILA (SIN DUPLICAR)
+                        // ============================================================================
+                        DB::table('movimientomateriales')
+                            ->where('id', $entrada->id)
+                            ->update([
+                                'fkExpediente'      => $expediente->id,
+                                'fkTecnico'         => $id_tecnico,
+                                'fkTienda'          => $fkTienda,
+                                'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
+                                'almacen'           => 'CLIENTE_FINAL',
+                                'Lote'              => $entrada->Lote ?? 'VALORADO',
+                                'COSTO'             => $costoSeguroCliente,
+                                'TIPO'              => $tipoSeguroCliente,
+                                'ESTATUS'           => 'INSTALADO',
+                                'Status'            => 'S', 
+                                'Naturaleza'        => 'H', 
+                                'CENTRO'            => $centroTecnico ?? 'CF',
+                                'cantidad'          => $cantidadAExtraer,
+                                'unidadmedida'      => $unidadSeguraCliente,
+                                'TIPOMOVIMIENTO'    => 'CONSUMO_INSTALACION',
+                                'MAC1'              => $entrada->MAC1 ?? '0',
+                                'MAC2'              => $entrada->MAC2 ?? '0',
+                                'MAC3'              => $entrada->MAC3 ?? '0',
+                                'Modificado_el'     => $ahora->format('Y-m-d'),
+                                'Modificado_por'    => $nombreUsuario,
+                                'updated_at'        => $ahora
+                            ]);
 
-                    // Asignar el material de forma definitiva a la Planta Externa / Cliente
-                    DB::table('movimientomateriales')->updateOrInsert(
-                        [
+                    } else {
+                        // ============================================================================
+                        // 📦 REGLA PARA MISCELÁNEOS: DESCUENTO PARCIAL Y UN SOLO INSERT DE CONSUMO
+                        // ============================================================================
+                        if ($entrada->cantidad > $cantidadAExtraer) {
+                            // Si le sobra stock al pozo activo, solo descontamos la fracción usada
+                            $entrada->decrement('cantidad', $cantidadAExtraer, [
+                                'Modificado_el'  => $ahora,
+                                'Modificado_por' => $nombreUsuario
+                            ]);
+                        } else {
+                            // Si se consume completo, se pasa a histórico 'A' (Agotado)
+                            $entrada->decrement('cantidad', $cantidadAExtraer);
+                            $entrada->refresh();
+                            $entrada->update([
+                                'Status'         => 'A',
+                                'ESTATUS'        => 'AGOTADO',
+                                'Modificado_el'  => $ahora,
+                                'Modificado_por' => $nombreUsuario
+                            ]);
+                        }
+
+                        // 🌟 CORRECCIÓN CLAVE: Eliminamos el insert de TRANSITO_INSTALACION (Fila 1721).
+                        // Solo dejamos el insert definitivo de consumo en la orden del cliente (Fila 1722).
+                        DB::table('movimientomateriales')->insert([
                             'fkExpediente'      => $expediente->id,
                             'serie'             => $serieBusqueda,
                             'SKU'               => $skuActual,
-                        ],
-                        [
                             'fkTienda'          => $fkTienda,
+                            'fkTecnico'         => $id_tecnico,
                             'fkTecnologiaarbol' => $iditemsTecnologia[$contar] ?? null,
                             'almacen'           => 'CLIENTE_FINAL',
                             'Lote'              => 'VALORADO',
                             'COSTO'             => $costoSeguroCliente, 
-                            'TIPO'              => $tipoSeguroCliente, // Variable corregida y blindada
+                            'TIPO'              => $tipoSeguroCliente,
                             'ESTATUS'           => 'INSTALADO',
-                            'Status'            => 'S',
-                            'Naturaleza'        => 'H',
+                            'Status'            => 'S', // Estado de salida definitivo
+                            'Naturaleza'        => 'H', // Egreso contable para el Kardex
                             'CENTRO'            => $centroTecnico ?? 'CF',
                             'cantidad'          => $cantidadAExtraer,
                             'unidadmedida'      => $unidadSeguraCliente, 
@@ -2593,14 +2661,16 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                             'Creado_por'        => $nombreUsuario,
                             'Modificado_el'     => $ahora->format('Y-m-d'),
                             'Modificado_por'    => $nombreUsuario,
+                            'created_at'        => $ahora,
                             'updated_at'        => $ahora
-                        ]
-                    );
+                        ]);
+                    }
 
                     $porDescontar -= $cantidadAExtraer;
                 } // Fin del bucle foreach ($entradasDisponibles)
+
                 // =================================================================
-                // FAILSAFE AUTOMÁTICO: Si no había stock asignado al técnico
+                // FAILSAFE AUTOMÁTICO (SOLO SI FALTÓ STOCK EN EL PROCESO)
                 // =================================================================
                 if ($porDescontar > 0) {
                     $tipoSeguroFailsafe   = ($costoUnidad && isset($costoUnidad->TIPO)) ? $costoUnidad->TIPO : $tipoCatalogoMaestro;
@@ -2642,6 +2712,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
             } // Fin de la bifurcación del Caso B (Materiales)
 
         } // <<< FIN COMPLETO DEL FOREACH GENERAL DE SKUS >>>
+
 
 
 
