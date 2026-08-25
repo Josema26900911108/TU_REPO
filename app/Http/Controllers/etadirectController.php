@@ -55,7 +55,7 @@ public function reporteDiscrepancias(Request $request)
             IFNULL(t.nombre, 'Técnico No Registrado') AS Tecnico_Nombre,
             IFNULL(t.codigo, m_e.Tecnico_Final) AS Tecnico_Codigo,
             m_e.Orden_Plataforma AS Orden,
-            m_e.Serie_Original AS Serie,
+            m_e.Series_Consolidadas AS Serie,
             m_e.SKU,
             m_e.Descripcion,
             m_e.Cantidad_Interna,
@@ -64,45 +64,50 @@ public function reporteDiscrepancias(Request $request)
             CASE 
                 WHEN m_e.Cantidad_Interna > 0 AND m_e.Cantidad_Externa = 0 THEN 'Solo en Interno (Falta reportar en ETA)'
                 WHEN m_e.Cantidad_Interna = 0 AND m_e.Cantidad_Externa > 0 THEN 'Solo en Externo (Falta registrar internamente)'
-                ELSE 'Discrepancia: Ajustar cantidades'
+                ELSE 'Discrepancia: Ajustar cantidades / Diferencia de Series'
             END AS Accion_Reporte
         FROM (
             SELECT 
                 TRIM(e.Orden) AS Orden_Plataforma,
                 e.SKU,
                 e.Descripcion,
-                IF(e.serie_homologada = 'SIN_SERIE', '0', e.serie_homologada) AS Serie_Original,
+                /* CONCATENAMOS LAS SERIES PARA EVITAR EL PRODUCTO CARTESIANO */
+                CASE 
+                    WHEN m.Series_Internas IS NOT NULL AND e.Series_Externas IS NOT NULL AND m.Series_Internas != e.Series_Externas 
+                    THEN CONCAT('INT: ', m.Series_Internas, ' | EXT: ', e.Series_Externas)
+                    ELSE COALESCE(e.Series_Externas, m.Series_Internas, '0')
+                END AS Series_Consolidadas,
                 IFNULL(m.Cantidad_Interna, 0) AS Cantidad_Interna,
                 e.Cantidad_Externa,
                 COALESCE(e.EMPLEADO, m.Tecnico_Interno) AS Tecnico_Final,
                 e.fecha_ref AS Fecha_Auditoria
             FROM (
+                /* AGRUPACIÓN ESTRICTA POR ORDEN Y SKU DE ETA */
                 SELECT 
                     TRIM(Orden) AS Orden, 
                     SKU,
-                    Descripcion,
-                    EMPLEADO,
-                    CASE WHEN Serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR Serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(Serie) END AS serie_homologada,
+                    MAX(Descripcion) AS Descripcion,
+                    MAX(EMPLEADO) AS EMPLEADO,
+                    GROUP_CONCAT(DISTINCT CASE WHEN Serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR Serie IS NULL THEN '0' ELSE TRIM(Serie) END SEPARATOR ', ') AS Series_Externas,
                     SUM(Cantidad) AS Cantidad_Externa,
                     MIN(created_at) AS fecha_ref
                 FROM ETA 
-                GROUP BY TRIM(Orden), SKU, Descripcion, EMPLEADO, serie_homologada
+                GROUP BY TRIM(Orden), SKU
             ) e
             LEFT JOIN (
-                /* PROTECCIÓN ABSOLUTA COMPATIBLE CON ONLY_FULL_GROUP_BY */
+                /* AGRUPACIÓN ESTRICTA POR ORDEN Y SKU EN MOVIMIENTOS INTERNOS */
                 SELECT 
                     TRIM(ex.Orden) AS Orden,
                     mov.SKU,
-                    CASE WHEN mov.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR mov.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(mov.serie) END AS serie_homologada,
+                    GROUP_CONCAT(DISTINCT CASE WHEN mov.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR mov.serie IS NULL THEN '0' ELSE TRIM(mov.serie) END SEPARATOR ', ') AS Series_Internas,
                     SUM(mov.cantidad) AS Cantidad_Interna,
                     MAX(COALESCE(mov.fkTecnico, ex.fkTecnico)) AS Tecnico_Interno
                 FROM movimientomateriales mov
                 INNER JOIN (
-                    /* CORRECCIÓN: Usamos MAX para agrupar de forma válida para MySQL Estricto */
                     SELECT id, MAX(TRIM(Orden)) AS Orden, MAX(fkTecnico) AS fkTecnico FROM expedientetecnico GROUP BY id
                 ) ex ON mov.fkExpediente = ex.id
-                GROUP BY TRIM(ex.Orden), mov.SKU, serie_homologada
-            ) m ON e.Orden = m.Orden AND e.SKU = m.SKU AND e.serie_homologada = m.serie_homologada
+                GROUP BY TRIM(ex.Orden), mov.SKU
+            ) m ON e.Orden = m.Orden AND e.SKU = m.SKU
 
             UNION ALL
 
@@ -110,7 +115,7 @@ public function reporteDiscrepancias(Request $request)
                 TRIM(m.Orden) AS Orden_Plataforma,
                 m.SKU,
                 IFNULL(mamo.Descripcion, 'Sin Descripción Catálogo') AS Descripcion,
-                IF(m.serie_homologada = 'SIN_SERIE', '0', m.serie_homologada) AS Serie_Original,
+                m.Series_Internas AS Series_Consolidadas,
                 m.Cantidad_Interna,
                 0 AS Cantidad_Externa,
                 m.Tecnico_Interno AS Tecnico_Final,
@@ -119,25 +124,23 @@ public function reporteDiscrepancias(Request $request)
                 SELECT 
                     TRIM(ex.Orden) AS Orden,
                     mov.SKU,
-                    CASE WHEN mov.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR mov.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(mov.serie) END AS serie_homologada,
+                    GROUP_CONCAT(DISTINCT CASE WHEN mov.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR mov.serie IS NULL THEN '0' ELSE TRIM(mov.serie) END SEPARATOR ', ') AS Series_Internas,
                     SUM(mov.cantidad) AS Cantidad_Interna,
                     MAX(COALESCE(mov.fkTecnico, ex.fkTecnico)) AS Tecnico_Interno,
                     MIN(mov.created_at) AS fecha_ref
                 FROM movimientomateriales mov
                 INNER JOIN (
-                    /* CORRECCIÓN AQUÍ TAMBIÉN */
                     SELECT id, MAX(TRIM(Orden)) AS Orden, MAX(fkTecnico) AS fkTecnico FROM expedientetecnico GROUP BY id
                 ) ex ON mov.fkExpediente = ex.id
-                GROUP BY TRIM(ex.Orden), mov.SKU, serie_homologada
+                GROUP BY TRIM(ex.Orden), mov.SKU
             ) m
             LEFT JOIN (
                 SELECT 
                     TRIM(Orden) AS Orden, 
-                    SKU,
-                    CASE WHEN Serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR Serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(Serie) END AS serie_homologada
+                    SKU
                 FROM ETA
-                GROUP BY TRIM(Orden), SKU, serie_homologada
-            ) e ON m.Orden = e.Orden AND m.SKU = e.SKU AND m.serie_homologada = e.serie_homologada
+                GROUP BY TRIM(Orden), SKU
+            ) e ON m.Orden = e.Orden AND m.SKU = e.SKU
             LEFT JOIN MaterialManoObra mamo ON mamo.SKU = m.SKU
             WHERE e.SKU IS NULL
         ) m_e
@@ -149,7 +152,7 @@ public function reporteDiscrepancias(Request $request)
 
     $resultados = DB::select($query, [
         'fecha_inicio' => $fechaInicio,
-        'fecha_fin'    => $fechaFin
+        'filename'     => $fechaFin
     ]);
 
     $fileName = 'Reporte_Discrepancias_Materiales_' . date('Ymd_His') . '.csv';
