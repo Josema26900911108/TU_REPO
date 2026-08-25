@@ -224,7 +224,6 @@ class pagotecnicoController  extends Controller
 
         return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
     }
-
 public function index(Request $request)
 {
     // 1. Iniciar la consulta base sobre el modelo Pagotecnico
@@ -240,20 +239,23 @@ public function index(Request $request)
         $query->where('fkTecnico', $request->input('tecnico_id'));
     }
 
-    // 4. Aplicar Filtro por Rango de Fechas
+    // 4. NUEVO: Aplicar Filtro por Estatus de Pago (Faltaba en tu backend)
+    if ($request->filled('Status')) {
+        $query->where('Status', $request->input('Status'));
+    }
+
+    // 5. Aplicar Filtro por Rango de Fechas (Cambiado a updated_at para coincidir con tu CSV masivo)
     if ($request->filled('fecha_inicio')) {
-        $query->whereDate('created_at', '>=', $request->input('fecha_inicio'));
+        $query->whereDate('updated_at', '>=', $request->input('fecha_inicio'));
     }
     if ($request->filled('fecha_fin')) {
-        $query->whereDate('created_at', '<=', $request->input('fecha_fin'));
+        $query->whereDate('updated_at', '<=', $request->input('fecha_fin'));
     }
-
-    // 5. Obtener los registros filtrados para la tabla
+      $query->orderBy('id', 'desc'); 
+    // 6. Obtener los registros filtrados para la tabla
     $pagostecnico = $query->latest()->get();
 
-    // 6. LOGICA DE BALANCES ALGEBRAICOS (Suma 'H' y Resta 'D')
-    
-    // Función auxiliar interna para calcular el neto según naturaleza
+    // 7. LOGICA DE BALANCES ALGEBRAICOS (Suma 'H' y Resta 'D')
     $calcularBalance = function ($coleccion) {
         return $coleccion->reduce(function ($carry, $pago) {
             $monto = floatval($pago->COSTOPAGO);
@@ -261,22 +263,18 @@ public function index(Request $request)
         }, 0);
     };
 
-    // Balance General (Todo lo que arrojó el filtro)
+    // Balance General (Todo lo que arrojó el filtro actual)
     $totalBalance = $calcularBalance($pagostecnico);
 
-    // Balance filtrado estrictamente por Estatus C
+    // Balances específicos filtrados desde la colección en memoria
     $balanceC = $calcularBalance($pagostecnico->where('Status', 'C'));
-
-    // Balance filtrado estrictamente por Estatus S
     $balanceS = $calcularBalance($pagostecnico->where('Status', 'S'));
-
-    // Balance filtrado estrictamente por Estatus B
     $balanceB = $calcularBalance($pagostecnico->where('Status', 'B'));
 
     // Obtener lista de técnicos para el select del filtro
     $tecnicos = DB::table('tecnico')->select('id', 'nombre')->get();
   
-    // 7. Retornar todas las variables calculadas a la vista
+    // 8. Retornar todas las variables calculadas a la vista
     return view('pagotecnicos.index', compact(
         'pagostecnico', 
         'totalBalance', 
@@ -286,6 +284,7 @@ public function index(Request $request)
         'tecnicos'
     ));
 }
+
 
 
 public function movimiento(Request $request)
@@ -1105,19 +1104,15 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
     $fkTienda = session('user_fkTienda') ?? 0;    
     
-    // Configuraciones de alto rendimiento para el servidor (Evita Timeouts y caídas de RAM)
     set_time_limit(0); 
     ini_set('memory_limit', '512M');    
-    DB::connection()->disableQueryLog();
 
-    // Validar que el archivo sea CSV o TXT
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
     ]);
 
     $file = fopen($request->file('archivo')->getRealPath(), 'r');    
     
-    // Leer el encabezado del CSV y limpiar el posible carácter invisible BOM UTF-8
     $encabezadoRaw = fgetcsv($file);
     if ($encabezadoRaw && str_contains($encabezadoRaw[0], chr(0xEF).chr(0xBB).chr(0xBF))) {
         $encabezadoRaw[0] = str_replace(chr(0xEF).chr(0xBB).chr(0xBF), '', $encabezadoRaw[0]);
@@ -1126,13 +1121,12 @@ public function modificarPagosTecnicoMasivo(Request $request)
     $encabezado = $encabezadoRaw;
     $actualizados = 0;
     $omitidos = 0;   
-    $batchSize = 500; // Procesamiento atómico en bloques de 500 para proteger la CPU
+    $batchSize = 500; // Bloques para agrupar las transacciones en memoria
     $batchData = [];
     $now = now();
 
     try {
         while (($linea = fgetcsv($file)) !== false) {
-            // Validar consistencia de columnas
             if (count($encabezado) !== count($linea)) {
                 $omitidos++;
                 continue;
@@ -1140,19 +1134,17 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
             $data = array_combine($encabezado, $linea);
 
-            // VALIDACIÓN CRÍTICA PARA MODIFICACIÓN: El ID del movimiento debe existir y ser numérico
+            // El ID del movimiento debe existir en el CSV y ser numérico
             if (empty($data['id']) || intval($data['id']) <= 0) {
                 $omitidos++;
                 continue;
             }
 
-            // Normalización de Naturaleza (D / H)
             $naturaleza = strtoupper(trim($data['Naturaleza'] ?? 'D'));
             if (!in_array($naturaleza, ['D', 'H'])) {
                 $naturaleza = 'D'; 
             }
 
-            // Recálculo o asignación de costos (Misma lógica de prioridad de tu catálogo)
             $valorcosto = floatval($data['COSTOPAGO'] ?? 0.00);
 
             if ($valorcosto == 0 && !empty($data['SKU'])) {
@@ -1163,7 +1155,7 @@ public function modificarPagosTecnicoMasivo(Request $request)
                     $tecnicoCodigo = DB::table('tecnico')->where('id', $tecnicoId)->value('codigo') ?? '';
                 }
 
-                $obtenervalor = DB::table('MaterialManoObra') // Usando la tabla maestra directa
+                $obtenervalor = DB::table('MaterialManoObra')
                     ->where('SKU', $data['SKU'])
                     ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
                         $query->where('centrocostoespecifico', '=', $tecnicoCodigo)
@@ -1197,17 +1189,14 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
             $status = substr(trim($data['Status'] ?? 'S'), 0, 2);
 
-            // Mapeo del lote incluyendo explícitamente la llave primaria 'id'
             $batchData[] = [
-                'id'          => intval($data['id']), // Llave primaria obligatoria para actualizar
+                'id'          => intval($data['id']), 
                 'Orden'       => $data['Orden'] ?? null,
                 'SKU'         => $data['SKU'] ?? null,
                 'Descripcion' => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
                 'OBS'         => mb_convert_encoding($data['OBS'] ?? 'Modificación masiva por CSV', 'UTF-8', 'ISO-8859-1'),
                 'Cantidad'    => isset($data['Cantidad']) ? floatval($data['Cantidad']) : 1.00,
                 'COSTOPAGO'   => floatval($data['COSTOPAGO']),
-                'fkTienda'    => $fkTienda,
-                'fkTecnico'   => intval($data['fkTecnico'] ?? 0),
                 'Naturaleza'  => $naturaleza,
                 'Status'      => $status,
                 'updated_at'  => $now,
@@ -1215,34 +1204,54 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
             $actualizados++;
 
-            // Ejecución del Upsert al completar el tamaño de bloque (Batch)
+            // Ejecución del bloque de UPDATES estrictos utilizando transacciones rápidas
             if (count($batchData) >= $batchSize) {
                 DB::transaction(function () use ($batchData) {
-                    DB::table('pagotecnico')->upsert(
-                        $batchData, 
-                        ['id'], // 1. Condición única: Si el 'id' coincide, se activa la actualización
-                        ['Orden', 'SKU', 'Descripcion', 'OBS', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status', 'updated_at'] // 2. Campos que se van a sobreescribir
-                    );
+                    foreach ($batchData as $row) {
+                        DB::table('pagotecnico')
+                            ->where('id', $row['id'])
+                            ->update([
+                                'Orden'       => $row['Orden'],
+                                'SKU'         => $row['SKU'],
+                                'Descripcion' => $row['Descripcion'],
+                                'OBS'         => $row['OBS'],
+                                'Cantidad'    => $row['Cantidad'],
+                                'COSTOPAGO'   => $row['COSTOPAGO'],
+                                'Naturaleza'  => $row['Naturaleza'],
+                                'Status'      => $row['Status'],
+                                'updated_at'  => $row['updated_at']
+                            ]);
+                    }
                 });
                 $batchData = [];
-                gc_collect_cycles(); // Invoca el recolector de basura de PHP para liberar RAM de inmediato
+                gc_collect_cycles(); 
             }
         }
 
-        // Procesar los últimos registros remanentes
+        // Procesar los últimos registros remanentes con UPDATE
         if (!empty($batchData)) {
             DB::transaction(function () use ($batchData) {
-                DB::table('pagotecnico')->upsert(
-                    $batchData,
-                    ['id'],
-                    ['Orden', 'SKU', 'Descripcion', 'OBS', 'Cantidad', 'COSTOPAGO', 'Naturaleza', 'Status', 'updated_at']
-                );
+                foreach ($batchData as $row) {
+                    DB::table('pagotecnico')
+                        ->where('id', $row['id'])
+                        ->update([
+                            'Orden'       => $row['Orden'],
+                            'SKU'         => $row['SKU'],
+                            'Descripcion' => $row['Descripcion'],
+                            'OBS'         => $row['OBS'],
+                            'Cantidad'    => $row['Cantidad'],
+                            'COSTOPAGO'   => $row['COSTOPAGO'],
+                            'Naturaleza'  => $row['Naturaleza'],
+                            'Status'      => $row['Status'],
+                            'updated_at'  => $row['updated_at']
+                        ]);
+                }
             });
         }
 
         fclose($file);
 
-        return back()->with('success', "Modificación masiva exitosa: {$actualizados} registros actualizados en el sistema, {$omitidos} filas omitidas por falta de ID válido.");
+        return back()->with('success', "Modificación masiva exitosa: {$actualizados} registros procesados, {$omitidos} filas omitidas por falta de ID válido.");
 
     } catch (\Exception $e) {
         if (is_resource($file)) {
@@ -1251,6 +1260,7 @@ public function modificarPagosTecnicoMasivo(Request $request)
         return back()->with('error', 'Error crítico en la modificación masiva: ' . $e->getMessage());
     }
 }
+
 
 
     public function show($id)

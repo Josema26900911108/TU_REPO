@@ -54,12 +54,14 @@ class etadirectController extends Controller
 
     // 2. Ejecutar la consulta SQL optimizada con enlaces de parámetros de Laravel
     $query = "
-        SELECT 
+     SELECT 
             IFNULL(t.nombre, 'Técnico No Registrado') AS Tecnico_Nombre,
             IFNULL(t.codigo, m_e.Tecnico_Final) AS Tecnico_Codigo,
             m_e.Orden_Plataforma AS Orden,
             m_e.Serie_Original AS Serie,
             m_e.SKU,
+            m_e.SKU,
+            m_e.Descripcion,
             m_e.Cantidad_Interna,
             m_e.Cantidad_Externa,
             (m_e.Cantidad_Externa - m_e.Cantidad_Interna) AS Complemento_Requerido,
@@ -72,6 +74,7 @@ class etadirectController extends Controller
             SELECT 
                 TRIM(e.Orden) AS Orden_Plataforma,
                 e.SKU,
+                e.Descripcion,
                 IF(e.serie_homologada = 'SIN_SERIE', '0', e.serie_homologada) AS Serie_Original,
                 IFNULL(m.Cantidad_Interna, 0) AS Cantidad_Interna,
                 e.Cantidad_Externa,
@@ -81,23 +84,26 @@ class etadirectController extends Controller
                 SELECT 
                     TRIM(Orden) AS Orden, 
                     SKU,
+                    Descripcion,
                     EMPLEADO,
                     CASE WHEN Serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR Serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(Serie) END AS serie_homologada,
                     SUM(Cantidad) AS Cantidad_Externa,
                     MIN(created_at) AS fecha_ref
                 FROM ETA 
-                GROUP BY TRIM(Orden), SKU, EMPLEADO, serie_homologada
+                GROUP BY TRIM(Orden), SKU, Descripcion, EMPLEADO, serie_homologada
             ) e
             LEFT JOIN (
                 SELECT 
                     TRIM(ex_sub.Orden) AS Orden, 
                     m_sub.SKU,
+                    mamo.Descripcion,
                     MAX(COALESCE(m_sub.fkTecnico, ex_sub.fkTecnico)) AS Tecnico_Interno,
                     CASE WHEN m_sub.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR m_sub.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(m_sub.serie) END AS serie_homologada,
                     SUM(m_sub.cantidad) AS Cantidad_Interna
                 FROM movimientomateriales m_sub
                 INNER JOIN expedientetecnico ex_sub ON m_sub.fkExpediente = ex_sub.id
-                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, serie_homologada
+                INNER JOIN MaterialManoObra mamo on mamo.SKU=m_sub.SKU
+                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, mamo.Descripcion, serie_homologada
             ) m ON e.Orden = m.Orden AND e.SKU = m.SKU AND e.serie_homologada = m.serie_homologada
 
             UNION ALL
@@ -105,6 +111,7 @@ class etadirectController extends Controller
             SELECT 
                 TRIM(m.Orden) AS Orden_Plataforma,
                 m.SKU,
+                m.Descripcion,
                 IF(m.serie_homologada = 'SIN_SERIE', '0', m.serie_homologada) AS Serie_Original,
                 m.Cantidad_Interna,
                 0 AS Cantidad_Externa,
@@ -114,27 +121,30 @@ class etadirectController extends Controller
                 SELECT 
                     TRIM(ex_sub.Orden) AS Orden, 
                     m_sub.SKU,
+                    mamo.Descripcion,
                     MAX(COALESCE(m_sub.fkTecnico, ex_sub.fkTecnico)) AS Tecnico_Interno,
                     CASE WHEN m_sub.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR m_sub.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(m_sub.serie) END AS serie_homologada,
                     SUM(m_sub.cantidad) AS Cantidad_Interna,
                     MIN(COALESCE(ex_sub.FECHAINSTALACION, m_sub.created_at)) AS fecha_ref
                 FROM movimientomateriales m_sub
                 INNER JOIN expedientetecnico ex_sub ON m_sub.fkExpediente = ex_sub.id
-                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, serie_homologada
+                INNER JOIN MaterialManoObra mamo on mamo.SKU=m_sub.SKU
+                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, mamo.Descripcion, serie_homologada
             ) m
             LEFT JOIN (
                 SELECT 
                     TRIM(Orden) AS Orden, 
                     SKU,
+                    Descripcion,
                     CASE WHEN Serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR Serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(Serie) END AS serie_homologada
                 FROM ETA
-                GROUP BY TRIM(Orden), SKU, serie_homologada
+                GROUP BY TRIM(Orden), SKU, Descripcion, serie_homologada
             ) e ON m.Orden = e.Orden AND m.SKU = e.SKU AND m.serie_homologada = e.serie_homologada
             WHERE e.SKU IS NULL
         ) m_e
-        LEFT JOIN tecnico t ON (m_e.Tecnico_Final = t.id OR m_e.Tecnico_Final = t.codigo)
+        LEFT JOIN tecnico t ON (m_e.Tecnico_Final = t.id OR m_e.Tecnico_Final = t.codigo)        
         WHERE m_e.Fecha_Auditoria BETWEEN :fecha_inicio AND :fecha_fin
-          AND m_e.Cantidad_Interna != m_e.Cantidad_Externa
+        AND m_e.Cantidad_Interna != m_e.Cantidad_Externa
         ORDER BY Accion_Reporte ASC, m_e.Orden_Plataforma ASC
     ";
 
@@ -162,7 +172,7 @@ class etadirectController extends Controller
         
         // Encabezados de las columnas del CSV
         fputcsv($file, [
-            'Técnico Nombre', 'Técnico Código', 'Orden', 'Serie', 'SKU', 
+            'Técnico Nombre', 'Técnico Código', 'Orden', 'Serie', 'SKU', 'Descripcion',
             'Cantidad Interna', 'Cantidad Externa', 'Complemento Requerido', 'Acción Reporte'
         ]);
 
@@ -174,6 +184,7 @@ class etadirectController extends Controller
                 $fila->Orden,
                 $fila->Serie,
                 $fila->SKU,
+                $fila->Descripcion,
                 $fila->Cantidad_Interna,
                 $fila->Cantidad_Externa,
                 $fila->Complemento_Requerido,

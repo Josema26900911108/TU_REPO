@@ -202,6 +202,7 @@ class PermissionSeeder extends Seeder
             'bucket-tecnico',
             'crear-tecnico',
             'eliminar-tecnico',
+            'ver-bucketOrdenesGeneral',
 
             //contrata
             'ver-contrata',

@@ -329,19 +329,40 @@
                 </a>
                 @endcan
 
-                @can('ver-tecnico')
-                <a class="nav-link" href="{{ route('tecnico.lista') }}">
-                    <div class="sb-nav-link-icon"><i class="fa-solid fa-vcard"></i></div>
-                    Tecnico/Piloto
-                </a>
-                @endcan
+<!--- Tecnicos ---->
+@can('ver-tecnico')
+<a class="nav-link collapsed" href="#" data-bs-toggle="collapse" data-bs-target="#collapseTecnicos" aria-expanded="false" aria-controls="collapseTecnicos">
+    <div class="sb-nav-link-icon"><i class="fa-solid fa-person-digging"></i></div>
+    Técnicos
+    <div class="sb-sidenav-collapse-arrow"><i class="fas fa-angle-down"></i></div>
+</a>
+<div class="collapse" id="collapseTecnicos" aria-labelledby="headingOne" data-bs-parent="#sidenavAccordion">
+    <nav class="sb-sidenav-menu-nested nav">        
+                
+        @can('ver-tecnico')
+        <a class="nav-link" href="{{ route('tecnico.lista') }}">
+            <div class="sb-nav-link-icon"><i class="fa-solid fa-vcard"></i></div>
+            Técnico/Piloto
+        </a>
+        @endcan
 
-                @can('ver-despacho-piloto')
-                <a class="nav-link" href="{{ route('piloto.despacho') }}">
-                <div class="sb-nav-link-icon"><i class="fa-solid fa-truck-ramp-box"></i></div>
-                Mi Despacho Diario
-                </a>
-                @endcan
+        @can('ver-bucketOrdenesGeneral')
+        <!-- Cambiado para apuntar a la ruta del Bucket pasando el ID si es necesario -->
+        <a class="nav-link" href="{{ route('ver-bucketOrdenesGeneral') }}">
+            <div class="sb-nav-link-icon"><i class="fa-solid fa-bucket"></i></div>
+            Bucket Órdenes General
+        </a>                        
+        @endcan
+
+        @can('ver-despacho-piloto')
+        <a class="nav-link" href="{{ route('piloto.despacho') }}">
+            <div class="sb-nav-link-icon"><i class="fa-solid fa-truck-ramp-box"></i></div>
+            Mi Despacho Diario
+        </a>
+        @endcan
+    </nav>
+</div>
+@endcan
 
 
                 @can('buckets-tecnicos')

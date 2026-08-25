@@ -544,6 +544,10 @@ Route::post('/documento-sap/importar', [DocumentoSapController::class, 'importar
 Route::get('/documento-sap/descargar-formato', [DocumentoSapController::class, 'descargarFormato'])->name('documentosap.formato');
 
 Route::get('/tecnico', [TecnicoController::class, 'index'])->name('tecnico.lista');
+Route::get('/GeneralBuckettecnico', [TecnicoController::class, 'BucketOrdenes'])->name('ver-bucketOrdenesGeneral');
+Route::get('/BucketTabla', [TecnicoController::class, 'RelacionBucketOrdenes'])->name('fetchrelacionBucketOrdenes');
+Route::get('/expr-bucketordenes-excel', [TecnicoController::class, 'exportarExcel'])
+    ->name('bucketordenes.exportarExcel');
 
 Route::post('/tecnico/crear',[TecnicoController::class,'store'])->name('tecnico.store');
 Route::post('/Editecni/editar',[TecnicoController::class,'exist'])->name('tecnico.exist');

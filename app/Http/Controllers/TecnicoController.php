@@ -100,6 +100,209 @@ class TecnicoController extends Controller
         return view('tecnico.index', compact('tecnicos'));
     }
 
+public function BucketOrdenes(Request $request, $usbucket = null)
+{
+    DB::connection()->disableQueryLog();
+                  
+    if(!Auth::check()){
+            return redirect()->route('login');
+        }
+    
+
+        return view('buckettecnico.bucketgeneral');
+
+
+}
+
+public function exportarExcel(Request $request)
+{
+    // 1. Capturar los mismos filtros que envía tu función de JavaScript
+    $fkTienda = session('user_fkTienda');
+    $fechain = $request->input('fechain');
+    $fechafin = $request->input('fechafin');
+    $search = $request->input('search');
+
+    // 2. Consulta idéntica sin paginar (con el INNER JOIN correspondiente)
+    $query = Expedientetecnico::join('tecnico', 'expedientetecnico.fkTecnico', '=', 'tecnico.id')
+        ->where('expedientetecnico.fkTienda', $fkTienda);
+
+    // Filtro por Técnico (Si aplica)
+    if (!empty($idTecnico)) {
+        $query->where('tecnico.id', $idTecnico);
+    }
+
+    // Filtro por Rango de Fechas (Si aplica)
+    if (!empty($fechain) && !empty($fechafin)) {
+        $query->whereBetween('expedientetecnico.FECHAINSTALACION', [$fechain . ' 00:00:00', $fechafin . ' 23:59:59']);
+    }
+
+    // Buscador General (Filtra en múltiples columnas en la Base de Datos)
+    if (!empty($search)) {
+        $query->where(function($q) use ($search) {
+            $q->where('expedientetecnico.Orden', 'LIKE', "%{$search}%")
+              ->orWhere('expedientetecnico.virtual', 'LIKE', "%{$search}%")
+              ->orWhere('expedientetecnico.NOMBRECLIENTE', 'LIKE', "%{$search}%")
+              ->orWhere('expedientetecnico.DIRECCION', 'LIKE', "%{$search}%")
+              ->orWhere('expedientetecnico.ESTATUS',$search)
+              ->orWhere('tecnico.nombre', 'LIKE', "%{$search}%")
+              ->orWhere('tecnico.codigo', 'LIKE', "%{$search}%");
+        });
+    }
+
+    // Seleccionamos los campos asegurando evitar colisiones de llaves duplicadas
+    $query->select(
+        'expedientetecnico.*', 
+        'tecnico.nombre as nombre_tecnico', 
+        'tecnico.codigo as codigo_tecnico'
+    );
+
+    // 3. Configurar cabeceras de descarga HTTP para Excel/CSV
+    $fileName = 'Reporte_Ordenes_Bucket_' . date('Y-m-d_H-i') . '.csv';
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8",
+        "Content-Disposition" => "attachment; filename=$fileName",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // 4. Generar el archivo en streaming línea por línea (Cuidado de la RAM)
+    $callback = function() use($query) {
+        $file = fopen('php://output', 'w');
+        
+        // Agregar BOM UTF-8 para que Excel reconozca tildes y eñes correctamente
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        // Cabeceras de las columnas del reporte de Órdenes
+        fputcsv($file, [
+            'Orden', 
+            'Virtual', 
+            'Estatus', 
+            'Tipo Servicio', 
+            'Tipo Orden', 
+            'Cliente', 
+            'Tecnico', 
+            'Codigo Tecnico', 
+            'Direccion', 
+            'Observaciones', 
+            'Siglas Central', 
+            'Area', 
+            'Fecha Instalacion'
+        ]);
+
+        // Procesar los registros en bloques de 1000 (Chunking) para no colapsar el servidor
+        $query->chunk(1000, function($registros) use($file) {
+            foreach ($registros as $row) {
+                fputcsv($file, [
+                    $row->Orden ?? $row->id,
+                    $row->virtual ?? 'N/A',
+                    $row->ESTATUS ?? 'Pendiente',
+                    $row->Tipo_servicio ?? 'N/A',
+                    $row->Tipo_orden ?? 'N/A',
+                    $row->NOMBRECLIENTE ?? 'N/A',
+                    $row->nombre_tecnico ?? 'N/A',
+                    $row->codigo_tecnico ?? 'N/A',
+                    $row->DIRECCION ?? 'N/A',
+                    $row->OBS ?? 'Sin observaciones',
+                    $row->SIGLASCENTRAL ?? 'N/A',
+                    $row->AREA ?? 'N/A',
+                    $row->FECHAINSTALACION ?? 'N/A'
+                ]);
+            }
+        });
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
+public function RelacionBucketOrdenes(Request $request, $usbucket = null)
+{
+    DB::connection()->disableQueryLog();
+    
+    // Inicializamos las variables principales
+    $idtecnico = null; 
+
+    try {
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+
+        $fkTienda = session('user_fkTienda');
+        
+        // 1. Rescate de parámetros de identificación y tiempo alineados con tu vista
+
+        $fechain = $request->input('fechain');
+        $fechafin = $request->input('fechafin');
+        
+        // 2. Captura de los nuevos inputs de búsqueda global e individual por columna
+        $searchGlobal  = $request->input('search');        
+
+        // 3. Consulta base incorporando el INNER JOIN con la tabla de técnicos
+        $query = Expedientetecnico::join('tecnico', 'expedientetecnico.fkTecnico', '=', 'tecnico.id')
+            ->where('expedientetecnico.fkTienda', $fkTienda);
+
+
+        // 5. Filtro base por Rango de Fechas (si se proporcionan)
+        if (!empty($fechain) && !empty($fechafin)) {
+            $query->whereBetween('expedientetecnico.FECHAINSTALACION', [$fechain . ' 00:00:00', $fechafin . ' 23:59:59']);
+        }
+
+     // 6. BUSCADOR GENERAL (Filtra en múltiples columnas en la Base de Datos)
+if (!empty($searchGlobal)) {
+    // Si el usuario escribe exactamente 1 carácter, realiza el filtro especializado por ESTATUS
+    if (strlen($searchGlobal) == 1) {
+        $query->where('expedientetecnico.ESTATUS', '=', $searchGlobal);
+    } else {
+        // Si escribe más de un carácter, busca normalmente de forma global
+        $query->where(function($q) use ($searchGlobal) {
+            $q->where('expedientetecnico.Orden', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.virtual', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.NOMBRECLIENTE', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.DIRECCION', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.Tipo_servicio', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.Tipo_orden', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.SIGLASCENTRAL', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.OBS', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.AREA', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('expedientetecnico.TECNOLOGIA', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('tecnico.nombre', 'LIKE', "%{$searchGlobal}%")
+              ->orWhere('tecnico.codigo', 'LIKE', "%{$searchGlobal}%");
+        });
+    }
+}
+
+
+        // 8. Selección de campos evitando colisiones de llaves duplicadas e incorporando la Paginación (15 registros)
+        $relacion = $query->select(
+            'expedientetecnico.*', 
+            'tecnico.nombre as nombre_tecnico', 
+            'tecnico.codigo as codigo_tecnico'
+        )
+        ->paginate(15)
+        ->appends($request->all()); // Mantiene todos los filtros activos al cambiar de página
+
+        // 9. Retorno condicional si la petición es AJAX o carga inicial de vista
+        if ($request->ajax()) {
+            
+            return view('buckettecnico.table.buckettable', compact('relacion'))->render();
+        }
+
+        return view('buckettecnico.table.buckettable', compact('relacion'));
+
+    } catch (\Exception $e) {
+        // En caso de fallo, capturamos el error en formato JSON si es AJAX o retornamos vista controlada
+        if ($request->ajax()) {
+            return response()->json(['error' => 'Error al filtrar: ' . $e->getMessage()], 500);
+        }
+        
+        $relacion = collect(); 
+        return view('buckettecnico.table.buckettable', compact('relacion'))->withErrors(['error' => $e->getMessage()]);
+    }
+}
+
+
 public function InsertarMaterialesTecnico($id)
 {
     // 1. Validar que el usuario esté autenticado
@@ -2841,7 +3044,7 @@ if ($request->input('estatus') === 'S') {
                     'Naturaleza' => 'H',
                 ], 
                 [
-                    'Descripcion' => $producto->nombre ?? $costoUnidad->Descripcion ?? "Servicio $skuActual",
+                    'Descripcion' => $costoUnidad->Descripcion ?? $costoUnidad->Descripcion ?? "Servicio $skuActual",
                     'OBS'         => 'Pago por servicio tecnico (Mano de Obra)',
                     'Cantidad'    => $cantidadRequerida,
                     // Multiplicación limpia y segura entre la cantidad y el precio unitario obtenido

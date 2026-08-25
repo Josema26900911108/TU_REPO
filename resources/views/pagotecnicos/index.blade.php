@@ -187,8 +187,8 @@
                             <option value="C" {{ request('Status') == 'C' ? 'selected' : '' }}>
                                 Pagado (C)
                             </option>
-                            <option value="I" {{ request('Status') == 'I' ? 'selected' : '' }}>
-                                Pendiente (I)
+                            <option value="S" {{ request('Status') == 'S' ? 'selected' : '' }}>
+                                Pendiente (S)
                             </option>
                             <option value="B" {{ request('Status') == 'B' ? 'selected' : '' }}>
                                 Pago Anulado/No pagado (B)
