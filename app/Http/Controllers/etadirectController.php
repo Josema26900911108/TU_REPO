@@ -150,10 +150,12 @@ public function reporteDiscrepancias(Request $request)
         ORDER BY Accion_Reporte ASC, m_e.Orden_Plataforma ASC
     ";
 
+    
     $resultados = DB::select($query, [
         'fecha_inicio' => $fechaInicio,
-        'filename'     => $fechaFin
+        'fecha_fin'    => $fechaFin
     ]);
+
 
     $fileName = 'Reporte_Discrepancias_Materiales_' . date('Ymd_His') . '.csv';
     $headers = [
