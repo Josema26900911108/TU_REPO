@@ -42,17 +42,14 @@ class etadirectController extends Controller
 
 public function reporteDiscrepancias(Request $request)
 {
-    // 1. Validar las fechas que vienen del formulario
     $request->validate([
         'fechaincio' => 'required|date',
         'fechafin'   => 'required|date',
     ]);
 
-    // Ajustar horas para cubrir el día completo en el filtro BETWEEN
     $fechaInicio = $request->fechaincio . ' 00:00:00';
     $fechaFin    = $request->fechafin . ' 23:59:59';
 
-    // 2. Ejecutar la consulta SQL corregida (Uniones protegidas contra producto cartesiano)
     $query = "
      SELECT 
             IFNULL(t.nombre, 'Técnico No Registrado') AS Tecnico_Nombre,
@@ -92,18 +89,19 @@ public function reporteDiscrepancias(Request $request)
                 GROUP BY TRIM(Orden), SKU, Descripcion, EMPLEADO, serie_homologada
             ) e
             LEFT JOIN (
-                /* CORRECCIÓN: Agrupamos de forma atómica primero para no multiplicar sumas */
+                /* PROTECCIÓN ABSOLUTA: Sumamos los materiales de forma aislada por Expediente y SKU */
                 SELECT 
-                    TRIM(ex_sub.Orden) AS Orden, 
-                    m_sub.SKU,
-                    MAX(mamo.Descripcion) AS Descripcion,
-                    MAX(COALESCE(m_sub.fkTecnico, ex_sub.fkTecnico)) AS Tecnico_Interno,
-                    CASE WHEN m_sub.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR m_sub.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(m_sub.serie) END AS serie_homologada,
-                    SUM(m_sub.cantidad) AS Cantidad_Interna
-                FROM movimientomateriales m_sub
-                INNER JOIN expedientetecnico ex_sub ON m_sub.fkExpediente = ex_sub.id
-                LEFT JOIN MaterialManoObra mamo ON mamo.SKU = m_sub.SKU
-                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, serie_homologada
+                    TRIM(ex.Orden) AS Orden,
+                    mov.SKU,
+                    CASE WHEN mov.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR mov.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(mov.serie) END AS serie_homologada,
+                    SUM(mov.cantidad) AS Cantidad_Interna,
+                    MAX(COALESCE(mov.fkTecnico, ex.fkTecnico)) AS Tecnico_Interno
+                FROM movimientomateriales mov
+                INNER JOIN (
+                    /* Subconsulta interna para obtener una única orden por ID de expediente */
+                    SELECT id, TRIM(Orden) AS Orden, fkTecnico FROM expedientetecnico GROUP BY id
+                ) ex ON mov.fkExpediente = ex.id
+                GROUP BY TRIM(ex.Orden), mov.SKU, serie_homologada
             ) m ON e.Orden = m.Orden AND e.SKU = m.SKU AND e.serie_homologada = m.serie_homologada
 
             UNION ALL
@@ -111,26 +109,26 @@ public function reporteDiscrepancias(Request $request)
             SELECT 
                 TRIM(m.Orden) AS Orden_Plataforma,
                 m.SKU,
-                m.Descripcion,
+                IFNULL(mamo.Descripcion, 'Sin Descripción Catálogo') AS Descripcion,
                 IF(m.serie_homologada = 'SIN_SERIE', '0', m.serie_homologada) AS Serie_Original,
                 m.Cantidad_Interna,
                 0 AS Cantidad_Externa,
                 m.Tecnico_Interno AS Tecnico_Final,
                 m.fecha_ref AS Fecha_Auditoria
             FROM (
-                /* CORRECCIÓN: Agrupamos de forma atómica en el segmento UNION también */
+                /* LO MISMO AQUÍ: Suma aislada en el bloque UNION */
                 SELECT 
-                    TRIM(ex_sub.Orden) AS Orden, 
-                    m_sub.SKU,
-                    MAX(mamo.Descripcion) AS Descripcion,
-                    MAX(COALESCE(m_sub.fkTecnico, ex_sub.fkTecnico)) AS Tecnico_Interno,
-                    CASE WHEN m_sub.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR m_sub.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(m_sub.serie) END AS serie_homologada,
-                    SUM(m_sub.cantidad) AS Cantidad_Interna,
-                    MIN(COALESCE(ex_sub.FECHAINSTALACION, m_sub.created_at)) AS fecha_ref
-                FROM movimientomateriales m_sub
-                INNER JOIN expedientetecnico ex_sub ON m_sub.fkExpediente = ex_sub.id
-                LEFT JOIN MaterialManoObra mamo ON mamo.SKU = m_sub.SKU
-                GROUP BY TRIM(ex_sub.Orden), m_sub.SKU, serie_homologada
+                    TRIM(ex.Orden) AS Orden,
+                    mov.SKU,
+                    CASE WHEN mov.serie IN ('0', 0, 'N/A', 'S/N', 'SIN SERIE', '') OR mov.serie IS NULL THEN 'SIN_SERIE' ELSE TRIM(mov.serie) END AS serie_homologada,
+                    SUM(mov.cantidad) AS Cantidad_Interna,
+                    MAX(COALESCE(mov.fkTecnico, ex.fkTecnico)) AS Tecnico_Interno,
+                    MIN(mov.created_at) AS fecha_ref
+                FROM movimientomateriales mov
+                INNER JOIN (
+                    SELECT id, TRIM(Orden) AS Orden, fkTecnico FROM expedientetecnico GROUP BY id
+                ) ex ON mov.fkExpediente = ex.id
+                GROUP BY TRIM(ex.Orden), mov.SKU, serie_homologada
             ) m
             LEFT JOIN (
                 SELECT 
@@ -140,6 +138,7 @@ public function reporteDiscrepancias(Request $request)
                 FROM ETA
                 GROUP BY TRIM(Orden), SKU, serie_homologada
             ) e ON m.Orden = e.Orden AND m.SKU = e.SKU AND m.serie_homologada = e.serie_homologada
+            LEFT JOIN MaterialManoObra mamo ON mamo.SKU = m.SKU
             WHERE e.SKU IS NULL
         ) m_e
         LEFT JOIN tecnico t ON (m_e.Tecnico_Final = t.id OR m_e.Tecnico_Final = t.codigo)        
@@ -153,9 +152,7 @@ public function reporteDiscrepancias(Request $request)
         'fecha_fin'    => $fechaFin
     ]);
 
-    // 3. Generar la respuesta en formato de archivo CSV descargable
     $fileName = 'Reporte_Discrepancias_Materiales_' . date('Ymd_His') . '.csv';
-    
     $headers = [
         "Content-type"        => "text/csv; charset=UTF-8",
         "Content-Disposition" => "attachment; filename=$fileName",
@@ -166,9 +163,7 @@ public function reporteDiscrepancias(Request $request)
 
     $callback = function() use($resultados) {
         $file = fopen('php://output', 'w');
-        
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-        
         fputcsv($file, [
             'Técnico Nombre', 'Técnico Código', 'Orden', 'Serie', 'SKU', 'Descripcion',
             'Cantidad Interna', 'Cantidad Externa', 'Complemento Requerido', 'Acción Reporte'
@@ -176,19 +171,11 @@ public function reporteDiscrepancias(Request $request)
 
         foreach ($resultados as $fila) {
             fputcsv($file, [
-                $fila->Tecnico_Nombre,
-                $fila->Tecnico_Codigo,
-                $fila->Orden,
-                $fila->Serie,
-                $fila->SKU,
-                $fila->Descripcion,
-                $fila->Cantidad_Interna,
-                $fila->Cantidad_Externa,
-                $fila->Complemento_Requerido,
-                $fila->Accion_Reporte
+                $fila->Tecnico_Nombre, $fila->Tecnico_Codigo, $fila->Orden, $fila->Serie,
+                $fila->SKU, $fila->Descripcion, $fila->Cantidad_Interna, $fila->Cantidad_Externa,
+                $fila->Complemento_Requerido, $fila->Accion_Reporte
             ]);
         }
-        
         fclose($file);
     };
 
