@@ -89,7 +89,7 @@ public function reporteDiscrepancias(Request $request)
                 GROUP BY TRIM(Orden), SKU, Descripcion, EMPLEADO, serie_homologada
             ) e
             LEFT JOIN (
-                /* PROTECCIÓN ABSOLUTA: Sumamos los materiales de forma aislada por Expediente y SKU */
+                /* PROTECCIÓN ABSOLUTA COMPATIBLE CON ONLY_FULL_GROUP_BY */
                 SELECT 
                     TRIM(ex.Orden) AS Orden,
                     mov.SKU,
@@ -98,8 +98,8 @@ public function reporteDiscrepancias(Request $request)
                     MAX(COALESCE(mov.fkTecnico, ex.fkTecnico)) AS Tecnico_Interno
                 FROM movimientomateriales mov
                 INNER JOIN (
-                    /* Subconsulta interna para obtener una única orden por ID de expediente */
-                    SELECT id, TRIM(Orden) AS Orden, fkTecnico FROM expedientetecnico GROUP BY id
+                    /* CORRECCIÓN: Usamos MAX para agrupar de forma válida para MySQL Estricto */
+                    SELECT id, MAX(TRIM(Orden)) AS Orden, MAX(fkTecnico) AS fkTecnico FROM expedientetecnico GROUP BY id
                 ) ex ON mov.fkExpediente = ex.id
                 GROUP BY TRIM(ex.Orden), mov.SKU, serie_homologada
             ) m ON e.Orden = m.Orden AND e.SKU = m.SKU AND e.serie_homologada = m.serie_homologada
@@ -116,7 +116,6 @@ public function reporteDiscrepancias(Request $request)
                 m.Tecnico_Interno AS Tecnico_Final,
                 m.fecha_ref AS Fecha_Auditoria
             FROM (
-                /* LO MISMO AQUÍ: Suma aislada en el bloque UNION */
                 SELECT 
                     TRIM(ex.Orden) AS Orden,
                     mov.SKU,
@@ -126,7 +125,8 @@ public function reporteDiscrepancias(Request $request)
                     MIN(mov.created_at) AS fecha_ref
                 FROM movimientomateriales mov
                 INNER JOIN (
-                    SELECT id, TRIM(Orden) AS Orden, fkTecnico FROM expedientetecnico GROUP BY id
+                    /* CORRECCIÓN AQUÍ TAMBIÉN */
+                    SELECT id, MAX(TRIM(Orden)) AS Orden, MAX(fkTecnico) AS fkTecnico FROM expedientetecnico GROUP BY id
                 ) ex ON mov.fkExpediente = ex.id
                 GROUP BY TRIM(ex.Orden), mov.SKU, serie_homologada
             ) m
@@ -181,6 +181,7 @@ public function reporteDiscrepancias(Request $request)
 
     return response()->stream($callback, 200, $headers);
 }
+
 
 
     public function exportarExcel(Request $request)
