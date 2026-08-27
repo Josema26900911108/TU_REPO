@@ -29,57 +29,58 @@
         <li class="breadcrumb-item active">Mano de Obra/Materiales</li>
     </ol>
 
-    @can('crear-materialmanoobra')
+@can('crear-materialmanoobra')
 
-    <div class="container mt-4">
-  <form action="{{ route('manoobramaterial.importar') }}" method="POST" enctype="multipart/form-data">
-    @csrf
-    <button type="submit" class="btn btn-success">Subir</button>
-    <label for="archivo" class="btn btn-primary custom-upload-btn">
-      <i class="fa fa-upload"></i>
-    </label>
-
-    <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
-    <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
-
-
-  </form>
+<!-- SECCIÓN 1: INSERTAR NUEVOS -->
+<div class="container mt-4">
+    <form action="{{ route('manoobramaterial.importar') }}" method="POST" enctype="multipart/form-data">
+        @csrf
+        <button type="submit" class="btn btn-success">Subir</button>
+        <label for="archivo" class="btn btn-primary custom-upload-btn">
+            <i class="fa fa-upload"></i>
+        </label>
+        <input type="file" id="archivo" name="archivo" class="custom-file-input" onchange="mostrarNombre(this)">
+        <span id="nombre-archivo" class="ml-2 text-muted">Ningún archivo seleccionado</span>
+    </form>
 </div>
-        <div class="mb-4">
-        <a href="{{route('manoobramaterial.formato')}}">
-            <button type="button" class="fa fa-download">descargar formato</button>
-        </a>
-    </div>
 
-    <div class="card mb-4 bg-light">
+<div class="mb-4">
+    <!-- Mantiene la ruta original para insertar -->
+    <a href="{{ route('manoobramaterial.formato') }}">
+        <button type="button" class="fa fa-download"> descargar formato básico</button>
+    </a>
+</div>
+
+<!-- SECCIÓN 2: EDITAR / ACTUALIZAR EXISTENTES -->
+<div class="card mb-4 bg-light">
     <div class="card-body">
         <div class="row align-items-center">
-            <!-- Bloque Izquierdo: Descarga de Formato -->
+            <!-- Bloque Izquierdo: Descarga de Formato para Edición -->
             <div class="col-md-4 mb-3 mb-md-0">
                 <p class="mb-1 text-muted small fw-bold">1. Descarga la plantilla con los IDs:</p>
-                <a href="{{ route('manoobramaterial.formato') }}" class="btn btn-outline-primary w-100">
-                    <i class="fa fa-download me-1"></i> Descargar Formato (.CSV)
+                <!-- 🛠️ CORRECCIÓN AQUÍ: Se cambió a la nueva ruta para edición -->
+                <a href="{{ route('manoobramaterial.formato.edit') }}" class="btn btn-outline-primary w-100">
+                    <i class="fa fa-download me-1"></i> Descargar Formato Con IDs (.CSV)
                 </a>
             </div>
 
-            <!-- Bloque Derecho: Formulario de Subida/Importación -->
+            <!-- Bloque Derecho: Formulario de Subida/Importación para Actualizar -->
             <div class="col-md-8">
                 <p class="mb-1 text-muted small fw-bold">2. Sube el archivo modificado para actualizar por ID:</p>
-                <form action="{{ route('manoobramaterial.importar') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center gap-2">
+                <!-- 🛠️ NOTA: Si la lógica de actualización es diferente a la de creación, 
+                     aquí deberías usar otra ruta, por ejemplo: 'manoobramaterial.actualizar' -->
+                <form action="{{ route('manoobramaterial.importar.editar') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center gap-2">
                     @csrf
                     
-                    <!-- Botón visual para elegir archivo -->
                     <label for="archivoedit" class="btn btn-secondary custom-upload-btn mb-0" title="Seleccionar archivo">
                         <i class="fa fa-file-excel"></i> Examinar...
                     </label>
                     <input type="file" id="archivoedit" name="archivoedit" class="custom-file-input" onchange="mostrarNombreedit(this)" accept=".csv,.txt">
                     
-                    <!-- Contenedor del nombre del archivo cargado -->
                     <div class="flex-grow-1 px-2 border rounded bg-white text-truncate text-muted small" id="nombre-archivoedit" style="line-height: 34px; height: 38px;">
                         Ningún archivo seleccionado
                     </div>
 
-                    <!-- Botón para procesar la actualización -->
                     <button type="submit" class="btn btn-success">
                         <i class="fa fa-upload me-1"></i> Subir y Actualizar
                     </button>
@@ -88,7 +89,8 @@
         </div>
     </div>
 </div>
-    @endcan
+@endcan
+
 
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
