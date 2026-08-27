@@ -243,7 +243,7 @@ public function importarMAMOEditar(Request $request)
             }
 
             // Buscamos estrictamente por ID para aplicar las modificaciones masivas
-            Materialmanoobra::updateOrCreate(
+            Materialmanoobra::update(
                 [
                     'id' => trim($data['id']) // <--- Restricción de búsqueda WHERE id = :id
                 ],
