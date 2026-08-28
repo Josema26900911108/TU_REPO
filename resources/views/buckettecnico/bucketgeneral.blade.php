@@ -74,6 +74,25 @@
                                                 </form>
 
                                             </td>
+                                            <td>
+                                                <form action="{{ route('expedientetecnico.importar') }}" method="POST" enctype="multipart/form-data">
+                                                        @csrf
+                                                        <div class="input-group mb-3">
+                                                            <input type="file" name="archivo" class="form-control" required accept=".xlsx, .xls, .csv">
+                                                            <button class="btn btn-success" type="submit">
+                                                                <i class="fa fa-file-excel me-1"></i> Importar Expedientes
+                                                            </button>
+                                                        </div>
+                                                    </form>
+                                            </td>
+                                            <td>
+                                                <div class="mb-4">
+                                                    <!-- Enlace directo que ejecuta la descarga mediante la ruta de Laravel -->
+                                                    <a href="{{ route('expedientetecnico.MasivodescargarFormeta') }}" class="btn btn-outline-primary">
+                                                        <i class="fa fa-download me-1"></i> Descargar Formato (.CSV)
+                                                    </a>
+                                                </div>
+                                            </td>
 
 <div class="tab-content mt-3" id="tecnicoTabsContent">
     <div class="tab-pane fade show active" id="datos" role="tabpanel" aria-labelledby="datos-tab">
@@ -96,6 +115,7 @@
     
 
 @endsection
+
 
 @push('js')
 
@@ -376,4 +396,5 @@ function mostrarNombre(input) {
 }
 
 </script>
+
 @endpush

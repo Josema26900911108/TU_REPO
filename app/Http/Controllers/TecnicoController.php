@@ -46,7 +46,8 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
-
+use App\Imports\ExpedienteImport;
+use Maatwebsite\Excel\Facades\Excel; 
 
 class TecnicoController extends Controller
 {
@@ -63,6 +64,8 @@ class TecnicoController extends Controller
 {
     Paginator::useBootstrap();
 }
+
+
 
     public function index()
     {
@@ -113,6 +116,99 @@ public function BucketOrdenes(Request $request, $usbucket = null)
 
 
 }
+
+  public function cambiarEstatus(Request $request)
+    {
+        // 1. Validar los datos recibidos del formulario/modal
+        $request->validate([
+            'id' => 'required|exists:expedientetecnico,id',
+            'estatus' => 'required|string|max:1', // Ajusta según la longitud de tus códigos de estatus
+            'comentario' => 'nullable|string|max:255', // Ajusta según la longitud máxima de tu campo de comentario
+        ]);
+
+        try {
+            // 2. Buscar el expediente técnico por su ID
+            $expediente = Expedientetecnico::findOrFail($request->id);
+
+            // 3. Validación de seguridad en servidor: Impedir cambios si ya está en estatus 'C'
+            if ($expediente->ESTATUS === 'C') {
+                return redirect()->back()->with('error', 'No es posible modificar el estatus de un expediente que ya se encuentra en estatus C.');
+            }
+
+            // 4. Asignar y guardar el nuevo estatus (mapeado a la columna exacta de tu modelo)
+            $expediente->ESTATUS = $request->estatus;
+            if($request->estatus === 'B') {
+                $expediente->Status = 'A'; // Asignar 'A' a la columna Status si el nuevo estatus es 'B'
+            } else if($request->estatus === 'I') {
+                $expediente->Status = 'I';
+            } else{
+                $expediente->Status = 'S';
+                $expediente->ESTATUS = 'I';
+            }
+            if(!empty($request->comentario)) {
+                $expediente->OBS = $expediente->OBS . " - Comentario Administrativo: " .$request->comentario;
+            }
+            
+            $expediente->save();
+
+            // 5. Redireccionar con un mensaje de éxito
+            return redirect()->back()->with('success', 'El estatus del expediente se actualizó correctamente.');
+
+        } catch (\Exception $e) {
+            // Manejo de errores en caso de fallo en la base de datos
+            return redirect()->back()->with('error', 'Ocurrió un error al intentar actualizar el estatus: ' . $e->getMessage());
+        }
+    }
+
+public function importarExpedientes(Request $request)
+{
+    // Validar que realmente se suba un archivo de Excel o CSV
+    $request->validate([
+        'archivo' => 'required|mimes:xlsx,xls,csv,txt|max:10240',
+    ]);
+
+    try {
+        // 1. Instanciamos la clase de importación de forma manual
+        $importador = new ExpedienteImport;
+
+        // 2. Ejecutar la importación pasándole nuestra instancia
+        Excel::import($importador, $request->file('archivo'));
+
+        // 3. 🛠️ SI ENCONTRÓ ERRORES, GENERA Y DESCARGA EL ARCHIVO CSV DE CONTROL
+        if (count($importador->erroresReportados) > 0) {
+            $headers = [
+                "Content-type"        => "text/csv; charset=UTF-8",
+                "Content-Disposition" => "attachment; filename=Errores_Masivo_Expedientes_" . date('Ymd_His') . ".csv",
+                "Pragma"              => "no-cache",
+                "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+                "Expires"             => "0"
+            ];
+
+            $callback = function () use ($importador) {
+                $output = fopen('php://output', 'w');
+                // Agregar BOM UTF-8 para Excel
+                fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+                
+                // Cabeceras del reporte
+                fputcsv($output, ['No. Fila en Excel Original', 'Orden Relacionada', 'Descripción del Error']);
+                
+                foreach ($importador->erroresReportados as $error) {
+                    fputcsv($output, [$error['fila'], $error['orden'], $error['motivo']]);
+                }
+                fclose($output);
+            };
+
+            return response()->stream($callback, 200, $headers);
+        }
+
+        return redirect()->back()->with('success', 'Los expedientes se importaron y asociaron a sus técnicos correctamente sin discrepancias.');
+
+    } catch (\Exception $e) {
+        Log::error('Error masivo crítico: ' . $e->getMessage());
+        return redirect()->back()->with('error', 'Error al procesar el archivo masivo: ' . $e->getMessage());
+    }
+}
+
 
 public function exportarExcel(Request $request)
 {
@@ -4094,6 +4190,55 @@ public function importarInvTecnico(Request $request)
 
     return response()->stream($callback, 200, $headers);
 }
+
+public function descargarMasivaFormeta()
+{
+    $headers = [
+        "Content-type"        => "text/csv; charset=UTF-8", // 🛠️ Recomendado agregar UTF-8 para tildes y caracteres especiales
+        "Content-Disposition" => "attachment; filename=Formato Masivo Expediente Ruta.csv",
+        "Pragma"              => "no-cache",
+        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+        "Expires"             => "0"
+    ];
+
+    // 🛠️ Se añadió 'CENTRO/CODIGO' al final del encabezado
+    $columnas = ['Orden','virtual','Status','Tipo_servicio','Tipo_orden','NOMBRECLIENTE','DIRECCION','OBS','SIGLASCENTRAL','AREA','FECHAINSTALACION','AUTORIZA','ESTATUS','TECNOLOGIA','CENTRO/CODIGO'];
+
+    $callback = function () use ($columnas) {
+        $file = fopen('php://output', 'w');
+        
+        // 🛠️ Esto ayuda a que Excel reconozca correctamente los caracteres en español al abrir el CSV
+        fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); 
+
+        fputcsv($file, $columnas); // Encabezado
+
+        $fkTienda = session('user_fkTienda') ?? 0;
+        
+        // 🛠️ Se añadió el código del técnico de ejemplo 'D080817' al final de la fila
+        fputcsv($file, [
+            23450285,
+            1005749,
+            'I',
+            'DT',
+            "DA",
+            'JUAN PEREZ',
+            'Canton camoja, Huehuetanango, Huehuetenango',
+            "ORDEN QUE SOLO SE AGREGAN CAJAS ADICIONALES",
+            'HUE0301',
+            'OC3',
+            "15/06/2025",
+            '1T',
+            'I',
+            'WTTx',
+            'D080817' // 👈 Código del técnico correspondiente
+        ]);
+
+        fclose($file);
+    };
+
+    return response()->stream($callback, 200, $headers);
+}
+
 
         public function descargarinventario()
 {

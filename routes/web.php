@@ -561,11 +561,20 @@ Route::delete('/eliminartecnico/{id}', [TecnicoController::class, 'destroy'])->n
 // Ruta para procesar el archivo Excel y descargar el ZIP con las firmas
 Route::post('/reportes/exportar-firmas', [ReporteOrdenesFirmadasController::class, 'generarExpedientePdf'])
     ->name('reportes.exportarFirmas');
+Route::get('/expedientetecnico/descargar-formato-csv', [TecnicoController::class, 'descargarMasivaFormeta'])
+    ->name('expedientetecnico.MasivodescargarFormeta');    
+
+Route::post('/expedientetecnico/MASIVOimportar', [TecnicoController::class, 'importarExpedientes'])
+    ->name('expedientetecnico.importar');
+    
 
 Route::get('/verbtecnico/{usbucket}/ver-bucket',[TecnicoController::class,'bucket'])->name('tecnico.bucket');
 Route::get('/buckettecnicos',[TecnicoController::class,'bucketlista'])->name('tecnico.buckettecnico');
 Route::post('tecnico/{tecnico}/operartrabajo/{expediente}', [TecnicoController::class, 'operarTrabajo'])
     ->name('tecnico.operartrabajo');
+Route::put('/expedientetecnico/cambiar-estatus', [TecnicoController::class, 'cambiarEstatus'])
+    ->name('manoobramaterial.cambiarEstatus');
+
 Route::get('/pctecnico/{user}/pago-cobro',[TecnicoController::class,'pagocobro'])->name('tecnico.pagocobro');
 Route::get('/vptecnico/{user}/ver-produccion',[TecnicoController::class,'produccion'])->name('tecnico.produccion');
 Route::get('/crear/tecnico',[TecnicoController::class,'create'])->name('tecnico.create');
