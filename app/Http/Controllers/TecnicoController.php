@@ -2785,7 +2785,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                           ->orWhereNull('centrocostoespecifico')               
                           ->orWhere('centrocostoespecifico', '=', '');         
                 })
-                ->select('CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
+                ->select('CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico', 'SKU', 'Descripcion')
                 ->orderByRaw("CASE 
                     WHEN centrocostoespecifico = ? AND ? != '' THEN 1
                     WHEN centrocostoespecifico = ? THEN 2
@@ -3060,6 +3060,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
         // =================================================================
         // SECCIÓN C: FINALIZACIÓN Y AUDITORÍA DEL EXPEDIENTE
         // =================================================================
+
 if ($request->input('estatus') === 'S') {
     foreach ($skusInput as $contar => $sku) {
         $cantidadRequerida = floatval($cantidadesInput[$contar] ?? 1);
@@ -3067,7 +3068,7 @@ if ($request->input('estatus') === 'S') {
         $iditem            = $iditemsInput[$contar] ?? 0;
         
         $skuActual         = strtoupper(trim($sku));
-        $docRef            = 'INS-' . $expediente->Orden . ';' . $ahora->format('dmY:H:i:s') . ';' . $serie;
+        $docRef            = 'INS-' . $expediente->Orden . ';' .$skuActual.';' . $ahora->format('dmY:H:i:s') . ';' . $serie;
         $POSICION          = str_pad($contar+1, 4, '0', STR_PAD_LEFT);
 
         // Identificar el tipo de ítem de forma segura
@@ -3086,39 +3087,40 @@ if ($request->input('estatus') === 'S') {
             ->where('id', $id_tecnico)
             ->value('codigo') ?? '';
 
-            // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
-            $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-                ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
-                    $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
-                          ->orWhere('centrocostoespecifico', '=', $fkTienda)    
-                          ->orWhereNull('centrocostoespecifico')               
-                          ->orWhere('centrocostoespecifico', '=', '');         
-                })
-                ->select('CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
-                ->orderByRaw("CASE 
-                    WHEN centrocostoespecifico = ? AND ? != '' THEN 1
-                    WHEN centrocostoespecifico = ? THEN 2
-                    ELSE 3 
-                END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
-                ->latest() 
-                ->first();
+        // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
+        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+            ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+                $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
+                      ->orWhere('centrocostoespecifico', '=', $fkTienda)    
+                      ->orWhereNull('centrocostoespecifico')               
+                      ->orWhere('centrocostoespecifico', '=', '');         
+            })
+            // Agregado 'Descripcion' al select para poder usarlo en la creación del producto
+            ->select('id', 'SKU', 'Descripcion', 'CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
+            ->orderByRaw("CASE 
+                WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+                WHEN centrocostoespecifico = ? THEN 2
+                ELSE 3 
+            END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+            ->latest() 
+            ->first();
 
-            // =================================================================
-            // CORRECCIÓN PROTEGIDA: Evita el error "Attempt to read property on null"
-            // =================================================================
-            $costoFinal = 0;
-            $unidadMedidaFinal = 'PZA';
-            $tipoCatalogoMaestro = 'MATERIAL';
+        // =================================================================
+        // CORRECCIÓN PROTEGIDA: Evita el error "Attempt to read property on null"
+        // =================================================================
+        $costoFinal = 0;
+        $unidadMedidaFinal = 'PZA';
+        $tipoCatalogoMaestro = 'MATERIAL';
 
-            if ($costoUnidad) {
-                // Si el registro existe en el catálogo, extraemos sus valores reales
-                $costoFinal = ($costoUnidad->CATEGORIA === 'MANO DE OBRA' || $costoUnidad->TIPO === 'MO') 
-                    ? $costoUnidad->COSTOPAGO 
-                    : ($costoUnidad->CATEGORIACOBRO ?? 0);
-                
-                $unidadMedidaFinal   = $costoUnidad->unidadmedida ?? 'PZA';
-                $tipoCatalogoMaestro = $costoUnidad->TIPO ?? 'MATERIAL';
-            }
+        if ($costoUnidad) {
+            // Si el registro existe en el catálogo, extraemos sus valores reales
+            $costoFinal = ($costoUnidad->CATEGORIA === 'MANO DE OBRA' || $costoUnidad->TIPO === 'MO') 
+                ? $costoUnidad->COSTOPAGO 
+                : ($costoUnidad->CATEGORIACOBRO ?? 0);
+            
+            $unidadMedidaFinal   = $costoUnidad->unidadmedida ?? 'PZA';
+            $tipoCatalogoMaestro = $costoUnidad->TIPO ?? 'MATERIAL';
+        }
 
         // 3. Historial de Movimiento de Servicio (Solo si el estatus es 'MO')
         if ($tipoItem === "MO") {
@@ -3140,27 +3142,51 @@ if ($request->input('estatus') === 'S') {
                     'Naturaleza' => 'H',
                 ], 
                 [
-                    'Descripcion' => $costoUnidad->Descripcion ?? $costoUnidad->Descripcion ?? "Servicio $skuActual",
+                    'Descripcion' => $costoUnidad->Descripcion ?? "Servicio $skuActual",
                     'OBS'         => 'Pago por servicio tecnico (Mano de Obra)',
                     'Cantidad'    => $cantidadRequerida,
-                    // Multiplicación limpia y segura entre la cantidad y el precio unitario obtenido
                     'COSTOPAGO'   => $cantidadRequerida * $precioUnitario,
                     'Status'      => 'S',
                 ]
             );  
         }
 
-        // SE MOVIÓ LA ACTUALIZACIÓN MASIVA DE AQUÍ PARA EL FINAL DEL FOREACH
-
+        // Si es mano de obra, saltamos el bloque de inventario físico
         if (empty($tipoItem) || str_contains($tipoItem, 'MO') || str_contains($tipoItem, 'MANO')) {
             continue; 
         }
 
+        // =================================================================
+        // NUEVA VALIDACIÓN: Creación dinámica del producto ausente
+        // =================================================================
+        if (!$producto) {
+            // Generamos un nombre por defecto en caso de que tampoco exista en el catálogo maestro
+            $nombreProducto = $costoUnidad->Descripcion ?? "Producto SKU $skuActual";
+            
+            // Cortamos el nombre a 80 caracteres para evitar errores de truncado en la base de datos
+            $nombreProducto = mb_substr($nombreProducto, 0, 80);
+
+            $producto = Producto::create([
+                'codigo'          => $skuActual,
+                'nombre'          => $nombreProducto,
+                'precio_base'     => $costoUnidad ? ($costoUnidad->CATEGORIACOBRO ?? 0) : 0,
+                'stock'           => 0,
+                'descripcion'     => mb_substr($nombreProducto, 0, 255),
+                'estado'          => 1, // Habilitado por defecto
+                'fkTienda'        => $fkTienda,
+                'perecedero'      => 0,
+                'stock_minimo'    => 0,
+                'marca_id'        => null, // Modificar si posees un ID genérico
+                'presentacione_id'=> null  // Modificar si posees un ID genérico
+            ]);
+        }
+
         // Registrar Historial de Salida Negativa (Clase 221)
+        // (Ahora siempre entrará aquí porque si no existía, fue creado arriba)
         if ($producto) {
             MovimientoMateriales::create([
                 'fkTienda'               => $fkTienda,
-                'fkMateriales'           => $producto->id,
+                'fkMateriales'           => $producto->id, // Aquí toma el ID existente o el recién creado
                 'contrata'               => $id_tecnico,
                 'clase_movimiento'       => '221',
                 'cantidad'               => $cantidadRequerida * -1,
@@ -3176,8 +3202,8 @@ if ($request->input('estatus') === 'S') {
                 'origen_uso'             => 'consumo_instalacion',
                 'texto_clase_movimiento' => 'Salida por instalación a cliente final'
             ]);                   
-        }
-    } // <--- AQUÍ TERMINA EL FOREACH
+        }    
+}  // <--- AQUÍ TERMINA EL FOREACH
 
     // =========================================================================
     // CORRECCIÓN: Las actualizaciones masivas se ejecutan una sola vez al terminar todo el ciclo
