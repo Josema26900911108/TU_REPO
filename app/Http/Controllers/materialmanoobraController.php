@@ -243,11 +243,9 @@ public function importarMAMOEditar(Request $request)
             }
 
             // Buscamos estrictamente por ID para aplicar las modificaciones masivas
-            Materialmanoobra::update(
-                [
-                    'id' => trim($data['id']) // <--- Restricción de búsqueda WHERE id = :id
-                ],
-                [
+            // Buscamos estrictamente por ID para aplicar las modificaciones masivas
+            Materialmanoobra::where('id', trim($data['id']))
+                ->update([
                     // Todos estos campos serán modificados basándose en el ID encontrado
                     'SKU'                   => trim($data['SKU'] ?? ''),
                     'Descripcion'           => trim($data['Descripcion'] ?? ''),
@@ -258,9 +256,9 @@ public function importarMAMOEditar(Request $request)
                     'CATEGORIACOBRO'        => (float) ($data['CATEGORIACOBRO'] ?? 0),
                     'centrocostoespecifico' => !empty($data['centrocostoespecifico']) ? trim($data['centrocostoespecifico']) : null,
                     'fkTienda'              => $fkTienda ?? 0 
-                ]
-            );
+                ]);
         }
+
 
         DB::commit();
         fclose($file);
@@ -386,7 +384,7 @@ public function importarMAMOEditar(Request $request)
         }
             Materialmanoobra::destroy('id',$id);
 
-            return redirect()->route('materialmanoobra.index')->with('success', 'Eliminado Exitosamente');
+            return redirect()->route('manoobramaterial.index')->with('success', 'Eliminado Exitosamente');
         } catch (Exception $e) {
             Log::error('Error al cambiar estado del MAMO - ID: ' . $id . ' - Error: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Error al cambiar el estado del cliente.');

@@ -3508,6 +3508,7 @@ public function fetchrelacionS(Request $request)
 public function fetchrelacionP(Request $request)
 {
     DB::connection()->disableQueryLog();
+    
     try {
         if (!Auth::check()) {
             return redirect()->route('login');
@@ -3523,31 +3524,35 @@ public function fetchrelacionP(Request $request)
                 $q->select('SKU', 'nombre as descripcion'); 
             }])
             ->where('fkTecnico', $idtecnico)
-            ->whereNotNull('fkTecnico')
-            ->whereHas('arbolmanoobra', function($q) {
-                $q->where('Tipo_servicio', 'MO');
-            });
+            ->whereNotNull('fkTecnico');
 
-        // CORRECCIÓN: Filtra por Naturaleza o Status, pero SIEMPRE excluye 'B'
         $query->where(function($q) {
             $q->where('Naturaleza', 'H')
               ->orWhere('Status', 'S');
-        })->where('Status', '!=', 'B')
-        ->where('Status', '!=', 'C'); 
+        })
+        ->whereNotIn('Status', ['B', 'C']); 
 
         if ($Estatus !== 'ER') {
             $query->where('fkTienda', $fkTienda);
         }
 
         if ($fechain && $fechafin) {
-            $inicio = Carbon::parse($fechain)->startOfDay();
-            $fin = Carbon::parse($fechafin)->endOfDay();
+            $inicio = \Carbon\Carbon::parse($fechain)->startOfDay();
+            $fin = \Carbon\Carbon::parse($fechafin)->endOfDay();
             $query->whereBetween('created_at', [$inicio, $fin]);
         }
 
-        $relacion = $query->paginate(10);
+        // 1. Calculamos los acumulados GLOBALES del técnico antes de paginar
+        $totalDineroPagado = (clone $query)->sum('COSTOPAGO');
+        $totalManoObra     = (clone $query)->sum('Cantidad');
 
-        return view('buckettecnico.table.tablapago', compact('relacion'))->render();
+        // 2. Ejecutamos la paginación e inyectamos los filtros del request en las URLs
+        $relacion = $query->orderBy('created_at', 'desc')
+                          ->paginate(15)
+                          ->appends($request->all());
+
+        // 3. Enviamos todo estructurado a la vista
+        return view('buckettecnico.table.tablapago', compact('relacion', 'totalDineroPagado', 'totalManoObra'))->render();
 
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()], 500);
@@ -3568,10 +3573,10 @@ public function fetchrelacionC(Request $request)
         $fechain   = $request->input('fechainC');
         $fechafin  = $request->input('fechafinC');
 
-        // Se simplificaron los filtros de Status y Naturaleza
+        // Consulta base optimizada
         $query = Pagotecnico::where('fkTecnico', $idtecnico)
             ->whereNotNull('fkTecnico')
-            ->where('Status', 'S') // Al ser 'S', automáticamente NO es 'B'
+            ->where('Status', 'S') 
             ->where('Naturaleza', 'D');
 
         if ($Estatus !== 'ER') {
@@ -3579,14 +3584,22 @@ public function fetchrelacionC(Request $request)
         }
 
         if ($fechain && $fechafin) {
-            $inicio = Carbon::parse($fechain)->startOfDay();
-            $fin = Carbon::parse($fechafin)->endOfDay();
+            $inicio = \Carbon\Carbon::parse($fechain)->startOfDay();
+            $fin = \Carbon\Carbon::parse($fechafin)->endOfDay();
             $query->whereBetween('created_at', [$inicio, $fin]);
         }
 
-        $relacion = $query->paginate(10);
+        // 1. Calculamos los acumulados GLOBALES de cobros antes de paginar
+        $totalDineroCobrado = (clone $query)->sum('COSTOPAGO');
+        $totalManoObraCobro = (clone $query)->sum('Cantidad');
 
-        return view('buckettecnico.table.tablacobro', compact('relacion'))->render();
+        // 2. Ejecutamos la paginación inyectando los filtros del request en las URLs
+        $relacion = $query->orderBy('created_at', 'desc')
+                          ->paginate(10)
+                          ->appends($request->all());
+
+        // 3. Enviamos los totales globales de forma independiente a la vista de cobros
+        return view('buckettecnico.table.tablacobro', compact('relacion', 'totalDineroCobrado', 'totalManoObraCobro'))->render();
 
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()], 500);
