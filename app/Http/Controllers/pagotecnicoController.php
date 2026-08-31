@@ -1113,20 +1113,32 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
     $file = fopen($request->file('archivo')->getRealPath(), 'r');    
     
-    $encabezadoRaw = fgetcsv($file);
+    // Leer encabezado usando el Tabulador ("\t") como separador
+    $encabezadoRaw = fgetcsv($file, 0, "\t");
     if ($encabezadoRaw && str_contains($encabezadoRaw[0], chr(0xEF).chr(0xBB).chr(0xBF))) {
         $encabezadoRaw[0] = str_replace(chr(0xEF).chr(0xBB).chr(0xBF), '', $encabezadoRaw[0]);
     }
     
-    $encabezado = $encabezadoRaw;
+    // Limpieza estricta de caracteres invisibles en el encabezado
+    $encabezado = array_map(function($val) {
+        return trim(preg_replace('/[\x00-\x1F\x7F-\x9F\xA0]/u', '', $val));
+    }, $encabezadoRaw);
+
     $actualizados = 0;
     $omitidos = 0;   
-    $batchSize = 500; // Bloques para agrupar las transacciones en memoria
+    $batchSize = 500; 
     $batchData = [];
     $now = now();
 
     try {
-        while (($linea = fgetcsv($file)) !== false) {
+        // Leer cada línea usando también el Tabulador ("\t")
+        while (($linea = fgetcsv($file, 0, "\t")) !== false) {
+            
+            // Ignorar líneas completamente vacías
+            if (count($linea) === 1 && empty(trim($linea[0]))) {
+                continue;
+            }
+
             if (count($encabezado) !== count($linea)) {
                 $omitidos++;
                 continue;
@@ -1134,11 +1146,16 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
             $data = array_combine($encabezado, $linea);
 
-            // El ID del movimiento debe existir en el CSV y ser numérico
-            if (empty($data['id']) || intval($data['id']) <= 0) {
+            // Limpiar el ID de espacios antes de validarlo
+            $idLimpio = isset($data['id']) ? trim($data['id']) : '';
+
+            if (empty($idLimpio) || intval($idLimpio) <= 0) {
                 $omitidos++;
                 continue;
             }
+
+            // ... (El resto de tu lógica de asignación de $batchData y updates permanece igual)
+
 
             $naturaleza = strtoupper(trim($data['Naturaleza'] ?? 'D'));
             if (!in_array($naturaleza, ['D', 'H'])) {
