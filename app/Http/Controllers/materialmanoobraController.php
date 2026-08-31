@@ -213,7 +213,12 @@ public function importarMAMOEditar(Request $request)
     $realPath = $request->file('archivoedit')->getRealPath();
     $fileData = file_get_contents($realPath);
 
-    // Detección y conversión de codificación (Mantiene acentos y eñes limpios)
+    // 1. ELIMINAR EL BOM UTF-8 SI EXISTE (Crucial para que Excel no rompa el ID)
+    if (strpos($fileData, pack('H*', 'EFBBBF')) === 0) {
+        $fileData = substr($fileData, 3);
+    }
+
+    // Detección y conversión de codificación
     $encoding = mb_detect_encoding($fileData, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
     if ($encoding !== 'UTF-8') {
         $fileData = mb_convert_encoding($fileData, 'UTF-8', $encoding);
@@ -225,28 +230,41 @@ public function importarMAMOEditar(Request $request)
 
     $encabezado = fgetcsv($file); 
     
-    // Limpieza de caracteres invisibles en cabeceras
+    // Limpieza estricta de cabeceras (Elimina espacios ocultos en los nombres de columnas)
     $encabezado = array_map(function($val) {
-        return trim(preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $val));
+        return trim(preg_replace('/[\x00-\x1F\x7F-\x9F\xA0]/u', '', $val));
     }, $encabezado);
+
+    // Verificar si la columna 'id' realmente existe en el encabezado procesado
+    if (!in_array('id', $encabezado)) {
+        fclose($file);
+        return back()->with('error', 'El archivo CSV no contiene una columna llamada "id" en su cabecera.');
+    }
 
     DB::beginTransaction();
 
     try {
+        $contadorActualizados = 0;
+
         while (($linea = fgetcsv($file)) !== false) {
+            // Prevenir errores si la línea está vacía o faltan columnas
+            if (count($encabezado) !== count($linea)) {
+                continue;
+            }
+
             // Unir columnas con llaves de encabezado
             $data = array_combine($encabezado, $linea);
 
-            // CAMBIO CRÍTICO: Validar que el campo 'id' esté presente en la fila
-            if (!isset($data['id']) || empty(trim($data['id']))) {
-                continue; // Si la fila no tiene ID válido, la ignora para evitar duplicados incorrectos
+            // Limpieza agresiva del valor del ID de la fila
+            $idLimpio = isset($data['id']) ? trim(preg_replace('/[\x00-\x1F\x7F-\x9F\xA0]/u', '', $data['id'])) : '';
+
+            if (empty($idLimpio)) {
+                continue; 
             }
 
-            // Buscamos estrictamente por ID para aplicar las modificaciones masivas
-            // Buscamos estrictamente por ID para aplicar las modificaciones masivas
-            Materialmanoobra::where('id', trim($data['id']))
+            // Ejecutar la actualización masiva por ID
+            $afectado = Materialmanoobra::where('id', $idLimpio)
                 ->update([
-                    // Todos estos campos serán modificados basándose en el ID encontrado
                     'SKU'                   => trim($data['SKU'] ?? ''),
                     'Descripcion'           => trim($data['Descripcion'] ?? ''),
                     'TIPO'                  => trim($data['TIPO'] ?? ''),
@@ -257,12 +275,20 @@ public function importarMAMOEditar(Request $request)
                     'centrocostoespecifico' => !empty($data['centrocostoespecifico']) ? trim($data['centrocostoespecifico']) : null,
                     'fkTienda'              => $fkTienda ?? 0 
                 ]);
-        }
 
+            if ($afectado > 0) {
+                $contadorActualizados++;
+            }
+        }
 
         DB::commit();
         fclose($file);
-        return back()->with('success', 'Registros actualizados masivamente por ID de forma correcta.');
+
+        if ($contadorActualizados === 0) {
+            return back()->with('error', 'El proceso terminó pero se actualizaron 0 registros. Verifica que los IDs del CSV coincidan exactamente con la base de datos.');
+        }
+
+        return back()->with('success', "Se actualizaron con éxito {$contadorActualizados} registros.");
 
     } catch (\Exception $e) {
         DB::rollBack();
@@ -270,6 +296,7 @@ public function importarMAMOEditar(Request $request)
         return back()->with('error', 'Error al procesar la actualización por ID: ' . $e->getMessage());
     }
 }
+
 
 
     public function store(StorePersonaRequest $request)
