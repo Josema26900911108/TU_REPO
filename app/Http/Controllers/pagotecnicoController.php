@@ -272,7 +272,7 @@ public function index(Request $request)
     $balanceB = $calcularBalance($pagostecnico->where('Status', 'B'));
 
     // Obtener lista de técnicos para el select del filtro
-    $tecnicos = DB::table('tecnico')->select('id', 'nombre')->get();
+    $tecnicos = DB::table('tecnico')->select('id', 'nombre')->where('fkTienda', session('user_fkTienda'))->get();
   
     // 8. Retornar todas las variables calculadas a la vista
     return view('pagotecnicos.index', compact(
