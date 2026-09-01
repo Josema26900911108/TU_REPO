@@ -819,74 +819,43 @@ public function generarMemoriaFotografica(Request $request)
             return back()->with('error', 'Error al leer el formato del archivo Excel: ' . $e->getMessage());
         }
 
-// =========================================================================
-// PASO 1: Limpieza ultra-agresiva del Excel (Evita que PHP borre la orden)
-// =========================================================================
 $ordenesLimpia = collect($ordenesRaw)
     ->map(function ($item) {
-        // 1. Quitamos espacios en blanco invisibles, saltos de línea o tabuladores
-        $itemLimpio = trim(preg_replace('/\s+/', '', $item));
-        // 2. Conservamos únicamente los dígitos numéricos
-        $soloNumeros = preg_replace('/[^0-9]/', '', $itemLimpio);
-        // 3. Cortamos estrictamente a los primeros 8 dígitos de izquierda a derecha
+        $soloNumeros = preg_replace('/[^0-9]/', '', $item);
         return substr($soloNumeros, 0, 8);
     })
     ->filter(function ($item) {
-        // Permitimos órdenes de 7 u 8 dígitos por si hay variaciones en el Excel
-        return !empty($item) && strlen($item) >= 7;
+        return strlen($item) === 8;
     })
     ->unique()
     ->values()
     ->toArray();
 
-// =========================================================================
-// PASO 2: Forzar la existencia de las órdenes (Sin importar la tabla pagotecnico)
-// =========================================================================
-// En lugar de frenar el programa si pagotecnico no la tiene, usamos 
-// directamente todas las órdenes procesadas desde el Excel.
-$ordenesEncontradas = $ordenesLimpia;
+        if (empty($ordenesLimpia)) {
+            return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
+        }
 
-// Consultamos de igual forma pagotecnico solo para extraer metadatos extras si existieran
+        // 2. Consultar Base de Datos mediante el Triple Cruce de Tablas
 $registrosPagos = DB::table('pagotecnico')
+    // Agregamos el select con un alias claro para PHP
     ->select('*', DB::raw('SUBSTRING(Orden, 1, 8) as orden_corta'))
-    ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesEncontradas)
-    ->get()
-    ->keyBy('orden_corta'); // Las indexamos por número de orden para un cruce rápido
+    ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesLimpia)
+    ->where('Status', 'S')
+    ->get();
 
-
-// Si por alguna razón una orden no existiera del todo en pagotecnico, 
-// usamos directamente el arreglo limpio del Excel para no frenar el flujo
 if ($registrosPagos->isEmpty()) {
-    $ordenesEncontradas = $ordenesLimpia;
-} else {
-    $ordenesEncontradas = $registrosPagos->pluck('orden_corta')->unique()->toArray();
-    
-    // Unimos los códigos que venían en el Excel pero que faltaron en la base de datos
-    $ordenesEncontradas = array_unique(array_merge($ordenesEncontradas, $ordenesLimpia));
+    return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la tabla pagotecnico.');
 }
-
 
 // CORREGIDO: Ahora extraemos usando el alias limpio que creamos arriba
 $ordenesEncontradas = $registrosPagos->pluck('orden_corta')->unique()->toArray();
 
 
-// =========================================================================
-// PASO 3: Construcción del reporte basado en la lista del Excel
-// =========================================================================
-$tiendaId = session('user_fkTienda');
+        // 3. Extraer los movimientos planos desde la base de datos a máxima velocidad
+        $tiendaId = session('user_fkTienda');
 
-// 1. Buscamos los expedientes técnicos reales correspondientes a las órdenes del Excel
-$expedientesBase = DB::table('expedientetecnico as ex')
-    ->whereIn(DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenesEncontradas)
-    ->get()
-    ->keyBy(function($item) {
-        return substr($item->Orden, 0, 8);
-    });
-
-$idsExpedientes = $expedientesBase->pluck('id')->toArray();
-
-// 2. Buscamos los movimientos de materiales (Aquí se capturarán tus registros 101 y 102)
 $movimientosRaw = DB::table('movimientomateriales as mm')
+    ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
     ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
     ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
         $join->on('mm.SKU', '=', 'mamo.SKU')
@@ -898,10 +867,24 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
              });
     })
     ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
-    ->whereIn('mm.fkExpediente', $idsExpedientes)
     ->where('mm.fkTienda', $tiendaId)
+    // CORREGIDO: Uso de DB::raw para que la función SQL funcione en el WHERE IN
+    ->whereIn(DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenesEncontradas)
     ->select([
-        'mm.fkExpediente',
+        'ex.id as expediente_id',
+        // CORREGIDO: Uso de DB::raw para el alias de la función en el SELECT
+        DB::raw('SUBSTRING(ex.Orden, 1, 8) as orden_tecnica'),
+        'ex.virtual',
+        'ex.Status as expediente_status',
+        'ex.Tipo_servicio',
+        'ex.Tipo_orden',
+        'ex.NOMBRECLIENTE',
+        'ex.DIRECCION',
+        'ex.OBS as expediente_obs',
+        'ex.SIGLASCENTRAL',
+        'ex.AREA',
+        'ex.FECHAINSTALACION',
+        'abmamo.nombre as Tecnologia',
         'mm.ESTATUS as movimiento_estatus',
         'mm.SKU',
         'mamo.Descripcion',
@@ -916,7 +899,6 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
         't.codigo as tecnico_codigo', 
         't.especialidad as tecnico_esp',
         'mm.cantidad',
-        DB::raw('abmamo.nombre as tecnologia_arbol'),
         DB::raw("CASE 
             WHEN mamo.SKU IS NULL THEN NULL 
             WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
@@ -928,85 +910,28 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
             ELSE mamo.unidadmedida 
         END AS unidadmedida_auditada")
     ])
-    ->get();
-
-$movimientosAgrupados = $movimientosRaw->groupBy('fkExpediente');
-
-// 3. Recorremos la lista del Excel garantizando que NADA se quede fuera
-$ordenesProcesadas = collect($ordenesEncontradas)->flatMap(function ($ordenCorta) use ($expedientesBase, $movimientosAgrupados, $registrosPagos) {
-    
-    // Verificamos si existe el expediente técnico en la BD
-    $ex = $expedientesBase->get($ordenCorta);
-    $pago = $registrosPagos->get($ordenCorta);
-    
-    $idExpediente = $ex->id ?? null;
-    $tecnologiaFinal = $ex->TECNOLOGIA ?? ($pago->TECNOLOGIA ?? 'OTRAS_TECNOLOGIAS');
-
-    // Si tiene movimientos de materiales asociados
-    if ($idExpediente && $movimientosAgrupados->has($idExpediente)) {
-        return $movimientosAgrupados->get($idExpediente)->map(function ($mm) use ($ex, $ordenCorta, $tecnologiaFinal) {
-            $mm->Tecnologia = !empty($mm->tecnologia_arbol) ? $mm->tecnologia_arbol : $tecnologiaFinal;
-            $mm->expediente_id = $ex->id;
-            $mm->orden_tecnica = $ordenCorta;
-            $mm->virtual = $ex->virtual;
-            $mm->expediente_status = $ex->Status;
-            $mm->Tipo_servicio = $ex->Tipo_servicio;
-            $mm->Tipo_orden = $ex->Tipo_orden;
-            $mm->NOMBRECLIENTE = $ex->NOMBRECLIENTE;
-            $mm->DIRECCION = $ex->DIRECCION;
-            $mm->expediente_obs = $ex->OBS;
-            $mm->SIGLASCENTRAL = $ex->SIGLASCENTRAL;
-            $mm->AREA = $ex->AREA;
-            $mm->FECHAINSTALACION = $ex->FECHAINSTALACION;
-            return $mm;
+    ->orderByRaw("CASE 
+        WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
+        WHEN mamo.centrocostoespecifico = ? THEN 2 
+        ELSE 3 
+    END ASC", [$tiendaId])
+    ->get()
+    ->groupBy('movimiento_id')
+    ->flatMap(function ($movimientoRows) {
+        return $movimientoRows->unique(function ($item) {
+            return $item->SKU . '-' . $item->TIPO . '-' . $item->unidadmedida_auditada . '-' . $item->CATEGORIA;
         });
-    }
+    })
+    ->values();
 
-    // Si no tiene movimientos (o el expediente no existe), forzamos su inserción en el reporte
-    return collect([(object)[
-        'expediente_id' => $idExpediente,
-        'orden_tecnica' => $ordenCorta,
-        'virtual' => $ex->virtual ?? null,
-        'expediente_status' => $ex->Status ?? null,
-        'Tipo_servicio' => $ex->Tipo_servicio ?? null,
-        'Tipo_orden' => $ex->Tipo_orden ?? null,
-        'NOMBRECLIENTE' => $ex->NOMBRECLIENTE ?? ($pago->NOMBRECLIENTE ?? 'SIN NOMBRE'),
-        'DIRECCION' => $ex->DIRECCION ?? ($pago->DIRECCION ?? 'SIN DIRECCIÓN'),
-        'expediente_obs' => $ex->OBS ?? '',
-        'SIGLASCENTRAL' => $ex->SIGLASCENTRAL ?? '',
-        'AREA' => $ex->AREA ?? '',
-        'FECHAINSTALACION' => $ex->FECHAINSTALACION ?? null,
-        'Tecnologia' => $tecnologiaFinal,
-        'movimiento_estatus' => null,
-        'SKU' => null,
-        'Descripcion' => null,
-        'TIPO' => null,
-        'CATEGORIA' => null,
-        'movimiento_id' => null,
-        'serie' => null,
-        'MAC1' => null,
-        'MAC2' => null,
-        'MAC3' => null,
-        'tecnico_nombre' => null,
-        'tecnico_codigo' => null,
-        'tecnico_esp' => null,
-        'cantidad' => 0,
-        'COSTO' => 0,
-        'unidadmedida_auditada' => null
-    ]]);
-});
-
-
-// 4. Obtener evidencias fotográficas
-$fotografias = DB::table('expedientefotograficotecnico')
-    ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesEncontradas)
-    ->get();
-
-// 5. Agrupar el universo final por tecnología (Aquí aparecerá DTH, GPON y cualquier otra de forma exacta)
-$movimientosPorTecnologia = $ordenesProcesadas->groupBy('Tecnologia');
-
+        // 4. Colapsar duplicados usando colecciones de Laravel en memoria RAM
+        $movimientos = $movimientosRaw->unique('movimiento_id');
+     
         // Obtener las evidencias fotográficas ligadas de Google Cloud
         $fotografias = DB::table('expedientefotograficotecnico')->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesEncontradas)->get();
+
+        // Agrupar los datos por tecnología identificada
+        $movimientosPorTecnologia = $movimientos->groupBy('Tecnologia');
 
         // Inicializar el ZIP temporal en el servidor
         $zipFileName = 'Extraccion_Pivot_Tecnologias_' . date('Ymd_His') . '.zip';
@@ -1031,13 +956,52 @@ $movimientosPorTecnologia = $ordenesProcesadas->groupBy('Tecnologia');
             // --- CONFIGURACIÓN HOJA 1: MANO DE OBRA ---
             $sheetMO = $spreadsheet->getActiveSheet();
             $sheetMO->setTitle('Mano de Obra');
+
+            // =========================================================================
+            // INYECCIÓN CORREGIDA: Agrupar y aplanar múltiples manos de obra de pagotecnico
+            // =========================================================================
+            // 1. Agrupamos los pagos por su orden corta para soportar múltiples conceptos por orden
+            $pagosAgrupadosPorOrden = collect($registrosPagos)->groupBy('orden_corta');
             
-            $itemsMO = $registrosTecnologia->where('CATEGORIA', 'MANO DE OBRA');
-            // 1. Extraemos las descripciones únicas de Mano de Obra para la CABECERA horizontal
-            $descripcionesMOUnicas = $registrosTecnologia
-                ->where('CATEGORIA', 'MANO DE OBRA') // Esto es solo para definir las columnas
+            $nuevosRegistrosVirtuales = collect();
+
+            // 2. Agrupamos los movimientos actuales por orden para analizar qué les falta
+            $movimientosPorOrdenLocal = $registrosTecnologia->groupBy('orden_tecnica');
+
+            foreach ($movimientosPorOrdenLocal as $ordenCorta => $movimientosDeEstaOrden) {
+                // Verificamos si los movimientos ya traen algo catalogado como MANO DE OBRA
+                $tieneManoObraEnMovimientos = $movimientosDeEstaOrden->where('CATEGORIA', 'MANO DE OBRA')->isNotEmpty();
+
+                // Si no tiene mano de obra en movimientos pero SÍ existen registros en la tabla pagotecnico
+                if (!$tieneManoObraEnMovimientos && $pagosAgrupadosPorOrden->has($ordenCorta)) {
+                    // Tomamos el primer registro de la orden para heredar los datos del cliente
+                    $primerMovimiento = $movimientosDeEstaOrden->first();
+                    $listaDePagos = $pagosAgrupadosPorOrden->get($ordenCorta);
+
+                    // Iteramos por cada una de las manos de obra que tenga registradas en pagotecnico
+                    foreach ($listaDePagos as $pago) {
+                        if (!empty($pago->Descripcion)) {
+                            $clonMO = clone $primerMovimiento;
+                            $clonMO->CATEGORIA = 'MANO DE OBRA';
+                            $clonMO->SKU = $pago->SKU ?? 'S_SKU';
+                            $clonMO->Descripcion = trim($pago->Descripcion);
+                            $clonMO->cantidad = floatval($pago->Cantidad ?? 1.00);
+                            $clonMO->COSTO = floatval($pago->COSTOPAGO ?? 0.00);
+                            
+                            $nuevosRegistrosVirtuales->push($clonMO);
+                        }
+                    }
+                }
+            }
+
+            // 3. Fusionamos los movimientos originales con todos los conceptos rescatados de pagotecnico
+            $registrosTecnologiaUnificados = $registrosTecnologia->concat($nuevosRegistrosVirtuales);
+
+            // 4. Extraemos las descripciones únicas para la CABECERA horizontal (Garantiza ver las nuevas columnas)
+            $descripcionesMOUnicas = $registrosTecnologiaUnificados
+                ->where('CATEGORIA', 'MANO DE OBRA') 
                 ->pluck('Descripcion')
-                ->filter() // Quita valores nulos o vacíos
+                ->filter() 
                 ->unique()
                 ->toArray();
             
@@ -1047,14 +1011,25 @@ $movimientosPorTecnologia = $ordenesProcesadas->groupBy('Tecnologia');
             $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFont()->setBold(true);
             $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('D0E1F9');
             
-            $expedientesMO = $registrosTecnologia->groupBy('orden_tecnica');
+            // 5. Agrupamos la colección unificada final para proceder con el dibujo de filas
+            $expedientesMO = $registrosTecnologiaUnificados->groupBy('orden_tecnica');
             $filaMO = 2;
             
             foreach ($expedientesMO as $orden => $detallesOrden) {
                 $primerItem = $detallesOrden->first();
                 
+                // Evaluamos si el expediente cuenta con Mano de Obra (física o virtualizada)
+                $tieneManoObra = $detallesOrden->where('CATEGORIA', 'MANO DE OBRA')->isNotEmpty();
+                
+                $observaciones = $primerItem->expediente_obs;
+                if (!$tieneManoObra) {
+                    $observaciones = empty($observaciones) 
+                        ? 'SIN ESPECIFICAR MANO DE OBRA' 
+                        : trim($observaciones . ' | SIN ESPECIFICAR MANO DE OBRA');
+                }
+
                 $datosFilaMO = [
-                    $primerItem->expediente_id,
+                    $filaMO - 1,
                     $primerItem->orden_tecnica,
                     $primerItem->virtual,
                     $primerItem->expediente_status,
@@ -1062,21 +1037,33 @@ $movimientosPorTecnologia = $ordenesProcesadas->groupBy('Tecnologia');
                     $primerItem->Tipo_orden,
                     $primerItem->NOMBRECLIENTE,
                     $primerItem->DIRECCION,
-                    $primerItem->expediente_obs,
+                    $observaciones,
                     $primerItem->SIGLASCENTRAL,
                     $primerItem->AREA,
                     $primerItem->FECHAINSTALACION,
                     $primerItem->tecnico_nombre
                 ];
                 
+                // 6. Rellenamos las cantidades alineadas bajo la columna exacta de su descripción
                 foreach ($descripcionesMOUnicas as $moColumna) {
-                    $matchConcepto = $detallesOrden->where('Descripcion', $moColumna)->first();
+                    $matchConcepto = $detallesOrden
+                        ->where('CATEGORIA', 'MANO DE OBRA')
+                        ->where('Descripcion', $moColumna)
+                        ->first();
+                    
+                    // Si encontramos el concepto inyectamos su cantidad numérica, de lo contrario un 0
                     $datosFilaMO[] = $matchConcepto ? $matchConcepto->cantidad : 0;
                 }
                 
+                if (empty($descripcionesMOUnicas) && !$tieneManoObra) {
+                    $datosFilaMO[] = 'SIN ESPECIFICAR MANO DE OBRA';
+                }
+
                 $sheetMO->fromArray($datosFilaMO, NULL, 'A' . $filaMO);
                 $filaMO++;
             }
+
+
             
             foreach (range('A', $sheetMO->getHighestColumn()) as $col) {
                 $sheetMO->getColumnDimension($col)->setAutoSize(true);
@@ -1195,7 +1182,11 @@ $movimientosPorTecnologia = $ordenesProcesadas->groupBy('Tecnologia');
             $sheetResumen->getStyle('B7:G7')->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
             
             // Agrupar los conceptos de mano de obra para calcular acumulados verticales
-            $resumenCobrosConceptos = $itemsMO->groupBy('Descripcion');
+            // CORREGIDO: Filtramos y agrupamos por descripción usando la colección unificada de la tecnología
+            $resumenCobrosConceptos = $registrosTecnologia
+                ->where('CATEGORIA', 'MANO DE OBRA')
+                ->groupBy('Descripcion');
+
             $filaResumen = 8;
             $numNo = 1;
             
