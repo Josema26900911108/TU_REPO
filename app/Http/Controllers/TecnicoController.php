@@ -819,37 +819,40 @@ public function generarMemoriaFotografica(Request $request)
             return back()->with('error', 'Error al leer el formato del archivo Excel: ' . $e->getMessage());
         }
 
+// =========================================================================
+// PASO 1: Limpieza ultra-agresiva del Excel (Evita que PHP borre la orden)
+// =========================================================================
 $ordenesLimpia = collect($ordenesRaw)
     ->map(function ($item) {
-        $soloNumeros = preg_replace('/[^0-9]/', '', $item);
+        // 1. Quitamos espacios en blanco invisibles, saltos de línea o tabuladores
+        $itemLimpio = trim(preg_replace('/\s+/', '', $item));
+        // 2. Conservamos únicamente los dígitos numéricos
+        $soloNumeros = preg_replace('/[^0-9]/', '', $itemLimpio);
+        // 3. Cortamos estrictamente a los primeros 8 dígitos de izquierda a derecha
         return substr($soloNumeros, 0, 8);
     })
     ->filter(function ($item) {
-        return strlen($item) === 8;
+        // Permitimos órdenes de 7 u 8 dígitos por si hay variaciones en el Excel
+        return !empty($item) && strlen($item) >= 7;
     })
     ->unique()
     ->values()
     ->toArray();
 
-        if (empty($ordenesLimpia)) {
-            return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
-        }
+// =========================================================================
+// PASO 2: Forzar la existencia de las órdenes (Sin importar la tabla pagotecnico)
+// =========================================================================
+// En lugar de frenar el programa si pagotecnico no la tiene, usamos 
+// directamente todas las órdenes procesadas desde el Excel.
+$ordenesEncontradas = $ordenesLimpia;
 
-// =========================================================================
-// PASO 2: Consulta inicial flexible en pagotecnico (Acepta cualquier estado)
-// =========================================================================
+// Consultamos de igual forma pagotecnico solo para extraer metadatos extras si existieran
 $registrosPagos = DB::table('pagotecnico')
     ->select('*', DB::raw('SUBSTRING(Orden, 1, 8) as orden_corta'))
-    ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesLimpia)
-    ->where(function($query) {
-        // CORREGIDO: Buscamos la orden sin importar si está en estado 'S', 'C' o 'A'
-        // para que no se bloquee ninguna orden del Excel
-        $query->whereIn('Status', ['S', 'C', 'A'])
-              ->orWhereIn('ESTATUS', ['S', 'C', 'A'])
-              ->orWhereNull('Status')
-              ->orWhereNull('ESTATUS');
-    })
-    ->get();
+    ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesEncontradas)
+    ->get()
+    ->keyBy('orden_corta'); // Las indexamos por número de orden para un cruce rápido
+
 
 // Si por alguna razón una orden no existiera del todo en pagotecnico, 
 // usamos directamente el arreglo limpio del Excel para no frenar el flujo
@@ -868,19 +871,21 @@ $ordenesEncontradas = $registrosPagos->pluck('orden_corta')->unique()->toArray()
 
 
 // =========================================================================
-// PASO 3: Construcción del reporte basado en Expedientes Reales (Blindado)
+// PASO 3: Construcción del reporte basado en la lista del Excel
 // =========================================================================
 $tiendaId = session('user_fkTienda');
 
-// 1. Traer los expedientes técnicos directamente usando el número de orden de 8 dígitos
-// Esto garantiza que localicemos el expediente sin depender de la tabla de movimientos
+// 1. Buscamos los expedientes técnicos reales correspondientes a las órdenes del Excel
 $expedientesBase = DB::table('expedientetecnico as ex')
     ->whereIn(DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenesEncontradas)
-    ->get();
+    ->get()
+    ->keyBy(function($item) {
+        return substr($item->Orden, 0, 8);
+    });
 
 $idsExpedientes = $expedientesBase->pluck('id')->toArray();
 
-// 2. Traer los movimientos de materiales usando un LEFT JOIN para no perder datos si mamo es NULL
+// 2. Buscamos los movimientos de materiales (Aquí se capturarán tus registros 101 y 102)
 $movimientosRaw = DB::table('movimientomateriales as mm')
     ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
     ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
@@ -923,30 +928,24 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
             ELSE mamo.unidadmedida 
         END AS unidadmedida_auditada")
     ])
-    ->orderByRaw("CASE 
-        WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
-        WHEN mamo.centrocostoespecifico = ? THEN 2 
-        ELSE 3 
-    END ASC", [$tiendaId])
     ->get();
 
-// Agrupamos los movimientos por el ID del expediente para cruzarlos en memoria
 $movimientosAgrupados = $movimientosRaw->groupBy('fkExpediente');
 
-// 3. Cruzar expedientes con sus movimientos en memoria RAM
-// 3. Cruzar expedientes con sus movimientos en memoria RAM
-$ordenesProcesadas = $expedientesBase->flatMap(function ($ex) use ($movimientosAgrupados) {
-    // CORREGIDO: Uso de -> en lugar de punto
-    $ordenCorta = substr($ex->Orden, 0, 8);
-    $tecnologiaFinal = !empty($ex->TECNOLOGIA) ? $ex->TECNOLOGIA : 'OTRAS_TECNOLOGIAS';
+// 3. Recorremos la lista del Excel garantizando que NADA se quede fuera
+$ordenesProcesadas = collect($ordenesEncontradas)->flatMap(function ($ordenCorta) use ($expedientesBase, $movimientosAgrupados, $registrosPagos) {
+    
+    // Verificamos si existe el expediente técnico en la BD
+    $ex = $expedientesBase->get($ordenCorta);
+    $pago = $registrosPagos->get($ordenCorta);
+    
+    $idExpediente = $ex->id ?? null;
+    $tecnologiaFinal = $ex->TECNOLOGIA ?? ($pago->TECNOLOGIA ?? 'OTRAS_TECNOLOGIAS');
 
-    // Si el expediente tiene movimientos registrados, los mapeamos
-    if ($movimientosAgrupados->has($ex->id)) {
-        return $movimientosAgrupados->get($ex->id)->map(function ($mm) use ($ex, $ordenCorta, $tecnologiaFinal) {
-            // Priorizamos la tecnología del árbol de materiales si existe, si no la del expediente
+    // Si tiene movimientos de materiales asociados
+    if ($idExpediente && $movimientosAgrupados->has($idExpediente)) {
+        return $movimientosAgrupados->get($idExpediente)->map(function ($mm) use ($ex, $ordenCorta, $tecnologiaFinal) {
             $mm->Tecnologia = !empty($mm->tecnologia_arbol) ? $mm->tecnologia_arbol : $tecnologiaFinal;
-            
-            // Inyectamos las columnas del expediente al movimiento usando la sintaxis -> de Laravel
             $mm->expediente_id = $ex->id;
             $mm->orden_tecnica = $ordenCorta;
             $mm->virtual = $ex->virtual;
@@ -963,20 +962,20 @@ $ordenesProcesadas = $expedientesBase->flatMap(function ($ex) use ($movimientosA
         });
     }
 
-    // Si el expediente NO tiene ningún movimiento, generamos una fila base para que no se pierda
+    // Si no tiene movimientos (o el expediente no existe), forzamos su inserción en el reporte
     return collect([(object)[
-        'expediente_id' => $ex->id,
+        'expediente_id' => $idExpediente,
         'orden_tecnica' => $ordenCorta,
-        'virtual' => $ex->virtual,
-        'expediente_status' => $ex->Status,
-        'Tipo_servicio' => $ex->Tipo_servicio,
-        'Tipo_orden' => $ex->Tipo_orden,
-        'NOMBRECLIENTE' => $ex->NOMBRECLIENTE ?? 'SIN NOMBRE',
-        'DIRECCION' => $ex->DIRECCION ?? 'SIN DIRECCIÓN',
+        'virtual' => $ex->virtual ?? null,
+        'expediente_status' => $ex->Status ?? null,
+        'Tipo_servicio' => $ex->Tipo_servicio ?? null,
+        'Tipo_orden' => $ex->Tipo_orden ?? null,
+        'NOMBRECLIENTE' => $ex->NOMBRECLIENTE ?? ($pago->NOMBRECLIENTE ?? 'SIN NOMBRE'),
+        'DIRECCION' => $ex->DIRECCION ?? ($pago->DIRECCION ?? 'SIN DIRECCIÓN'),
         'expediente_obs' => $ex->OBS ?? '',
         'SIGLASCENTRAL' => $ex->SIGLASCENTRAL ?? '',
         'AREA' => $ex->AREA ?? '',
-        'FECHAINSTALACION' => $ex->FECHAINSTALACION,
+        'FECHAINSTALACION' => $ex->FECHAINSTALACION ?? null,
         'Tecnologia' => $tecnologiaFinal,
         'movimiento_estatus' => null,
         'SKU' => null,
@@ -996,6 +995,7 @@ $ordenesProcesadas = $expedientesBase->flatMap(function ($ex) use ($movimientosA
         'unidadmedida_auditada' => null
     ]]);
 });
+
 
 // 4. Obtener evidencias fotográficas
 $fotografias = DB::table('expedientefotograficotecnico')
