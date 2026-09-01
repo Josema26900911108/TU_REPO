@@ -851,11 +851,21 @@ if ($registrosPagos->isEmpty()) {
 $ordenesEncontradas = $registrosPagos->pluck('orden_corta')->unique()->toArray();
 
 
-        // 3. Extraer los movimientos planos desde la base de datos a máxima velocidad
-        $tiendaId = session('user_fkTienda');
+// =========================================================================
+// PASO 3: Construcción del reporte basado en Expedientes Reales (Blindado)
+// =========================================================================
+$tiendaId = session('user_fkTienda');
 
+// 1. Traer los expedientes técnicos directamente usando el número de orden de 8 dígitos
+// Esto garantiza que localicemos el expediente sin depender de la tabla de movimientos
+$expedientesBase = DB::table('expedientetecnico as ex')
+    ->whereIn(DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenesEncontradas)
+    ->get();
+
+$idsExpedientes = $expedientesBase->pluck('id')->toArray();
+
+// 2. Traer los movimientos de materiales usando un LEFT JOIN para no perder datos si mamo es NULL
 $movimientosRaw = DB::table('movimientomateriales as mm')
-    ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
     ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
     ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
         $join->on('mm.SKU', '=', 'mamo.SKU')
@@ -867,24 +877,10 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
              });
     })
     ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
+    ->whereIn('mm.fkExpediente', $idsExpedientes)
     ->where('mm.fkTienda', $tiendaId)
-    // CORREGIDO: Uso de DB::raw para que la función SQL funcione en el WHERE IN
-    ->whereIn(DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenesEncontradas)
     ->select([
-        'ex.id as expediente_id',
-        // CORREGIDO: Uso de DB::raw para el alias de la función en el SELECT
-        DB::raw('SUBSTRING(ex.Orden, 1, 8) as orden_tecnica'),
-        'ex.virtual',
-        'ex.Status as expediente_status',
-        'ex.Tipo_servicio',
-        'ex.Tipo_orden',
-        'ex.NOMBRECLIENTE',
-        'ex.DIRECCION',
-        'ex.OBS as expediente_obs',
-        'ex.SIGLASCENTRAL',
-        'ex.AREA',
-        'ex.FECHAINSTALACION',
-        'abmamo.nombre as Tecnologia',
+        'mm.fkExpediente',
         'mm.ESTATUS as movimiento_estatus',
         'mm.SKU',
         'mamo.Descripcion',
@@ -899,6 +895,7 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
         't.codigo as tecnico_codigo', 
         't.especialidad as tecnico_esp',
         'mm.cantidad',
+        DB::raw('abmamo.nombre as tecnologia_arbol'),
         DB::raw("CASE 
             WHEN mamo.SKU IS NULL THEN NULL 
             WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
@@ -915,23 +912,83 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
         WHEN mamo.centrocostoespecifico = ? THEN 2 
         ELSE 3 
     END ASC", [$tiendaId])
-    ->get()
-    ->groupBy('movimiento_id')
-    ->flatMap(function ($movimientoRows) {
-        return $movimientoRows->unique(function ($item) {
-            return $item->SKU . '-' . $item->TIPO . '-' . $item->unidadmedida_auditada . '-' . $item->CATEGORIA;
-        });
-    })
-    ->values();
+    ->get();
 
-        // 4. Colapsar duplicados usando colecciones de Laravel en memoria RAM
-        $movimientos = $movimientosRaw->unique('movimiento_id');
-     
+// Agrupamos los movimientos por el ID del expediente para cruzarlos en memoria
+$movimientosAgrupados = $movimientosRaw->groupBy('fkExpediente');
+
+// 3. Cruzar expedientes con sus movimientos en memoria RAM
+$ordenesProcesadas = $expedientesBase->flatMap(function ($ex) use ($movimientosAgrupados) {
+    $ordenCorta = substr($ex.Orden, 0, 8);
+    $tecnologiaFinal = !empty($ex->TECNOLOGIA) ? $ex->TECNOLOGIA : 'OTRAS_TECNOLOGIAS';
+
+    // Si el expediente tiene movimientos registrados, los mapeamos
+    if ($movimientosAgrupados->has($ex->id)) {
+        return $movimientosAgrupados->get($ex->id)->map(function ($mm) use ($ex, $ordenCorta, $tecnologiaFinal) {
+            // Priorizamos la tecnología del árbol de materiales si existe, si no la del expediente
+            $mm->Tecnologia = !empty($mm->tecnologia_arbol) ? $mm->tecnologia_arbol : $tecnologiaFinal;
+            
+            // Inyectamos las columnas del expediente al movimiento
+            $mm->expediente_id = $ex->id;
+            $mm->orden_tecnica = $ordenCorta;
+            $mm->virtual = $ex->virtual;
+            $mm->expediente_status = $ex->Status;
+            $mm->Tipo_servicio = $ex->Tipo_servicio;
+            $mm->Tipo_orden = $ex->Tipo_orden;
+            $mm->NOMBRECLIENTE = $ex->NOMBRECLIENTE;
+            $mm->DIRECCION = $ex->DIRECCION;
+            $mm->expediente_obs = $ex->OBS;
+            $mm->SIGLASCENTRAL = $ex->SIGLASCENTRAL;
+            $mm->AREA = $ex->AREA;
+            $mm->FECHAINSTALACION = $ex->FECHAINSTALACION;
+            return $mm;
+        });
+    }
+
+    // Si el expediente NO tiene ningún movimiento, generamos una fila base para que no se pierda
+    return collect([(object)[
+        'expediente_id' => $ex->id,
+        'orden_tecnica' => $ordenCorta,
+        'virtual' => $ex->virtual,
+        'expediente_status' => $ex->Status,
+        'Tipo_servicio' => $ex->Tipo_servicio,
+        'Tipo_orden' => $ex->Tipo_orden,
+        'NOMBRECLIENTE' => $ex->NOMBRECLIENTE ?? 'SIN NOMBRE',
+        'DIRECCION' => $ex->DIRECCION ?? 'SIN DIRECCIÓN',
+        'expediente_obs' => $ex->OBS ?? '',
+        'SIGLASCENTRAL' => $ex->SIGLASCENTRAL ?? '',
+        'AREA' => $ex->AREA ?? '',
+        'FECHAINSTALACION' => $ex->FECHAINSTALACION,
+        'Tecnologia' => $tecnologiaFinal,
+        'movimiento_estatus' => null,
+        'SKU' => null,
+        'Descripcion' => null,
+        'TIPO' => null,
+        'CATEGORIA' => null,
+        'movimiento_id' => null,
+        'serie' => null,
+        'MAC1' => null,
+        'MAC2' => null,
+        'MAC3' => null,
+        'tecnico_nombre' => null,
+        'tecnico_codigo' => null,
+        'tecnico_esp' => null,
+        'cantidad' => 0,
+        'COSTO' => 0,
+        'unidadmedida_auditada' => null
+    ]]);
+});
+
+// 4. Obtener evidencias fotográficas
+$fotografias = DB::table('expedientefotograficotecnico')
+    ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesEncontradas)
+    ->get();
+
+// 5. Agrupar el universo final por tecnología (Aquí aparecerá DTH, GPON y cualquier otra de forma exacta)
+$movimientosPorTecnologia = $ordenesProcesadas->groupBy('Tecnologia');
+
         // Obtener las evidencias fotográficas ligadas de Google Cloud
         $fotografias = DB::table('expedientefotograficotecnico')->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesEncontradas)->get();
-
-        // Agrupar los datos por tecnología identificada
-        $movimientosPorTecnologia = $movimientos->groupBy('Tecnologia');
 
         // Inicializar el ZIP temporal en el servidor
         $zipFileName = 'Extraccion_Pivot_Tecnologias_' . date('Ymd_His') . '.zip';
