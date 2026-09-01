@@ -792,104 +792,122 @@ public function descargarinventariopago()
     return response()->stream($callback, 200, $headers);
 }
 
+
+
 public function exportarExcel(Request $request)
 {
-    // 1. Capturar exactamente los mismos filtros de tu consulta de la tabla
-    $fkTienda    = session('user_fkTienda') ?? 0;
-    $orden       = $request->input('orden');
-    $tecnicoId   = $request->input('tecnico_id');
-    $fechaInicio = $request->input('fecha_inicio');
-    $fechaFin    = $request->input('fecha_fin');
+    // 1. Evitar cortes por límite de tiempo de ejecución
+    set_time_limit(0);
+    ini_set('memory_limit', '512M');
 
-    // 2. Consulta idéntica aplicando los filtros acumulativos
-    $query = Pagotecnico::query();
+    try {
+        $fkTienda    = session('user_fkTienda') ?? 0;
+        $orden       = $request->input('orden');
+        $tecnicoId   = $request->input('tecnico_id');
+        $fechaInicio = $request->input('fecha_inicio');
+        $fechaFin    = $request->input('fecha_fin');
 
-    if ($fkTienda) {
-        $query->where('fkTienda', $fkTienda);
-    }
+        $query = Pagotecnico::query();
 
-    if (!empty($orden)) {
-        $query->where('Orden', 'LIKE', '%' . trim($orden) . '%');
-    }
+        if ($fkTienda) {
+            $query->where('fkTienda', $fkTienda);
+        }
 
-    if (!empty($tecnicoId)) {
-        $query->where('fkTecnico', $tecnicoId);
-    }
+        if (!empty($orden)) {
+            $query->where('Ordens', 'LIKE', '%' . trim($orden) . '%');
+        }
 
-    if (!empty($fechaInicio)) {
-        $query->whereDate('created_at', '>=', $fechaInicio);
-    }
+        if (!empty($tecnicoId)) {
+            $query->where('fkTecnico', $tecnicoId);
+        }
 
-    if (!empty($fechaFin)) {
-        $query->whereDate('created_at', '<=', $fechaFin);
-    }
+        if (!empty($fechaInicio)) {
+            $inicioTimestamp = (strlen($fechaInicio) > 10) ? $fechaInicio : date('Y-m-d 00:00:00', strtotime($fechaInicio));
+            $query->where('updated_at', '>=', $inicioTimestamp);
+        }
 
-    // 3. Configurar cabeceras de descarga HTTP para Excel/CSV
-    $fileName = 'Reporte_Desglose_Pagos_' . date('Y-m-d_H-i') . '.csv';
-    $headers = [
-        "Content-type"        => "text/csv; charset=UTF-8",
-        "Content-Disposition" => "attachment; filename=$fileName",
-        "Pragma"              => "no-cache",
-        "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-        "Expires"             => "0"
-    ];
+        if (!empty($fechaFin)) {
+            $finTimestamp = (strlen($fechaFin) > 10) ? $fechaFin : date('Y-m-d 23:59:59', strtotime($fechaFin));
+            $query->where('updated_at', '<=', $finTimestamp);
+        }
 
-    // 4. Generar el archivo en streaming línea por línea para cuidar la RAM
-    $callback = function() use ($query) {
-        $file = fopen('php://output', 'w');
+        // 2. Abrir un puntero de archivo seguro directamente en la memoria temporal de PHP
+        $file = fopen('php://temp', 'r+');
+        if (!$file) {
+            throw new Exception("No se pudo inicializar el búfer de memoria para generar el reporte.");
+        }
         
-        // Agregar BOM UTF-8 para que Excel reconozca correctamente las tildes y eñes
+        // Agregar el BOM UTF-8 indispensable para que Excel muestre tildes y eñes
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
 
-        // Cabeceras adaptadas a las columnas reales de pagotecnico
+        // Escribir los encabezados de las columnas del CSV
         fputcsv($file, ['ID Pago', 'Orden / Expediente', 'SKU', 'Descripcion', 'Cantidad', 'Costo Pago ($)', 'Naturaleza', 'Estatus', 'ID Tienda', 'ID Técnico', 'Fecha Registro']);
 
-        // Variable para ir acumulando el balance total algebraico del reporte
         $totalBalance = 0;
 
-        // Procesar los registros en bloques de 1000 para no colapsar la memoria (Chunking)
-        $query->chunk(1000, function($registros) use ($file, &$totalBalance) {
-            foreach ($registros as $row) {
-                $monto = floatval($row->COSTOPAGO);
-                $naturaleza = strtoupper(trim($row->Naturaleza));
+        // 3. Procesamiento secuencial mediante cursor() (Evita caídas por chunkById o llaves primarias nulas)
+        // cursor() consume poquísima RAM y procesa fila por fila de forma inmediata
+        foreach ($query->cursor() as $row) {
+            $monto = floatval($row->COSTOPAGO);
+            $naturaleza = strtoupper(trim($row->Naturaleza));
 
-                // Lógica algebraica: D resta, H suma
-                if ($naturaleza === 'D') {
-                    $totalBalance -= $monto;
-                } elseif ($naturaleza === 'H') {
-                    $totalBalance += $monto;
-                }
-
-                fputcsv($file, [
-                    $row->id,
-                    $row->Orden,
-                    $row->SKU,
-                    $row->Descripcion,
-                    $row->Cantidad,
-                    number_format($monto, 2, '.', ''), // Formato numérico limpio para Excel
-                    $naturaleza,
-                    $row->Status,
-                    $row->fkTienda,
-                    $row->fkTecnico,
-                    date('d-m-Y H:i:s', strtotime($row->created_at))
-                ]);
+            if ($naturaleza === 'D') {
+                $totalBalance -= $monto;
+            } elseif ($naturaleza === 'H') {
+                $totalBalance += $monto;
             }
-        });
 
-        // 5. INYECTAR FILA DE RESULTADO FINAL BALANCEADO EN EL EXCEL
-        fputcsv($file, []); // Renglón vacío de separación
+            // Mapeo seguro con operadores de fusión de nulos (?? '') para evitar errores si faltan datos
+            fputcsv($file, [
+                $row->id ?? '', 
+                $row->Orden ?? '',
+                $row->SKU ?? '',
+                $row->Descripcion ?? '',
+                $row->Cantidad ?? '',
+                number_format($monto, 2, '.', ''),
+                $naturaleza,
+                $row->Status ?? '',
+                $row->fkTienda ?? '',
+                $row->fkTecnico ?? '',
+                $row->created_at ? date('d-m-Y H:i:s', strtotime($row->created_at)) : ''
+            ]);
+        }
+
+        // 4. Inyectar renglón del balance general calculado abajo
+        fputcsv($file, []); 
         fputcsv($file, [
             'RESULTADO GENERAL BALANCEADO:', 
             '', '', '', '', 
-            number_format($totalBalance, 2, '.', ''), // Imprime el total abajo de Costo Pago
+            number_format($totalBalance, 2, '.', ''), 
             'Suma total (Abonos H menos Cargos D)', 
             '', '', ''
         ]);
 
+        // 5. Rebobinar el puntero de memoria para extraer la cadena completa de texto generada
+        rewind($file);
+        $csvContent = stream_get_contents($file);
         fclose($file);
-    };
 
-    return response()->stream($callback, 200, $headers);
+        // 6. Generar una respuesta HTTP estándar directa que no requiere callbacks
+        $fileName = 'Reporte_Desglose_Pagos_' . date('Y-m-d_H-i') . '.csv';
+        
+        return response($csvContent, 200, [
+            "Content-Type"        => "text/csv; charset=UTF-8",
+            "Content-Disposition" => "attachment; filename=\"$fileName\"",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ]);
+
+    } catch (Exception $e) {
+        // Si hay un error, matará el proceso y pintará la causa exacta en tu pantalla de Laravel
+        dd([
+            'Mensaje de Error' => $e->getMessage(),
+            'Línea del Fallo'  => $e->getLine(),
+            'Archivo del Código' => $e->getFile(),
+            'Consulta SQL'     => isset($query) ? $query->toSql() : 'No definida'
+        ]);
+    }
 }
 
 public function importarPagosTecnico(Request $request)

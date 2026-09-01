@@ -819,97 +819,116 @@ public function generarMemoriaFotografica(Request $request)
             return back()->with('error', 'Error al leer el formato del archivo Excel: ' . $e->getMessage());
         }
 
-        $ordenes = array_values(array_unique($ordenesRaw));
+$ordenesLimpia = collect($ordenesRaw)
+    ->map(function ($item) {
+        $soloNumeros = preg_replace('/[^0-9]/', '', $item);
+        return substr($soloNumeros, 0, 8);
+    })
+    ->filter(function ($item) {
+        return strlen($item) === 8;
+    })
+    ->unique()
+    ->values()
+    ->toArray();
 
-        if (empty($ordenes)) {
+        if (empty($ordenesLimpia)) {
             return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
         }
 
         // 2. Consultar Base de Datos mediante el Triple Cruce de Tablas
-        $registrosPagos = DB::table('pagotecnico')->whereIn('Orden', $ordenes)->get();
-        
-        if ($registrosPagos->isEmpty()) {
-            return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la tabla pagotecnico.');
-        }
+$registrosPagos = DB::table('pagotecnico')
+    // Agregamos el select con un alias claro para PHP
+    ->select('*', DB::raw('SUBSTRING(Orden, 1, 8) as orden_corta'))
+    ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesLimpia)
+    ->where('Status', 'S')
+    ->get();
 
-        $ordenesEncontradas = $registrosPagos->pluck('Orden')->unique()->toArray();
+if ($registrosPagos->isEmpty()) {
+    return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la tabla pagotecnico.');
+}
+
+// CORREGIDO: Ahora extraemos usando el alias limpio que creamos arriba
+$ordenesEncontradas = $registrosPagos->pluck('orden_corta')->unique()->toArray();
+
 
         // 3. Extraer los movimientos planos desde la base de datos a máxima velocidad
         $tiendaId = session('user_fkTienda');
 
-        $movimientosRaw = DB::table('movimientomateriales as mm')
-            ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
-            ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
-            ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
-                $join->on('mm.SKU', '=', 'mamo.SKU')
-                     ->where(function ($query) use ($tiendaId) {
-                         $query->whereColumn('mamo.centrocostoespecifico', '=', 't.codigo') // Coincide Técnico
-                               ->orWhere('mamo.centrocostoespecifico', '=', $tiendaId)    // Coincide Tienda
-                               ->orWhereNull('mamo.centrocostoespecifico')               // Aplica para todos (NULL)
-                               ->orWhere('mamo.centrocostoespecifico', '=', '');         // Aplica para todos (Vacío)
-                     });
-            })
-            ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
-            ->where('mm.fkTienda', $tiendaId)
-            ->whereIn('ex.Orden', $ordenesEncontradas)
-            ->select([
-                'ex.id as expediente_id',
-                'ex.Orden as orden_tecnica',
-                'ex.virtual',
-                'ex.Status as expediente_status',
-                'ex.Tipo_servicio',
-                'ex.Tipo_orden',
-                'ex.NOMBRECLIENTE',
-                'ex.DIRECCION',
-                'ex.OBS as expediente_obs',
-                'ex.SIGLASCENTRAL',
-                'ex.AREA',
-                'ex.FECHAINSTALACION',
-                'abmamo.nombre as Tecnologia',
-                'mm.ESTATUS as movimiento_estatus',
-                'mm.SKU',
-                'mamo.Descripcion',
-                'mamo.TIPO',
-                'mamo.CATEGORIA',
-                'mm.id as movimiento_id', 
-                'mm.serie',
-                'mm.MAC1',
-                'mm.MAC2',
-                'mm.MAC3',
-                't.nombre as tecnico_nombre', 
-                't.codigo as tecnico_codigo', 
-                't.especialidad as tecnico_esp',
-                'mm.cantidad',
-                DB::raw("CASE 
-                    WHEN mamo.SKU IS NULL THEN NULL 
-                    WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
-                    ELSE mamo.CATEGORIACOBRO 
-                END AS COSTO"),
-                DB::raw("CASE 
-                    WHEN mamo.SKU IS NULL THEN NULL 
-                    WHEN mamo.unidadmedida = '' OR mamo.unidadmedida IS NULL THEN 'UNIDAD' 
-                    ELSE mamo.unidadmedida 
-                END AS unidadmedida_auditada")
-            ])
-            ->orderByRaw("CASE 
-                WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
-                WHEN mamo.centrocostoespecifico = ? THEN 2 
-                ELSE 3 
-            END ASC", [$tiendaId])
-            ->get()
-            ->groupBy('movimiento_id')
-            ->flatMap(function ($movimientoRows) {
-                return $movimientoRows->unique(function ($item) {
-                    return $item->SKU . '-' . $item->TIPO . '-' . $item->unidadmedida_auditada . '-' . $item->CATEGORIA;
-                });
-            })
-            ->values();
+$movimientosRaw = DB::table('movimientomateriales as mm')
+    ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
+    ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
+    ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
+        $join->on('mm.SKU', '=', 'mamo.SKU')
+             ->where(function ($query) use ($tiendaId) {
+                 $query->whereColumn('mamo.centrocostoespecifico', '=', 't.codigo') 
+                       ->orWhere('mamo.centrocostoespecifico', '=', $tiendaId)    
+                       ->orWhereNull('mamo.centrocostoespecifico')               
+                       ->orWhere('mamo.centrocostoespecifico', '=', '');         
+             });
+    })
+    ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
+    ->where('mm.fkTienda', $tiendaId)
+    // CORREGIDO: Uso de DB::raw para que la función SQL funcione en el WHERE IN
+    ->whereIn(DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenesEncontradas)
+    ->select([
+        'ex.id as expediente_id',
+        // CORREGIDO: Uso de DB::raw para el alias de la función en el SELECT
+        DB::raw('SUBSTRING(ex.Orden, 1, 8) as orden_tecnica'),
+        'ex.virtual',
+        'ex.Status as expediente_status',
+        'ex.Tipo_servicio',
+        'ex.Tipo_orden',
+        'ex.NOMBRECLIENTE',
+        'ex.DIRECCION',
+        'ex.OBS as expediente_obs',
+        'ex.SIGLASCENTRAL',
+        'ex.AREA',
+        'ex.FECHAINSTALACION',
+        'abmamo.nombre as Tecnologia',
+        'mm.ESTATUS as movimiento_estatus',
+        'mm.SKU',
+        'mamo.Descripcion',
+        'mamo.TIPO',
+        'mamo.CATEGORIA',
+        'mm.id as movimiento_id', 
+        'mm.serie',
+        'mm.MAC1',
+        'mm.MAC2',
+        'mm.MAC3',
+        't.nombre as tecnico_nombre', 
+        't.codigo as tecnico_codigo', 
+        't.especialidad as tecnico_esp',
+        'mm.cantidad',
+        DB::raw("CASE 
+            WHEN mamo.SKU IS NULL THEN NULL 
+            WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
+            ELSE mamo.CATEGORIACOBRO 
+        END AS COSTO"),
+        DB::raw("CASE 
+            WHEN mamo.SKU IS NULL THEN NULL 
+            WHEN mamo.unidadmedida = '' OR mamo.unidadmedida IS NULL THEN 'UNIDAD' 
+            ELSE mamo.unidadmedida 
+        END AS unidadmedida_auditada")
+    ])
+    ->orderByRaw("CASE 
+        WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
+        WHEN mamo.centrocostoespecifico = ? THEN 2 
+        ELSE 3 
+    END ASC", [$tiendaId])
+    ->get()
+    ->groupBy('movimiento_id')
+    ->flatMap(function ($movimientoRows) {
+        return $movimientoRows->unique(function ($item) {
+            return $item->SKU . '-' . $item->TIPO . '-' . $item->unidadmedida_auditada . '-' . $item->CATEGORIA;
+        });
+    })
+    ->values();
 
         // 4. Colapsar duplicados usando colecciones de Laravel en memoria RAM
         $movimientos = $movimientosRaw->unique('movimiento_id');
      
         // Obtener las evidencias fotográficas ligadas de Google Cloud
-        $fotografias = DB::table('expedientefotograficotecnico')->whereIn('Orden', $ordenesEncontradas)->get();
+        $fotografias = DB::table('expedientefotograficotecnico')->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesEncontradas)->get();
 
         // Agrupar los datos por tecnología identificada
         $movimientosPorTecnologia = $movimientos->groupBy('Tecnologia');
@@ -939,7 +958,13 @@ public function generarMemoriaFotografica(Request $request)
             $sheetMO->setTitle('Mano de Obra');
             
             $itemsMO = $registrosTecnologia->where('CATEGORIA', 'MANO DE OBRA');
-            $descripcionesMOUnicas = $itemsMO->pluck('Descripcion')->unique()->toArray();
+            // 1. Extraemos las descripciones únicas de Mano de Obra para la CABECERA horizontal
+            $descripcionesMOUnicas = $registrosTecnologia
+                ->where('CATEGORIA', 'MANO DE OBRA') // Esto es solo para definir las columnas
+                ->pluck('Descripcion')
+                ->filter() // Quita valores nulos o vacíos
+                ->unique()
+                ->toArray();
             
             $cabeceraMOCompleta = array_merge($columnasBaseGenerales, $descripcionesMOUnicas);
             $sheetMO->fromArray($cabeceraMOCompleta, NULL, 'A1');
@@ -947,7 +972,7 @@ public function generarMemoriaFotografica(Request $request)
             $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFont()->setBold(true);
             $sheetMO->getStyle('A1:' . $sheetMO->getHighestColumn() . '1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('D0E1F9');
             
-            $expedientesMO = $itemsMO->groupBy('orden_tecnica');
+            $expedientesMO = $registrosTecnologia->groupBy('orden_tecnica');
             $filaMO = 2;
             
             foreach ($expedientesMO as $orden => $detallesOrden) {
