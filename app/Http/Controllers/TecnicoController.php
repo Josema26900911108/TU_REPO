@@ -835,17 +835,33 @@ $ordenesLimpia = collect($ordenesRaw)
             return back()->with('error', 'El archivo Excel no contiene ninguna orden legible en la primera columna.');
         }
 
-        // 2. Consultar Base de Datos mediante el Triple Cruce de Tablas
+// =========================================================================
+// PASO 2: Consulta inicial flexible en pagotecnico (Acepta cualquier estado)
+// =========================================================================
 $registrosPagos = DB::table('pagotecnico')
-    // Agregamos el select con un alias claro para PHP
     ->select('*', DB::raw('SUBSTRING(Orden, 1, 8) as orden_corta'))
     ->whereIn(DB::raw('SUBSTRING(Orden, 1, 8)'), $ordenesLimpia)
-    ->where('Status', 'S')
+    ->where(function($query) {
+        // CORREGIDO: Buscamos la orden sin importar si está en estado 'S', 'C' o 'A'
+        // para que no se bloquee ninguna orden del Excel
+        $query->whereIn('Status', ['S', 'C', 'A'])
+              ->orWhereIn('ESTATUS', ['S', 'C', 'A'])
+              ->orWhereNull('Status')
+              ->orWhereNull('ESTATUS');
+    })
     ->get();
 
+// Si por alguna razón una orden no existiera del todo en pagotecnico, 
+// usamos directamente el arreglo limpio del Excel para no frenar el flujo
 if ($registrosPagos->isEmpty()) {
-    return back()->with('error', 'Ninguna de las órdenes ingresadas en tu archivo existe en la tabla pagotecnico.');
+    $ordenesEncontradas = $ordenesLimpia;
+} else {
+    $ordenesEncontradas = $registrosPagos->pluck('orden_corta')->unique()->toArray();
+    
+    // Unimos los códigos que venían en el Excel pero que faltaron en la base de datos
+    $ordenesEncontradas = array_unique(array_merge($ordenesEncontradas, $ordenesLimpia));
 }
+
 
 // CORREGIDO: Ahora extraemos usando el alias limpio que creamos arriba
 $ordenesEncontradas = $registrosPagos->pluck('orden_corta')->unique()->toArray();
