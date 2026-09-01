@@ -918,10 +918,10 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
 $movimientosAgrupados = $movimientosRaw->groupBy('fkExpediente');
 
 // 3. Cruzar expedientes con sus movimientos en memoria RAM
+// 3. Cruzar expedientes con sus movimientos en memoria RAM
 $ordenesProcesadas = $expedientesBase->flatMap(function ($ex) use ($movimientosAgrupados) {
-    
-$ordenCorta = substr($ex->Orden, 0, 8);
-
+    // CORREGIDO: Uso de -> en lugar de punto
+    $ordenCorta = substr($ex->Orden, 0, 8);
     $tecnologiaFinal = !empty($ex->TECNOLOGIA) ? $ex->TECNOLOGIA : 'OTRAS_TECNOLOGIAS';
 
     // Si el expediente tiene movimientos registrados, los mapeamos
@@ -930,7 +930,7 @@ $ordenCorta = substr($ex->Orden, 0, 8);
             // Priorizamos la tecnología del árbol de materiales si existe, si no la del expediente
             $mm->Tecnologia = !empty($mm->tecnologia_arbol) ? $mm->tecnologia_arbol : $tecnologiaFinal;
             
-            // Inyectamos las columnas del expediente al movimiento
+            // Inyectamos las columnas del expediente al movimiento usando la sintaxis -> de Laravel
             $mm->expediente_id = $ex->id;
             $mm->orden_tecnica = $ordenCorta;
             $mm->virtual = $ex->virtual;
