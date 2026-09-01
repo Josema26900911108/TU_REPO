@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title','Eta Warehouse')
+@section('title','Bucket DataWarehouse')
 
 @push('css-datatable')
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">

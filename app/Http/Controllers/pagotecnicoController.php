@@ -1093,7 +1093,6 @@ public function importarPagosTecnico(Request $request)
     }
 }
 
-
 public function modificarPagosTecnicoMasivo(Request $request)
 {
     DB::connection()->disableQueryLog(); 
@@ -1111,10 +1110,40 @@ public function modificarPagosTecnicoMasivo(Request $request)
         'archivo' => 'required|file|mimes:csv,txt',
     ]);
 
-    $file = fopen($request->file('archivo')->getRealPath(), 'r');    
+    $path = $request->file('archivo')->getRealPath();
+
+    // =================================================================
+    // DETECTOR AUTOMÁTICO Y DINÁMICO DE DELIMITADORES
+    // =================================================================
+    $delimitador = ","; // Por defecto
+    $delimitadoresPosibles = [",", ";", "\t", "|"];
+    $fileCheck = fopen($path, 'r');
+    if ($fileCheck) {
+        $primeraLinea = fgets($fileCheck);
+        fclose($fileCheck);
+        
+        if ($primeraLinea !== false) {
+            $conteos = [];
+            foreach ($delimitadoresPosibles as $del) {
+                // Cuenta cuántas veces aparece cada delimitador en la primera línea
+                $conteos[$del] = substr_count($primeraLinea, $del);
+            }
+            // Selecciona el delimitador que más veces aparezca
+            arsort($conteos);
+            $delimitador = key($conteos);
+            
+            // Si el archivo no tiene delimitadores válidos, regresa al fallback
+            if ($conteos[$delimitador] === 0) {
+                $delimitador = ",";
+            }
+        }
+    }
+    // =================================================================
+
+    $file = fopen($path, 'r');    
     
-    // Leer encabezado usando el Tabulador ("\t") como separador
-    $encabezadoRaw = fgetcsv($file, 0, "\t");
+    // Leer encabezado usando el delimitador autodetectado
+    $encabezadoRaw = fgetcsv($file, 0, $delimitador);
     if ($encabezadoRaw && str_contains($encabezadoRaw[0], chr(0xEF).chr(0xBB).chr(0xBF))) {
         $encabezadoRaw[0] = str_replace(chr(0xEF).chr(0xBB).chr(0xBF), '', $encabezadoRaw[0]);
     }
@@ -1131,8 +1160,8 @@ public function modificarPagosTecnicoMasivo(Request $request)
     $now = now();
 
     try {
-        // Leer cada línea usando también el Tabulador ("\t")
-        while (($linea = fgetcsv($file, 0, "\t")) !== false) {
+        // Leer cada línea usando el delimitador autodetectado
+        while (($linea = fgetcsv($file, 0, $delimitador)) !== false) {
             
             // Ignorar líneas completamente vacías
             if (count($linea) === 1 && empty(trim($linea[0]))) {
@@ -1149,13 +1178,15 @@ public function modificarPagosTecnicoMasivo(Request $request)
             // Limpiar el ID de espacios antes de validarlo
             $idLimpio = isset($data['id']) ? trim($data['id']) : '';
 
-            if (empty($idLimpio) || intval($idLimpio) <= 0) {
+            // SOPORTE DE ENCABEZADO MULTI-CASO (id u Orden en Automa)
+            if (empty($idLimpio) && isset($data['Orden'])) {
+                $idLimpio = trim($data['Orden']);
+            }
+
+            if (empty($idLimpio)) {
                 $omitidos++;
                 continue;
             }
-
-            // ... (El resto de tu lógica de asignación de $batchData y updates permanece igual)
-
 
             $naturaleza = strtoupper(trim($data['Naturaleza'] ?? 'D'));
             if (!in_array($naturaleza, ['D', 'H'])) {
@@ -1207,7 +1238,7 @@ public function modificarPagosTecnicoMasivo(Request $request)
             $status = substr(trim($data['Status'] ?? 'S'), 0, 2);
 
             $batchData[] = [
-                'id'          => intval($data['id']), 
+                'id'          => intval($idLimpio), 
                 'Orden'       => $data['Orden'] ?? null,
                 'SKU'         => $data['SKU'] ?? null,
                 'Descripcion' => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
@@ -1221,7 +1252,6 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
             $actualizados++;
 
-            // Ejecución del bloque de UPDATES estrictos utilizando transacciones rápidas
             if (count($batchData) >= $batchSize) {
                 DB::transaction(function () use ($batchData) {
                     foreach ($batchData as $row) {
@@ -1245,7 +1275,6 @@ public function modificarPagosTecnicoMasivo(Request $request)
             }
         }
 
-        // Procesar los últimos registros remanentes con UPDATE
         if (!empty($batchData)) {
             DB::transaction(function () use ($batchData) {
                 foreach ($batchData as $row) {
@@ -1268,7 +1297,7 @@ public function modificarPagosTecnicoMasivo(Request $request)
 
         fclose($file);
 
-        return back()->with('success', "Modificación masiva exitosa: {$actualizados} registros procesados, {$omitidos} filas omitidas por falta de ID válido.");
+        return back()->with('success', "Modificación masiva exitosa: {$actualizados} registros procesados (Usando delimitador '{$delimitador}'), {$omitidos} filas omitidas.");
 
     } catch (\Exception $e) {
         if (is_resource($file)) {
@@ -1277,6 +1306,7 @@ public function modificarPagosTecnicoMasivo(Request $request)
         return back()->with('error', 'Error crítico en la modificación masiva: ' . $e->getMessage());
     }
 }
+
 
 
 
