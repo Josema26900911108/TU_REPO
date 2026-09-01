@@ -919,7 +919,9 @@ $movimientosAgrupados = $movimientosRaw->groupBy('fkExpediente');
 
 // 3. Cruzar expedientes con sus movimientos en memoria RAM
 $ordenesProcesadas = $expedientesBase->flatMap(function ($ex) use ($movimientosAgrupados) {
-    $ordenCorta = substr($ex.Orden, 0, 8);
+    
+$ordenCorta = substr($ex->Orden, 0, 8);
+
     $tecnologiaFinal = !empty($ex->TECNOLOGIA) ? $ex->TECNOLOGIA : 'OTRAS_TECNOLOGIAS';
 
     // Si el expediente tiene movimientos registrados, los mapeamos
