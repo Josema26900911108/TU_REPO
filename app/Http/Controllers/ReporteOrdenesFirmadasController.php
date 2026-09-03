@@ -898,8 +898,8 @@ $materialesPorTecnologia = $todosMateriales->groupBy(function($item) {
 });
 
 foreach ($materialesPorTecnologia as $nombreTecnologia => $materialesTec) {
-    $idsDeEstaTecnologia = $materialesTec->pluck('fkExpediente')->unique()->toArray();
-    $listaExpedientes = $expedientesRaw->whereIn('id', $idsDeEstaTecnologia);
+    $idsDeEstaTecnologia = $materialesTec->pluck('codigo_orden')->unique()->toArray();
+    $listaExpedientes = $expedientesRaw->whereIn('Orden', $idsDeEstaTecnologia);
 
     if ($listaExpedientes->isEmpty()) {
         continue;
