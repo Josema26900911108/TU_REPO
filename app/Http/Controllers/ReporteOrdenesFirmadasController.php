@@ -735,25 +735,40 @@ $nombreBucket = 'sistema-pv-imagenes-tienda';
 // 4. Fuente Primaria: Extraer movimientos (Agregado el SUBSTRING de la Orden)
 $materialesMovimientos = DB::table('movimientomateriales as mm')
     ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
-    ->join('expedientetecnico as et_mov', 'mm.fkExpediente', '=', 'et_mov.id') // 🛡️ Cruce agregado para obtener la orden
+    ->join('expedientetecnico as et_mov', 'mm.fkExpediente', '=', 'et_mov.id')
     ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
     ->where('mamo.CATEGORIA', '!=', 'MANO DE OBRA')    
     ->whereIn('mm.fkExpediente', $expedientesIds)
     ->select([
         'mm.fkExpediente', 
         'mm.SKU', 
-        'mm.cantidad', 
+        /* 🚀 SUMA DE CANTIDAD: Sumamos de forma agregada para evitar filas repetidas */
+        DB::raw('SUM(mm.cantidad) as cantidad'), 
         'mm.serie', 
         'mamo.Descripcion', 
         'mamo.TIPO', 
         'mamo.CATEGORIA', 
         'mamo.unidadmedida',
         'abmamo.nombre as TecnologiaCatalogo',
-        DB::raw('SUBSTRING(et_mov.Orden, 1, 8) as codigo_orden'), // 🛡️ Ahora los movimientos poseen la propiedad para hacer match
+        /* 🛡️ LIMPIEZA DE ORDEN: Extrae solo los números, eliminando "OS" o letras, y toma los primeros 8 dígitos */
+        DB::raw("SUBSTRING(REGEXP_REPLACE(et_mov.Orden, '[^0-9]', ''), 1, 8) as codigo_orden"),
         DB::raw("CAST(mamo.CATEGORIACOBRO AS DECIMAL(10,2)) as precio_unitario")
     ])
-    ->distinct()
+    /* 🚀 GROUP BY: Requerido obligatoriamente al usar SUM() en modo estricto */
+    ->groupBy([
+        'mm.fkExpediente',
+        'mm.SKU',
+        'mm.serie',
+        'mamo.Descripcion',
+        'mamo.TIPO',
+        'mamo.CATEGORIA',
+        'mamo.unidadmedida',
+        'abmamo.nombre',
+        DB::raw("SUBSTRING(REGEXP_REPLACE(et_mov.Orden, '[^0-9]', ''), 1, 8)"),
+        'mamo.CATEGORIACOBRO'
+    ])
     ->get();
+
 
 // Mapa de referencia rápida en memoria
 $mapaSkvTecnologia = $materialesMovimientos
