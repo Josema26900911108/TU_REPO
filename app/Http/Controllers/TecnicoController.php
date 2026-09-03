@@ -910,6 +910,7 @@ $movimientosRaw = DB::table('movimientomateriales as mm')
             ELSE mamo.unidadmedida 
         END AS unidadmedida_auditada")
     ])
+    ->distinct()
     ->orderByRaw("CASE 
         WHEN mamo.centrocostoespecifico = t.codigo THEN 1 
         WHEN mamo.centrocostoespecifico = ? THEN 2 
