@@ -717,7 +717,8 @@ $expedientesRaw = DB::table('expedientetecnico as ex')
         DB::raw('SUBSTRING(ex.Orden, 1, 8) as Orden'), 
         'ex.virtual', 'ex.Tipo_orden', 'ex.Tipo_servicio',
         'ex.NOMBRECLIENTE', 'ex.DIRECCION', 'ex.FECHAINSTALACION', 'ex.OBS',
-        'ex.firma_cliente', 'ex.SIGLASCENTRAL', 'ex.AREA',
+        'ex.firma_cliente',
+         'ex.SIGLASCENTRAL', 'ex.AREA',
         't.nombre as tecnico_nombre', 't.codigo as tecnico_codigo',
         'u.firma as firma_usuario'
     ])
@@ -732,34 +733,45 @@ $expedientesIds = $expedientesRaw->pluck('id')->toArray();
 $nombreBucket = 'sistema-pv-imagenes-tienda';
 
 
-// 4. Fuente Primaria: Extraer movimientos (Agregado el SUBSTRING de la Orden)
+
+// 4. Fuente Primaria: Extraer movimientos forzando la sustitución del fkExpediente por el firmado
 $materialesMovimientos = DB::table('movimientomateriales as mm')
     ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
-    ->join('expedientetecnico as et_mov', 'mm.fkExpediente', '=', 'et_mov.id')
+    ->join('expedientetecnico as et_mov', 'mm.fkExpediente', '=', 'et_mov.id') 
     ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
+    
+    /* 🚀 INYECCIÓN DEL JOIN DE CONTROL PARA SUSTITUIR EL EXPEDIENTE EN CALIENTE */
+    ->join(DB::raw("(
+        SELECT 
+            SUBSTRING(REGEXP_REPLACE(ex_f.Orden, '[^0-9]', ''), 1, 8) AS orden_limpia,
+            COALESCE(
+                MAX(CASE WHEN ex_f.firma_cliente IS NOT NULL THEN ex_f.id END),
+                MAX(ex_f.id)
+            ) AS id_firmado
+        FROM expedientetecnico ex_f
+        GROUP BY SUBSTRING(REGEXP_REPLACE(ex_f.Orden, '[^0-9]', ''), 1, 8)
+    ) as exp_firma"), 'exp_firma.orden_limpia', '=', DB::raw("SUBSTRING(REGEXP_REPLACE(et_mov.Orden, '[^0-9]', ''), 1, 8)"))
+    
     ->where('mamo.CATEGORIA', '!=', 'MANO DE OBRA')    
-    ->whereIn('mm.fkExpediente', $expedientesIds)
+    ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(et_mov.Orden, '[^0-9]', ''), 1, 8)"), $ordenes)
+    ->where('mm.fkTienda', $tiendaId)
     ->select([
-        'mm.fkExpediente', 
+        'exp_firma.id_firmado as fkExpediente', // 🚀 Todos los registros de la orden adoptan el ID firmado (ej: 40)
         'mm.SKU', 
-        /* 🚀 SUMA DE CANTIDAD: Sumamos de forma agregada para evitar filas repetidas */
         DB::raw('SUM(mm.cantidad) as cantidad'), 
         'mm.serie', 
-        'mamo.Descripcion', 
+        DB::raw('MIN(mamo.Descripcion) as Descripcion'), 
         'mamo.TIPO', 
         'mamo.CATEGORIA', 
         'mamo.unidadmedida',
         'abmamo.nombre as TecnologiaCatalogo',
-        /* 🛡️ LIMPIEZA DE ORDEN: Extrae solo los números, eliminando "OS" o letras, y toma los primeros 8 dígitos */
         DB::raw("SUBSTRING(REGEXP_REPLACE(et_mov.Orden, '[^0-9]', ''), 1, 8) as codigo_orden"),
         DB::raw("CAST(mamo.CATEGORIACOBRO AS DECIMAL(10,2)) as precio_unitario")
     ])
-    /* 🚀 GROUP BY: Requerido obligatoriamente al usar SUM() en modo estricto */
     ->groupBy([
-        'mm.fkExpediente',
+        'exp_firma.id_firmado', // 🛡️ Requerido para agrupar bajo el mismo expediente líder
         'mm.SKU',
         'mm.serie',
-        'mamo.Descripcion',
         'mamo.TIPO',
         'mamo.CATEGORIA',
         'mamo.unidadmedida',
@@ -768,6 +780,8 @@ $materialesMovimientos = DB::table('movimientomateriales as mm')
         'mamo.CATEGORIACOBRO'
     ])
     ->get();
+
+
 
 
 // Mapa de referencia rápida en memoria
@@ -940,51 +954,62 @@ foreach ($materialesPorTecnologia as $nombreTecnologia => $materialesTec) {
         ];
     }
     // Procesar los expedientes pertenecientes a esta tecnología e inyectar firmas digitales
-    $expedientesProcesados = [];
-    foreach ($listaExpedientes as $exp) {
-        $firmaBase64 = null;
-        if (!empty($exp->firma_cliente)) {
-            $urlFirma = $exp->firma_cliente;
-            $pathBucketFirma = $urlFirma;
+$expedientesProcesados = [];
+foreach ($listaExpedientes as $exp) {
+    
+    /* 🚀 1. OBTENER LOS MATERIALES DEL EXPEDIENTE ACTUAL */
+    $materialesDelExpediente = $materialesFisicosTec->where('fkExpediente', $exp->id);
 
-            if (str_contains($urlFirma, $nombreBucket)) {
-                $posBucket = strpos($urlFirma, $nombreBucket);
-                $pathBucketFirma = substr($urlFirma, $posBucket + strlen($nombreBucket));
-                $pathBucketFirma = ltrim($pathBucketFirma, '/');
-            } else {
-                $pathBucketFirma = ltrim(parse_url($urlFirma, PHP_URL_PATH), '/');
-            }
-
-            if (Storage::disk('gcs_images')->exists($pathBucketFirma)) {
-                $binaryFirma = Storage::disk('gcs_images')->get($pathBucketFirma);
-                $type = pathinfo($pathBucketFirma, PATHINFO_EXTENSION);
-                $type = empty($type) ? 'png' : $type;
-                $firmaBase64 = 'data:image/' . $type . ';base64,' . base64_encode($binaryFirma);
-            }
-        }
-
-        $firmaTecnicoUserBase64 = null;
-        if (!empty($exp->firma_usuario)) {
-            $firmaLimpia = trim($exp->firma_usuario);
-            $firmaTecnicoUserBase64 = str_starts_with($firmaLimpia, 'data:image') ? $firmaLimpia : 'data:image/png;base64,' . $firmaLimpia;
-        }
-
-        $expedientesProcesados[] = [
-            'id' => $exp->id,
-            'Orden' => $exp->Orden,
-            'virtual' => $exp->virtual,
-            'Tipo_orden' => $exp->Tipo_orden,
-            'Tipo_servicio' => $exp->Tipo_servicio,
-            'NOMBRECLIENTE' => $exp->NOMBRECLIENTE,
-            'DIRECCION' => $exp->DIRECCION,
-            'FECHAINSTALACION' => $exp->FECHAINSTALACION ? Carbon::parse($exp->FECHAINSTALACION)->format('d/m/Y H:i') : 'N/A',
-            'tecnico_nombre' => $exp->tecnico_nombre,
-            'tecnico_codigo' => $exp->tecnico_codigo,
-            'firma_base64' => $firmaBase64, 
-            'firma_tecnico_user' => $firmaTecnicoUserBase64, 
-            'materiales' => $materialesFisicosTec->where('fkExpediente', $exp->id)
-        ];
+    /* 🛡️ FILTRO CRUCIAL: Si el expediente no tiene ítems de materiales asignados, se ignora por completo */
+    if ($materialesDelExpediente->isEmpty()) {
+        continue; // Salta al siguiente expediente inmediatamente
     }
+
+    $firmaBase64 = null;
+    if (!empty($exp->firma_cliente)) {
+        $urlFirma = $exp->firma_cliente;
+        $pathBucketFirma = $urlFirma;
+
+        if (str_contains($urlFirma, $nombreBucket)) {
+            $posBucket = strpos($urlFirma, $nombreBucket);
+            $pathBucketFirma = substr($urlFirma, $posBucket + strlen($nombreBucket));
+            $pathBucketFirma = ltrim($pathBucketFirma, '/');
+        } else {
+            $pathBucketFirma = ltrim(parse_url($urlFirma, PHP_URL_PATH), '/');
+        }
+
+        if (Storage::disk('gcs_images')->exists($pathBucketFirma)) {
+            $binaryFirma = Storage::disk('gcs_images')->get($pathBucketFirma);
+            $type = pathinfo($pathBucketFirma, PATHINFO_EXTENSION);
+            $type = empty($type) ? 'png' : $type;
+            $firmaBase64 = 'data:image/' . $type . ';base64,' . base64_encode($binaryFirma);
+        }
+    }
+
+    $firmaTecnicoUserBase64 = null;
+    if (!empty($exp->firma_usuario)) {
+        $firmaLimpia = trim($exp->firma_usuario);
+        $firmaTecnicoUserBase64 = str_starts_with($firmaLimpia, 'data:image') ? $firmaLimpia : 'data:image/png;base64,' . $firmaLimpia;
+    }
+
+    /* 🚀 2. SOLO SE AGREGA AL ARREGLO SI SUPERÓ LA VALIDACIÓN DE MATERIALES */
+    $expedientesProcesados[] = [
+        'id' => $exp->id,
+        'Orden' => $exp->Orden,
+        'virtual' => $exp->virtual,
+        'Tipo_orden' => $exp->Tipo_orden,
+        'Tipo_servicio' => $exp->Tipo_servicio,
+        'NOMBRECLIENTE' => $exp->NOMBRECLIENTE,
+        'DIRECCION' => $exp->DIRECCION,
+        'FECHAINSTALACION' => $exp->FECHAINSTALACION ? Carbon::parse($exp->FECHAINSTALACION)->format('d/m/Y H:i') : 'N/A',
+        'tecnico_nombre' => $exp->tecnico_nombre,
+        'tecnico_codigo' => $exp->tecnico_codigo,
+        'firma_base64' => $firmaBase64, 
+        'firma_tecnico_user' => $firmaTecnicoUserBase64, 
+        'materiales' => $materialesDelExpediente // Asigna la variable previamente filtrada
+    ];
+}
+
 
     $tecnologiasAgrupadas[$nombreTecnologia] = [
         'nombre' => $nombreTecnologia,
