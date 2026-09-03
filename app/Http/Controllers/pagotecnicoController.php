@@ -79,10 +79,10 @@ class pagotecnicoController  extends Controller
         // 3. Extraer expedientes e información general cruzados con técnicos
         $expedientesRaw = DB::table('expedientetecnico as ex')
             ->leftJoin('tecnico as t', 'ex.fkTecnico', '=', 't.id')
-            ->whereIn('ex.Orden', $ordenes)
+            ->whereIn( DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenes)
             ->where('ex.fkTienda', $tiendaId)
             ->select([
-                'ex.id', 'ex.Orden', 'ex.virtual', 'ex.Tipo_orden', 'ex.Tipo_servicio',
+                'ex.id',  DB::raw('SUBSTRING(ex.Orden, 1, 8) as Orden'), 'ex.virtual', 'ex.Tipo_orden', 'ex.Tipo_servicio',
                 'ex.NOMBRECLIENTE', 'ex.DIRECCION', 'ex.FECHAINSTALACION', 'ex.OBS',
                 'ex.firma_cliente', 'ex.SIGLASCENTRAL', 'ex.AREA',
                 't.nombre as tecnico_nombre', 't.codigo as tecnico_codigo'
@@ -224,6 +224,8 @@ class pagotecnicoController  extends Controller
 
         return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
     }
+
+
 public function index(Request $request)
 {
     // 1. Iniciar la consulta base sobre el modelo Pagotecnico
