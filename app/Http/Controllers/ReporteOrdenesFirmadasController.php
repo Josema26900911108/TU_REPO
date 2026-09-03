@@ -853,36 +853,51 @@ foreach ($materialesPagoTecnicoRaw as $pago) {
     if ($expedienteAsociado) {
         $pago->fkExpediente = $expedienteAsociado->id;
         
-        $llaveCompuesta = $pago->OrdenSub . '_' . $pago->SKU;
+        // 🚀 1. TRATAMIENTO DE PALABRAS CLAVE: Analizamos la descripción para evitar mezclas erróneas
+        $descripcionMayuscula = mb_strtoupper($pago->Descripcion);
         
-        if (isset($mapaSkvTecnologia[$llaveCompuesta])) {
-            $pago->TecnologiaCatalogo = $mapaSkvTecnologia[$llaveCompuesta];
+        if (str_contains($descripcionMayuscula, 'DTH')) {
+            $pago->TecnologiaCatalogo = 'DTH';
+        } elseif (str_contains($descripcionMayuscula, 'WTTX') || str_contains($descripcionMayuscula, 'WTTX')) {
+            $pago->TecnologiaCatalogo = 'WTTx';
+        } elseif (str_contains($descripcionMayuscula, 'GPON') || str_contains($descripcionMayuscula, 'FIBRA')) {
+            $pago->TecnologiaCatalogo = 'GPON';
+        } elseif (str_contains($descripcionMayuscula, 'HFC') || str_contains($descripcionMayuscula, 'COAXIAL')) {
+            $pago->TecnologiaCatalogo = 'HFC';
         } else {
-            // 🛡️ Al estar corregido el Paso 4, esta búsqueda ahora sí encontrará coincidencias por OrdenSub
-            $tecnologiasDeLaOrden = $todosMateriales
-                ->where('codigo_orden', $pago->OrdenSub)
-                ->where('TecnologiaCatalogo', '!=', 'OTRAS_TECNOLOGIAS')
-                ->pluck('TecnologiaCatalogo')
-                ->unique();
-
-            if ($tecnologiasDeLaOrden->count() === 1) {
-                $pago->TecnologiaCatalogo = $tecnologiasDeLaOrden->first();
-            } elseif ($tecnologiasDeLaOrden->count() > 1) {
-                foreach ($tecnologiasDeLaOrden as $tecnologiaIndividual) {
-                    $clonPago = clone $pago;
-                    $clonPago->TecnologiaCatalogo = $tecnologiaIndividual;
-                    $materialesPagoTecnico->push($clonPago);
-                }
-                continue; 
+            // 🚀 2. Si no contiene palabras clave evidentes, recurrimos a las soluciones por descarte previas
+            $llaveCompuesta = $pago->OrdenSub . '_' . $pago->SKU;
+            
+            if (isset($mapaSkvTecnologia[$llaveCompuesta])) {
+                $pago->TecnologiaCatalogo = $mapaSkvTecnologia[$llaveCompuesta];
             } else {
-                // 🛡️ Si la orden no tiene materiales previos en movimientos, le dejamos el nombre de la primera tecnología válida del lote para evitar que se descarte
-                $pago->TecnologiaCatalogo = reset($mapaSkvTecnologia) ?: 'OTRAS_TECNOLOGIAS';
+                // Buscamos qué tecnologías usó esta orden específica originalmente en los movimientos físicos
+                $tecnologiasDeLaOrden = $todosMateriales
+                    ->where('codigo_orden', $pago->OrdenSub)
+                    ->where('TecnologiaCatalogo', '!=', 'OTRAS_TECNOLOGIAS')
+                    ->pluck('TecnologiaCatalogo')
+                    ->unique();
+
+                if ($tecnologiasDeLaOrden->count() === 1) {
+                    $pago->TecnologiaCatalogo = $tecnologiasDeLaOrden->first();
+                } elseif ($tecnologiasDeLaOrden->count() > 1) {
+                    // Si la orden realmente maneja dos tecnologías físicas válidas, clonamos para segmentar
+                    foreach ($tecnologiasDeLaOrden as $tecnologiaIndividual) {
+                        $clonPago = clone $pago;
+                        $clonPago->TecnologiaCatalogo = $tecnologiaIndividual;
+                        $materialesPagoTecnico->push($clonPago);
+                    }
+                    continue; 
+                } else {
+                    $pago->TecnologiaCatalogo = $mapaSkvTecnologia[$pago->SKU] ?? 'OTRAS_TECNOLOGIAS';
+                }
             }
         }
         
         $materialesPagoTecnico->push($pago);
     }
 }
+
 
 
 // Consolidador global unificado aplicando las reglas de la Voz de Mando
