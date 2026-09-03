@@ -763,7 +763,7 @@ $mapaSkvTecnologia = $materialesMovimientos
 
 // 5. Fuente Secundaria: Extraer registros desde pagotecnico
 $materialesPagoTecnicoRaw = DB::table('pagotecnico as pt')
-    ->join('materialmanoobra as mamo', 'pt.SKU', '=', 'mamo.SKU')
+    ->join('MaterialManoObra as mamo', 'pt.SKU', '=', 'mamo.SKU')
     ->join('expedientetecnico as et', 'et.Orden', '=', 'pt.Orden')
     ->join('movimientomateriales as mm', 'et.id', '=', 'mm.fkExpediente')
     ->join('tecnico as t', 'et.fkTecnico', '=', 't.id')
