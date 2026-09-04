@@ -269,7 +269,13 @@
                     Material/Mano de Obra
                 </a>
                 @endcan
-
+                {{-- 🚀 NUEVA SECCIÓN: BOTÓN DE CONCILIACIÓN MASIVA INTEGRADO --}}
+                @can('ver-conciliacion') {{-- Utiliza el permiso adecuado para los administradores que auditan --}}
+                <a class="nav-link" href="{{ route('conciliacion.index') }}">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-scale-balanced"></i></div>
+                    Conciliación de Órdenes
+                </a>
+                @endcan
                 @can('ver-eta')
                 <a class="nav-link" href="{{ route('etadirect.lista') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-route"></i></div>

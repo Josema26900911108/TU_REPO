@@ -66,7 +66,7 @@ use App\Notifications\LoteVencimientoNotification;
 use Barryvdh\DomPDF\Facade as PDF;
 use App\Models\ReglaPrecio;
 use App\Http\Controllers\LegalController;
-
+use App\Http\Controllers\ConciliacionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -116,7 +116,16 @@ Route::resources([
     'rutas'=>RutaCicloController::class,
     'piloto'=>PilotoDespachoController::class,
     'legal'=>LegalController::class,
+    'conciliacion'=>ConciliacionController::class,
 ]);
+// ============================================================================
+// concileacion: modulo para validar que todas las manos de obras sean pagadas de forma correcta validando lo interno y lo externo a pagarse finalmente
+// ============================================================================
+Route::get('/conciliacion', [ConciliacionController::class, 'index'])->name('conciliacion.index');
+Route::post('/conciliacion/importar', [ConciliacionController::class, 'importarCSV'])->name('conciliacion.importar');
+Route::get('/conciliacion/exportar', [ConciliacionController::class, 'exportarConciliacion'])->name('conciliacion.exportar');
+Route::post('/conciliacion/extraccion-masiva', [ConciliacionController::class, 'extraccionMasivaCSV'])->name('conciliacion.extraccion-masiva');
+
 
 Route::get('/privacidad', [LegalController::class, 'privacidad'])->name('legal.privacidad');
 Route::get('/terminos-y-condiciones', [LegalController::class, 'terminos'])->name('legal.terminos');

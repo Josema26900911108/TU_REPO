@@ -169,7 +169,12 @@ class PermissionSeeder extends Seeder
             'crear-materialmanoobra',
             'eliminar-materialmanoobra',
             'eliminar-orden',
-
+            //APP CONCILIACION
+            'ver-conciliacion',
+            'editar-conciliacion',
+            'EXPORTAR-conciliacion',
+            'importar-conciliacion',
+            
             //APP ETA
             'ver-eta',
             'editar-eta',

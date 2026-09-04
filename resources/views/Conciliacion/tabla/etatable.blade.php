@@ -1,65 +1,62 @@
+<div id="tabla_pago_content">
 
-    <div class="card">
-
-        <div class="card-header">
-            <i class="fas fa-table me-1"></i>
-            Tabla ETA
-        </div>
-<div class="card-body border-bottom">
-    <div class="row g-3">
-        <div class="col-md-4">
-            <label class="form-label font-weight-bold">Buscar Orden (Búsqueda Especial Global):</label>
-            <div class="input-group">
-                <input type="text" id="globalSearchExp" class="form-control" placeholder="Escribe el número de orden...">
-                <!-- 🚀 Agregamos el botón especial -->
-                <button class="btn btn-warning font-weight-bold" type="button" id="btnBusquedaEspecial">
-                    Buscar Global 🔍
-                </button>
+           <div class="card-body border-bottom">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Buscar general:</label>
+                    <input type="text" id="globalSearch" class="form-control" placeholder="Buscar...">
+                </div>
             </div>
-            <small class="form-text text-muted">Este botón busca en toda la base de datos ignorando el rango de fechas.</small>
         </div>
-    </div>
-</div>
 
-
-
-        <div class="card-body" style="overflow-x: auto;">
-            <table id="datatablesSimpleExp" class="table table-striped fs-12" style="min-width: 800px;">
+            <table id="datatablesSimple" class="table table-striped fs-6">
                 <thead>
                     <tr>
                         <th>Orden</th>
-                        <th>Virtual</th>
-                        <th>Estatus</th>
-                        <th>Tipo_servicio</th>
-                        <th>Tipo_orden</th>
-                        <th>Cliente</th>
-                        <th>Direccion</th>
-                        <th>Obs</th>
-                        <th>Siglas</th>
-                        <th>Area</th>
+                        <th>SKU</th>
+                        <th>Descripcion</th>
+                        <th>Cantidad</th>
+                        <th>Serie</th>
+                        <th>MAC1</th>
+                        <th>MAC2</th>
+                        <th>MAC3</th>
+                        <th>CENTRO</th>
+                        <th>EMPLEADO</th>
                         <th>FECHA</th>
-                        <th>Autoriza</th>
-                        <th>Estatus Interno</th>
 
+                        <!------Eliminar producto---->
+                        @can('vertienda-producto')
+                        <th>Tienda</th>
+                        @endcan
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($relacion as $item)
+                    @foreach ($eta as $item)
                     <tr>
                         <td>{{$item->Orden}}</td>
-                        <td>{{$item->virtual}}</td>
-                        <td>{{$item->Status}}</td>
-                        <td>{{$item->Tipo_servicio}}</td>
-                        <td>{{$item->Tipo_orden}}</td>
-                        <td>{{$item->NOMBRECLIENTE}}</td>
-                        <td>{{$item->DIRECCION}}</td>
-                        <td>{{$item->OBS}}</td>
-                        <td>{{$item->SIGLASCENTRAL}}</td>
-                        <td>{{$item->AREA}}</td>
-                        <td>{{$item->FECHAINSTALACION}}</td>
-                        <td>{{$item->AUTORIZA}}</td>
-                        <td>{{$item->ESTATUS}}</td>
+                        <td>{{$item->SKU}}</td>
+                        <td>{{$item->Descripcion}}</td>
+                        <td>{{$item->Cantidad}}</td>
+                        <td>{{$item->Serie}}</td>
+                        <td>{{$item->MAC1}}</td>
+                        <td>{{$item->MAC2}}</td>
+                        <td>{{$item->MAC3}}</td>
+                        <td>{{$item->CENTRO}}</td>
+                        <td>{{$item->EMPLEADO}}</td>
+                        <!-- Reemplaza tu fila actual por esta que acepta texto puro -->
+                        <td>{{ date('d-m-Y', strtotime($item->created_at)) }}</td>
+
+
+                        @can('vertienda-producto')
+                        <td>
+                            @if($item->fkTienda)
+                                {{ $item->tienda->Nombre }}
+                            @else
+                                Sin tienda asignada
+                            @endif
+                        </td>
+                        @endcan
 
                         <td>
                             <div class="d-flex justify-content-around">
@@ -72,9 +69,9 @@
                                     <ul class="dropdown-menu text-bg-light" style="font-size: small;">
 
                                         <!----Ver-producto--->
-                                        @can('ordenruta-tecnico')
+                                        @can('ver-producto')
                                         <li>
-                                            <a class="dropdown-item" role="button" href="{{ route('tecnico.inventario', ['tecbucket' => $item]) }}">Ver inventario</a>
+                                            <a class="dropdown-item" role="button" data-bs-toggle="modal" data-bs-target="#verModal-{{$item->id}}">Ver</a>
                                         </li>
                                         @endcan
                                     </ul>
@@ -148,10 +145,8 @@
                     @endforeach
                 </tbody>
             </table>
-        </div>
-
-    </div>
-
-<div class="flex justify-center mt-4">
-    {!! $relacion->links('pagination::bootstrap-5') !!}
+            <div class="d-flex justify-content-center mt-3" id="laravel-pagination">
+                {!! $eta->links('pagination::bootstrap-5') !!}
+            </div>
+        
 </div>

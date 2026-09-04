@@ -1156,6 +1156,7 @@ public function descargarFormeta()
 }
 
 function traslados(){
+    $fkTienda = session('user_fkTienda');
     MovimientoMateriales::create([
     'fkTienda' => $fkTienda,
     'fkMateriales' => $productoId,

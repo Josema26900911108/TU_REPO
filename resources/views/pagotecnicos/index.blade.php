@@ -518,32 +518,31 @@ function exportarExcel() {
         text: "Se generará un archivo CSV/Excel con los filtros aplicados actualmente en pantalla.",
         icon: 'question',
         showCancelButton: true,
-        confirmButtonColor: '#198754', // Verde Bootstrap success
-        cancelButtonColor: '#6c757d',  // Gris Bootstrap secondary
+        confirmButtonColor: '#198754',
+        cancelButtonColor: '#6c757d',
         confirmButtonText: 'Sí, exportar',
         cancelButtonText: 'No, cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
             
-            // 1. CAPTURA DINÁMICA EN TIEMPO REAL (Lee el valor actual de los inputs de tu formulario)
-            // Asegúrate de que los inputs de tu filtro tengan estos mismos nombres de atributo 'name'
-            let orden       = document.querySelector("input[name='orden']").value;
-            let tecnicoId   = document.querySelector("select[name='tecnico_id']").value;
-            let fechaInicio = document.querySelector("input[name='fecha_inicio']").value;
-            let fechaFin    = document.querySelector("input[name='fecha_fin']").value;
+            // 1. CAPTURA DINÁMICA CON PREVENCIÓN DE NULOS
+            let orden       = document.querySelector("input[name='orden']")?.value || '';
+            let tecnicoId   = document.querySelector("select[name='tecnico_id']")?.value || '';
+            let fechaInicio = document.querySelector("input[name='fecha_inicio']")?.value || '';
+            let fechaFin    = document.querySelector("input[name='fecha_fin']")?.value || '';
+            let status      = document.querySelector("select[name='Status']")?.value || '';
 
-            // 2. CONSTRUIR PARÁMETROS DE LA URL
-            let queryParams = new URLSearchParams({
-                orden: orden,
-                tecnico_id: tecnicoId,
-                fecha_inicio: fechaInicio,
-                fecha_fin: fechaFin
-            });
+            // 2. CONSTRUIR PARÁMETROS FILTRANDO CAMPOS VACÍOS
+            let params = {};
+            if (orden.trim() !== '') params.orden = orden.trim();
+            if (tecnicoId.trim() !== '') params.tecnico_id = tecnicoId;
+            if (fechaInicio.trim() !== '') params.fecha_inicio = fechaInicio;
+            if (fechaFin.trim() !== '') params.fecha_fin = fechaFin;
+            if (status.trim() !== '') params.Status = status;
 
-            // Base de la URL generada limpiamente por Blade
+            let queryParams = new URLSearchParams(params);
             let urlBase = "{{ route('pagotecnico.exportar') }}";
 
-            // Mostrar una alerta rápida de éxito
             Swal.fire({
                 title: 'Generando archivo...',
                 text: 'Tu descarga iniciará en unos momentos.',
@@ -552,12 +551,12 @@ function exportarExcel() {
                 showConfirmButton: false
             });
 
-            // 3. ACTIVAR LA DESCARGA NATIVA DEL NAVEGADOR
-            // Redirige al stream del controlador concatenando los filtros en tiempo real
+            // 3. ACTIVAR LA DESCARGA NATIVA
             window.location.href = urlBase + '?' + queryParams.toString();
         }
     });
 }
+
 
 function exportarFotos() {
     Swal.fire({

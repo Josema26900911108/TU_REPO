@@ -225,37 +225,38 @@ class pagotecnicoController  extends Controller
         return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
     }
 
-
 public function index(Request $request)
 {
     // 1. Iniciar la consulta base sobre el modelo Pagotecnico
     $query = Pagotecnico::with('tienda');
+    
+    $orden=$request->input('Status');
 
-    // 2. Aplicar Filtro por Orden/Expediente si se proporciona
-    if ($request->filled('orden')) {
+    // 2. Aplicar Filtro por Orden/Expediente si se proporciona y no está vacío
+    if ($request->has('orden') && $request->input('orden') !== null && $request->input('orden') !== '') {
         $query->where('Orden', 'LIKE', '%' . trim($request->input('orden')) . '%');
     }
 
     // 3. Aplicar Filtro por Técnico (ID o Código)
-    if ($request->filled('tecnico_id')) {
+    if ($request->has('tecnico_id') && $request->input('tecnico_id') !== null && $request->input('tecnico_id') !== '') {
         $query->where('fkTecnico', $request->input('tecnico_id'));
     }
 
-    // 4. NUEVO: Aplicar Filtro por Estatus de Pago (Faltaba en tu backend)
-    if ($request->filled('Status')) {
+    // 4. CORREGIDO: Filtro por Estatus de Pago (Validación estricta de presencia)
+    if ($request->has('Status') && $request->input('Status') !== null && $request->input('Status') !== '') {
         $query->where('Status', $request->input('Status'));
     }
 
-    // 5. Aplicar Filtro por Rango de Fechas (Cambiado a updated_at para coincidir con tu CSV masivo)
-    if ($request->filled('fecha_inicio')) {
+    // 5. Aplicar Filtro por Rango de Fechas
+    if ($request->has('fecha_inicio') && $request->input('fecha_inicio') !== null && $request->input('fecha_inicio') !== '') {
         $query->whereDate('updated_at', '>=', $request->input('fecha_inicio'));
     }
-    if ($request->filled('fecha_fin')) {
+    if ($request->has('fecha_fin') && $request->input('fecha_fin') !== null && $request->input('fecha_fin') !== '') {
         $query->whereDate('updated_at', '<=', $request->input('fecha_fin'));
     }
-      $query->orderBy('id', 'desc'); 
-    // 6. Obtener los registros filtrados para la tabla
-    $pagostecnico = $query->latest()->get();
+
+    // 6. CORREGIDO: Se eliminó duplicidad de ordenamiento (Solo dejamos orden por ID descendente)
+    $pagostecnico = $query->orderBy('id', 'desc')->get();
 
     // 7. LOGICA DE BALANCES ALGEBRAICOS (Suma 'H' y Resta 'D')
     $calcularBalance = function ($coleccion) {
@@ -273,8 +274,13 @@ public function index(Request $request)
     $balanceS = $calcularBalance($pagostecnico->where('Status', 'S'));
     $balanceB = $calcularBalance($pagostecnico->where('Status', 'B'));
 
-    // Obtener lista de técnicos para el select del filtro
-    $tecnicos = DB::table('tecnico')->select('id', 'nombre')->where('fkTienda', session('user_fkTienda'))->get();
+    // Obtener lista de técnicos para el select del filtro con validación de sesión
+    $tiendaId = session('user_fkTienda', 0); // Evita romper si la sesión es null
+    $tecnicos = DB::table('tecnico')
+        ->select('id', 'nombre')
+        ->where('fkTienda', $tiendaId)
+        ->orderBy('nombre', 'asc')
+        ->get();
   
     // 8. Retornar todas las variables calculadas a la vista
     return view('pagotecnicos.index', compact(
@@ -286,7 +292,6 @@ public function index(Request $request)
         'tecnicos'
     ));
 }
-
 
 
 public function movimiento(Request $request)
@@ -795,10 +800,8 @@ public function descargarinventariopago()
 }
 
 
-
 public function exportarExcel(Request $request)
 {
-    // 1. Evitar cortes por límite de tiempo de ejecución
     set_time_limit(0);
     ini_set('memory_limit', '512M');
 
@@ -808,6 +811,7 @@ public function exportarExcel(Request $request)
         $tecnicoId   = $request->input('tecnico_id');
         $fechaInicio = $request->input('fecha_inicio');
         $fechaFin    = $request->input('fecha_fin');
+        $status      = $request->input('Status');
 
         $query = Pagotecnico::query();
 
@@ -815,40 +819,40 @@ public function exportarExcel(Request $request)
             $query->where('fkTienda', $fkTienda);
         }
 
-        if (!empty($orden)) {
-            $query->where('Ordens', 'LIKE', '%' . trim($orden) . '%');
+        // 🚀 CORREGIDO: Cambiado 'Ordens' por 'Orden'
+        if ($request->filled('orden')) {
+            $query->where('Orden', 'LIKE', '%' . trim($orden) . '%');
+        }
+        
+        if ($request->filled('Status')) {
+            $query->where('Status', $status);
         }
 
-        if (!empty($tecnicoId)) {
+        if ($request->filled('tecnico_id')) {
             $query->where('fkTecnico', $tecnicoId);
         }
 
-        if (!empty($fechaInicio)) {
+        if ($request->filled('fecha_inicio')) {
             $inicioTimestamp = (strlen($fechaInicio) > 10) ? $fechaInicio : date('Y-m-d 00:00:00', strtotime($fechaInicio));
             $query->where('updated_at', '>=', $inicioTimestamp);
         }
 
-        if (!empty($fechaFin)) {
+        if ($request->filled('fecha_fin')) {
             $finTimestamp = (strlen($fechaFin) > 10) ? $fechaFin : date('Y-m-d 23:59:59', strtotime($fechaFin));
             $query->where('updated_at', '<=', $finTimestamp);
         }
 
-        // 2. Abrir un puntero de archivo seguro directamente en la memoria temporal de PHP
         $file = fopen('php://temp', 'r+');
         if (!$file) {
             throw new Exception("No se pudo inicializar el búfer de memoria para generar el reporte.");
         }
         
-        // Agregar el BOM UTF-8 indispensable para que Excel muestre tildes y eñes
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
 
-        // Escribir los encabezados de las columnas del CSV
         fputcsv($file, ['ID Pago', 'Orden / Expediente', 'SKU', 'Descripcion', 'Cantidad', 'Costo Pago ($)', 'Naturaleza', 'Estatus', 'ID Tienda', 'ID Técnico', 'Fecha Registro']);
 
         $totalBalance = 0;
 
-        // 3. Procesamiento secuencial mediante cursor() (Evita caídas por chunkById o llaves primarias nulas)
-        // cursor() consume poquísima RAM y procesa fila por fila de forma inmediata
         foreach ($query->cursor() as $row) {
             $monto = floatval($row->COSTOPAGO);
             $naturaleza = strtoupper(trim($row->Naturaleza));
@@ -859,7 +863,6 @@ public function exportarExcel(Request $request)
                 $totalBalance += $monto;
             }
 
-            // Mapeo seguro con operadores de fusión de nulos (?? '') para evitar errores si faltan datos
             fputcsv($file, [
                 $row->id ?? '', 
                 $row->Orden ?? '',
@@ -875,7 +878,6 @@ public function exportarExcel(Request $request)
             ]);
         }
 
-        // 4. Inyectar renglón del balance general calculado abajo
         fputcsv($file, []); 
         fputcsv($file, [
             'RESULTADO GENERAL BALANCEADO:', 
@@ -885,12 +887,10 @@ public function exportarExcel(Request $request)
             '', '', ''
         ]);
 
-        // 5. Rebobinar el puntero de memoria para extraer la cadena completa de texto generada
         rewind($file);
         $csvContent = stream_get_contents($file);
         fclose($file);
 
-        // 6. Generar una respuesta HTTP estándar directa que no requiere callbacks
         $fileName = 'Reporte_Desglose_Pagos_' . date('Y-m-d_H-i') . '.csv';
         
         return response($csvContent, 200, [
@@ -902,7 +902,6 @@ public function exportarExcel(Request $request)
         ]);
 
     } catch (Exception $e) {
-        // Si hay un error, matará el proceso y pintará la causa exacta en tu pantalla de Laravel
         dd([
             'Mensaje de Error' => $e->getMessage(),
             'Línea del Fallo'  => $e->getLine(),
@@ -911,6 +910,7 @@ public function exportarExcel(Request $request)
         ]);
     }
 }
+
 
 public function importarPagosTecnico(Request $request)
 {
