@@ -886,7 +886,7 @@ $subqueryTecnologia = DB::table('movimientomateriales as mm_t')
     ->join('arbolmanoobra as abmam', 'abmam.id', '=', 'mm_t.fkTecnologiaarbol')
     ->leftJoin('arbolmanoobra as abmamP', 'abmamP.id', '=', 'abmam.padre_id')
     ->leftJoin('arbolmanoobra as abmamPa', 'abmamPa.id', '=', 'abmamP.padre_id')
-    ->join('materialmanoobra as mamo_t', 'mm_t.SKU', '=', 'mamo_t.SKU')
+    ->join('MaterialManoObra as mamo_t', 'mm_t.SKU', '=', 'mamo_t.SKU')
     ->where('mamo_t.CATEGORIA', '!=', 'MANO DE OBRA')
     ->select([
         DB::raw("SUBSTRING(REGEXP_REPLACE(ex_t.Orden, '[^0-9]', ''), 1, 8) as orden_limpia"),
