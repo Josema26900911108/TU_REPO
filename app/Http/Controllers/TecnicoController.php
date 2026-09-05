@@ -1023,7 +1023,7 @@ $queryManoObra = DB::table('pagotecnico as pt')
         DB::raw("MAX(t_pt.codigo) as tecnico_codigo"), 
         'pt.Cantidad as cantidad',
         DB::raw("CAST(pt.COSTOPAGO AS DECIMAL(10,2)) as COSTO"),
-        DB::raw("(pt.Cantidad * pt.COSTOPAGO) as Subtotal")
+        DB::raw("(pt.Cantidad * mamo.CATEGORIACOBRO) as Subtotal")
     ])
     ->groupBy([
         'pt.SKU', 'pt.id', 'pt.Cantidad', 'mamo.CATEGORIACOBRO', 'mamo.TIPO', 'mamo.CATEGORIA', // 🛡️ Agregada al groupBy obligatorio
