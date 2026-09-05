@@ -1026,7 +1026,7 @@ $queryManoObra = DB::table('pagotecnico as pt')
         DB::raw("(pt.Cantidad * pt.COSTOPAGO) as Subtotal")
     ])
     ->groupBy([
-        'pt.SKU', 'pt.id', 'pt.Cantidad', 'pt.COSTOPAGO', 'mamo.TIPO', 'mamo.CATEGORIA', // 🛡️ Agregada al groupBy obligatorio
+        'pt.SKU', 'pt.id', 'pt.Cantidad', 'mamo.CATEGORIACOBRO', 'mamo.TIPO', 'mamo.CATEGORIA', // 🛡️ Agregada al groupBy obligatorio
         DB::raw("SUBSTRING(REGEXP_REPLACE(pt.Orden, '[^0-9]', ''), 1, 8)"), 
         't_ord.tecnologia_real'
     ]);
@@ -1538,7 +1538,7 @@ $movimientos = DB::table('movimientomateriales as mm')
         // COSTO basado en la auditoría
         DB::raw("CASE 
             WHEN mamo.SKU IS NULL THEN NULL 
-            WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.COSTOPAGO 
+            WHEN mamo.CATEGORIA = 'MANO DE OBRA' THEN mamo.CATEGORIACOBRO 
             ELSE mamo.CATEGORIACOBRO 
         END AS COSTO"),
         // EVALUACIÓN DE UNIDAD DE MEDIDA DESDE EL CATÁLOGO MAESTRO (mamo)
