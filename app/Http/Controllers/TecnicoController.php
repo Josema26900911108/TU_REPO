@@ -870,36 +870,36 @@ $nombreBucket = 'sistema-pv-imagenes-tienda';
 
 
 /* ===================================================================== */
-/* 🚀 PASO A: SUBCONSULTA PARA LA TECNOLOGÍA FÍSICA REAL DE LA ORDEN      */
+/* 🚀 PASO A: SUBCONSULTA REINGENIERIZADA PARA EL RASTREO DE TECNOLOGÍA   */
 /* ===================================================================== */
-$expresionTecnologiaReal = "COALESCE(
-    MAX(CASE WHEN abmamPa.padre_id IS NULL OR abmamPa.padre_id = '' THEN abmamPa.nombre END),
-    MAX(CASE WHEN abmamP.padre_id IS NULL OR abmamP.padre_id = '' THEN abmamP.nombre END),
-    MAX(CASE WHEN abmam.padre_id IS NULL OR abmam.padre_id = '' THEN abmam.nombre END),
-    MAX(abm_mat.nombre),
-    'OTRAS_TECNOLOGIAS'
-)";
-
+// Se escala recursivamente sobre 'arbolmaterial' buscando el nodo raíz (padre_id = NULL o 0)
 $subqueryTecnologia = DB::table('movimientomateriales as mm_t')
     ->join('expedientetecnico as ex_t', 'ex_t.id', '=', 'mm_t.fkExpediente')
-    ->leftJoin('arbolmaterial as abm_mat', 'mm_t.fkTecnologiaarbol', '=', 'abm_mat.id')
-    ->join('arbolmanoobra as abmam', 'abmam.id', '=', 'mm_t.fkTecnologiaarbol')
-    ->leftJoin('arbolmanoobra as abmamP', 'abmamP.id', '=', 'abmam.padre_id')
-    ->leftJoin('arbolmanoobra as abmamPa', 'abmamPa.id', '=', 'abmamP.padre_id')
-    ->join('MaterialManoObra as mamo_t', 'mm_t.SKU', '=', 'mamo_t.SKU')
-    ->where('mamo_t.CATEGORIA', '!=', 'MANO DE OBRA')
+    ->leftJoin('arbolmaterial as am_base', function($join) {
+        $join->on('mm_t.fkTecnologiaarbol', '=', 'am_base.id')
+             ->orOn('mm_t.SKU', '=', 'am_base.SKU');
+    })
+    ->leftJoin('arbolmaterial as am1', 'am_base.padre_id', '=', 'am1.id')
+    ->leftJoin('arbolmaterial as am2', 'am1.padre_id', '=', 'am2.id')
+    ->leftJoin('arbolmaterial as am3', 'am2.padre_id', '=', 'am3.id')
     ->select([
         DB::raw("SUBSTRING(REGEXP_REPLACE(ex_t.Orden, '[^0-9]', ''), 1, 8) as orden_limpia"),
-        DB::raw("{$expresionTecnologiaReal} as tecnologia_real")
+        DB::raw("COALESCE(
+            MAX(CASE WHEN am3.padre_id IS NULL OR am3.padre_id = 0 THEN am3.nombre END),
+            MAX(CASE WHEN am2.padre_id IS NULL OR am2.padre_id = 0 THEN am2.nombre END),
+            MAX(CASE WHEN am1.padre_id IS NULL OR am1.padre_id = 0 THEN am1.nombre END),
+            MAX(am_base.nombre),
+            'OTRAS_TECNOLOGIAS'
+        ) as tecnologia_real")
     ])
     ->groupBy(DB::raw("SUBSTRING(REGEXP_REPLACE(ex_t.Orden, '[^0-9]', ''), 1, 8)"));
 
 
 /* ===================================================================== */
-/* 🚀 PASO B: RAMA 1 - MATERIALES FÍSICOS (Desde movimientomateriales)    */
+/* 🚀 PASO B: RAMA 1 - MATERIALES FÍSICOS DESBLOQUEADOS (LEFT JOINS)      */
 /* ===================================================================== */
 $queryMateriales = DB::table('movimientomateriales as mm')
-    ->join('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente')
+    ->leftJoin('expedientetecnico as ex', 'ex.id', '=', 'mm.fkExpediente') // 👈 Cambio clave a leftJoin
     ->leftJoin('tecnico as t', 'mm.fkTecnico', '=', 't.id')
     ->leftJoin('MaterialManoObra as mamo', function ($join) use ($tiendaId) {
         $join->on('mm.SKU', '=', 'mamo.SKU')
@@ -929,14 +929,7 @@ $queryMateriales = DB::table('movimientomateriales as mm')
         DB::raw("MAX(ex.SIGLASCENTRAL) as SIGLASCENTRAL"),
         DB::raw("MAX(ex.AREA) as AREA"),
         DB::raw("MAX(ex.FECHAINSTALACION) as FECHAINSTALACION"),
-        DB::raw("CASE 
-            WHEN t_ord.tecnologia_real IS NOT NULL AND t_ord.tecnologia_real != 'OTRAS_TECNOLOGIAS' THEN t_ord.tecnologia_real
-            WHEN MIN(mamo.Descripcion) LIKE '%DTH%' THEN 'DTH'
-            WHEN MIN(mamo.Descripcion) LIKE '%WTT%' OR MIN(mamo.Descripcion) LIKE '%CPE%' THEN 'WTTx'
-            WHEN MIN(mamo.Descripcion) LIKE '%GPON%' OR MIN(mamo.Descripcion) LIKE '%FIBRA%' THEN 'GPON'
-            WHEN MIN(mamo.Descripcion) LIKE '%HFC%' OR MIN(mamo.Descripcion) LIKE '%COAXIAL%' THEN 'HFC'
-            ELSE 'OTRAS_TECNOLOGIAS'
-        END as Tecnologia"),
+        DB::raw("IFNULL(t_ord.tecnologia_real, 'OTRAS_TECNOLOGIAS') as Tecnologia"), // 🚀 Mapeo de raíz directa
         DB::raw("MAX(mm.ESTATUS) as movimiento_estatus"),
         'mm.SKU',
         DB::raw("MIN(mamo.Descripcion) as Descripcion"),
@@ -944,7 +937,6 @@ $queryMateriales = DB::table('movimientomateriales as mm')
         'mamo.CATEGORIA',
         DB::raw("MAX(mm.id) as movimiento_id"), 
         'mm.serie',
-        /* 🛡️ ALIAS ASIGNADOS CORRECTAMENTE */
         DB::raw("MAX(t.nombre) as tecnico_nombre"), 
         DB::raw("MAX(t.codigo) as tecnico_codigo"), 
         DB::raw('SUM(mm.cantidad) as cantidad'),
@@ -959,23 +951,24 @@ $queryMateriales = DB::table('movimientomateriales as mm')
 
 
 /* ===================================================================== */
-/* 🚀 PASO C: RAMA 2 - MANO DE OBRA (Desde pagotecnico - CORREGIDO)       */
+/* 🚀 PASO C: RAMA 2 - MANO DE OBRA EXTENDIDA (S Y C)                    */
 /* ===================================================================== */
 $queryManoObra = DB::table('pagotecnico as pt')
     ->join('MaterialManoObra as mamo', 'pt.SKU', '=', 'mamo.SKU')
     ->leftJoin('expedientetecnico as ex', function($join) {
-        $join->on(DB::raw("SUBSTRING(REGEXP_REPLACE(ex.Orden, '[^0-9]', ''), 1, 8)"), '=', DB::raw("SUBSTRING(REGEXP_REPLACE(pt.Orden, '[^0-9]', ''), 1, 8)"))
-             ->where('ex.ESTATUS', '=', 'C');
+        $join->on(DB::raw("SUBSTRING(REGEXP_REPLACE(ex.Orden, '[^0-9]', ''), 1, 8)"), '=', DB::raw("SUBSTRING(REGEXP_REPLACE(pt.Orden, '[^0-9]', ''), 1, 8)"));
     })
     ->leftJoin('tecnico as t_pt', 'pt.fkTecnico', '=', 't_pt.id')
     ->leftJoinSub($subqueryTecnologia, 't_ord', function ($join) {
         $join->on('t_ord.orden_limpia', '=', DB::raw("SUBSTRING(REGEXP_REPLACE(pt.Orden, '[^0-9]', ''), 1, 8)"));
     })
-    ->leftJoin('arbolmanoobra as abmam_mo', 'abmam_mo.SKU', '=', 'pt.SKU') 
-    ->leftJoin('arbolmanoobra as abmamP_mo', 'abmamP_mo.id', '=', 'abmam_mo.padre_id') 
-    ->leftJoin('arbolmanoobra as abmamPa_mo', 'abmamPa_mo.id', '=', 'abmamP_mo.padre_id') 
-    ->where('pt.fkTienda', $tiendaId)
-    ->where('pt.Status', 'S')
+    /* 🚀 RASTREO DIRECTO EN LA JERARQUÍA DE ARBOLMATERIAL PARA RECONOCER GPON */
+    ->leftJoin('arbolmaterial as am_pt_base', 'pt.SKU', '=', 'am_pt_base.SKU')
+    ->leftJoin('arbolmaterial as am_pt1', 'am_pt_base.padre_id', '=', 'am_pt1.id')
+    ->leftJoin('arbolmaterial as am_pt2', 'am_pt1.padre_id', '=', 'am_pt2.id')
+    ->leftJoin('arbolmaterial as am_pt3', 'am_pt2.padre_id', '=', 'am_pt3.id')
+    ->where('pt.fkTienda', $tiendaId) 
+    ->whereIn('pt.Status', ['S', 'C']) 
     ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(pt.Orden, '[^0-9]', ''), 1, 8)"), $ordenes)
     ->select([
         DB::raw("COALESCE(MAX(CASE WHEN ex.firma_cliente IS NOT NULL THEN ex.id END), MAX(ex.id)) as expediente_id"),
@@ -990,25 +983,30 @@ $queryManoObra = DB::table('pagotecnico as pt')
         DB::raw("MAX(ex.SIGLASCENTRAL) as SIGLASCENTRAL"),
         DB::raw("MAX(ex.AREA) as AREA"),
         DB::raw("MAX(ex.FECHAINSTALACION) as FECHAINSTALACION"),
+        
+        /* 🛡️ EVALUACIÓN DE TECNOLOGÍA EN CASCADA CON ENFOQUE EN ARBOLMATERIAL */
         DB::raw("CASE 
             WHEN COALESCE(
-                MAX(CASE WHEN abmamPa_mo.padre_id IS NULL OR abmamPa_mo.padre_id = '' THEN abmamPa_mo.nombre END),
-                MAX(CASE WHEN abmamP_mo.padre_id IS NULL OR abmamP_mo.padre_id = '' THEN abmamP_mo.nombre END),
-                MAX(CASE WHEN abmam_mo.padre_id IS NULL OR abmam_mo.padre_id = '' THEN abmam_mo.nombre END)
+                MAX(CASE WHEN am_pt3.padre_id IS NULL OR am_pt3.padre_id = 0 THEN am_pt3.nombre END),
+                MAX(CASE WHEN am_pt2.padre_id IS NULL OR am_pt2.padre_id = 0 THEN am_pt2.nombre END),
+                MAX(CASE WHEN am_pt1.padre_id IS NULL OR am_pt1.padre_id = 0 THEN am_pt1.nombre END),
+                MAX(am_pt_base.nombre)
             ) IS NOT NULL THEN 
                 COALESCE(
-                    MAX(CASE WHEN abmamPa_mo.padre_id IS NULL OR abmamPa_mo.padre_id = '' THEN abmamPa_mo.nombre END),
-                    MAX(CASE WHEN abmamP_mo.padre_id IS NULL OR abmamP_mo.padre_id = '' THEN abmamP_mo.nombre END),
-                    MAX(CASE WHEN abmam_mo.padre_id IS NULL OR abmam_mo.padre_id = '' THEN abmam_mo.nombre END)
+                    MAX(CASE WHEN am_pt3.padre_id IS NULL OR am_pt3.padre_id = 0 THEN am_pt3.nombre END),
+                    MAX(CASE WHEN am_pt2.padre_id IS NULL OR am_pt2.padre_id = 0 THEN am_pt2.nombre END),
+                    MAX(CASE WHEN am_pt1.padre_id IS NULL OR am_pt1.padre_id = 0 THEN am_pt1.nombre END),
+                    MAX(am_pt_base.nombre)
                 )
             WHEN t_ord.tecnologia_real IS NOT NULL AND t_ord.tecnologia_real != 'OTRAS_TECNOLOGIAS' THEN t_ord.tecnologia_real
+            WHEN UPPER(MIN(mamo.Descripcion)) LIKE '%GPON%' OR UPPER(MIN(mamo.Descripcion)) LIKE '%FIBRA%' THEN 'GPON'
             WHEN UPPER(MIN(mamo.Descripcion)) LIKE '%WTT%' OR UPPER(MIN(mamo.Descripcion)) LIKE '%CPE%' THEN 'WTTx'
             WHEN UPPER(MIN(mamo.Descripcion)) LIKE '%DTH%' THEN 'DTH'
             WHEN UPPER(MIN(mamo.Descripcion)) LIKE '%XDSL%' OR UPPER(MIN(mamo.Descripcion)) LIKE '%ADSL%' OR UPPER(MIN(mamo.Descripcion)) LIKE '%VDSL%' THEN '01-xDSL'
-            WHEN UPPER(MIN(mamo.Descripcion)) LIKE '%GPON%' OR UPPER(MIN(mamo.Descripcion)) LIKE '%FIBRA%' THEN 'GPON'
             WHEN UPPER(MIN(mamo.Descripcion)) LIKE '%HFC%' OR UPPER(MIN(mamo.Descripcion)) LIKE '%COAXIAL%' THEN 'HFC'
             ELSE '01-xDSL' 
         END as Tecnologia"),
+        
         DB::raw("'A' as movimiento_estatus"),
         'pt.SKU',
         DB::raw("MIN(mamo.Descripcion) as Descripcion"),
@@ -1026,7 +1024,12 @@ $queryManoObra = DB::table('pagotecnico as pt')
         DB::raw("(pt.Cantidad * mamo.CATEGORIACOBRO) as Subtotal")
     ])
     ->groupBy([
-        'pt.SKU', 'pt.id', 'pt.Cantidad', 'mamo.CATEGORIACOBRO', 'mamo.TIPO', 'mamo.CATEGORIA', // 🛡️ Agregada al groupBy obligatorio
+        'pt.SKU', 
+        'pt.id', 
+        'pt.Cantidad', 
+        'mamo.CATEGORIACOBRO', 
+        'mamo.TIPO', 
+        'mamo.CATEGORIA', /* 🛡️ Incluida de forma obligatoria en el GroupBy */
         DB::raw("SUBSTRING(REGEXP_REPLACE(pt.Orden, '[^0-9]', ''), 1, 8)"), 
         't_ord.tecnologia_real'
     ]);
