@@ -32,6 +32,11 @@ $vencimientosCriticos =  Lotesalarma::where('fecha_vencimiento', '<=', now()->ad
         return view('dashboard.index', compact('labels', 'values', 'data','vencimientosCriticos'));
     }
 
+        public function show()
+    {
+        
+    }
+
 public function exportExcel(Request $request)
 {
                     if(!Auth::check()){

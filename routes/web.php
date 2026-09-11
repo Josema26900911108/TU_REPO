@@ -251,11 +251,20 @@ Route::get('/ventas/{venta}', [ventaController::class, 'show'])->name('ventas.sh
 Route::get('/mobileventas/posmobileCierre/{idcliente}', [ventaController::class, 'posmobileCierre'])->name('vent.posmobileCierre');
 
 Route::get('export/ventas', [ventaController::class, 'exportVentas']);
+
+
+//Route::get('/reporte/ventas-diarias', [ventaController::class, 'generarReporteVentasDiarias'])
+  //  ->name('reporte.ventas.diarias');
+
+Route::post('/reporte/ventas-diarias', [ventaController::class, 'generarReporteVentasDiarias'])
+    ->name('reporte.ventas.diarias');
+
+
 //Route::get('ventas/reporte', [ventaController::class, 'ventasReporte'])->name('ventas.ventasreporte');
 //Reportes
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-Route::get('/dashboard/export-excel', [DashboardController::class, 'exportExcel'])
+Route::post('/dashboard/export-excel', [DashboardController::class, 'exportExcel'])
     ->name('dashboard.export.excel');
 
 Route::get('/devdashboard/devexport-excel', [DashboardController::class, 'DevexportExcel'])

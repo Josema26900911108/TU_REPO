@@ -63,6 +63,7 @@
                             <th>Formula</th>
                             <th>Tienda</th>
                             <th>Habilitado</th>
+                            <th>Default</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -89,7 +90,13 @@
                                         <span class="badge bg-danger">No</span>
                                     @endif  
                                 <td>
-
+                                <td>
+                                    @if($item->defauldoc=="1")
+                                        <span class="badge bg-success">Sí</span>
+                                    @else
+                                        <span class="badge bg-danger">No</span>
+                                    @endif  
+                                <td>
                                     @can('ver-comprobante')
                                     <div>
                                         <button title="Opciones" class="btn btn-datatable btn-icon btn-transparent-dark me-2" data-bs-toggle="dropdown" aria-expanded="false">

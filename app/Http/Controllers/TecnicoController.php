@@ -3099,7 +3099,8 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                     $cantidadAExtraer = min($entrada->cantidad, $porDescontar);
 
                     $costoSeguroCliente  = 0;
-                    $tipoSeguroCliente   = $entrada->TIPO ?? $tipoCatalogoMaestro ?? 'MATERIAL';
+                        $tipoSeguroCliente   = $entrada->TIPO ?? ($maestroItem->TIPO ?? 'MATERIAL');
+
                     $unidadSeguraCliente = $costoUnidad->unidadmedida ?? $entrada->unidadmedida ?? 'PZA';
 
                     if ($costoUnidad) {
@@ -3198,7 +3199,7 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
                 // FAILSAFE AUTOMÁTICO (SOLO SI FALTÓ STOCK EN EL PROCESO)
                 // =================================================================
                 if ($porDescontar > 0) {
-                    $tipoSeguroFailsafe   = ($costoUnidad && isset($costoUnidad->TIPO)) ? $costoUnidad->TIPO : $tipoCatalogoMaestro;
+                    $tipoSeguroFailsafe = ($costoUnidad && isset($costoUnidad->TIPO)) ? $costoUnidad->TIPO : 'CARGAR EN CATALOGO MAESTRO';
                     $costoSeguroFailsafe  = $costoFinal ?? 0;
                     $unidadSeguraFailsafe = $unidadMedidaFinal ?? 'PZA';
 
@@ -3336,7 +3337,7 @@ if ($request->input('estatus') === 'S') {
         // =================================================================
         $costoFinal = 0;
         $unidadMedidaFinal = 'PZA';
-        $tipoCatalogoMaestro = 'MATERIAL';
+        $tipoCatalogoMaestro = 'CARGAR EN CATALOGO MAESTRO';
 
         if ($costoUnidad) {
             // Si el registro existe en el catálogo, extraemos sus valores reales
@@ -3345,7 +3346,7 @@ if ($request->input('estatus') === 'S') {
                 : ($costoUnidad->CATEGORIACOBRO ?? 0);
             
             $unidadMedidaFinal   = $costoUnidad->unidadmedida ?? 'PZA';
-            $tipoCatalogoMaestro = $costoUnidad->TIPO ?? 'MATERIAL';
+            $tipoCatalogoMaestro = $costoUnidad->TIPO ?? 'CARGAR EN CATALOGO MAESTRO';
         }
 
         // 3. Historial de Movimiento de Servicio (Solo si el estatus es 'MO')
@@ -3438,7 +3439,7 @@ if ($request->input('estatus') === 'S') {
         'Status'           => 'A',
         'ESTATUS'          => 'C',
         'AUTORIZA'         => $id_tecnico,
-        'FECHAINSTALACION' => $ahora,
+        'updated_at'       => $ahora
     ];      
 
     DB::table('movimientomateriales')
@@ -3459,7 +3460,7 @@ if ($request->input('estatus') === 'S') {
         'Status'           => 'S',
         'ESTATUS'          => 'I',
         'AUTORIZA'         => $id_tecnico,
-        'FECHAINSTALACION' => $ahora,
+        'updated_at'       => $ahora
     ];
 }
 

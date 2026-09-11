@@ -231,18 +231,22 @@
                             @enderror
                         </div>
 
-                        <!--Tipo de comprobante-->
-                        <div class="col-12 mb-2">
-                            <label for="comprobante_id" class="form-label">Comprobante:</label>
-                            <select name="comprobante_id" id="comprobante_id" class="form-control selectpicker" title="Selecciona">
-                                @foreach ($comprobantes as $item)
-                                <option value="{{$item->id}}" {{old('comprobante_id')==$item->id ? 'selected' : ''}}>{{$item->tipo_comprobante}}</option>
-                                @endforeach
-                            </select>
-                            @error('comprobante_id')
-                            <small class="text-danger">{{ '*'.$message }}</small>
-                            @enderror
-                        </div>
+<!--Tipo de comprobante-->
+<div class="col-12 mb-2">
+    <label for="comprobante_id" class="form-label">Comprobante:</label>
+    <select name="comprobante_id" id="comprobante_id" class="form-control selectpicker" title="Selecciona">
+        @foreach ($comprobantes as $item)
+            <option value="{{ $item->id }}" 
+                @selected(old('comprobante_id', $comprobantes->where('defauldoc', 1)->first()?->id) == $item->id)>
+                {{ $item->tipo_comprobante }} {{ $item->defauldoc == 1 ? '(Por defecto)' : '' }}
+            </option>
+        @endforeach
+    </select>
+    @error('comprobante_id')
+        <small class="text-danger">{{ '*'.$message }}</small>
+    @enderror
+</div>
+
                         <div class="col-12">
 
 <div class="form-group">

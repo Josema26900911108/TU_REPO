@@ -579,32 +579,61 @@
                                 📸 Activar Cámara Nativa
                             </button>
                             <input type="file" id="inputCamaraNativa" accept="image/jpeg, image/jpg" capture="environment" style="display: none;">
-                          <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" title="-- Seleccione una Categoría --" style="display:none;">
-    <!-- Opción por defecto vacía que fuerza la selección -->
-    <option value="" selected disabled>-- Seleccione una Categoría --</option>
-    
-    <option value="ANTES">ANTES</option>
-    <option value="DESPUES">DESPUES</option>
-    <option value="poste antes">poste antes</option>
-    <option value="poste despues">poste despues</option>
-    <option value="anillo postes">anillo postes</option>
-    <option value="conectividad">conectividad</option>
-    <option value="SERIE">SERIE</option>
-    <option value="PANORAMICA">PANORAMICA</option>
-    <option value="MURO">MURO</option>
-    <option value="TECHO">TECHO</option>
-    <option value="ESQUINA">ESQUINA</option>
-    <option value="ENTRE_CABLES">ENTRE CABLES</option>
-    <option value="POSTE">POSTE</option>
-    <option value="ANTENA">ANTENA</option>
-    <option value="ANTENA_WTTx">ANTENA WTTx</option>
-    <option value="MASTIL_WTTx">MASTIL WTTx</option>
-    <option value="MASTIL_DTH">MASTIL DTH</option>
-    <option value="STB">STB</option>
-    <option value="OTT">OTT</option>
-    <option value="ONT">ONT</option>
-    <option value="SWITCH">SWITCH</option>
-</select>
+ <select name="categoriafoto" id="categoriafoto" class="form-control selectpicker mt-2" title="-- Seleccione una Categoría --" data-live-search="true" style="display:none;">
+ <!-- Opción por defecto vacía que fuerza la selección --> <option value="" selected disabled>-- Seleccione una Categoría --</option> 
+ <option value="RET_MIG_ANTES_CABLEADO_XDSL">ANTES CABLEADO XDSL RETIRO/MIGRACION</option> 
+ <option value="RET_MIG_DESPUES_CABLEADO_XDSL">DESPUES CABLEADO XDSL RETIRO/MIGRACION</option> 
+
+ <option value="RET_MIG_ANTES_EQUIPO_XDSL">ANTES EQUIPO XDSL RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_EQUIPO_XDSL">DESPUES EQUIPO XDSL RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_CABLEADO_DTH">ANTES CABLEADO DTH RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_CABLEADO_DTH">DESPUES CABLEADO DTH RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_EQUIPO_DTH">ANTES EQUIPO DTH RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_EQUIPO_DTH">DESPUES EQUIPO DTH RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_CABLEADO_HFC">ANTES CABLEADO HFC RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_CABLEADO_HFC">DESPUES CABLEADO HFC RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_EQUIPO_HFC">ANTES EQUIPO HFC RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_EQUIPO_HFC">DESPUES EQUIPO HFC RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_CABLEADO_GPON">ANTES CABLEADO GPON RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_CABLEADO_GPON">DESPUES CABLEADO GPON RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_EQUIPO_GPON">ANTES EQUIPO GPON RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_EQUIPO_GPON">DESPUES EQUIPO GPON RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_CABLEADO_WTTx">ANTES CABLEADO WTTx RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_CABLEADO_WTTx">DESPUES CABLEADO WTTx RETIRO/MIGRACION</option> 
+<option value="RET_MIG_ANTES_EQUIPO_WTTx">ANTES EQUIPO WTTx RETIRO/MIGRACION</option> 
+<option value="RET_MIG_DESPUES_EQUIPO_WTTx">DESPUES EQUIPO WTTx RETIRO/MIGRACION</option> 
+<option value="MESH">MESH CONECTIVIDAD</option> 
+<option value="UTP_INICIAL">UTP METRAJE INICIAL</option> 
+<option value="UTP_FINAL">UTP METRAJE FINAL</option> 
+<option value="DROP_INICIAL">DROP METRAJE INICIAL</option> 
+<option value="DROP_FINAL">DROP METRAJE FINAL</option> 
+<option value="CONECTOR_FAT">UTILIZACION DE CONECTOR POR FAT</option> 
+<option value="CONECTOR_DAÑO_PRECONECTERIZADO">CONECTOR DAÑO PRECONECTERIZADO</option> 
+<option value="SIN_UTP">INSTALACION DE EQUIPO SIN UTP</option> 
+<option value="POSTE_ANTES">POSTE ANTES</option> 
+<option value="POSTE_DESPUES">POSTE DESPUES</option> 
+<option value="ANILLO_POSTES">ANILLO POSTES</option> 
+<option value="CONECTIVIDAD">CONECTIVIDAD</option> 
+<option value="SERIE">SERIE</option> 
+<option value="PANORAMICA">PANORAMICA</option> 
+<option value="MURO">MURO</option> 
+<option value="TECHO">TECHO</option> 
+<option value="ESQUINA">ESQUINA</option> 
+<option value="ENTRE_CABLES">ENTRE CABLES</option> 
+<option value="POSTE">POSTE</option> 
+<option value="ANTENA_DTH">ANTENA DTH</option> 
+<option value="MASTIL_DTH">MASTIL DTH</option> 
+<option value="ANTENA_WTTx">ANTENA WTTx</option> 
+<option value="MASTIL_WTTx">MASTIL WTTx</option> 
+<option value="ANTENA">ANTENA</option> 
+<option value="STB">STB</option> 
+<option value="TELEFONO">TELEFONO</option> 
+<option value="CPE">CPE</option> 
+<option value="SMARTCARD">SMARTCARD</option> 
+<option value="CPE_WTTX">CPE WTTX</option> 
+<option value="OTT">OTT</option> 
+<option value="ONT">ONT</option> 
+<option value="SWITCH">SWITCH</option></select>
 <small id="error-categoria" class="text-danger d-none mt-1"></small>
                             <div id="preview" class="mt-2"></div>
                         </div>
@@ -1251,12 +1280,47 @@ function agregarProductoScanner(sku) {
             }
 
             // =================================================================
+            // DETECCIÓN DE SERIES DUPLICADAS (Excluyendo N/A, 0, '', S/N)
+            // =================================================================
+            let serieAValidar = '';
+            
+            if (response.tipo === 'serie' && response.data && response.data.serie) {
+                serieAValidar = response.data.serie.toString().trim();
+            } else if (response.tipo === 'sku' && response.data && response.data.length > 0) {
+                serieAValidar = response.data[0].serie ? response.data[0].serie.toString().trim() : 'S/N';
+            }
+
+            // Si tiene una serie que requiere control estricto (no es comodín de omisión)
+            if (serieAValidar !== '' && serieAValidar.toUpperCase() !== 'N/A' && serieAValidar !== '0' && serieAValidar.toUpperCase() !== 'S/N') {
+                let serieDuplicada = false;
+
+                // Buscamos en todas las filas de la tabla si ya existe la serie
+                // Nota: Asegúrate de ajustar el selector td o clase si almacenas la serie en un atributo (ej. data-serie)
+                $('#detalle_tbody tr').each(function() {
+                    // Supongamos que la serie está visible en una celda de la tabla o guardada en un input oculto de la fila
+                    let serieExistente = $(this).find('.columna-serie').text().trim() || $(this).data('serie');
+                    
+                    if (serieExistente && serieExistente.trim().toUpperCase() === serieAValidar.toUpperCase()) {
+                        serieDuplicada = true;
+                        return false; // Rompe el bucle each de jQuery
+                    }
+                });
+
+                if (serieDuplicada) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Serie Duplicada',
+                        text: 'La serie o equipo "' + serieAValidar + '" ya ha sido agregado a la lista actual.',
+                    });
+                    return; // Detiene la ejecución por completo
+                }
+            }
+
+            // =================================================================
             // CASO A: ES SERIE -> PASA DIRECTO A AÑADIR A LA TABLA Y STORAGE
             // =================================================================
             if (response.tipo === 'serie') {
                 if (typeof agregarItem === 'function') {
-                    // agregarItem se encargará de validar, inyectar el HTML y ejecutar
-                    // localStorage.setItem(llaveCache, ...) automáticamente
                     agregarItem(response.data); 
                 }
                 return;
@@ -1266,19 +1330,14 @@ function agregarProductoScanner(sku) {
             // CASO B: ES SKU -> SE AGREGA AUTOMÁTICAMENTE CON CANTIDAD 1 O PASA AL SELECTOR
             // =================================================================
             if (response.tipo === 'sku') {
-                // Opción Sugerida: Si deseas que los SKU se carguen directo a la tabla con cantidad 1 al escanear,
-                // puedes invocar la función aislada que construimos antes, la cual ya tiene integrado el LocalStorage:
                 if (response.data && response.data.length > 0) {
                     let primerMaterial = response.data[0];
                     let skuLimpio = primerMaterial.sku ? primerMaterial.sku.toString().trim() : '';
                     let serieLimpia = primerMaterial.serie ? primerMaterial.serie.toString().trim() : 'S/N';
                     
-                    // Asignamos una cantidad por defecto de 1 para la carga ultra rápida por escáner
                     let cantidadPorDefecto = 1; 
 
                     if (typeof procederAAgregarFila === 'function') {
-                        // procederAAgregarFila inserta la celda física en '#detalle_tbody'
-                        // y actualiza inmediatamente la caché bajo la variable 'llaveCache'
                         procederAAgregarFila(
                             primerMaterial.id, 
                             primerMaterial.categoria_nombre, 
@@ -1294,7 +1353,7 @@ function agregarProductoScanner(sku) {
                             timer: 1500,
                             showConfirmButton: false
                         });
-                        return; // Terminamos aquí si se carga directo
+                        return; 
                     }
                 }
 
@@ -1319,26 +1378,14 @@ function agregarProductoScanner(sku) {
 
                 $select.html(options);
 
-                // Inyectamos las opciones limpias
-$select.html(options); //
-
-// Si el servidor devolvió registros, pre-seleccionamos el primero de forma segura
-if (response.data.length > 0) {
-    $select.val(response.data[0].id); //
-}
-
-// Inicializamos el selectpicker en un paso único atómico sin usar 'refresh' sobre un elemento destruido
-$select.selectpicker({ 
-    liveSearch: true, 
-    size: 10 
-});
-
-
                 if (response.data.length > 0) {
-                    $select.val(response.data[0].id);
+                    $select.val(response.data[0].id); 
                 }
 
-                $select.selectpicker({ liveSearch: true, size: 10 });
+                $select.selectpicker({ 
+                    liveSearch: true, 
+                    size: 10 
+                });
                 $select.selectpicker('refresh');
             }
         },
@@ -1472,7 +1519,18 @@ function llenaritems() {
             localStorage.setItem(llaveCache, JSON.stringify(allItems));
         },
         error: function(xhr) {
-            Swal.fire('Error', 'No se pudieron cargar los materiales: ' + xhr.responseText, 'error');
+            Swal.close();
+            if (xhr.status === 419) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Sesión pausada',
+                    text: 'Tu sesión se inactivó temporalmente por seguridad. La página se recargará para actualizar tus credenciales, no perderás tus materiales guardados.',
+                }).then(() => {
+                    location.reload(); // Al recargar, tu función llenaritems() debe leer el LocalStorage y restaurar todo
+                });
+            } else {
+                Swal.fire('Error', 'No se pudo validar el material: ' + xhr.responseText, 'error');
+            }
         }
     });
 }
@@ -1497,15 +1555,20 @@ let signaturePad;
 
 $(document).ready(function() {
 
+    $('.selectpicker').selectpicker();
+
+        $('#categoriafoto').on('shown.bs.select', function () {
+        var $dropdown = $(this).parent().find('.dropdown-menu');
+        var $searchbox = $dropdown.find('.bs-searchbox');
+        
+        // Mueve la caja de búsqueda al final del contenedor
+        $dropdown.append($searchbox);
+    });
+
 $('#btnGuardarFotoContinuar').click(function() {
     var selectItem = $('#itemmanoobraamterial');
     var selectCategoria = $('#categoriafoto');
     
-    // 1. VALIDACIÓN: Verificar que se haya seleccionado un ítem
-    if (selectItem.val() === "" || selectItem.val() === null) {
-        alert("Por favor, elija un ítem de la lista para saber a qué elemento corresponden las fotos.");
-        return;
-    }
 
     // 2. VALIDACIÓN DE ARREGLO DE FOTOS: Verificar si hay imágenes en tu variable real
     if (typeof photosForItem === 'undefined' || photosForItem.length === 0) {
@@ -1779,6 +1842,37 @@ function agregarItem(datosScanner = null) {
     }
 
     // =================================================================
+    // VALIDACIÓN ESTRICTA DE SERIES DUPLICADAS (Excluye N/A, 0, '', S/N)
+    // =================================================================
+    let serieUpper = (nameserie || '').toString().trim().toUpperCase();
+
+    if (serieUpper !== '' && serieUpper !== 'N/A' && serieUpper !== '0' && serieUpper !== 'S/N') {
+        // 1. Validar contra el arreglo de memoria (allItems) que maneja tu LocalStorage
+        let duplicadoEnMemoria = allItems.some(item => {
+            let serieExistente = (item.serie || '').toString().trim().toUpperCase();
+            return serieExistente === serieUpper;
+        });
+
+        // 2. Validar contra el DOM por si acaso (inputs físicos de la tabla)
+        let duplicadoEnTabla = false;
+        $('#detalle_tbody input[name="arrayserie[]"]').each(function() {
+            if ($(this).val().toString().trim().toUpperCase() === serieUpper) {
+                duplicadoEnTabla = true;
+                return false; // Romper .each()
+            }
+        });
+
+        if (duplicadoEnMemoria || duplicadoEnTabla) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Serie ya registrada',
+                text: 'La serie o equipo "' + nameserie + '" ya se encuentra en la lista de utilizados.',
+            });
+            return; // Bloqueo absoluto: Detiene la función por completo
+        }
+    }
+
+    // =================================================================
     // PROCESAMIENTO UNIFICADO DE VALIDACIÓN E INSERCIÓN
     // =================================================================
     if (idItem != '' && nameProducto != undefined && cantidad != '') {
@@ -1843,12 +1937,14 @@ function agregarItem(datosScanner = null) {
                         }
                     }
 
+                    
+
                     nuevoItemVirtual.photos = [...photosForItem];
                     allItems.push(nuevoItemVirtual);
 
-                    // =================================================================
-                    // PERSISTENCIA CORREGIDA: Se removieron las comillas de llaveCache
-                    // =================================================================
+                    
+
+                    // PERSISTENCIA
                     localStorage.setItem(llaveCache, JSON.stringify(allItems));
 
                     // Insertar fila física en la tabla
@@ -1875,19 +1971,11 @@ function agregarItem(datosScanner = null) {
                         document.getElementById("SKU").focus(); 
                     }
 
-                    // =============================================================
-                    // CORRECCIÓN DEFINITIVA: LIMPIA LA DUPLICACIÓN SIN BORRAR DATOS
-                    // =============================================================
                     let $materialSelect = $('#itemmanoobraamterial');
-                    
-                    // 1. Regresamos el selector nativo al valor vacío
                     $materialSelect.val(''); 
 
                     if (typeof $materialSelect.selectpicker === 'function') {
-                        // 2. Destruimos la interfaz duplicada del DOM
                         $materialSelect.selectpicker('destroy');
-                        
-                        // 3. Re-inicializamos el plugin leyendo limpiamente las opciones intactas
                         $materialSelect.selectpicker();
                     }
                 },
@@ -1901,6 +1989,17 @@ function agregarItem(datosScanner = null) {
         }
     }
 }
+
+// Mantener la sesión viva cada 15 minutos (900,000 milisegundos)
+setInterval(function() {
+    $.ajax({
+        url: "{{ route('login') }}", // O cualquier ruta ligera de tu app
+        type: 'HEAD', // HEAD no descarga datos, solo toca el servidor
+        success: function() {
+            console.log('Sesión web sincronizada correctamente.');
+        }
+    });
+}, 900000); 
 
 
 
@@ -2005,7 +2104,35 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
 
 $(document).ready(function () {
 
+    const $selectItem = $('#itemmanoobraamterial');
+    const $inputCantidad = $('#cantidad');
+    const $btnAgregar = $('#btn_agregar');
 
+    // 1. Captura el cambio con el evento nativo de bootstrap-select
+    $selectItem.on('changed.bs.select', function () {
+        if ($(this).val() !== "") {
+            setTimeout(function () {
+                $inputCantidad.focus().select();
+            }, 1000);
+        }
+    });
+
+    // En caso de que no use selectpicker sino un select normal, dejamos este respaldo
+    $selectItem.on('change', function () {
+        if ($(this).val() !== "") {
+            setTimeout(function () {
+                $inputCantidad.focus().select();
+            }, 1000);
+        }
+    });
+
+    // 2. Al presionar Enter en Cantidad, activar el botón Agregar
+    $inputCantidad.on('keydown', function (event) {
+        if (event.key === "Enter") {
+            event.preventDefault(); // Evita el comportamiento por defecto
+            $btnAgregar.click();     // Dispara la función del botón agregar
+        }
+    });
 
             $('#btn_agregar').off('click').on('click', function() {
                     agregarItem();
@@ -2421,26 +2548,6 @@ $('#btnAbrirCamaraNativa').click(function() {
     // 1. Contar cuántas opciones válidas tiene el select (excluyendo la opción vacía inicial)
     var totalOpciones = selectItem.find('option').not('[disabled]').length;
 
-    if (totalOpciones === 0) {
-        // CASO A: El combo está vacío porque no se ha seleccionado nada en el árbol
-        errorItemJS.text('* Primero debe seleccionar un nodo en el árbol para cargar los ítems disponibles.').removeClass('d-none');
-        
-        // Resaltar visualmente el componente
-        selectItem.closest('.col-12').find('.dropdown-toggle, .form-control').addClass('is-invalid').css('border', '1px solid #dc3545');
-        tieneError = true;
-
-    } else if (selectItem.val() === "" || selectItem.val() === null) {
-        // CASO B: Los ítems ya existen, pero el usuario olvidó seleccionar uno
-        errorItemJS.text('* Por favor, elija un ítem de la lista antes de activar la cámara.').removeClass('d-none');
-        
-        selectItem.closest('.col-12').find('.dropdown-toggle, .form-control').addClass('is-invalid').css('border', '1px solid #dc3545');
-        tieneError = true;
-
-    } else {
-        // CASO C: Todo está correcto
-        errorItemJS.addClass('d-none').text('');
-        selectItem.closest('.col-12').find('.dropdown-toggle, .form-control').removeClass('is-invalid').css('border', '');
-    }
 
     // Validación de categoría (se mantiene igual)
     var selectCategoria = $('#categoriafoto');
@@ -2479,7 +2586,6 @@ $('#categoriafoto').change(function() {
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
-    // CORRECCIÓN CRÍTICA: Añadir [0] para extraer el archivo multimedia real de la lista
     const file = e.target.files[0]; 
     if (!file) return;
 
@@ -2490,7 +2596,6 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         didOpen: () => { Swal.showLoading(); }
     });
 
-    // Ahora que 'file' es un archivo único legítimo, funcionará al instante sin errores
     const urlTemporalBlob = URL.createObjectURL(file);
     const img = new Image();
     img.src = urlTemporalBlob;
@@ -2499,8 +2604,8 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
-        // Mantenemos la alta resolución de 1600px y calidad al 80% para máxima nitidez
-        const MAX_WIDTH = 1600;
+        // OPTIMIZACIÓN MÓVIL: Reducimos el tope a 1200px para evitar saturar el LocalStorage
+        const MAX_WIDTH = 1200; 
         let width = img.width;
         let height = img.height;
         
@@ -2514,16 +2619,16 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Conversión limpia a JPEG de alta fidelidad (unos 450 KB finales)
-        const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.80);
+        // OPTIMIZACIÓN MÓVIL: Calidad a 0.70 (Reduce el peso del Base64 a un 75% menos sin perder legibilidad)
+        const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.70);
         const itemname = $('#itemmanoobraamterial').find(':selected').text().trim();
         
-
         const categoriafoto = $('#categoriafoto').val();
         const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_'.$tecnico->descripcion }}" + categoriafoto + '_' + itemname.replace(/\s+/g, '_');
         const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0; 
         const idTecnologiaUnificado = $('#itemtecnologia').val();
 
+        // Guardamos la foto en el arreglo global
         photosForItem.push({ 
             index: indiceActual,
             name: nombreFotoGenerado, 
@@ -2536,8 +2641,27 @@ document.getElementById('inputCamaraNativa').addEventListener('change', function
         URL.revokeObjectURL(urlTemporalBlob);
         Swal.close();
         document.getElementById('inputCamaraNativa').value = ""; 
+
+        // =================================================================
+        // MÓDULO DE ADVERTENCIA: SE DETECTA LA PRIMERA FOTO DE LA SESIÓN
+        // =================================================================
+        if (!sessionStorage.getItem('advertencia_foto_mostrada')) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Fotografía guardada en caché',
+                html: 'La imagen se ha optimizado y guardado en la memoria temporal del teléfono. <br><br>' +
+                      '⚠️ <strong>Atención:</strong> Para evitar que el dispositivo borre las fotos por inactividad o sature su espacio interno, ' +
+                      'recuerda presionar el botón <strong>"Actualizar / Sincronizar"</strong> lo antes posible para subir las evidencias al servidor web.',
+                confirmButtonText: 'Entendido',
+                allowOutsideClick: false
+            });
+
+            // Bloqueamos para que no vuelva a saltar este aviso en toda la jornada
+            sessionStorage.setItem('advertencia_foto_mostrada', 'true');
+        }
     };
 });
+
 
 </script>
 <script type="module">

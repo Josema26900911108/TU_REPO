@@ -618,292 +618,282 @@ $htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
     return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
 }
 }
-   public function generarKardex(Request $request)
+public function generarKardex(Request $request)
 {
-    try{
-    $fkTienda = session('user_fkTienda');
+    try {
+        $fkTienda = session('user_fkTienda');
 
+        // Se agrega ph.updated_at al select para evitar errores de ordenamiento estricto
+        $plantilla = DB::table('plantillahtml as ph')
+            ->join('documentdesigns as dd', 'ph.fkDesignDocument', '=', 'dd.id')
+            ->join('comprobantes as c', 'ph.id', '=', 'c.fkPlantillaHtml')
+            ->where('ph.fkTienda', $fkTienda)
+            ->where('c.ClaveVista', 'KI')
+            ->select(
+                'ph.id',
+                'ph.Titulo',
+                'ph.fkDesignDocument',
+                'ph.plantillahtml as detallehijo',
+                'ph.descripcion as detallenieto',
+                'ph.detalle',
+                'dd.alto_pt',
+                'dd.ancho_pt',
+                'dd.orientacion_vertical as orientation',
+                'ph.cabecera',
+                'ph.pie',
+                'ph.consulta',
+                'ph.updated_at' 
+            )
+            ->distinct()
+            ->orderBy('ph.updated_at', 'desc')
+            ->first();
 
+        // Validación preventiva si no encuentra la plantilla
+        if (!$plantilla) {
+            return redirect()->back()->with('error', 'Error: No se encontró la plantilla de diseño de Kardex (KI) para esta tienda.');
+        }
 
-           $query = DB::table('plantillahtml as ph')
-           ->join('documentdesigns as dd', 'ph.fkDesignDocument', '=', 'dd.id')
-           ->join('comprobantes as c', 'ph.id', '=', 'c.fkPlantillaHtml')
-        ->where('ph.fkTienda', $fkTienda)
-        ->where('c.ClaveVista', 'KI')
-        ->select(
-            'ph.id',
-            'ph.Titulo',
-            'ph.fkDesignDocument',
-            'ph.plantillahtml as detallehijo',
-            'ph.descripcion as detallenieto',
-            'ph.detalle',
-            'dd.alto_pt',
-            'dd.ancho_pt',
-            'dd.orientacion_vertical as orientation',
-            'ph.cabecera',
-            'ph.pie',
-            'ph.consulta'
-        )
-        ->distinct(); // 3 = Diario
+        $fechafiltro = "";
+        $fechalabel = "";
+        // Variables limpias EXCLUSIVAS para usar de manera segura en el nombre del archivo físico
+        $nombreFechaInicio = $request->inicio ? $request->inicio : 'inicio';
+        $nombreFechaFin = $request->fin ? $request->fin : 'fin';
 
-$fechafiltro="";
-$fechalabel="";
+        // FILTRO: Fecha inicial
+        if ($request->inicio) {
+            $fechafiltro = "'" . $request->inicio . "'";
+            $fechalabel = " Desde " . $request->inicio;
+        }
 
-    // FILTRO: Fecha inicial
-    if ($request->inicio) {
-        $fechafiltro="'".$request->inicio."'";
-        $fechalabel=" Desde ".$request->inicio;
-    }
+        // FILTRO: Fecha final
+        if ($request->fin) {
+            // Asegurar que si no había fecha de inicio previa, no rompa la estructura SQL
+            $fechafiltro = $fechafiltro ? $fechafiltro . " AND '" . $request->fin . "'" : "'" . $request->fin . "'";
+            $fechalabel = $fechalabel . " Hasta " . $request->fin;
+        }
 
-    // FILTRO: Fecha final
-    if ($request->fin) {
+        // En caso de que ambas fechas vengan vacías, se define un valor por defecto seguro para SQL
+        if (empty($fechafiltro)) {
+            $fechafiltro = "1=1"; 
+        }
 
-        $fechafiltro=$fechafiltro." AND "."'".$request->fin."'";
-        $fechalabel=$fechalabel." Hasta ".$request->fin;
-    }
+        $cabecera = $plantilla->cabecera;
+        $detalle = $plantilla->detalle;
+        $pie = $plantilla->pie;
+        $consulta = $plantilla->consulta;
+        $detalleHijo = $plantilla->detallehijo;
+        $detalleNieto = $plantilla->detallenieto;
 
+        $tokens = ['idventa' => $fechafiltro, 'idtienda' => $fkTienda];
 
-        $plantilla = $query->orderBy('ph.updated_at')->first();
+        $altura = ($plantilla->alto_pt ?? 205);
+        $ancho = $plantilla->ancho_pt ?? 226.77;
+        $orientacion = $plantilla->orientation ?? 'portrait';
 
+        $cons = $this->procesarConsulta($consulta, $tokens);
+        $tokenss = $this->ejecutarconsulta($cons);
 
-    $cabecera = $plantilla->cabecera;
-    $detalle = $plantilla->detalle;
-    $pie = $plantilla->pie;
-    $consulta = $plantilla->consulta;
-    $detalleHijo=$plantilla->detallehijo;
-    $detalleNieto=$plantilla->detallenieto;
+        // Validar si la consulta retornó filas válidas
+        if (isset($tokenss['filas']) && is_array($tokenss['filas'])) {
+            foreach ($tokenss['filas'] as $index => $item) {
+                $tokenss['filas'][$index]['FechaReporte'] = $fechalabel;
+            }
+        } else {
+            $tokenss['filas'] = [];
+            $tokenss['columnas'] = [];
+        }
 
-    $tokens = ['idventa' => $fechafiltro, 'idtienda' => $fkTienda];
+        $detalle = $this->renderDetalleOptimizado($detalle, $tokenss, $detalleHijo, $detalleNieto);
 
-
-    // Si height_mm o width_mm es null, dar valor por defecto
-    $altura = ($plantilla->alto_pt ?? 205);
-    $ancho = $plantilla->ancho_pt ?? 226.77;
-    $orientacion = $plantilla->orientation ?? 'portrait';
-
-    $cons = $this->procesarConsulta($consulta, $tokens);
-    $tokenss = $this->ejecutarconsulta($cons);
-    //$tokenss['filas'][0]['FechaReporte']=$fechafiltro;
-
-    foreach ($tokenss['filas'] as $index => $item) {
-    $tokenss['filas'][$index]['FechaReporte'] = $fechalabel;
-}
-
-    $detalle=$this->renderDetalleOptimizado($detalle, $tokenss, $detalleHijo, $detalleNieto );
-
-
-    $htmlFinal = $this->procesarPlantilla($cabecera, $detalle, $detalleHijo.$detalleNieto.$pie, $tokenss['columnas'], $tokenss['filas']);
-
-      $footerHTML = '
-<div class="footer">
-
-        Página <span class="page-number"></span> / {{TOTAL_PAGINAS}} - Impreso por {{username}}
-
-</div>
-
+        $footerHTML = '
+        <div class="footer">
+                Página <span class="page-number"></span> / {{TOTAL_PAGINAS}} - Impreso por {{username}}
+        </div>
         <style>
-@page {
-    margin-top: 80px;
-    margin-bottom: 50px;
-}
-.header {
-    position: fixed;
-    top: 10px;
-    left: 0;
-    right: 0;
-}
-.footer {
-    position: fixed;
-    bottom: 10px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 10px;
-}
+        @page { margin-top: 80px; margin-bottom: 50px; }
+        .header { position: fixed; top: 10px; left: 0; right: 0; }
+        .footer { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 10px; }
+        .page-number:before { content: counter(page); }
+        </style>';
 
-.page-number:before {
-    content: counter(page);
-}
-        </style>
-    ';
+        $htmlFinal = $this->procesarPlantilla(
+            $cabecera,
+            $detalle,
+            $detalleHijo . $detalleNieto . $footerHTML . $pie,
+            $tokenss['columnas'],
+            $tokenss['filas']
+        );
 
-
-    // Procesar HTML final con footer agregado
-    $htmlFinal = $this->procesarPlantilla(
-        $cabecera,
-        $detalle,
-        $detalleHijo.$detalleNieto.$footerHTML.$pie,
-        $tokenss['columnas'],
-        $tokenss['filas']
-    );
-
-
-
+        // Pre-renderizado para cálculo de páginas totales
         $pdfTemp = Pdf::loadHtml($htmlFinal);
-    $pdfTemp->setPaper([0, 0, $ancho, $altura], $orientacion);
+        $pdfTemp->setPaper([0, 0, $ancho, $altura], $orientacion);
+        $pdfTemp->render();
+        $totalPaginas = $pdfTemp->getDomPDF()->getCanvas()->get_page_count();
 
-    $pdfTemp->render();
-    $totalPaginas = $pdfTemp->getDomPDF()->getCanvas()->get_page_count();
+        // Reemplazo de marcas de texto (Placeholders)
+        $htmlFinal = str_replace("{{TOTAL_PAGINAS}}", $totalPaginas, $htmlFinal);
+        $htmlFinal = str_replace("{{FechaReporte}}", $fechalabel, $htmlFinal);
+        $htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
+        $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $this->fechaHoraEnLetras(), $htmlFinal);
+        // Elimina etiquetas img con origen vacío, comillas simples/dobles vacías, o texto "null"
+        $htmlFinal = preg_replace('/<img[^>]*src=["\'](null)?["\'][^>]*>/i', '', $htmlFinal);
+        $htmlFinal = preg_replace('/<img[^>]*src=\s*["\']\s*["\'][^>]*>/i', '', $htmlFinal);
 
-$htmlFinal = str_replace("{{TOTAL_PAGINAS}}", $totalPaginas, $htmlFinal);
-$htmlFinal = str_replace("{{FechaReporte}}", $fechalabel, $htmlFinal);
-$htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
-$htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEnLetras(), $htmlFinal);
 
+        $pdf = Pdf::loadHTML($htmlFinal)->setPaper([0, 0, $ancho, $altura], $orientacion);
 
-    $pdf = Pdf::loadHTML($htmlFinal)->setPaper([0, 0, $ancho, $altura], $orientacion);
+        $rutaCarpeta = storage_path('app/public/recibos');
+        if (!file_exists($rutaCarpeta)) {
+            mkdir($rutaCarpeta, 0777, true);
+        }
 
-    // Crear carpeta si no existe
-    $rutaCarpeta = storage_path('app/public/recibos');
-    if (!file_exists($rutaCarpeta)) {
-        mkdir($rutaCarpeta, 0777, true);
-    }
+        // SOLUCIÓN AL ERROR 1: Nombre de archivo limpio y libre de comillas/operadores lógicos
+        $nombreArchivoLimpio = 'kardex_' . $nombreFechaInicio . '_al_' . $nombreFechaFin . '.pdf';
+        $rutaArchivo = $rutaCarpeta . '/' . $nombreArchivoLimpio;
+        
+        $pdf->save($rutaArchivo);
 
-    // Guardar PDF
-    $rutaArchivo = $rutaCarpeta.'/recibocompra_'.$fechafiltro.'.pdf';
-    $pdf->save($rutaArchivo);
+        return response()->file($rutaArchivo);
 
-    // Finalmente, abrir en el navegador
-    return response()->file($rutaArchivo);
-    }catch (\Exception $e) {
-        return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        // En desarrollo puedes usar dd($e->getMessage(), $e->getLine()) si necesitas más detalles
+        return redirect()->back()->with('error', 'Error en generación de Kardex: ' . $e->getMessage());
     }
 }
 
-  public function generarKardexResumen(Request $request)
+public function generarKardexResumen(Request $request)
 {
-    try{
-    $fkTienda = session('user_fkTienda');
+    try {
+        $fkTienda = session('user_fkTienda');
 
+        // Selección de la plantilla incluyendo ph.updated_at
+        $plantilla = DB::table('plantillahtml as ph')
+            ->join('documentdesigns as dd', 'ph.fkDesignDocument', '=', 'dd.id')
+            ->join('comprobantes as c', 'ph.id', '=', 'c.fkPlantillaHtml')
+            ->where('ph.fkTienda', $fkTienda)
+            ->where('c.ClaveVista', 'KF')
+            ->select(
+                'ph.id',
+                'ph.Titulo',
+                'ph.fkDesignDocument',
+                'ph.plantillahtml as detallehijo',
+                'ph.descripcion as detallenieto',
+                'ph.detalle',
+                'dd.alto_pt',
+                'dd.ancho_pt',
+                'dd.orientacion_vertical as orientation',
+                'ph.cabecera',
+                'ph.pie',
+                'ph.consulta',
+                'ph.updated_at'
+            )
+            ->distinct()
+            ->orderBy('ph.updated_at', 'desc')
+            ->first();
 
+        if (!$plantilla) {
+            return redirect()->back()->with('error', 'Error: No se encontró la plantilla de diseño de Kardex Resumen (KF) para esta tienda.');
+        }
 
-           $query = DB::table('plantillahtml as ph')
-           ->join('documentdesigns as dd', 'ph.fkDesignDocument', '=', 'dd.id')
-           ->join('comprobantes as c', 'ph.id', '=', 'c.fkPlantillaHtml')
-        ->where('ph.fkTienda', $fkTienda)
-        ->where('c.ClaveVista', 'KF')
-        ->select(
-            'ph.id',
-            'ph.Titulo',
-            'ph.fkDesignDocument',
-            'ph.plantillahtml as detallehijo',
-            'ph.descripcion as detallenieto',
-            'ph.detalle',
-            'dd.alto_pt',
-            'dd.ancho_pt',
-            'dd.orientacion_vertical as orientation',
-            'ph.cabecera',
-            'ph.pie',
-            'ph.consulta'
-        )
-        ->distinct(); // 3 = Diario
+        // 1. CONTROL DE FILTROS Y COMODÍN HISTÓRICO
+        $fechafiltro = "";
+        $nombreFecha = "historico_completo";
 
-$fechafiltro="";
-$fechalabel="";
+        if ($request->inicio && $request->fin) {
+            $fechafiltro = "'" . $request->inicio . "' AND '" . $request->fin . "'";
+            $nombreFecha = $request->inicio . '_al_' . $request->fin;
+        } elseif ($request->inicio) {
+            $fechafiltro = "'" . $request->inicio . "' AND '" . date('Y-m-d') . "'";
+            $nombreFecha = 'desde_' . $request->inicio;
+        } elseif ($request->fin) {
+            $fechafiltro = "'1990-01-01' AND '" . $request->fin . "'";
+            $nombreFecha = 'hasta_' . $request->fin;
+        }
 
+        // SOLUCIÓN AL HISTÓRICO: Si el filtro está vacío, generamos un rango ampliado
+        // que engloba cualquier registro pasado, presente y futuro cercano para evitar romper el BETWEEN de SQL.
+        if (empty($fechafiltro)) {
+            $fechafiltro = "'1990-01-01' AND '2060-12-31'"; 
+        }
 
-        $plantilla = $query->orderBy('ph.updated_at')->first();
+        $cabecera = $plantilla->cabecera;
+        $detalle = $plantilla->detalle;
+        $pie = $plantilla->pie;
+        $consulta = $plantilla->consulta;
+        $detalleHijo = $plantilla->detallehijo;
+        $detalleNieto = $plantilla->detallenieto;
 
+        // Inyección de tokens estructurados
+        $tokens = ['idventa' => $fechafiltro, 'idtienda' => $fkTienda];
 
-    $cabecera = $plantilla->cabecera;
-    $detalle = $plantilla->detalle;
-    $pie = $plantilla->pie;
-    $consulta = $plantilla->consulta;
-    $detalleHijo=$plantilla->detallehijo;
-    $detalleNieto=$plantilla->detallenieto;
+        $altura = ($plantilla->alto_pt ?? 205);
+        $ancho = $plantilla->ancho_pt ?? 226.77;
+        $orientacion = $plantilla->orientation ?? 'portrait';
 
-    $tokens = ['idventa' => $fechafiltro, 'idtienda' => $fkTienda];
+        $cons = $this->procesarConsulta($consulta, $tokens);
+        $tokenss = $this->ejecutarconsulta($cons);
 
+        // Validar que la respuesta contenga arreglos válidos
+        if (!isset($tokenss['filas']) || !is_array($tokenss['filas'])) {
+            $tokenss['filas'] = [];
+            $tokenss['columnas'] = [];
+        }
 
-    // Si height_mm o width_mm es null, dar valor por defecto
-    $altura = ($plantilla->alto_pt ?? 205);
-    $ancho = $plantilla->ancho_pt ?? 226.77;
-    $orientacion = $plantilla->orientation ?? 'portrait';
+        $detalle = $this->renderDetalleOptimizado($detalle, $tokenss, $detalleHijo, $detalleNieto);
 
-    $cons = $this->procesarConsulta($consulta, $tokens);
-    $tokenss = $this->ejecutarconsulta($cons);
-    //$tokenss['filas'][0]['FechaReporte']=$fechafiltro;
-
-
-    $detalle=$this->renderDetalleOptimizado($detalle, $tokenss, $detalleHijo, $detalleNieto );
-
-
-    $htmlFinal = $this->procesarPlantilla($cabecera, $detalle, $detalleHijo.$detalleNieto.$pie, $tokenss['columnas'], $tokenss['filas']);
-
-      $footerHTML = '
-<div class="footer">
-
-        Página <span class="page-number"></span> / {{TOTAL_PAGINAS}} - Impreso por {{username}}
-
-</div>
-
+        $footerHTML = '
+        <div class="footer">
+                Página <span class="page-number"></span> / {{TOTAL_PAGINAS}} - Impreso por {{username}}
+        </div>
         <style>
-@page {
-    margin-top: 80px;
-    margin-bottom: 50px;
-}
-.header {
-    position: fixed;
-    top: 10px;
-    left: 0;
-    right: 0;
-}
-.footer {
-    position: fixed;
-    bottom: 10px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 10px;
-}
+        @page { margin-top: 80px; margin-bottom: 50px; }
+        .header { position: fixed; top: 10px; left: 0; right: 0; }
+        .footer { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 10px; }
+        .page-number:before { content: counter(page); }
+        </style>';
 
-.page-number:before {
-    content: counter(page);
-}
-        </style>
-    ';
+        $htmlFinal = $this->procesarPlantilla(
+            $cabecera,
+            $detalle,
+            $detalleHijo . $detalleNieto . $footerHTML . $pie,
+            $tokenss['columnas'],
+            $tokenss['filas']
+        );
 
+        $options = [
+            'isRemoteEnabled' => true,
+            'isHtml5ParserEnabled' => true
+        ];
 
-    // Procesar HTML final con footer agregado
-    $htmlFinal = $this->procesarPlantilla(
-        $cabecera,
-        $detalle,
-        $detalleHijo.$detalleNieto.$footerHTML.$pie,
-        $tokenss['columnas'],
-        $tokenss['filas']
-    );
+        // Renderizado preliminar para calcular páginas totales
+        $pdfTemp = Pdf::loadHtml($htmlFinal)->setOptions($options);
+        $pdfTemp->setPaper([0, 0, $ancho, $altura], $orientacion);
+        $pdfTemp->render();
+        $totalPaginas = $pdfTemp->getDomPDF()->getCanvas()->get_page_count();
 
+        $htmlFinal = str_replace("{{TOTAL_PAGINAS}}", $totalPaginas, $htmlFinal);
+        $htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
+        $htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $this->fechaHoraEnLetras(), $htmlFinal);
 
+        $pdf = Pdf::loadHTML($htmlFinal)->setOptions($options)->setPaper([0, 0, $ancho, $altura], $orientacion);
 
-        $pdfTemp = Pdf::loadHtml($htmlFinal);
-    $pdfTemp->setPaper([0, 0, $ancho, $altura], $orientacion);
+        $rutaCarpeta = storage_path('app/public/recibos');
+        if (!file_exists($rutaCarpeta)) {
+            mkdir($rutaCarpeta, 0777, true);
+        }
 
-    $pdfTemp->render();
-    $totalPaginas = $pdfTemp->getDomPDF()->getCanvas()->get_page_count();
+        // Nombre de archivo sanitizado sin comillas ni espacios
+        $rutaArchivo = $rutaCarpeta . '/kardex_resumen_' . $nombreFecha . '.pdf';
+        $pdf->save($rutaArchivo);
 
-$htmlFinal = str_replace("{{TOTAL_PAGINAS}}", $totalPaginas, $htmlFinal);
-$htmlFinal = str_replace("{{username}}", auth()->user()->name, $htmlFinal);
-$htmlFinal = str_replace("{{ENCABEZADOPAGINA}}", $fechaHora = $this->fechaHoraEnLetras(), $htmlFinal);
+        return response()->file($rutaArchivo);
 
-
-    $pdf = Pdf::loadHTML($htmlFinal)->setPaper([0, 0, $ancho, $altura], $orientacion);
-
-    // Crear carpeta si no existe
-    $rutaCarpeta = storage_path('app/public/recibos');
-    if (!file_exists($rutaCarpeta)) {
-        mkdir($rutaCarpeta, 0777, true);
-    }
-
-    // Guardar PDF
-    $rutaArchivo = $rutaCarpeta.'/kardex_'.$fechafiltro.'.pdf';
-    $pdf->save($rutaArchivo);
-
-    // Finalmente, abrir en el navegador
-    return response()->file($rutaArchivo);
-    }catch (\Exception $e) {
-        return redirect()->back()->with('error', 'Error: ' . $e->getMessage());
+    } catch (\Exception $e) {
+        return redirect()->back()->with('error', 'Error en el reporte histórico: ' . $e->getMessage());
     }
 }
+
+
 
 
 public function fechaHoraEnLetras()

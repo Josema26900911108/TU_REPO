@@ -182,21 +182,31 @@
                                         </tr>
                                     </tfoot>
                                 </table>
-                                <table class="table table-hover">
-                                    <thead class="bg-info">
-                                        <tr>
-                                            <th></th>
-                                            <th></th>
-                                            <th class="text-white">Nombre</th>
-                                            <th class="text-white">Fórmula</th>
-                                            <th class="text-white">Valor Mínimo</th>
-                                            <th class="text-white">Naturaleza</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="detalle_tbody">
-                                        <!-- Los detalles del comprobante se cargarán aquí -->
-                                    </tbody>
-                                </table>
+<!-- Encabezado de control para Maximizar / Minimizar -->
+<div class="bg-light p-2 d-flex justify-content-between align-items-center border-bottom mb-2">
+    <span class="text-secondary font-weight-bold small">Detalles del Comprobante</span>
+    <!-- Botón de control (Inicia en + porque la tabla está oculta) -->
+    <button type="button" id="btn-toggle-detalle" class="btn btn-sm btn-outline-secondary font-weight-bold" style="min-width: 30px; padding: 2px 8px;">+</button>
+</div>
+
+<!-- Contenedor colapsable de la tabla (Inicia oculto con d-none) -->
+<div id="wrapper-tabla-detalle" class="d-none">
+    <table class="table table-hover">
+        <thead class="bg-info">
+            <tr>
+                <th></th>
+                <th></th>
+                <th class="text-white">Nombre</th>
+                <th class="text-white">Fórmula</th>
+                <th class="text-white">Valor Mínimo</th>
+                <th class="text-white">Naturaleza</th>
+            </tr>
+        </thead>
+        <tbody id="detalle_tbody">
+            <!-- Los detalles del comprobante se cargarán aquí -->
+        </tbody>
+    </table>
+</div>
                             </div>
                         </div>
                         
@@ -232,18 +242,21 @@
                             @enderror
                         </div>
 
-                        <!--Tipo de comprobante-->
-                        <div class="col-12">
-                            <label for="comprobante_id" class="form-label">Comprobante:</label>
-                            <select name="comprobante_id" id="comprobante_id" class="form-control selectpicker" title="Selecciona" data-size='10'>
-                                @foreach ($comprobantes as $item)
-                                <option value="{{$item->id}}">{{$item->tipo_comprobante}}</option>
-                                @endforeach
-                            </select>
-                            @error('comprobante_id')
-                            <small class="text-danger">{{ '*'.$message }}</small>
-                            @enderror
-                        </div>
+<!--Tipo de comprobante-->
+<div class="col-12">
+    <label for="comprobante_id" class="form-label">Comprobante:</label>
+    <select name="comprobante_id" id="comprobante_id" class="form-control selectpicker" title="Selecciona" data-size='10'>
+        @foreach ($comprobantes as $item)
+            <option value="{{ $item->id }}" @selected($item->defauldoc == 1)>
+                {{ $item->tipo_comprobante }} {{ $item->defauldoc == 1 ? '(Por defecto)' : '' }}
+            </option>
+        @endforeach
+    </select>
+    @error('comprobante_id')
+        <small class="text-danger">{{ '*'.$message }}</small>
+    @enderror
+</div>
+
 
                         <!--Numero de factura-->
                         <div class="col-12">
@@ -1672,4 +1685,49 @@ function StopScanner() {
 let scanner = null;
 let escaneando = false;
 </script>
+<!-- Encabezado de control para Maximizar / Minimizar -->
+<div class="bg-light p-2 d-flex justify-content-between align-items-center border-bottom mb-2">
+    <span class="text-secondary font-weight-bold small">Detalles del Comprobante</span>
+    <!-- Botón de control (Inicia en + porque la tabla está oculta) -->
+    <button type="button" id="btn-toggle-detalle" class="btn btn-sm btn-outline-secondary font-weight-bold" style="min-width: 30px; padding: 2px 8px;">+</button>
+</div>
+
+<!-- Contenedor colapsable de la tabla (Inicia oculto con d-none) -->
+<div id="wrapper-tabla-detalle" class="d-none">
+    <table class="table table-hover">
+        <thead class="bg-info">
+            <tr>
+                <th></th>
+                <th></th>
+                <th class="text-white">Nombre</th>
+                <th class="text-white">Fórmula</th>
+                <th class="text-white">Valor Mínimo</th>
+                <th class="text-white">Naturaleza</th>
+            </tr>
+        </thead>
+        <tbody id="detalle_tbody">
+            <!-- Los detalles del comprobante se cargarán aquí -->
+        </tbody>
+    </table>
+</div>
+
+<!-- Script interactivo -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const btnToggle = document.getElementById("btn-toggle-detalle");
+    const wrapperTabla = document.getElementById("wrapper-tabla-detalle");
+
+    btnToggle.addEventListener("click", function () {
+        // Alterna la clase d-none para mostrar u ocultar la tabla
+        if (wrapperTabla.classList.contains("d-none")) {
+            wrapperTabla.classList.remove("d-none");
+            btnToggle.textContent = "−"; // Cambia a menos cuando se muestra
+        } else {
+            wrapperTabla.classList.add("d-none");
+            btnToggle.textContent = "+"; // Cambia a más cuando se oculta
+        }
+    });
+});
+</script>
+
 @endpush

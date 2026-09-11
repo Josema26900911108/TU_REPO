@@ -1495,6 +1495,120 @@ function procesarConsulta($consulta, $tokens)
 
     return $consultaprocesada;
 }
+
+public function generarReporteVentasDiarias(Request $request)
+{
+    if(!Auth::check()){
+        return redirect()->route('login');
+    }
+
+    try {
+        $fkTienda = session('user_fkTienda');
+        
+        // Tu función se mantiene igual, procesando por POST:
+        $fechaInicio = $request->input('fecha_inicio', date('Y-m-d'));
+        $fechaFin = $request->input('fecha_fin', date('Y-m-d'));
+
+
+        // 1. Obtener la plantilla activa por defecto para la vista "DV" en esta tienda
+        $plantillaDefault = DB::table('comprobantes as c')
+            ->join('plantillahtml as ph', 'ph.id', '=', 'c.fkPlantillaHtml')
+            ->select('ph.id', 'ph.cabecera', 'ph.detalle', 'ph.pie', 'ph.consulta', 'ph.fkDesignDocument')
+            ->where('c.fkTienda', $fkTienda)
+            ->where('c.ClaveVista', 'DV')
+            ->where('c.defauldoc', 1)
+            ->where('c.estado', 1) // Asegurar que el comprobante esté activo
+            ->first();
+
+        if (!$plantillaDefault) {
+            return redirect()->back()->with('error', 'No se encontró un formato de comprobante predeterminado (defauldoc = 1) asignado a la vista "DV" para esta tienda.');
+        }
+
+        // 2. Obtener los parámetros físicos de impresión de la tabla documentdesigns
+        $designDocument = DB::table('documentdesigns')
+            ->where('id', $plantillaDefault->fkDesignDocument)
+            ->first();
+
+        // Valores de contingencia si no se encuentra el diseño físico
+        $anchoPdf = $designDocument->ancho_pt ?? 226.77; 
+        $alturaPdf = $designDocument->alto_pt ?? 842;   
+        $orientacionPdf = ($designDocument && $designDocument->orientacion_vertical == 1) ? 'portrait' : 'landscape';
+
+        // 3. Obtener todas las ventas completadas dentro del rango de fechas
+        $ventasDelDia = DB::table('ventas')
+            ->where('fkTienda', $fkTienda)
+            ->whereBetween(DB::raw('DATE(fecha_hora)'), [$fechaInicio, $fechaFin])
+            ->where('estado', 2) // Ventas completadas
+            ->pluck('id'); 
+
+        if ($ventasDelDia->isEmpty()) {
+            return redirect()->back()->with('error', "No se encontraron ventas registradas desde el {$fechaInicio} hasta el {$fechaFin}.");
+        }
+
+        $htmlAcumulado = "";
+
+        // 4. Iterar sobre cada venta aplicando la plantilla "DV" predeterminada
+        foreach ($ventasDelDia as $index => $ventaId) {
+            
+            // Inyectamos el ID de la venta actual y la tienda en los tokens de la consulta de la plantilla
+            $tokens = ['idventa' => $ventaId, 'idtienda' => $fkTienda];
+            $cons = $this->procesarConsulta($plantillaDefault->consulta, $tokens);
+            $tokenss = $this->ejecutarconsulta($cons);
+
+            // Validar la estructura de los datos devueltos para evitar errores en el renderizado
+            if (!isset($tokenss['filas']) || !is_array($tokenss['filas'])) {
+                $tokenss['filas'] = [];
+                $tokenss['columnas'] = [];
+            }
+
+            // Generar el HTML de esta factura individual usando la estructura base unificada
+            $htmlFactura = $this->procesarPlantilla(
+                $plantillaDefault->cabecera, 
+                $plantillaDefault->detalle, 
+                $plantillaDefault->pie, 
+                $tokenss['columnas'], 
+                $tokenss['filas']
+            );
+
+            // Inyectar el salto de página/corte si NO es el último documento del lote
+            if ($index < count($ventasDelDia) - 1) {
+                $htmlFactura = '<div style="page-break-after: always;">' . $htmlFactura . '</div>';
+            }
+
+            $htmlAcumulado .= $htmlFactura;
+        }
+
+        $htmlContenedorGlobal = '<html><head><style>body { margin: 0; padding: 0; }</style></head><body>' . $htmlAcumulado . '</body></html>';
+
+        $options = [
+            'isRemoteEnabled' => true,
+            'isHtml5ParserEnabled' => true
+        ];
+
+        // 5. Construir y guardar el PDF final
+        $pdf = Pdf::loadHTML($htmlContenedorGlobal)
+            ->setOptions($options)
+            ->setPaper([0, 0, $anchoPdf, $alturaPdf], $orientacionPdf);
+
+        $rutaCarpeta = storage_path('app/public/reportes_diarios');
+        if (!file_exists($rutaCarpeta)) {
+            mkdir($rutaCarpeta, 0777, true);
+        }
+
+        $nombreArchivo = 'lote_ventas_DV_' . $fechaInicio . '_al_' . $fechaFin . '.pdf';
+        $rutaArchivo = $rutaCarpeta . '/' . $nombreArchivo;
+        $pdf->save($rutaArchivo);
+
+        $urlPublicaPdf = asset('storage/reportes_diarios/' . $nombreArchivo);
+
+        return redirect()->back()->with('pdf_url', $urlPublicaPdf);
+
+    } catch (\Exception $e) {
+        return redirect()->back()->with('error', 'Error crítico al procesar el lote DV: ' . $e->getMessage());
+    }
+}
+
+
 function procesarPlantilla($cab, $htmlDetalle, $pi, $variablesGlobales, $detalle)
 {
                     if(!Auth::check()){

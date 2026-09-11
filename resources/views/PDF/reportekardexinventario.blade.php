@@ -67,8 +67,8 @@
     </form>
 
 <hr>
-            {{-- Exportar a PDF --}}
-<form method="GET" action="{{ route('kardexinv.export.pdf') }}" class="d-inline">
+{{-- PRIMER FORMULARIO: Kardex Inventario --}}
+<form method="GET" action="{{ route('kardexinv.export.pdf') }}" id="formKardexInv" class="d-inline">
 
     {{-- Cuentas contables --}}
     @foreach((array) request('cuentas', []) as $cta)
@@ -76,36 +76,43 @@
     @endforeach
 
     <div class="d-flex align-items-center mb-3">
-
         <div class="me-3 d-flex align-items-center">
             <label class="me-2 mb-0">Fecha Inicio:</label>
-            <input type="date" name="inicio" value="{{ request('inicio') }}" class="form-control" style="width: 180px;">
+            <!-- Agregamos id para identificarlos fácilmente si fuera necesario -->
+            <input type="date" name="inicio" id="fecha_inicio" value="{{ request('inicio') }}" class="form-control" style="width: 180px;">
         </div>
 
         <div class="d-flex align-items-center">
             <label class="me-2 mb-0">Fecha Final:</label>
-            <input type="date" name="fin" value="{{ request('fin') }}" class="form-control" style="width: 180px;">
+            <input type="date" name="fin" id="fecha_fin" value="{{ request('fin') }}" class="form-control" style="width: 180px;">
         </div>
-
     </div>
 
-    <div>
+    <div class="mb-2">
         <button type="submit" class="btn btn-outline-danger">
             <i class="fa fa-file-pdf"></i> Exportar a PDF (con fechas)
         </button>
     </div>
-
 </form>
 
-<form method="GET" action="{{ route('kardexresumen.export.pdf') }}" class="d-inline">
+{{-- SEGUNDO FORMULARIO: Kardex Resumen (Ahora incluye inputs ocultos que se sincronizan con las fechas) --}}
+<form method="GET" action="{{ route('kardexresumen.export.pdf') }}" id="formKardexResumen" class="d-inline">
+    {{-- Cuentas contables --}}
+    @foreach((array) request('cuentas', []) as $cta)
+        <input type="hidden" name="cuentas[]" value="{{ $cta }}">
+    @endforeach
+
+    {{-- Inputs ocultos para atrapar las fechas mediante JavaScript antes del envío --}}
+    <input type="hidden" name="inicio" id="resumen_inicio">
+    <input type="hidden" name="fin" id="resumen_fin">
 
     <div>
-        <button type="submit" class="btn btn-outline-danger">
-            <i class="fa fa-file-pdf"></i> Exportar a PDF
+        <button type="submit" class="btn btn-outline-primary">
+            <i class="fa fa-file-pdf"></i> Exportar a PDF Resumen
         </button>
     </div>
-
 </form>
+
 
 <hr>
         <div class="row mb-4">
@@ -215,5 +222,17 @@ chart = new Chart(ctx, {
 
 });
 
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const formResumen = document.getElementById('formKardexResumen');
+    
+    formResumen.addEventListener('submit', function (e) {
+        // Copiamos los valores de los inputs visibles a los inputs ocultos del segundo form
+        document.getElementById('resumen_inicio').value = document.getElementById('fecha_inicio').value;
+        document.getElementById('resumen_fin').value = document.getElementById('fecha_fin').value;
+    });
+});
 </script>
 @endpush

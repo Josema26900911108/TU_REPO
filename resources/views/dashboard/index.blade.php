@@ -55,10 +55,62 @@
         </div>
 
     </form>
+    <hr>
+{{-- Mostrar errores si la consulta falla o está vacía --}}
+@if(session('error'))
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <strong><i class="fa fa-exclamation-triangle"></i> Error:</strong> {{ session('error') }}
+    </div>
+@endif
+
+{{-- SOLUCIÓN: Si la URL existe en la sesión, forzamos la descarga o visualización --}}
+@if(session('pdf_url'))
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Abre el PDF en una pestaña independiente sin alterar la pantalla actual
+            var win = window.open("{{ session('pdf_url') }}", "_blank");
+            if (win) {
+                win.focus();
+            } else {
+                // Alerta de contingencia por si el navegador bloquea las ventanas emergentes
+                alert("Por favor, permite las ventanas emergentes para ver el reporte.");
+            }
+        });
+    </script>
+@endif
+
+<!-- Cambiado a POST para garantizar que viaje la sesión flash con el archivo -->
+<form method="POST" action="{{ route('reporte.ventas.diarias') }}" class="card p-3 shadow-sm">
+    @csrf
+    <div class="card-header bg-light mb-3">
+        <h5 class="mb-0"><i class="fa fa-file-pdf text-danger"></i> Reporte Masivo de Ventas (Corte Individual)</h5>
+    </div>
+
+    <div class="row align-items-center">
+        <div class="col-md-4 mb-3">
+            <label for="fecha_inicio" class="form-label font-weight-bold">Fecha Inicial:</label>
+            <input type="date" name="fecha_inicio" id="fecha_inicio" value="{{ request('fecha_inicio', date('Y-m-d')) }}" class="form-control" required>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <label for="fecha_fin" class="form-label font-weight-bold">Fecha Final:</label>
+            <input type="date" name="fecha_fin" id="fecha_fin" value="{{ request('fecha_fin', date('Y-m-d')) }}" class="form-control" required>
+        </div>
+
+        <div class="col-md-4 mb-3 mt-md-4">
+            <button type="submit" class="btn btn-danger w-100">
+                <i class="fa fa-print"></i> Generar Lote de Facturas
+            </button>
+        </div>
+    </div>
+</form>
+
+
+
 
     <hr>
-    <form method="GET" action="{{ route('dashboard.export.excel') }}" class="d-inline">
-
+    <form method="POST" action="{{ route('dashboard.export.excel') }}" class="d-inline">
+        @csrf
         {{-- Fechas --}}
         <input type="hidden" name="inicio" value="{{ request('inicio') }}">
         <input type="hidden" name="fin" value="{{ request('fin') }}">
@@ -68,9 +120,7 @@
             <input type="hidden" name="producto[]" value="{{ $prod }}">
         @endforeach
 
-        <button type="submit" class="btn btn-success mb-4">
-            Exportar a Excel (con filtros)
-        </button>
+        <button type="submit" class="btn btn-success">Exportar Excel</button>
     </form>
 
     {{-- GRAFICA --}}

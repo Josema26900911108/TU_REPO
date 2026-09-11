@@ -59,6 +59,7 @@ public function index()
             'c.tipo_comprobante AS comprobante_nombre',
             'cc.nombre AS cuenta_contable_nombre',
             'cc.formula AS cuenta_contable_numero',
+            'c.defauldoc AS comprobante_defauldoc',
             DB::raw("(select sum(valorminimo) from detalle_comprobantes as ddc where ddc.fkComprobante=dc.fkComprobante and ddc.Naturaleza='D') AS Debe"),
             DB::raw("(select sum(valorminimo) from detalle_comprobantes as ddc where ddc.fkComprobante=dc.fkComprobante  and ddc.Naturaleza='H') AS Haber")
         )
@@ -114,47 +115,59 @@ public function index()
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
+public function store(Request $request)
+{
+    if(!Auth::check()){
+        return redirect()->route('login');
+    }
+
+    $request->validate([
+        'tipo_comprobante' => [
+            'required',
+            Rule::unique('comprobantes', 'tipo_comprobante')
+                ->where(fn($query) =>
+                    $query->where('fkTienda', session('user_fkTienda'))
+                )
+        ],
+        'formula' => 'required',
+        'clavevista' => 'required',
+        'compdefault' => 'nullable|boolean' // Se agrega validación para el check
+    ]);
+
+    try {
+        $fkTienda = session('user_fkTienda');
+        // Aseguramos un valor booleano (1 o 0) para la base de datos
+        $isDefault = $request->has('compdefault') ? 1 : 0; 
+
+        DB::beginTransaction();
+
+        // Si el nuevo comprobante será el por defecto, desactivamos los anteriores de la misma vista y tienda
+        if ($isDefault == 1) {
+            Comprobante::where('ClaveVista', $request->clavevista)
+                ->where('fkTienda', $fkTienda)
+                ->update(['defauldoc' => 0]);
         }
 
-$request->validate([
-    'tipo_comprobante' => [
-        'required',
-        Rule::unique('comprobantes', 'tipo_comprobante')
-            ->where(fn($query) =>
-                $query->where('fkTienda', session('user_fkTienda'))
-            )
-    ],
-    'formula' => 'required',
-    'clavevista' => 'required'
-]);
-
-
-        try {
-            $fkTienda = session('user_fkTienda');
-
-            DB::beginTransaction();
-            //Crear rol
-            Comprobante::create(['tipo_comprobante' => $request->tipo_comprobante,
+        // Crear el nuevo comprobante
+        Comprobante::create([
+            'tipo_comprobante' => $request->tipo_comprobante,
             'formula'=> $request->formula,
             'estado'=> 1,
             'ClaveVista'=>$request->clavevista,
-            'defauldoc'=>$request->compdefault,
+            'defauldoc'=>$isDefault,
             'fkPlantillaHtml' => $request->disdoc,
-            'fkTienda' => $fkTienda]);
+            'fkTienda' => $fkTienda
+        ]);
 
-
-            DB::commit();
-        } catch (Exception $e) {
-            DB::rollBack();
-        }
-
-
-        return redirect()->route('comprobante.index')->with('success', 'Rol registrado');
+        DB::commit();
+    } catch (Exception $e) {
+        DB::rollBack();
+        // Es recomendable retornar un mensaje de error si la transacción falla
+        return redirect()->back()->with('error', 'Error al registrar el comprobante: ' . $e->getMessage());
     }
+
+    return redirect()->route('comprobante.index')->with('success', 'Comprobante registrado con éxito');
+}
 
     /**
      * Display the specified resource.
@@ -167,7 +180,7 @@ $request->validate([
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Comprobante $comprobante)
+function edit(Comprobante $comprobante)
     {
                         if(!Auth::check()){
             return redirect()->route('login');
@@ -203,45 +216,57 @@ $request->validate([
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Comprobante $comprobante)
-    {
-                if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
-        $request->validate([
-            'tipo_comprobante' => [
-                'required',
-                'max:50',
-                Rule::unique('comprobantes')->where(function ($query) {
-                    return $query->where('fkTienda', session('user_fkTienda'));
-                })->ignore($comprobante->id), // Ignorar el comprobante actual en caso de que sea una actualización
-            ],
-            'formula' => [
-                'required',
-                'max:250'
-            ],
-        ]);
-
-
-        try {
-            DB::beginTransaction();
-            $comprobante->fill([
-                'tipo_comprobante' => $request->tipo_comprobante,
-                'formula' => $request->formula,
-                'ClaveVista' => $request->clavevista,
-                'fkPlantillaHtml' => $request->disdoc,
-            ]);
-
-            $comprobante->save();
-            DB::commit();
-        } catch (Exception $e) {
-            dd($e);
-            DB::rollBack();
-        }
-
-        return redirect()->route('comprobante.index')->with('success', 'Comprobante editado');
+public function update(Request $request, Comprobante $comprobante)
+{
+    if(!Auth::check()){
+        return redirect()->route('login');
     }
+
+    $request->validate([
+        'tipo_comprobante' => [
+            'required',
+            'max:50',
+            Rule::unique('comprobantes')->where(function ($query) {
+                return $query->where('fkTienda', session('user_fkTienda'));
+            })->ignore($comprobante->id), 
+        ],
+        'formula' => [
+            'required',
+            'max:250'
+        ],
+        'clavevista' => 'required',
+        'compdefault' => 'nullable|boolean' 
+    ]);
+
+    try {
+        $fkTienda = session('user_fkTienda');
+        $isDefault = $request->has('compdefault') ? 1 : 0; 
+
+        DB::beginTransaction();
+
+        if ($isDefault == 1) {
+            Comprobante::where('ClaveVista', $request->clavevista)
+                ->where('fkTienda', $fkTienda)
+                ->where('id', '!=', $comprobante->id) 
+                ->update(['defauldoc' => 0]);
+        }
+
+        // SOLUCIÓN: Asignación directa de propiedades para ignorar restricciones de $fillable
+        $comprobante->tipo_comprobante = $request->tipo_comprobante;
+        $comprobante->formula          = $request->formula;
+        $comprobante->ClaveVista       = $request->clavevista;
+        $comprobante->defauldoc        = $isDefault;
+        $comprobante->fkPlantillaHtml  = $request->disdoc; // Forzamos el nuevo diseño aquí
+
+        $comprobante->save();
+        DB::commit();
+    } catch (Exception $e) {
+        DB::rollBack();
+        return redirect()->back()->with('error', 'Error al actualizar el comprobante: ' . $e->getMessage());
+    }
+
+    return redirect()->route('comprobante.index')->with('success', 'Comprobante editado con éxito');
+}
 
     /**
      * Remove the specified resource from storage.
