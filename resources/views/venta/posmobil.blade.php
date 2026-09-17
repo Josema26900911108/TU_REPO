@@ -168,7 +168,7 @@ h6 {
 <!-- CONTROL LOGÍSTICO MÓVIL - PARTE 2 DE 3 -->
 <div class="container">
     <div class="card-bt">
-        <button type="button" onclick="iniciarScanner('qr')" class="btn btn-success btn-sm fw-bold"> Gracie QR</button>
+        <button type="button" onclick="iniciarScanner('qr')" class="btn btn-success btn-sm fw-bold"> QR</button>
         <button type="button" onclick="iniciarScanner('barra')" class="btn btn-light btn-sm fw-bold border"> Barra</button>
         <button type="button" onclick="StopScanner()" class="btn btn-danger btn-sm"> Detener</button>
     </div>
@@ -186,13 +186,14 @@ h6 {
     <select name="comprobante_id" id="comprobante_id" class="form-select form-select-sm fw-bold" required>
         <option value="">-- Seleccionar Comprobante --</option>
         @foreach($comprobantes as $comp)
-            <!-- CORRECCIÓN DEFINITIVA: Usamos tipo_comprobante y ClaveVista según tu estructura real -->
-            <option value="{{ $comp->id }}">
+            <!-- Evaluamos si defauldoc es 1 o true para agregar el atributo 'selected' -->
+            <option value="{{ $comp->id }}" {{ $comp->defauldoc == 1 || $comp->defauldoc == true ? 'selected' : '' }}>
                 {{ $comp->tipo_comprobante }} ({{ $comp->ClaveVista }})
             </option>
         @endforeach
     </select>
 </div>
+
 
 
         <!-- CONTENEDOR UNIFICADO DONDE OPERA EL REORDENAMIENTO -->
@@ -233,10 +234,13 @@ h6 {
                 <div class="contenedor-promo-tag-fila my-1"></div>
 
                 <div class="controls">
-                    <button type="button" class="btn-circle btn-minus" onclick="ajustarCantidadFila(this, -1)">-</button>
+                    <!-- Removido el onclick para evitar la doble ejecución -->
+                    <button type="button" class="btn-circle btn-minus">-</button>
                     <input type="number" class="qty" name="arraycantidad[]" value="0" min="0" oninput="evaluarCalculoFilaManual(this)">
-                    <button type="button" class="btn-circle btn-plus" onclick="ajustarCantidadFila(this, 1)">+</button>
+                    <button type="button" class="btn-circle btn-plus">+</button>
                 </div>
+
+
 
                 <input type="hidden" class="descuento" value="0">
 
@@ -296,25 +300,23 @@ h6 {
     let totalGeneralCalculado = 0;
     let ivaGeneralCalculado = 0;
 
-     
-
-
     // 2. Escuchador dinámico de inicialización para cada Tarjeta de Producto con Candado de Stock
     document.querySelectorAll(".card[data-precio]").forEach(card => {
         let btnPlus = card.querySelector(".btn-plus");
         let btnMinus = card.querySelector(".btn-minus");
         let qtyInput = card.querySelector(".qty");
-        // Extraemos el límite de stock configurado desde la base de datos en la tarjeta
         let stockMaximo = parseInt(card.getAttribute('data-stock')) || 0;
 
         if (btnPlus) {
-            btnPlus.addEventListener("click", () => {
+            // Reemplazamos por una función limpia que previene comportamientos raros del navegador
+            btnPlus.addEventListener("click", (e) => {
+                e.preventDefault();
                 let currentVal = parseInt(qtyInput.value || 0);
                 
-                // CANDADO DE SEGURIDAD CONTABLE: Bloquear si se intenta superar el stock real
+                // CANDADO DE SEGURIDAD CONTABLE
                 if (currentVal >= stockMaximo) {
                     showToastAlarma(`Inventario insuficiente. Solo quedan ${stockMaximo} unidades disponibles.`);
-                    qtyInput.value = stockMaximo; // Forzar el tope
+                    qtyInput.value = stockMaximo; 
                     return;
                 }
                 
@@ -324,7 +326,8 @@ h6 {
         }
 
         if (btnMinus) {
-            btnMinus.addEventListener("click", () => {
+            btnMinus.addEventListener("click", (e) => {
+                e.preventDefault();
                 let val = parseInt(qtyInput.value || 0) - 1;
                 qtyInput.value = val < 0 ? 0 : val;
                 ejecutarCalculoYReordenarCard(card);
@@ -338,7 +341,7 @@ h6 {
                 // CANDADO DE SEGURIDAD PARA INGRESO MANUAL POR TECLADO
                 if (currentVal > stockMaximo) {
                     showToastAlarma(`Inventario insuficiente. Se ajustó al stock máximo de ${stockMaximo} unidades.`);
-                    qtyInput.value = stockMaximo; // Forzar el tope en caso de tipeo abusivo
+                    qtyInput.value = stockMaximo; 
                 } else if (currentVal < 0) {
                     qtyInput.value = 0;
                 }
@@ -347,6 +350,7 @@ h6 {
             });
         }
     });
+
 
 
     // 3. Escuchar el cambio del tipo de comprobante para bajar la fórmula fiscal
@@ -598,7 +602,7 @@ function ejecutarCalculoYReordenarCard(card) {
         .then((result) => { if (result.isConfirmed) { document.getElementById("formVenta").submit(); } });
     });
 
-        // 8. Enlace de Inserción desde el Buscador Predictivo o Escáner
+ // 8. Enlace de Inserción desde el Buscador Predictivo o Escáner
     function agregarProducto(idProducto) {
         let card = document.getElementById(`producto-${idProducto}`) 
             || document.querySelector(`[data-id="${idProducto}"]`) 
@@ -609,35 +613,69 @@ function ejecutarCalculoYReordenarCard(card) {
             return; 
         }
         
+        let stockMaximo = parseInt(card.getAttribute('data-stock')) || 0;
+        let qtyInput = card.querySelector(".qty");
+        let currentVal = parseInt(qtyInput.value || 0);
+
+        // CANDADO DE SEGURIDAD OPERATIVA: Validar stock antes de sumar por escáner/buscador
+        if (currentVal >= stockMaximo) {
+            alert(`⚠️ INVENTARIO INSUFICIENTE: Ya alcanzaste el stock máximo de ${stockMaximo} unidades.`);
+            qtyInput.value = stockMaximo;
+            return;
+        }
+
+        // Manejo e inyección informativa de lotes sugeridos
         let lote = card.getAttribute('data-lote'); 
         let vence = card.getAttribute('data-vence'); 
         let cantLote = card.getAttribute('data-cantidadlote');
         const contenedorInfoLotesGlobal = document.getElementById('info_lote_guia_global');
         
-        if (lote !== 'N/A' && lote !== '') {
+        if (lote && lote !== 'N/A' && lote !== '') {
             if (contenedorInfoLotesGlobal) {
                 contenedorInfoLotesGlobal.innerHTML = `<div class="alert alert-info py-2 px-3 small mb-3 border-0 rounded-3 shadow-sm" style="font-size: 0.8rem;">📦 <b>LOTE SUGERIDO:</b> Extraer del <b>Lote: ${lote}</b> (Expira: ${vence} | Disp: ${cantLote} u.)</div>`;
             }
-            showToastAlarma(`Tomar del Lote: ${lote}`);
         } else { 
             if (contenedorInfoLotesGlobal) contenedorInfoLotesGlobal.innerHTML = ''; 
         }
         
-        let qtyInput = card.querySelector(".qty");
-        qtyInput.value = parseInt(qtyInput.value || 0) + 1;
+        // Incremento controlado de 1 en 1
+        qtyInput.value = currentVal + 1;
+        
+        // Ejecución de motor de cálculo y reordenamiento gráfico
         ejecutarCalculoYReordenarCard(card);
+        
+        // Desplazamiento fluido hacia la tarjeta activa
         card.scrollIntoView({ behavior: "smooth", block: "center" });
         
+        // Ocultar modal de búsqueda en caso de estar abierto
         let modalEl = document.getElementById('modalBuscar');
         if (modalEl) { 
             let modalInstance = bootstrap.Modal.getInstance(modalEl); 
             if (modalInstance) modalInstance.hide(); 
         }
+        
         StopScanner(); 
         qtyInput.focus();
     }
 
-    // 9. Lector de la cámara web (Escáner) libre de Swal
+
+    // Función auxiliar para alertas rápidas tipo Toast en móviles (si no tienes una definida)
+    function showToastAlarma(mensaje) {
+        if (typeof Swal !== 'undefined' && Swal.mixIn) {
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000,
+                timerProgressBar: true
+            });
+            Toast.fire({ icon: 'warning', title: mensaje });
+        } else {
+            alert(mensaje);
+        }
+    }
+
+    // 9. Lector de la cámara web (Escáner) optimizado sin alertas obstructivas
     function iniciarScanner(tipo = "barra") {
         if (escaneando) return;
         let selectComp = document.getElementById('comprobante_id');
@@ -653,13 +691,15 @@ function ejecutarCalculoYReordenarCard(card) {
 
         scanner = new Html5Qrcode("reader"); 
         escaneando = true;
-        scanner.start({ facingMode: "environment" }, { fps: 12, qrbox: tipo === "barra" ? { width: 260, height: 130 } : 240 },
+        scanner.start(
+            { facingMode: "environment" }, 
+            { fps: 12, qrbox: tipo === "barra" ? { width: 260, height: 130 } : 240 },
             (codigo) => {
                 StopScanner();
-                // CORREGIDO: Reemplazo de Swal por una alerta nativa ligera offline
-                alert('📌 Código Detectado con éxito: ' + codigo);
+                // Eliminamos el 'alert' intermediario para evitar el bug del doble toque al cerrar la alerta nativa
                 agregarProducto(codigo);
-            }, (err) => {}
+            }, 
+            (err) => {}
         ).catch(e => { escaneando = false; });
     }
 
@@ -668,7 +708,7 @@ function ejecutarCalculoYReordenarCard(card) {
         scanner.stop().then(() => { escaneando = false; scanner = null; document.getElementById('reader').innerHTML = ''; });
     }
 
-    // 10. Botón Guardar / Confirmar Venta libre de Swal
+    // 10. Botón Guardar / Confirmar Venta libre de duplicaciones
     document.getElementById("guardar").addEventListener("click", function (event) {
         event.preventDefault();
         let selectComp = document.getElementById('comprobante_id');
@@ -687,7 +727,6 @@ function ejecutarCalculoYReordenarCard(card) {
             return; 
         }
         
-        // CORREGIDO: Reemplazo de Swal por confirmación estándar del navegador
         if (confirm("¿Confirmar Preventa?\n\nSe registrará el pedido en el panel de facturación.")) {
             document.getElementById("formVenta").submit();
         }
@@ -697,9 +736,13 @@ function ejecutarCalculoYReordenarCard(card) {
         alert("⚠️ ATENCIÓN: " + message);
     }
 
-    // --- NUEVAS FUNCIONES PUENTE PARA SOLUCIONAR LOS CLICS EN CELULARES ---
+    // 11. Control de cantidad por botones e inputs con candados anti-rebote
     function ajustarCantidadFila(boton, incremento) {
-        // Localizar la tarjeta contenedora del producto
+        if (boton.disabled || boton.getAttribute('data-clicking') === 'true') return;
+        
+        boton.setAttribute('data-clicking', 'true');
+        setTimeout(() => boton.removeAttribute('data-clicking'), 300); 
+
         let card = boton.closest('.card');
         if (!card) return;
 
@@ -707,14 +750,12 @@ function ejecutarCalculoYReordenarCard(card) {
         let currentVal = parseInt(qtyInput.value || 0);
         let stockMaximo = parseInt(card.getAttribute('data-stock')) || 0;
 
-        // Calcular el nuevo valor tentativo
         let newVal = currentVal + incremento;
         if (newVal < 0) newVal = 0;
 
-        // CANDADO DE SEGURIDAD OPERATIVA: Bloquear si supera las existencias reales
         if (newVal > stockMaximo) {
             alert(`⚠️ INVENTARIO INSUFICIENTE: Solo quedan ${stockMaximo} unidades disponibles en el stock contable.`);
-            qtyInput.value = stockMaximo; // Forzar el tope maximo
+            qtyInput.value = stockMaximo;
             ejecutarCalculoYReordenarCard(card);
             return;
         }
@@ -722,6 +763,55 @@ function ejecutarCalculoYReordenarCard(card) {
         qtyInput.value = newVal;
         ejecutarCalculoYReordenarCard(card);
     }
+
+    function evaluarCalculoFilaManual(input) {
+        let card = input.closest('.card');
+        if (!card) return;
+
+        let stockMaximo = parseInt(card.getAttribute('data-stock')) || 0;
+        let currentVal = parseInt(input.value || 0);
+
+        if (currentVal > stockMaximo) {
+            alert(`⚠️ INVENTARIO INSUFICIENTE: Se ajustó al stock máximo de ${stockMaximo} unidades.`);
+            input.value = stockMaximo;
+        } else if (currentVal < 0) {
+            input.value = 0;
+        }
+
+        ejecutarCalculoYReordenarCard(card);
+    }
+// Añadimos el parámetro 'e' para el evento
+/*function ajustarCantidadFila(boton, incremento) {
+    // Si el botón ya fue presionado hace instantes, ignorar el segundo clic
+    if (boton.disabled || boton.getAttribute('data-clicking') === 'true') return;
+    
+    // Bloquear inmediatamente
+    boton.setAttribute('data-clicking', 'true');
+    setTimeout(() => boton.removeAttribute('data-clicking'), 300); // Libera en 300ms
+
+    let card = boton.closest('.card');
+    if (!card) return;
+
+    // ... (El resto de tu código original se queda exactamente igual)
+    let qtyInput = card.querySelector('.qty');
+    let currentVal = parseInt(qtyInput.value || 0);
+    let stockMaximo = parseInt(card.getAttribute('data-stock')) || 0;
+
+    let newVal = currentVal + incremento;
+    if (newVal < 0) newVal = 0;
+
+    if (newVal > stockMaximo) {
+        alert(`⚠️ INVENTARIO INSUFICIENTE: Solo quedan ${stockMaximo} unidades disponibles en el stock contable.`);
+        qtyInput.value = stockMaximo;
+        ejecutarCalculoYReordenarCard(card);
+        return;
+    }
+
+    qtyInput.value = newVal;
+    ejecutarCalculoYReordenarCard(card);
+} 
+
+
 
     function evaluarCalculoFilaManual(input) {
         let card = input.closest('.card');
@@ -740,7 +830,7 @@ function ejecutarCalculoYReordenarCard(card) {
 
         ejecutarCalculoYReordenarCard(card);
     }
-
+*/
             
 </script>
 @endpush

@@ -113,7 +113,7 @@
                                     @can('vender-a-cliente')
 <div>
     <a title="Vender a Cliente por móvil" 
-       href="{{ route('ventas.posmobile', ['idcliente' => $visita->cliente_id]) }}" 
+       href="{{ route('ventas.posmobile', ['idcliente' => $item->id ]) }}" 
        class="btn btn-link p-0 text-primary hover-shadow" 
        style="text-decoration: none;">
         
