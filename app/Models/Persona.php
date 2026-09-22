@@ -28,5 +28,5 @@ class Persona extends Model
 
     protected $table = 'personas'; // Cambia 'clientes' por el nombre correcto de tu tabla
     protected $primaryKey = 'id'; // Especifica la clave primaria
-    protected $fillable = ['id', 'razon_social','direccion','tipo_persona','estado','documento_id','numero_documento'];
+    protected $fillable = ['id', 'razon_social','direccion','tipo_persona','estado','documento_id','numero_documento', 'telefono']; 
 }

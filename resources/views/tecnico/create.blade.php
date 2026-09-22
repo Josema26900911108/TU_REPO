@@ -54,6 +54,14 @@
                         @enderror
                     </div>
 
+                    <div class="col-md-6" id="telefono-div">
+                        <label for="telefono" class="form-label">Teléfono:</label>
+                        <input type="text" name="telefono" id="telefono" class="form-control" value="{{ old('telefono') }}" required>
+                        @error('telefono')
+                        <small class="text-danger">{{ '*'.$message }}</small>
+                        @enderror
+                    </div>
+
                     <div class="col-md-6" id="documento_id_div">
                         <label for="documento_id" class="form-label">Tipo de documento:</label>
                         <select class="form-select" name="documento_id" id="documento_id" required>

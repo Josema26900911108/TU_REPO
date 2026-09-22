@@ -42,6 +42,7 @@
                     <tr>
                         <th>Tienda</th>
                         <th>Tecnico</th>
+                        <th>Teléfono</th>
                         <th>Especialidad</th>
                         <th>Codigo</th>
                         <th>Acciones</th>
@@ -52,6 +53,7 @@
                     <tr>
                         <td>{{$item['Tienda']}}</td>
                         <td>{{$item['tecnico']}}</td>
+                        <td>{{$item['telefono']}}</td>
                         <td>{{$item['especialidad']}}</td>
                         <td>{{$item['codigo']}}</td>
                         <td>

@@ -83,6 +83,7 @@ class TecnicoController extends Controller
             td.Nombre as Tienda,
             p.razon_social as tecnico,
             t.especialidad,
+            p.telefono,
             t.codigo FROM
             tecnico as t inner join personas as p
 				on p.id=t.fkpersona
@@ -1852,6 +1853,7 @@ $lockKey = 'tecnico_create' . auth()->id();
             'estado' => 1,
             'documento_id' => $request->documento_id,
             'numero_documento' => $request->numero_documento,
+            'telefono' => $request->telefono,
             'created_at' => now()
         ]);
 
@@ -1928,6 +1930,11 @@ $lockKey = 'tecnico_create' . auth()->id();
         // 2. Buscar la Persona (esta sí debe existir obligatoriamente)
         $idpersona = Tecnico::where('id', $request->idtecnico)->value('fkpersona');
         $persona = Persona::findOrFail($idpersona);
+
+        $persona->update([
+            'telefono' => $request->telefono,
+            'updated_at' => now()
+        ]);
 
         // 3. BUSCAR O CREAR el técnico vinculado a esa persona
         $tecnico = Tecnico::updateOrCreate(
@@ -2803,7 +2810,8 @@ LEFT JOIN treematerialescategoria AS am_padre
             $id = $tecnico->fkpersona;
             Persona::where('id', $id)
                 ->update([
-                    'razon_social' => $request->name
+                    'razon_social' => $request->name,
+                    'telefono' => $request->telefono
                 ]);
 
             Tecnico::where('id', $tecnico->id)

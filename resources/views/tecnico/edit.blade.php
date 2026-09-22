@@ -34,6 +34,7 @@
                         <small class="text-danger">{{ '*'.$message }}</small>
                         @enderror
                     </div>
+                    
 
                     <div class="col-md-6" id="numero_documento_div">
                         <label for="especialidad" class="form-label">Especialidad Tecnico:</label>
@@ -42,6 +43,15 @@
                         <small class="text-danger">{{ '*'.$message }}</small>
                         @enderror
                     </div>
+
+
+                    <div class="col-md-6" id="numero_documento_div">
+                        <label for="telefono" class="form-label">Teléfono:</label>
+                        <input type="text" name="telefono" id="telefono" class="form-control" value="{{ old('telefono', $tecnico->telefono ?? '') }}" required>
+                        @error('telefono')
+                        <small class="text-danger">{{ '*'.$message }}</small>
+                        @enderror
+                    </div>                    
 
                                                                         <!---IMG LOGO---->
                 <div class="col-md-6">
