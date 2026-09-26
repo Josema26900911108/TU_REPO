@@ -525,16 +525,14 @@ function evaluarReglasPrecio(reglasColeccion, cantidadLlevada, precioOriginal) {
     $(document).ready(function() {
 
 
-     $('#comprobante_id').on('rendered.bs.select', function () {
-        // Disparar el cambio de manera segura
-        $(this).trigger('change');
-    });
-
-    // Tu código normal que escucha el cambio
     $('#comprobante_id').on('change', function() {
         console.log("Comprobante seleccionado:", $(this).val());
-        // Aquí va tu lógica actual (ej. cambiar inputs, series, correlativos)
     });
+
+    // Darle 100ms al plugin para que se dibuje y luego forzar el cambio
+    setTimeout(function() {
+        $('#comprobante_id').trigger('change');
+    }, 100);
 
     $('#producto_id').selectpicker();
 
