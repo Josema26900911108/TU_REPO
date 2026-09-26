@@ -1717,6 +1717,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const btnToggle = document.getElementById("btn-toggle-detalle");
     const wrapperTabla = document.getElementById("wrapper-tabla-detalle");
 
+        const selectComprobante = document.getElementById('comprobante_id');
+    
+    if (selectComprobante) {
+        // Crear el evento change nativo
+        const event = new Event('change', { bubbles: true });
+        selectComprobante.dispatchEvent(event);
+    }
+
     btnToggle.addEventListener("click", function () {
         // Alterna la clase d-none para mostrar u ocultar la tabla
         if (wrapperTabla.classList.contains("d-none")) {
