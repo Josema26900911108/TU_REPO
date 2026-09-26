@@ -64,17 +64,22 @@ class compraController extends Controller
 
         // Si el estatus es 'ER', cargar todas las compras
         if ($Estatus == 'ER') {
-            $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
+$compras = Compra::with(['comprobante', 'proveedore.persona', 'tienda'])
                 ->where('estado', 2)
-                ->where('ClaveVista','DC')
+                ->whereHas('comprobante', function ($query) {
+                    $query->where('ClaveVista', 'DC');
+                })
                 ->whereNotNull('proveedore_id')
                 ->latest()
                 ->get();
 
+
                             // Filtrar los productos solo por la tienda del usuario
             $productos = Producto::with('comprobante','proveedore.persona','tienda')
             ->where('fkTienda', $fkTienda)
-            ->where('ClaveVista','DC')
+            ->whereHas('comprobante', function ($query) {
+                $query->where('ClaveVista', 'DC');
+            })
             ->whereIn('estado', [1,2,3])
             ->latest()
             ->get();
