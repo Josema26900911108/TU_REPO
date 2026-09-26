@@ -525,7 +525,7 @@ function evaluarReglasPrecio(reglasColeccion, cantidadLlevada, precioOriginal) {
     $(document).ready(function() {
 
 
-
+ $('#comprobante_id').trigger('change');
 
     $('#producto_id').selectpicker();
 

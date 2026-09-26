@@ -365,40 +365,52 @@ public function show(){
 }
 
 
-
 public function importarMAMO(Request $request)
 {
-      DB::connection()->disableQueryLog();
+    DB::connection()->disableQueryLog();
     if(!Auth::check()){
         return redirect()->route('login');
     }
 
     $fkTienda = session('user_fkTienda');
     
-    // Configuraciones de límite
-    set_time_limit(0); // Intentar remover límite de PHP
+    set_time_limit(0); 
     ini_set('memory_limit', '512M');
-    
-    // Desactivar logs de consultas (Crucial en Laravel para no agotar la RAM)
-    DB::connection()->disableQueryLog();
 
     $request->validate([
         'archivo' => 'required|file|mimes:csv,txt',
     ]);
 
     $file = fopen($request->file('archivo')->getRealPath(), 'r');
-    $encabezado = fgetcsv($file);
+    
+    $delimiter = ","; // Cambiar a "\t" si tu archivo usa tabulaciones
+    $encabezado = fgetcsv($file, 0, $delimiter);
+
+    // 1. 🧹 LIMPIEZA INMEDIATA DE ENCABEZADOS (Remueve BOM UTF-8 y espacios)
+    if (!empty($encabezado)) {
+        $encabezado = preg_replace('/[\x{00EF}\x{00BB}\x{00BF}\x{FEFF}]/u', '', $encabezado);
+        $encabezado = array_map('trim', $encabezado);
+    }
 
     $insertados = 0;
     $omitidos = 0;
     
-    $batchSize = 500; // Reducido a 500 para evitar payloads gigantes en Cloud SQL
+    $batchSize = 500; 
     $batchData = [];
     $now = now();
 
+    // Función interna para estandarizar strings vacíos y codificación
+    $limpiarTexto = function($valor) {
+        if ($valor === null) return '';
+        $valor = trim($valor);
+        if ($valor === "'" || $valor === "") {
+            return '';
+        }
+        return mb_convert_encoding($valor, 'UTF-8', 'ISO-8859-1');
+    };
+
     try {
-        while (($linea = fgetcsv($file)) !== false) {
-            // Validar que la línea coincida con el número de columnas del encabezado
+        while (($linea = fgetcsv($file, 0, $delimiter)) !== false) {
             if (count($encabezado) !== count($linea)) {
                 $omitidos++;
                 continue;
@@ -411,25 +423,54 @@ public function importarMAMO(Request $request)
                 continue;
             }
 
-            // Validación de fecha optimizada sin capturar excepciones pesadas
-            $fechaRaw = $data['created_at'] ?? null;
-            $fecha = ($fechaRaw && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $fechaRaw)) 
-                ? Carbon::createFromFormat('d/m/Y', $fechaRaw)->format('Y-m-d') 
-                : $now->format('Y-m-d');
+            // 2. 🗓️ VALIDACIÓN DE FECHA ULTRA-FLEXIBLE
+            $fechaRaw = isset($data['created_at']) ? trim($data['created_at']) : null;
+            $fecha = null;
 
-            $batchData[] = [
-                'Orden'            => $data['Orden'],
-                'SKU'              => $data['SKU'],
-                'Descripcion'      => mb_convert_encoding($data['Descripcion'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'Cantidad'         => $data['Cantidad'],
-                'Serie'            => mb_convert_encoding($data['Serie'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'MAC1'             => mb_convert_encoding($data['MAC1'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'MAC2'             => mb_convert_encoding($data['MAC2'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'MAC3'             => mb_convert_encoding($data['MAC3'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'TIPO_DE_SERVICIO' => mb_convert_encoding($data['TIPO_DE_SERVICIO'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'TIPO_DE_ORDEN'    => mb_convert_encoding($data['TIPO_DE_ORDEN'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'CENTRO'           => mb_convert_encoding($data['CENTRO'] ?? '', 'UTF-8', 'ISO-8859-1'),
-                'EMPLEADO'         => mb_convert_encoding($data['EMPLEADO'] ?? '', 'UTF-8', 'ISO-8859-1'),
+            if ($fechaRaw) {
+                try {
+                    $fechaRawLimpia = str_replace("'", "", $fechaRaw); 
+                    $fecha = \Carbon\Carbon::createFromFormat('d/m/Y', trim($fechaRawLimpia))->format('Y-m-d');
+                } catch (\Exception $e) {
+                    $fecha = null;
+                }
+            }
+
+            if (!$fecha) {
+                $fecha = \Carbon\Carbon::now()->format('Y-m-d');
+            }
+
+            $orden    = trim($data['Orden']);
+            $sku      = trim($data['SKU']);
+            $cantidad = trim($data['Cantidad']);
+            $serie    = $limpiarTexto($data['Serie']);
+            $mac1     = $limpiarTexto($data['MAC1']);
+            $mac2     = $limpiarTexto($data['MAC2']);
+            $mac3     = $limpiarTexto($data['MAC3']);
+
+            // 3. 🔑 LLAVE ÚNICA ABSOLUTA DE LA FILA (Convertida a MD5 para evitar fallos de formato)
+            $stringLlave = "{$orden}|{$sku}|{$cantidad}|{$fecha}|{$serie}|{$mac1}|{$mac2}|{$mac3}";
+            $uniqueKey = md5($stringLlave);
+
+            // Evitar duplicados idénticos dentro del mismo archivo
+            if (isset($batchData[$uniqueKey])) {
+                $omitidos++;
+                continue;
+            }
+
+            $batchData[$uniqueKey] = [
+                'Orden'            => $orden,
+                'SKU'              => $sku,
+                'Descripcion'      => $limpiarTexto($data['Descripcion']),
+                'Cantidad'         => $cantidad,
+                'Serie'            => $serie,
+                'MAC1'             => $mac1,
+                'MAC2'             => $mac2,
+                'MAC3'             => $mac3,
+                'TIPO_DE_SERVICIO' => $limpiarTexto($data['TIPO_DE_SERVICIO']),
+                'TIPO_DE_ORDEN'    => $limpiarTexto($data['TIPO_DE_ORDEN']),
+                'CENTRO'           => $limpiarTexto($data['CENTRO']),
+                'EMPLEADO'         => $limpiarTexto($data['EMPLEADO']),
                 'Naturaleza'       => 'S',
                 'Status'           => 'Pe',
                 'fkTienda'         => $fkTienda,
@@ -437,27 +478,25 @@ public function importarMAMO(Request $request)
                 'updated_at'       => $now,
             ];
 
-            $insertados++;
-
+            // 4. PROCESAMIENTO CUANDO SE ALCANZA EL BATCH SIZE
             if (count($batchData) >= $batchSize) {
-                // Transacciones atómicas SOLO por lote, no globales
-                DB::transaction(function () use ($batchData) {
-                    $this->insertOrUpdateBatch($batchData);
-                });
+                $insertados += $this->procesarYFiltrarLote($batchData, $limpiarTexto);
                 $batchData = [];
-                gc_collect_cycles(); // Forzar limpieza de basura de PHP inmediatamente
+                gc_collect_cycles(); 
             }
         }
 
+        // 5. 🎯 PROCESAR EL RESIDUO FINAL (Aquí es donde entran tus archivos de menos de 500 filas)
         if (!empty($batchData)) {
-            DB::transaction(function () use ($batchData) {
-                $this->insertOrUpdateBatch($batchData);
-            });
+            $insertados += $this->procesarYFiltrarLote($batchData, $limpiarTexto);
         }
 
         fclose($file);
 
-        return back()->with('success', "Importación completada: {$insertados} filas procesadas, {$omitidos} omitidas.");
+        // Calculamos las filas omitidas reales
+        $totalLineasProcesadas = $insertados + $omitidos;
+
+        return back()->with('success', "Importación finalizada con éxito: Se guardaron {$insertados} registros nuevos. Se omitieron duplicados.");
 
     } catch (\Exception $e) {
         if (is_resource($file)) {
@@ -465,6 +504,52 @@ public function importarMAMO(Request $request)
         }
         return back()->with('error', 'Error crítico en Cloud: ' . $e->getMessage());
     }
+}
+
+
+
+/**
+ * 🛡️ Compara el lote actual con los registros reales de la base de datos
+ */
+/**
+ * Helper para procesar, consultar BD e insertar el lote de forma limpia
+ */
+private function procesarYFiltrarLote(array $batchData, callable $limpiarTexto): int
+{
+    $enviarABD = [];
+    $ordenesLote = array_column($batchData, 'Orden');
+
+    // 💡 SOLUCIÓN: Cambiado al nombre real de tu tabla 'ETA'
+    $existentesBD = DB::table('ETA')
+        ->whereIn('Orden', $ordenesLote)
+        ->get(['Orden', 'SKU', 'Cantidad', 'created_at', 'Serie', 'MAC1', 'MAC2', 'MAC3']);
+
+    // Mapeamos lo que ya existe en la base de datos usando el formato MD5
+    $mapaBD = [];
+    foreach ($existentesBD as $reg) {
+        $fechaBD = \Carbon\Carbon::parse($reg->created_at)->format('Y-m-d');
+        
+        // Formateamos igual que la memoria para comparar de forma idéntica
+        $llaveBD = md5("{$reg->Orden}|{$reg->SKU}|{$reg->Cantidad}|{$fechaBD}|" . $limpiarTexto($reg->Serie) . "|" . $limpiarTexto($reg->MAC1) . "|" . $limpiarTexto($reg->MAC2) . "|" . $limpiarTexto($reg->MAC3));
+        $mapaBD[$llaveBD] = true;
+    }
+
+    // Comparamos el lote contra la BD
+    foreach ($batchData as $keyMemoria => $valoresFila) {
+        if (!isset($mapaBD[$keyMemoria])) {
+            $enviarABD[] = $valoresFila;
+        }
+    }
+
+    // Insertamos únicamente lo que pasó el filtro de duplicados
+    if (!empty($enviarABD)) {
+        DB::transaction(function () use ($enviarABD) {
+            $this->insertOrUpdateBatch($enviarABD);
+        });
+        return count($enviarABD);
+    }
+
+    return 0;
 }
 
 
@@ -482,7 +567,7 @@ if (str_contains($item->CENTRO, $patronG8)) {
 
 // 1. Aseguramos que el centro se limpie o valide bien
 $centroLimpio = "'".$item->TIPO_DE_SERVICIO . substr($item->CENTRO, 1, 4);
-$centrosEspeciales = ["'MGG845", "'MGG830", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
+//$centrosEspeciales = ["'MGG845", "'MGG830", "'MGG840","'MJG845", "'MJG830", "'MJG840","'M7G845", "'M7G830", "'M7G840"];
 $patronG8 = "G8";
 
 
@@ -1239,6 +1324,10 @@ public function AutomataRecursivo(
     }
     $cantidad = substr_count($skuOrigen, ".");
 
+    if($skufinal=="1008443"){
+        $a="25188580_34028679_1021133_102113334028679";
+    }
+
   $clave = $orden . '_' . $skuActual. '_' .$skuOrigen . '_' . $skufinal.'_'.$tipoRelacion;
 $CANT = substr_count($clave, "01.011007881TRAMO");
       if($CANT>0){
@@ -1347,7 +1436,7 @@ $variables = [
     'valant' => $val ?? 0,
 ];
 
-if($clave=="25542286_02.15_34033641_02.1534033641UNIDAD_requiere"){
+if($clave=="26257554_1005388_1005388_1008443_requiere"){
     $a="25188580_34028673_34028677_102113334028679";
 }
 
