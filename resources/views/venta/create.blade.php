@@ -727,46 +727,58 @@ $('#btnCancelarCompra').click(function() {
 
 disableButtons();
 $('#comprobante_id').on('change', function() {
-var comprobanteId = $(this).val();
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detalles/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-            var detalles = response.detalles;
-            var tableBody = $('#detalle_tbody');
-            tableBody.empty();
+    var comprobanteId = $(this).val();
+    if (comprobanteId) {
+        $.ajax({
+            url: '/compras/detalles/' + comprobanteId, // Removida la concatenación vacía al final
+            type: 'GET',
+            success: function(response) {
+                var detalles = response.detalles;
+                var tableBody = $('#detalle_tbody');
+                tableBody.empty();
 
-            // Iterar sobre los detalles y agregar filas a la tabla
-            $.each(detalles, function(index, detalle) {
+                // === ¡SOLUCIÓN AQUÍ! Reiniciar los arreglos globales ===
+                formulas = [];
+                monto = [];
+                cuenta = [];
+                tipo = [];
+                formula = ''; // Si es una variable de texto global
+                // ======================================================
 
-                var row = '<tr>' +
-                    '<td></td>' +
-                    '<td></td>' +
-                    '<td>' + detalle.cuenta_contable_nombre + '</td>' +
-                    '<td class="small-text">' + detalle.formula + '</td>' +
-                    '<td>' + detalle.valorminimo + '</td>' +
-                    '<td>' + detalle.Naturaleza + '</td>' +
-                    '</tr>';
-                tableBody.append(row);
-                formulas[index]=detalle.formula;
-                monto[index]=detalle.valorminimo;
-                cuenta[index]=detalle.cuenta_contable_nombre;
-                tipo[index]=detalle.Naturaleza;
-                formula=detalle.formuladoc;
+                // Iterar sobre los detalles y agregar filas a la tabla
+                $.each(detalles, function(index, detalle) {
 
-                sumarArreglos(formulas,monto);
+                    var row = '<tr>' +
+                        '<td></td>' +
+                        '<td></td>' +
+                        '<td>' + detalle.cuenta_contable_nombre + '</td>' +
+                        '<td class="small-text">' + detalle.formula + '</td>' +
+                        '<td>' + detalle.valorminimo + '</td>' +
+                        '<td>' + detalle.Naturaleza + '</td>' +
+                        '</tr>';
+                    tableBody.append(row);
+                    
+                    // Ahora se llenan de forma segura desde el índice 0
+                    formulas[index] = detalle.formula;
+                    monto[index] = detalle.valorminimo;
+                    cuenta[index] = detalle.cuenta_contable_nombre;
+                    tipo[index] = detalle.Naturaleza;
+                    formula = detalle.formuladoc;
 
-            });
+                    // Nota: Si sumarArreglos procesa TODO el arreglo, 
+                    // quizás quieras moverlo afuera del $.each, justo después del bucle
+                    sumarArreglos(formulas, monto);
+                });
 
-            llenarTablaventas();
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
-    });
-}
+                llenarTablaventas();
+            },
+            error: function(xhr, status, error) {
+                console.error("Error al cargar los detalles:", error);
+            }
+        });
+    }
 });
+
 
 $('#producto_id').change(mostrarValores);
 
