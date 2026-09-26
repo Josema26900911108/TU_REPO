@@ -74,15 +74,17 @@ $compras = Compra::with(['comprobante', 'proveedore.persona', 'tienda'])
                 ->get();
 
 
-                            // Filtrar los productos solo por la tienda del usuario
-            $productos = Producto::with('comprobante','proveedore.persona','tienda')
+// Cambiar Producto por Compra si el objetivo era listar transacciones
+$compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
             ->where('fkTienda', $fkTienda)
             ->whereHas('comprobante', function ($query) {
                 $query->where('ClaveVista', 'DC');
             })
-            ->whereIn('estado', [1,2,3])
+            ->whereIn('estado', [1, 2, 3])
             ->latest()
             ->get();
+
+            
         } else {
             $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
             ->where('estado', 2)
