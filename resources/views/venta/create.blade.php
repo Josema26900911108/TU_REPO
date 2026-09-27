@@ -726,6 +726,7 @@ $('#btnCancelarCompra').click(function() {
 });
 
 disableButtons();
+
 $('#comprobante_id').on('change', function() {
     var comprobanteId = $(this).val();
     if (comprobanteId) {

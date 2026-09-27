@@ -439,18 +439,25 @@ document.getElementById("detalleProducto").textContent = detalle;
 
             disableButtons();
 
-
         $('#comprobante_id').on('change', function() {
             var comprobanteId = $(this).val();
 
             if (comprobanteId) {
                 $.ajax({
-                    url: '/compras/detalles/' + comprobanteId + '',
+                    url: '/compras/detalles/' + comprobanteId, // Se quitó la concatenación vacía innecesaria
                     type: 'GET',
                     success: function(response) {
                         var detalles = response.detalles;
                         var tableBody = $('#detalle_tbody');
                         tableBody.empty();
+
+                        // === ¡SOLUCIÓN! Se limpian los arreglos globales para eliminar el registro anterior ===
+                        formulas = [];
+                        monto = [];
+                        cuenta = [];
+                        tipo = [];
+                        formula = '';
+                        // ===================================================================================
 
                         // Iterar sobre los detalles y agregar filas a la tabla
                         $.each(detalles, function(index, detalle) {
@@ -463,17 +470,20 @@ document.getElementById("detalleProducto").textContent = detalle;
                                 '<td>' + detalle.Naturaleza + '</td>' +
                                 '</tr>';
                             tableBody.append(row);
-                            formulas[index]=detalle.formula;
-                            monto[index]=detalle.valorminimo;
-                            cuenta[index]=detalle.cuenta_contable_nombre;
-                            tipo[index]=detalle.Naturaleza;
-                            formula=detalle.formuladoc;
-
-                            $('#impuesto').val(formula);
-                            sumarArreglos(formulas,monto);
+                            
+                            // Se llenan los arreglos limpios desde la posición 0
+                            formulas[index] = detalle.formula;
+                            monto[index] = detalle.valorminimo;
+                            cuenta[index] = detalle.cuenta_contable_nombre;
+                            tipo[index] = detalle.Naturaleza;
+                            formula = detalle.formuladoc; // Guarda la fórmula general del documento
                         });
 
+                        // === OPTIMIZACIÓN: Estas funciones ahora se ejecutan UNA sola vez, ya con los arreglos completos ===
+                        $('#impuesto').val(formula);
+                        sumarArreglos(formulas, monto);
                         llenarTabla();
+                        // ===============================================================================================
                     },
                     error: function(xhr, status, error) {
                         console.error("Error al cargar los detalles:", error);
@@ -481,7 +491,7 @@ document.getElementById("detalleProducto").textContent = detalle;
                 });
             }
         });
-        });
+
 
         function llenarTabla() {
     var tableBodyDetalle = $('#tabla_detalle body');
