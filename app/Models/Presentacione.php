@@ -17,5 +17,11 @@ class Presentacione extends Model
         return $this->belongsTo(Caracteristica::class);
     }
 
-    protected $fillable = ['caracteristica_id'];
+    public function caracteristicas(){
+        return $this->belongsTo(Caracteristica::class);
+    }
+
+protected $fillable = ['caracteristica_id'];
+
+
 }

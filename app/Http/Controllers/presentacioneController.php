@@ -9,6 +9,7 @@ use App\Models\Presentacione;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class presentacioneController extends Controller
 {
@@ -46,25 +47,37 @@ class presentacioneController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreCaracteristicaRequest $request)
-    {
-        try {
-                            if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
-            DB::beginTransaction();
-            $caracteristica = Caracteristica::create($request->validated());
-            $caracteristica->presentacione()->create([
-                'caracteristica_id' => $caracteristica->id
-            ]);
-            DB::commit();
-        } catch (Exception $e) {
-            DB::rollBack();
-        }
-
-        return redirect()->route('presentaciones.index')->with('success', 'Presentación registrada');
+public function store(StoreCaracteristicaRequest $request)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+
+    try {
+        DB::beginTransaction();
+
+        // 1. Crea la característica
+        $caracteristica = Caracteristica::create($request->validated());
+
+        // 2. CORREGIDO: Se usa el método en plural 'presentaciones()' que definiste en tu modelo
+        $caracteristica->presentaciones()->create([]);
+
+        DB::commit();
+        return redirect()->route('presentaciones.index')->with('success', 'Presentación registrada con éxito');
+
+    } catch (\Exception $e) { // CORREGIDO: \Exception para atrapar el error correctamente
+        DB::rollBack();
+
+        // Registrar error en el log para auditoría
+        \Log::error("Error al registrar presentación: " . $e->getMessage());
+
+        return redirect()->back()
+            ->withInput()
+            ->with('error', 'No se pudo registrar la presentación: ' . $e->getMessage());
+    }
+}
+
+
 
     /**
      * Display the specified resource.
