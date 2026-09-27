@@ -375,7 +375,7 @@ foreach ($productosConsolidados as $item) {
         'fkTienda'              => $fkTienda,
         'fkMateriales'          => $item['id'],
         'fkLotes'               => $idLoteGenerado,
-        'clase_movimiento'      => '641',
+        'clase_movimiento'      => '101',
         'tipo_movimiento'       => 'COMPRA',
         'cantidad'              => $cantidadLote,
         'documento_material'    => 'COM-' . $compra->numero_comprobante,
