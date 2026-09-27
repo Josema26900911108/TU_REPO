@@ -45,19 +45,26 @@ public function creating(MovimientoMateriales $movimiento)
     $producto = Producto::find($movimiento->fkMateriales);
     if (!$producto) throw new \Exception("Error: Material no existe.");
 
+    // EXCEPCIÓN PARA TRASPASOS EN 1 PASO (311) U OPERACIONES DE ENTRADA:
+    // Si el movimiento es un ingreso (puedes verificar si la cantidad es positiva, 
+    // o si tienes una columna tipo 'tipo_operacion' == 'ENTRADA'), saltamos la validación de salida.
+    if ($movimiento->clase_movimiento === '311' && $movimiento->cantidad > 0 && ($producto->stock ?? 0) == 0) {
+        // Permitir la carga inicial o ingreso por traspaso del producto nuevo
+        return; 
+    }
+
     if (in_array($movimiento->clase_movimiento, $this->clasesSalida)) {
         
-        // 1. LÓGICA PARA MATERIAL SERIADO (Equipos/Instalaciones)
+        // 1. LÓGICA PARA MATERIAL SERIADO
         if ($producto->es_seriado) { 
             if (!$movimiento->referencia_sap) {
                 throw new \Exception("Material seriado requiere Serie.");
             }
         }
 
-        // 2. LÓGICA PARA PERECEDEROS / LOTES (Alimentos/Químicos)
+        // 2. LÓGICA PARA PERECEDEROS / LOTES
         elseif ($producto->perecedero == 1) {
             if (is_null($movimiento->fkLotes)) {
-                // Selección automática FIFO
                 $lote = Lotesalarma::where('producto_id', $producto->id)
                     ->where('cantidad', '>=', $movimiento->cantidad)
                     ->where('estado', 'disponible')
@@ -69,15 +76,15 @@ public function creating(MovimientoMateriales $movimiento)
             }
         }
 
-        // 3. LÓGICA PARA MISCELÁNEOS (Stock General)
-        // CAMBIO: Ahora es un 'else'. Solo evalúa productos comunes sin lote ni serie.
+        // 3. LÓGICA PARA MISCELÁNEOS
         else {
-            if ($producto->stock < $movimiento->cantidad) {
+            if (($producto->stock ?? 0) < $movimiento->cantidad) {
                 throw new \Exception("Stock insuficiente general para {$producto->nombre}.");
             }
         }
     }
 }
+
 
 
 
