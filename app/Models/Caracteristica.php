@@ -25,6 +25,11 @@ class Caracteristica extends Model
         return $this->hasMany(Marca::class, 'caracteristica_id');
     }
 
+        public function marca()
+    {
+        return $this->hasOne(Marca::class, 'caracteristica_id');
+    }
+
     public function presentaciones()
     {
         return $this->hasMany(Presentacione::class, 'caracteristica_id');
