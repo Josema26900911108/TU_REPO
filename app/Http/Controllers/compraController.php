@@ -84,7 +84,7 @@ $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
             ->latest()
             ->get();
 
-            
+
         } else {
             $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
             ->where('estado', 2)
@@ -677,7 +677,7 @@ foreach ($arrayCodigos as $index => $codigoFilaRaw) {
         'fkTienda'              => $fkTienda,
         'fkMateriales'          => $idProductoFinal,
         'fkLotes'               => $idLoteGenerado,
-        'clase_movimiento'      => '641',
+        'clase_movimiento'      => '101',
         'tipo_movimiento'       => 'COMPRA',
         'cantidad'              => $cantFila,
         'documento_material'    => 'COM-' . $compra->numero_comprobante,
