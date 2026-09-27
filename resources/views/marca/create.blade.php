@@ -17,7 +17,24 @@
         <li class="breadcrumb-item"><a href="{{ route('panel') }}">Inicio</a></li>
         <li class="breadcrumb-item"><a href="{{ route('marcas.index')}}">Marcas</a></li>
         <li class="breadcrumb-item active">Crear Marca</li>
-    </ol>
+    </ol>   
+
+    <!-- Mensaje de Éxito -->
+@if (session('success'))
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <strong>¡Éxito!</strong> {{ session('success') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+@endif
+
+<!-- Mensaje de Error (Capturado por el catch) -->
+@if (session('error'))
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <strong>¡Error!</strong> {{ session('error') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+@endif
+
 
     <div class="card">
         <form action="{{ route('marcas.store') }}" method="post">

@@ -46,21 +46,32 @@ class marcaController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreCaracteristicaRequest $request)
-    {
-        try {
-            DB::beginTransaction();
-            $caracteristica = Caracteristica::create($request->validated());
-            $caracteristica->marca()->create([
-                'caracteristica_id' => $caracteristica->id
-            ]);
-            DB::commit();
-        } catch (Exception $e) {
-            DB::rollBack();
-        }
+public function store(StoreCaracteristicaRequest $request)
+{
+    try {
+        DB::beginTransaction();
+        
+        // 1. Crea la característica con los datos validados (nombre, descripcion, estado)
+        $caracteristica = Caracteristica::create($request->validated());
+        
+        // 2. Crea la marca asociada de forma limpia
+        $caracteristica->marca()->create([]); 
+        
+        DB::commit();
+        return redirect()->route('marcas.index')->with('success', 'Marca registrada con éxito.');
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        
+        // Registrar en storage/logs/laravel.log por si necesitas auditar fallos del motor de BD
+        Log::error("Fallo en registro de marca: " . $e->getMessage());
 
-        return redirect()->route('marcas.index')->with('success', 'Marca registrada');
+        return redirect()->back()
+            ->withInput()
+            ->with('error', 'No se pudo registrar la marca: ' . $e->getMessage());
     }
+}
+
 
     /**
      * Display the specified resource.
