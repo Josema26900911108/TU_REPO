@@ -1284,6 +1284,17 @@ error: function(xhr) {
 
 
     $(document).ready(function() {
+
+            $('#comprobante_id').on('change', function() {
+        console.log("Comprobante seleccionado:", $(this).val());
+    });
+
+    // Darle 100ms al plugin para que se dibuje y luego forzar el cambio
+    setTimeout(function() {
+        $('#comprobante_id').trigger('change');
+    }, 100);
+
+    
     $('#producto_id').on('change', function() {
         // Obtener la opción seleccionada
         let selectedOption = $(this).find('option:selected');

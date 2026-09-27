@@ -35,7 +35,7 @@
     </div>
 @endif
 
-
+w
     <div class="card">
         <form action="{{ route('marcas.store') }}" method="post">
             @csrf
