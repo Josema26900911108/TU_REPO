@@ -18,6 +18,11 @@ class Caracteristica extends Model
     {
         return $this->hasMany(Categoria::class, 'caracteristica_id');
     }
+    
+    public function categoria()
+    {
+        return $this->hasMany(Categoria::class, 'caracteristica_id');
+    }
 
     // CORREGIDO: Si marcas, presentaciones y cajas siguen la misma lógica, deben ser hasMany o hasOne
     public function marcas()
