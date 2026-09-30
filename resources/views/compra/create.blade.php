@@ -411,10 +411,13 @@
                             <textarea name="descripcion" id="modal_descripcion" rows="2" class="form-control"></textarea>
                         </div>
 
+
+
+
                         <!--- Marca (Creable con Selectpicker) ---->
                         <div class="col-md-4 mb-3">
                             <label for="modal_marca_id" class="form-label font-weight-bold">Marca:</label>
-                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_marca_id" id="modal_marca_id" class="form-control selectpicker show-tick">
+                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_marca_id" id="modal_marca_id" class="form-control select-modal-express show-tick">
                                 @foreach ($marcas as $item)
                                     <option value="{{$item->id}}">{{$item->caracteristica->nombre ?? 'Marca '.$item->id}}</option>
                                 @endforeach
@@ -424,7 +427,7 @@
                         <!--- Presentación (Creable con Selectpicker) ---->
                         <div class="col-md-4 mb-3">
                             <label for="modal_presentacione_id" class="form-label font-weight-bold">Presentación:</label>
-                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_presentacione_id" id="modal_presentacione_id" class="form-control selectpicker show-tick">
+                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_presentacione_id" id="modal_presentacione_id" class="form-control select-modal-express show-tick">
                                 @foreach ($presentaciones as $item)
                                     <option value="{{$item->id}}">{{$item->caracteristica->nombre ?? 'Presentación '.$item->id}}</option>
                                 @endforeach
@@ -434,7 +437,7 @@
                         <!--- Categorías (Múltiple) ---->
                         <div class="col-md-4 mb-3">
                             <label for="modal_categorias" class="form-label font-weight-bold">Categorías:</label>
-                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_categorias[]" id="modal_categorias" class="form-control selectpicker show-tick" multiple>
+                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_categorias[]" id="modal_categorias" class="form-control select-modal-express show-tick" multiple>
                                 @foreach ($categorias as $item)
                                     <option value="{{$item->id}}">{{$item->caracteristica->nombre ?? 'Categoría '.$item->id}}</option>
                                 @endforeach
@@ -558,30 +561,8 @@ let streamCamara = null;
 
         $(document).ready(function() {
 
-    $(document).on('refreshed.bs.select loaded.bs.select', '#modal_marca_id, #modal_presentacione_id, #modal_categorias', function (e) {
-        
-        // Localizar el menú visual desplegable (la lista <ul> de divs que genera el plugin)
-        let dropdownMenu = $(this).closest('.dropdown-node, .bootstrap-select').find('ul.dropdown-menu.inner');
-        
-        if (dropdownMenu.length > 0) {
-            let textosVistosVisuales = {};
-            
-            // Recorrer cada elemento de lista <li> que ve el usuario en la pantalla
-            dropdownMenu.find('li').each(function() {
-                // Obtener el texto visible del ítem (ej: "Analgesicos", "Gallo", etc.)
-                let textoVisible = $(this).find('.text').text().trim().toLowerCase();
-                
-                if (textoVisible !== "") {
-                    // 🚀 SI EL TEXTO YA EXISTE EN LA PANTALLA, BORRAR EL ELEMENTO DE LISTA REPETIDO
-                    if (textosVistosVisuales[textoVisible]) {
-                        $(this).remove(); // Lo extirpamos físicamente de la interfaz visual
-                    } else {
-                        // Guardar en el registro que ya vimos este texto por primera vez
-                        textosVistosVisuales[textoVisible] = true;
-                    }
-                }
-            });
-        }
+                $('.combo-modal').selectpicker({
+        noneResultsText: 'No se encontró, presione enter para registrar: {0}'
     });
 
     // Forzar el cierre del modal al hacer clic en cualquier botón con data-dismiss="modal"
@@ -594,7 +575,18 @@ let streamCamara = null;
         $('body').removeClass('modal-open').css('overflow', 'auto'); // Devuelve el scroll a la página
         purgarDuplicadosVisuales();
     });        
+    
+        // 1. Forzar visualmente selección ÚNICA estricta para Marca y Presentación
+    // Inicializar Marca y Presentación asegurando selección ÚNICA estricta
+    $('#modal_marca_id, #modal_presentacione_id').selectpicker({
+        noneResultsText: 'No se encontró, presione enter para registrar: {0}',
+        multiple: false // 🚀 Elimina los checks flotantes por completo
+    });
 
+    // Inicializar Categorías manteniendo su comportamiento múltiple
+    $('#modal_categorias').selectpicker({
+        noneResultsText: 'No se encontró, presione enter para registrar: {0}'
+    });
     // =========================================================================
     // 1. CAPTURAR ENTRADA DEL SKU (ESCRITURA MANUAL O PISTOLA DE ESCANEO)
     // =========================================================================
@@ -693,65 +685,52 @@ let streamCamara = null;
         noneResultsText: 'No se encontró, presione enter para registrar: {0}'
     });
 
-    // Interceptar lo que digita el usuario en las cajas de búsqueda en vivo
-$(document).on('keyup', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function() {
-        let textoBusqueda = $(this).val().trim();
-        let selectId = $(this).closest('.bootstrap-select').find('select').attr('id');
-        
-        if (selectId === 'modal_marca_id') {
-            nuevaMarca =    $('#modal_marca_id').val() ? null : textoBusqueda;
-        } else if (selectId === 'modal_presentacione_id') {
-            nuevaPresentacion = $('#modal_presentacione_id').val() ? null : textoBusqueda;
-        }
-    });
+
+
     // =========================================================================
     // REINICIO PROFUNDO PROTEGIENDO COMBOS DE LA PANTALLA PRINCIPAL
     // =========================================================================
-    $('#modalProductoNuevo').on('show.bs.modal', function () {
-        // 1. Respaldar el SKU detectado antes del reset
-        let skuRespaldado = $('#modal_codigo').val();
+$('#modalProductoNuevo').on('show.bs.modal', function () {
+    let skuRespaldado = $('#modal_codigo').val();
 
-        // 2. Reiniciar las variables globales de texto libre
-        nuevaMarca = null; 
-        nuevaPresentacion = null; 
-        nuevasCategorias = [];
+    nuevaMarca = null; 
+    nuevaPresentacion = null; 
+    nuevasCategorias = [];
 
-        // 3. Limpiar inputs comunes del formulario express
-        $('#formProductoExpress').trigger("reset"); 
+    // 1. Desmarcar selecciones visuales previas limpiamente
+    $('.select-modal-express').selectpicker('val', '');
 
-        // 4. Restaurar el SKU respaldado
-        $('#modal_codigo').val(skuRespaldado);
+    // 2. Reiniciar los elementos HTML nativos del formulario express
+    if ($('#formProductoExpress').length > 0) {
+        $('#formProductoExpress')[0].reset(); 
+    }
 
-        // 5. Vaciar los valores de los combos DEL MODAL exclusivamente usando sus IDs
-        $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').val('');
-        
-        // 6. Eliminar SOLO las opciones de texto libre anteriores de los combos del modal
-        $('#modal_marca_id option, #modal_presentacione_id option, #modal_categorias option').each(function() {
-            if (isNaN($(this).val()) && $(this).val() !== "") {
-                $(this).remove();
-            }
-        });
-
-        // =========================================================================
-        // 🚀 ¡SOLUCIÓN AQUÍ! REFRESCAR ÚNICAMENTE LOS COMBOS DEL MODAL EXPRESS
-        // =========================================================================
-        // Al apuntar por IDs separados por comas, la pantalla principal no se altera
-        $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('refresh');
-        // =========================================================================
-
-        // 7. Limpieza del panel multimedia de la cámara
-        if (streamCamara) {
-            streamCamara.getTracks().forEach(track => track.stop());
-            streamCamara = null;
+    // 3. Restaurar el SKU respaldado
+    $('#modal_codigo').val(skuRespaldado);
+    
+    // 4. Eliminar las opciones de texto libre anteriores (Valores de tipo texto/string)
+    $('.select-modal-express option').each(function() {
+        if (isNaN($(this).val()) && $(this).val() !== "") {
+            $(this).remove(); 
         }
-        $('#contenedor-camara-web').addClass('d-none');
-        $('#vista-previa-img').addClass('d-none').attr('src', ''); 
-        $('#texto-sin-foto').removeClass('d-none'); 
-
-        purgarDuplicadosVisuales();
-        
-        console.log("Formulario express reseteado de forma aislada. Combos iniciales protegidos.");
     });
+
+    // 5. 🚀 REFRESCAR NATIVAMENTE UNA SOLA VEZ
+    // Redibuja el HTML del plugin sincronizado con el DOM real del formulario limpio
+    $('.select-modal-express').selectpicker('refresh');
+
+    // Control multimedia de cámara...
+    if (streamCamara) {
+        streamCamara.getTracks().forEach(track => track.stop());
+        streamCamara = null;
+    }
+    $('#contenedor-camara-web').addClass('d-none');
+    $('#vista-previa-img').addClass('d-none').attr('src', ''); 
+    $('#texto-sin-foto').removeClass('d-none'); 
+    
+    console.log("Formulario express reseteado de forma aislada sin duplicar instancias.");
+});
+
 
     // =========================================================================
     // 4. CONTROL MULTIMEDIA NATIVO (ELEGIR IMAGEN / WEBCAM)
@@ -812,96 +791,93 @@ $(document).on('keyup', '#modalProductoNuevo .bootstrap-select .bs-searchbox inp
         $('#contenedor-camara-web').addClass('d-none');
     }
 
-// --- 🚀 LIMPIEZA INTELIGENTE AL CERRAR ---
+
 $('#modalProductoNuevo').on('hidden.bs.modal', function () {
-    
-    // 1. Resetear inputs nativos del formulario usando el elemento del DOM
     if ($('#formProductoExpress').length > 0) {
         $('#formProductoExpress')[0].reset(); 
     }
     
-    $('#vista-previa-img').attr('src', '');
+    $('#vista-previa-img').attr('src', '').addClass('d-none');
+    $('#texto-sin-foto').removeClass('d-none');
 
-    // 2. Limpiar selects del modal preservando los nuevos IDs reales
-    $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').each(function() {
-        
-        $(this).selectpicker('deselectAll'); // Comando nativo de la librería para quitar checks visuales
+    // Apuntar a .combo-modal
+    $('.combo-modal').each(function() {
+        $(this).selectpicker('val', ''); 
         
         $(this).find('option').each(function() {
             let valor = $(this).val();
-            
-            // Si el valor sigue siendo texto (no se convirtió a número porque el formulario no se envió con éxito)
             if (isNaN(valor) && valor !== "") {
-                $(this).remove(); // Se purga por completo por ser basura temporal
+                $(this).remove(); 
             } else {
-                // Si es un ID real (incluyendo las nuevas marcas inyectadas en el éxito), se conserva pero se desmarca
                 $(this).prop('selected', false).removeAttr('selected');
             }
         });
-
-        // Limpiar el valor del componente nativo
-        if ($(this).prop('multiple')) {
-            $(this).val([]);
-        } else {
-            $(this).val('');
-        }
-
-        // Destruir la instancia del plugin para eliminar estados fantasma en memoria
-        $(this).selectpicker('destroy');
     });
 
     $(this).find('.bs-searchbox input').val('');
-    purgarDuplicadosVisuales();
-
-    // Reconstruir la interfaz visual desde el HTML purgado
-    $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker();
+    
+    // Refrescar de forma segura la nueva clase única
+    $('.combo-modal').selectpicker('refresh');
 });
 
 
+// ✅ DEJA ÚNICAMENTE ESTE CONTROLADOR PARA EL ENTER (Borra el keyup de arriba)
+$(document).on('keydown', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function(e) {
+    let textoBusqueda = $(this).val().trim();
+    let selectpickerContenedor = $(this).closest('.bootstrap-select');
+    let selectOriginal = selectpickerContenedor.find('select');
+    let selectId = selectOriginal.attr('id');
 
+    // Escuchar únicamente la tecla ENTER (Código 13)
+    if (e.keyCode === 13 || e.which === 13) {
+        if (textoBusqueda !== "") {
+            e.preventDefault(); // Evita que se envíe el formulario principal
 
-    $(document).on('keydown', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function(e) {
-        let textoBusqueda = $(this).val().trim();
-        let selectpickerContenedor = $(this).closest('.bootstrap-select');
-        let selectOriginal = selectpickerContenedor.find('select');
-        let selectId = selectOriginal.attr('id');
-
-        // Escuchar únicamente la tecla ENTER (Código 13) dentro del buscador
-        if (e.keyCode === 13 || e.which === 13) {
-            if (textoBusqueda !== "") {
-                e.preventDefault(); // Evita que se envíe el formulario principal del modal
-
-                // 1. Crear dinámicamente la nueva opción en el <select> oculto de HTML
-                // Le ponemos un value temporal igual al texto para identificar que es una opción nueva
-                let nuevaOpcionHtml = `<option value="${textoBusqueda}" selected>${textoBusqueda}</option>`;
-                selectOriginal.append(nuevaOpcionHtml);
-
-                // 2. Refrescar el plugin para que dibuje y preseleccione la nueva opción en la interfaz
-                selectOriginal.selectpicker('refresh');
-                selectOriginal.selectpicker('val', textoBusqueda);
-                selectOriginal.trigger('change');
-
-                // 3. Almacenar el valor en las variables globales correspondientes para Laravel
-                if (selectId === 'modal_marca_id') {
-                    nuevaMarca = textoBusqueda;
-                } else if (selectId === 'modal_presentacione_id') {
-                    nuevaPresentacion = textoBusqueda;
-                } else if (selectId === 'modal_categorias') {
-                    // Si es el de categorías, lo sumamos al arreglo múltiple
-                    if (!nuevasCategorias.includes(textoBusqueda)) {
-                        nuevasCategorias.push(textoBusqueda);
-                    }
+            // 1. Validar si el texto ya existe exactamente en las opciones nativas
+            let existeOpcion = false;
+            selectOriginal.find('option').each(function() {
+                if ($(this).text().toLowerCase() === textoBusqueda.toLowerCase()) {
+                    existeOpcion = true;
+                    textoBusqueda = $(this).val(); // Conservamos el ID numérico real
                 }
+            });
 
-                // 4. Cerrar el menú desplegable automáticamente para mejorar la experiencia
-                selectOriginal.selectpicker('toggle');
-                purgarDuplicadosVisuales();
-                // Mover el foco al siguiente elemento lógico si es necesario
-                console.log(`Opción registrada temporalmente en ${selectId}:`, textoBusqueda);
+            // 2. Si no existe en la base de datos, la inyectamos limpia al HTML nativo
+            if (!existeOpcion) {
+                let nuevaOpcionHtml = `<option value="${textoBusqueda}">${textoBusqueda}</option>`;
+                selectOriginal.append(nuevaOpcionHtml);
             }
-            return false;
+
+            // 3. 🚀 ASIGNACIÓN ÚNICA ESTRICTA
+            if (selectId === 'modal_marca_id' || selectId === 'modal_presentacione_id') {
+                selectOriginal.val(textoBusqueda); // Fuerza la selección de UN SOLO ítem
+                
+                // Guardar en la variable global para Laravel
+                if (selectId === 'modal_marca_id') nuevaMarca = textoBusqueda;
+                if (selectId === 'modal_presentacione_id') nuevaPresentacion = textoBusqueda;
+            } else {
+                // Modo múltiple exclusivo para categorías
+                let valoresActuales = selectOriginal.val() || [];
+                if (!valoresActuales.includes(textoBusqueda)) {
+                    valoresActuales.push(textoBusqueda);
+                }
+                selectOriginal.val(valoresActuales);
+                
+                if (!nuevasCategorias.includes(textoBusqueda)) {
+                    nuevasCategorias.push(textoBusqueda);
+                }
+            }
+
+            // 4. Refrescar una sola vez la interfaz visual
+            selectOriginal.selectpicker('refresh');
+            selectOriginal.trigger('change');
+            selectOriginal.selectpicker('toggle'); // Cierra el menú desplegable
         }
-    });
+        return false;
+    }
+});
+
+
 
     // =========================================================================
     // 5. ENVÍO EXPRESS DEL FORMULARIO HACIA LARAVEL POR AJAX

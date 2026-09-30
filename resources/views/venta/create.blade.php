@@ -72,7 +72,7 @@
                         <!-----SKU---->
                         <div class="col-sm-4">
                             <label for="SKU" class="form-label">SKU:</label>
-                            <input type="number" name="SKU" id="SKU" class="form-control">
+                            <input type="text" name="SKU" id="SKU" class="form-control">
                         </div>
 
                         <!-----Producto---->
