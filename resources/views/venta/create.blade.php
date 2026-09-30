@@ -835,6 +835,7 @@ function mostrarValores() {
 
 
 var comprobanteId = $("#SKU").val();
+
 if (comprobanteId) {
     $.ajax({
         url: '/compras/detallesSCAN/' + comprobanteId + '',

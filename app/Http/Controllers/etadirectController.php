@@ -18,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use MathParser\StdMathParser;
 use MathParser\Interpreting\Evaluator;
+use  App\Models\Caracteristica;
 
 class etadirectController extends Controller
 {

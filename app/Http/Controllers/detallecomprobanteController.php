@@ -163,33 +163,36 @@ return response()->json($detallecomprobante);
 
         return redirect()->route('comprobante.index')->with('success', 'Se ha agregado Exitosamente');
     }
-    public function edit(Comprobante $comprobante) {
-        if (!$comprobante) {
-            return redirect()->route('comprobante.index')->with('error', 'Comprobante no encontrado');
-        }
-
-        $Estatus = session('user_estatus');
-        $comprobanteId = $comprobante->id;
-
-        if ($Estatus == 'ER') {
-            $detallecomprobante = DetalleComprobante::with('tienda')->where('fkComprobante',$comprobanteId)
-                ->get();
-        } else {
-            $detallecomprobante = DetalleComprobante::with('tienda')->where('fkComprobante',$comprobanteId)
-                ->where('fkComprobante', $comprobanteId)
-                ->get();
-        }
-
-        if (!$detallecomprobante) {
-            return redirect()->route('comprobante.index')->with('error', 'Detalle de comprobante no encontrado');
-        }
-
-        $cuentacontable = DB::table('cuentas_contables')
-            ->whereNotNull('padre_id')
-            ->get();
-
-        return view('detallecomprobante.edit', compact('comprobante', 'cuentacontable', 'detallecomprobante', 'comprobanteId'));
+public function edit(Comprobante $comprobante) {
+    if (!$comprobante) {
+        return redirect()->route('comprobante.index')->with('error', 'Comprobante no encontrado');
     }
+
+    $Estatus = session('user_estatus');
+    $comprobanteId = $comprobante->id;
+
+    // Agregamos 'cuentaContable' al método with() separated por una coma
+    if ($Estatus == 'ER') {
+        $detallecomprobante = DetalleComprobante::with(['tienda', 'cuentaContable'])
+            ->where('fkComprobante', $comprobanteId)
+            ->get();
+    } else {
+        $detallecomprobante = DetalleComprobante::with(['tienda', 'cuentaContable'])
+            ->where('fkComprobante', $comprobanteId)
+            ->get();
+    }
+
+    if ($detallecomprobante->isEmpty()) { // Es mejor usar isEmpty() para colecciones de Eloquent
+        return redirect()->route('comprobante.index')->with('error', 'Detalle de comprobante no encontrado');
+    }
+
+    $cuentacontable = DB::table('cuentas_contables')
+        ->whereNotNull('padre_id')
+        ->get();
+
+    return view('detallecomprobante.edit', compact('comprobante', 'cuentacontable', 'detallecomprobante', 'comprobanteId'));
+}
+
 
 
 }

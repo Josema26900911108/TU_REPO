@@ -236,6 +236,9 @@ Route::get('/cajaregistradora', [CajaRegistradoraController::class, 'index'])->n
 Route::post('/cajaregistradora/open', [CajaRegistradoraController::class, 'open'])->name('cajaregistradora.open.submit');
 Route::resource('cash', CashRegisterController::class);
 Route::post('/arqueocaja/store/{arqueocaja}', [ArqueoCajaController::class, 'store'])->name('arqueocaja.store');
+Route::post('/detallecomprobante/update-arqueo', [ArqueoCajaController::class, 'updateTipoArqueo'])
+     ->name('detallecomprobante.update-arqueo');
+
 
 Route::post('/venta/storeCC', [ventaController::class, 'storeCC'])->name('ventas.storeCC');
 Route::get('/ventas/cobrarventas/{ventas}', [ventaController::class, 'cobrarventas'])->name('ventas.cobrarventas');
@@ -309,12 +312,18 @@ Route::post('productos/importar', [compraController::class, 'storeMasivo'])
 
     Route::get('/buscarProducto', [ProductoController::class, 'buscarProducto'])
     ->name('producto.buscarPorCategoria');
-
-    Route::get('/producto/{id}', [ProductoController::class, 'shows']);
     
+    Route::get('/producto/{id}', [ProductoController::class, 'shows']);    
     Route::get('/ajax-interno/generar-codigo-barras-unico', [ProductoController::class, 'obtenerCodigoUnicoAjax']);
-
     Route::post('/productos/{producto}', [ProductoController::class, 'update'])->name('productos.update');
+
+Route::middleware(['auth'])->group(function () {    
+    // === URL ÚNICA INMUNE A CONFLICTOS DE RESOURCE ===
+    Route::post('/registrar-producto-express', [ProductoController::class, 'storeExpress'])->name('productos.storeExpress');
+    // Mantén tu recurso normal aquí abajo
+    Route::resource('productos', ProductoController::class);
+});
+
 
 // Descargar plantilla Excel
 Route::get('productos/importar/plantilla', [compraController::class, 'descargarPlantilla'])

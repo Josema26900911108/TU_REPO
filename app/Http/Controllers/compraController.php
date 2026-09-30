@@ -32,7 +32,7 @@ use App\Models\MovimientoMateriales;
 use Illuminate\Support\Facades\Auth;
 use MathParser\StdMathParser;
 use MathParser\Interpreting\Evaluator;
-
+use  App\Models\Caracteristica;
 
 class compraController extends Controller
 {
@@ -133,23 +133,25 @@ $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
 }
 
     public function create()
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
+{
+    if(!Auth::check()){
+        return redirect()->route('login');
+    }
 
-        $fkTienda = session('user_fkTienda');
-        $Estatus = session('user_estatus');
-        $cuentasContables = CuentaContable::where('fkTienda', $fkTienda)->get();
+    $fkTienda = session('user_fkTienda');
+    $Estatus = session('user_estatus');
+    $cuentasContables = CuentaContable::where('fkTienda', $fkTienda)->get();
 
-        $proveedores = Proveedore::whereHas('persona',function($query){
-            $query->where('estado',1);
-        })->get();
-        $comprobantes = Comprobante::whereHas('tienda',function($query) use ($fkTienda){
-            $query->where('fkTienda',$fkTienda);
-        })->where('estado',1)
-        ->where('ClaveVista','DC')->get();
-            // Si el estatus es 'ER', cargar todos los productos
+    $proveedores = Proveedore::whereHas('persona',function($query){
+        $query->where('estado',1);
+    })->get();
+    
+    $comprobantes = Comprobante::whereHas('tienda',function($query) use ($fkTienda){
+        $query->where('fkTienda',$fkTienda);
+    })->where('estado',1)
+    ->where('ClaveVista','DC')->get();
+    
+    // Si el estatus es 'ER', cargar todos los productos
     if ($Estatus == 'ER') {
         $productos = Producto::where('estado',1)->get();
     } else {
@@ -158,8 +160,30 @@ $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
             $query->where('fkTienda', $fkTienda);
         })->where('estado', 1)->get();
     }
-        return view('compra.create',compact('cuentasContables','proveedores','comprobantes','productos'));
-    }
+
+    // === ¡INTEGRACIÓN AQUÍ! Consultas necesarias para alimentar tu modal express ===
+    $marcas = \App\Models\Marca::with('caracteristica')->get();
+    $presentaciones = \App\Models\Presentacione::with('caracteristica')->get();
+    
+    // Asumiendo que tu modelo para las categorías se llama Categoria. 
+    // Si es diferente (ej. Categorium), cambia el nombre del modelo aquí:
+    $categorias = \App\Models\Categoria::with('caracteristica')->get();
+    // ==============================================================================
+
+    // Añadidas las tres variables al compact final
+    return view('compra.create', compact(
+        'cuentasContables',
+        'proveedores',
+        'comprobantes',
+        'productos',
+        'marcas',
+        'presentaciones',
+        'categorias'
+    ));
+}
+
+
+
 
 public function store(StoreCompraRequest $request)
 {

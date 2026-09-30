@@ -63,6 +63,7 @@
                             <th>Formula</th>
                             <th>Tienda</th>
                             <th>Habilitado</th>
+                            <th>Vista</th>
                             <th>Default</th>
                             <th>Acciones</th>
                         </tr>
@@ -84,12 +85,22 @@
                                     @endif
                                 </td>
                                 <td>
-                                    @if($item->ClaveVista!="")
-                                        <span class="badge bg-success">Sí</span>
+                                    @if($item->estado==1)
+                                        <!-- Imprimir la variable real dentro del badge con llaves dobles -->
+                                        <span class="badge bg-success">SI</span>
                                     @else
-                                        <span class="badge bg-danger">No</span>
-                                    @endif  
+                                        <span class="badge bg-danger">NO</span>
+                                    @endif
+                                </td>                                
                                 <td>
+                                    @if(!empty($item->ClaveVista))
+                                        <!-- Imprimir la variable real dentro del badge con llaves dobles -->
+                                        <span class="badge bg-success">{{ $item->ClaveVista }}</span>
+                                    @else
+                                        <span class="badge bg-danger">No asignada</span>
+                                    @endif
+                                </td>
+
                                 <td>
                                     @if($item->defauldoc=="1")
                                         <span class="badge bg-success">Sí</span>

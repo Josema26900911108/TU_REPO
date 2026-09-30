@@ -15,7 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PhpParser\Node\Stmt\TryCatch;
-
+use  App\Models\Caracteristica;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class ProductoController extends Controller
 {
@@ -59,6 +61,157 @@ class ProductoController extends Controller
 
     return view('producto.index', compact('productos'));
 }
+
+
+public function storeExpress(Request $request)
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Sesión expirada'], 401);
+    }
+
+    // 🚀 DEFINICIÓN DEL LOCK KEY PARA CONTROL DE CONCURRENCIA
+    $lockKey = 'submit_producto_' . auth()->id();
+    
+    // Intentar obtener el candado por 10 segundos. Si ya está bloqueado, rechaza la petición.
+    $lock = Cache::lock($lockKey, 10);
+
+    if (!$lock->get()) {
+        return response()->json([
+            'error' => 'Ya se está procesando una solicitud de registro. Por favor espere.'
+        ], 423); // Código de estado 423: Locked (Bloqueado)
+    }
+
+    try {
+        $fkTienda = session('user_fkTienda');
+        DB::beginTransaction();
+
+        // =======================================================
+        // 1. PROCESAR MARCA (Evita duplicados)
+        // =======================================================
+        $marcaId = $request->input('modal_marca_id');
+        
+        if ($marcaId && !is_numeric($marcaId)) {
+            $caracMarca = Caracteristica::firstOrCreate(
+                ['nombre' => trim($marcaId)],
+                ['estado' => 1, 'descripcion' => 'Creado por control express']
+            );
+            
+            $nuevaM = $caracMarca->marca()->firstOrCreate([
+                'caracteristica_id' => $caracMarca->id
+            ]);
+            $marcaId = $nuevaM->id;
+        }
+
+        // =======================================================
+        // 2. PROCESAR PRESENTACIÓN (Evita duplicados)
+        // =======================================================
+        $presentacionId = $request->input('modal_presentacione_id');
+
+        if ($presentacionId && !is_numeric($presentacionId)) {
+            $caracPres = Caracteristica::firstOrCreate(
+                ['nombre' => trim($presentacionId)],
+                ['estado' => 1, 'descripcion' => 'Creado por control express']
+            );
+            
+            $nuevaP = $caracPres->presentaciones()->firstOrCreate([
+                'caracteristica_id' => $caracPres->id
+            ]); 
+            $presentacionId = $nuevaP->id; 
+        }
+
+        // =======================================================
+        // 3. PROCESAR IMAGEN COMPUESTA (Galería o Webcam)
+        // =======================================================
+        $nameImg = null;
+        if ($request->hasFile('img_path')) {
+            $nameImg = (new Producto())->handleUploadImage($request->file('img_path'));
+        } elseif ($request->has('imagen_base64')) {
+            $base64Data = $request->input('imagen_base64');
+            @list($type, $fileData) = explode(';', $base64Data);
+            @list(, $fileData)      = explode(',', $fileData);
+            
+            $imageName = 'express_' . time() . '.jpg';
+            $path = public_path('img/productos/' . $imageName);
+            
+            if (!file_exists(public_path('img/productos'))) {
+                mkdir(public_path('img/productos'), 0777, true);
+            }
+            file_put_contents($path, base64_decode($fileData));
+            $nameImg = 'img/productos/' . $imageName; 
+        }
+
+        // =======================================================
+        // 4. CREACIÓN / RECUPERACIÓN DEL PRODUCTO (Evita duplicados)
+        // =======================================================
+        $producto = Producto::firstOrCreate(
+            [
+                'codigo'   => $request->input('modal_codigo'),
+                'fkTienda' => $fkTienda
+            ],
+            [
+                'nombre'            => $request->input('nombre'),
+                'descripcion'       => $request->input('descripcion'),
+                'img_path'          => $nameImg,
+                'marca_id'          => $marcaId,
+                'presentacione_id'  => $presentacionId,
+                'perecedero'        => $request->boolean('perecedero'),
+                'stock'             => 0, 
+                'estado'            => 1
+            ]
+        );
+
+        // =======================================================
+        // 5. ASOCIACIÓN DINÁMICA DE CATEGORÍAS (Evita duplicados)
+        // =======================================================
+        $categorias = [];
+        
+        $catsSeleccionadas = $request->input('categorias', []);
+        foreach($catsSeleccionadas as $catS) {
+            if (is_numeric($catS)) { $categorias[] = $catS; }
+        }
+
+        if ($request->has('nuevas_categorias_texto')) {
+            foreach ($request->input('nuevas_categorias_texto') as $textoCat) {
+                if (!empty(trim($textoCat))) {
+                    $caracCat = Caracteristica::firstOrCreate(
+                        ['nombre' => trim($textoCat)],
+                        ['estado' => 1]
+                    );
+                    
+                    $nuevaC = $caracCat->categoria()->firstOrCreate([
+                        'caracteristica_id' => $caracCat->id
+                    ]); 
+                    $categorias[] = $nuevaC->id;
+                }
+            }
+        }
+
+        $producto->categorias()->sync($categorias);
+
+        DB::commit();
+        
+        // 🚀 LIBERAR EL CANDADO MANUALMENTE TRAS EL ÉXITO
+        $lock->release();
+
+        return response()->json([
+            'success' => true,
+            'producto' => [
+                'id'     => $producto->id,
+                'nombre' => $producto->nombre,
+                'codigo' => $producto->codigo
+            ]
+        ], 200);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        
+        // 🚀 ASEGURAR LIBERACIÓN DEL CANDADO SI OCURRE UN ERROR
+        $lock->release();
+
+        return response()->json(['error' => 'Fallo en Registro: ' . $e->getMessage()], 500);
+    }
+}
+   
 
 public function shows($id)
 {
@@ -163,7 +316,21 @@ return $productos;
      * Store a newly created resource in storage.
      */public function store(StoreProductoRequest $request)
 {
-    // NOTA: Elimina el Auth::check() de aquí y añade el middleware 'auth' en tus rutas.
+        if (!Auth::check()) {
+        return response()->json(['error' => 'Sesión expirada'], 401);
+    }
+
+    // 🚀 DEFINICIÓN DEL LOCK KEY PARA CONTROL DE CONCURRENCIA
+    $lockKey = 'submit_compra_' . auth()->id();
+    
+    // Intentar obtener el candado por 10 segundos. Si ya está bloqueado, rechaza la petición.
+    $lock = Cache::lock($lockKey, 10);
+
+    if (!$lock->get()) {
+        return response()->json([
+            'error' => 'Ya se está procesando una solicitud de registro. Por favor espere.'
+        ], 423); // Código de estado 423: Locked (Bloqueado)
+    }
 
     try {
         // Recuperar la tienda de la sesión

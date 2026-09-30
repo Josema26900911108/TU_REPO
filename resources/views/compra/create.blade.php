@@ -70,7 +70,14 @@
                     Detalles de la compra
                 </div>
                 <div class="p-3 border border-3 border-primary">
-                    <div class="row">
+                    <div class="row gy-4">
+
+                        <!-----SKU---->
+                        <div class="col-sm-4">
+                            <label for="SKU" class="form-label">SKU:</label>
+                            <input type="text" name="SKU" id="SKU" class="form-control">
+                        </div>
+
                 <div class="col-12">
 
 <select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
@@ -283,7 +290,7 @@
                         <!--Numero de comprobante-->
                         <div class="col-12">
                             <label for="numero_comprobante" class="form-label">Numero de comprobante:</label>
-                            <input type="text" name="numero_comprobante" id="numero_comprobante" class="form-control" value="{{ old('numero_comprobante') }}" require>
+                            <input readonly type="text" name="numero_comprobante" id="numero_comprobante" class="form-control" value="{{ old('numero_comprobante', '0') }}" required>
                             @error('numero_comprobante')
                             <small class="text-danger">{{ '*'.$message }}</small>
                             @enderror
@@ -358,8 +365,132 @@
     </div>
   </div>
 </div>
-
 </form>
+
+<!-- Modal de Registro Express de Producto (Bootstrap 4) -->
+<div class="modal" id="modalProductoNuevo" window-target="modal" tabindex="-1" role="dialog" aria-labelledby="modalProductoLabel" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="modalProductoLabel">📦 Registrar Producto Nuevo</h5>
+                    <!-- Añadida la clase "close" para que se posicione correctamente a la derecha -->
+                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+
+            
+            <form id="formProductoExpress" enctype="multipart/form-data">
+                <div class="modal-body bg-light">
+                    <div class="row g-3">
+                        
+                        <!--- Código (Bloqueado con el SKU escaneado) ---->
+                        <div class="col-md-4 mb-3">
+                            <label for="modal_codigo" class="form-label font-weight-bold">Código / SKU:</label>
+                            <input type="text" name="modal_codigo" id="modal_codigo" class="form-control border-primary font-weight-bold" readonly>
+                        </div>
+
+                        <!--- Nombre ---->
+                        <div class="col-md-6 mb-3">
+                            <label for="modal_nombre" class="form-label font-weight-bold">Nombre del Producto *</label>
+                            <input type="text" name="nombre" id="modal_nombre" class="form-control" required>
+                        </div>
+
+                        <!--- Perecedero ---->
+                        <div class="col-md-2 mb-3">
+                            <div class="form-check form-switch mt-4 pt-2">
+                                <input type="hidden" name="perecedero" value="0">
+                                <input class="form-check-input" type="checkbox" name="perecedero" id="modal_perecedero" value="1">
+                                <label class="form-check-label font-weight-bold" for="modal_perecedero">¿Perecedero?</label>
+                            </div>
+                        </div>
+
+                        <!--- Descripción ---->
+                        <div class="col-12 mb-3">
+                            <label for="modal_descripcion" class="form-label font-weight-bold">Descripción:</label>
+                            <textarea name="descripcion" id="modal_descripcion" rows="2" class="form-control"></textarea>
+                        </div>
+
+                        <!--- Marca (Creable con Selectpicker) ---->
+                        <div class="col-md-4 mb-3">
+                            <label for="modal_marca_id" class="form-label font-weight-bold">Marca:</label>
+                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_marca_id" id="modal_marca_id" class="form-control selectpicker show-tick">
+                                @foreach ($marcas as $item)
+                                    <option value="{{$item->id}}">{{$item->caracteristica->nombre ?? 'Marca '.$item->id}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <!--- Presentación (Creable con Selectpicker) ---->
+                        <div class="col-md-4 mb-3">
+                            <label for="modal_presentacione_id" class="form-label font-weight-bold">Presentación:</label>
+                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_presentacione_id" id="modal_presentacione_id" class="form-control selectpicker show-tick">
+                                @foreach ($presentaciones as $item)
+                                    <option value="{{$item->id}}">{{$item->caracteristica->nombre ?? 'Presentación '.$item->id}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <!--- Categorías (Múltiple) ---->
+                        <div class="col-md-4 mb-3">
+                            <label for="modal_categorias" class="form-label font-weight-bold">Categorías:</label>
+                            <select data-size="4" title="Seleccione o escriba..." data-live-search="true" name="modal_categorias[]" id="modal_categorias" class="form-control selectpicker show-tick" multiple>
+                                @foreach ($categorias as $item)
+                                    <option value="{{$item->id}}">{{$item->caracteristica->nombre ?? 'Categoría '.$item->id}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <!--- SECCIÓN MULTIMEDIA TOTAL ---->
+                        <div class="col-12 mt-2">
+                            <label class="form-label font-weight-bold">Fotografía del Producto:</label>
+                            <div class="row align-items-center bg-white p-3 border rounded mx-0">
+                                
+                                <!-- Botones Izquierda -->
+                                <div class="col-md-6 px-1">
+                                    <div class="d-flex flex-column gap-2">
+                                        <label class="btn btn-outline-primary w-100 mb-2 py-2" for="modal_img_path">
+                                            📁 Elegir Imagen de Galería
+                                        </label>
+                                        <input type="file" name="img_path" id="modal_img_path" class="d-none" accept="image/*">
+
+                                        <button type="button" class="btn btn-outline-success w-100 py-2" id="btn-activar-camara">
+                                            📷 Usar Cámara Web
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- Stream de la Cámara -->
+                                    <div id="contenedor-camara-web" class="d-none mt-3">
+                                        <video id="video-camara" autoplay playsinline class="w-100 border rounded bg-dark" style="max-height: 180px;"></video>
+                                        <button type="button" class="btn btn-sm btn-success w-100 mt-2" id="btn-capturar-foto">📸 Capturar Fotografía</button>
+                                    </div>
+                                </div>
+
+                                <!-- Previsualización Derecha -->
+                                <div class="col-md-6 text-center border-start">
+                                    <div class="border rounded p-2 bg-light d-flex align-items-center justify-content-center mx-auto" style="height: 160px; max-width: 220px;">
+                                        <img id="vista-previa-img" src="" class="img-fluid d-none" style="max-height: 140px;" alt="Preview">
+                                        <span id="texto-sin-foto" class="text-muted small">Sin imagen seleccionada</span>
+                                    </div>
+                                    <canvas id="canvas-foto" class="d-none"></canvas>
+                                </div>
+
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="modal-footer bg-white">
+                    <!-- Cambiado data-bs-dismiss por data-dismiss para Bootstrap 4 -->
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary font-weight-bold">Guardar e Inyectar a Compra</button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('js')
@@ -397,10 +528,374 @@
         const plantilla = document.getElementById('plantilla-select');
         //Constantes
         const impuesto = 12;
+        let skuTimeout = null;
+let nuevaMarca = null;
+let nuevaPresentacion = null;
+let nuevasCategorias = [];
+let streamCamara = null;
 
         $(document).ready(function() {
 
-                document.getElementById("btnVerProducto").addEventListener("click", function() {
+    // Forzar el cierre del modal al hacer clic en cualquier botón con data-dismiss="modal"
+    $(document).on('click', '#modalProductoNuevo [data-dismiss="modal"]', function() {
+        $('#modalProductoNuevo').modal('hide');
+        
+        // Corrección de estilos manuales por si se queda congelada la opacidad
+        $('#modalProductoNuevo').css({ 'display': 'none', 'opacity': '0' });
+        $('.modal-backdrop').remove(); // Elimina el fondo negro transparente de la pantalla
+        $('body').removeClass('modal-open').css('overflow', 'auto'); // Devuelve el scroll a la página
+    });        
+
+    // =========================================================================
+    // 1. CAPTURAR ENTRADA DEL SKU (ESCRITURA MANUAL O PISTOLA DE ESCANEO)
+    // =========================================================================
+    $('#SKU').on('keydown', function(e) {
+        clearTimeout(skuTimeout); 
+
+        // Si presionan ENTER (Lector de barras)
+        if (e.keyCode === 13 || e.which === 13) { 
+            e.preventDefault(); 
+            let valor = $(this).val().trim();
+            if (valor !== '') {
+                agregarProductoScanner(valor);
+            }
+            return false;
+        }
+
+        // Si escribe manualmente, esperar 500ms tras la última tecla
+        skuTimeout = setTimeout(function() {
+            let valor = $('#SKU').val().trim();
+            if (valor !== '') {
+                agregarProductoScanner(valor);
+            }
+        }, 500); 
+    });
+
+    // =========================================================================
+    // 2. FUNCIÓN CORE: ESCANEO Y BUSQUEDA ASÍNCRONA EN CATÁLOGO
+    // =========================================================================
+    function agregarProductoScanner(sku) {
+        var comprobante = document.getElementById('comprobante_id').value;
+        if (comprobante === "") {
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Seleccione un comprobante primero.' });
+            return false;
+        }
+
+        // === 🚀 SOLUCIÓN DIRECTA PARA EL SKU ===
+        // Inyectamos el SKU en el modal INMEDIATAMENTE al iniciar el escaneo.
+        // Si el producto resulta no existir, el modal ya tendrá el dato guardado de forma segura.
+        let skuAAsignar = sku || $('#SKU').val().trim();
+        $('#modal_codigo').val(skuAAsignar); 
+
+        $.ajax({
+            url: '/comprar/SCANdetalles/' + skuAAsignar,
+            type: 'GET',
+            success: function(response) {
+                console.log("Respuesta de verificación de catálogo:", response);
+
+                let detalle = null;
+                if (Array.isArray(response) && response.length > 0) {
+                    detalle = response;
+                } else if (response && typeof response === 'object' && !Array.isArray(response)) {
+                    detalle = response;
+                }
+
+                // ESCENARIO A: SI EL PRODUCTO NO EXISTE -> ABRIR EL MODAL QUE YA TIENE EL SKU
+                if (!detalle || !detalle.producto_id) {
+                    console.log("El producto es nuevo. Abriendo modal express para:", skuAAsignar);
+                    
+                    // Limpiamos el input de la pantalla principal para dejarlo listo
+                    $('#SKU').val(''); 
+                    
+                    // Forzar visualización correcta del Modal
+                    $('#modalProductoNuevo').modal('show');
+                    
+                    setTimeout(function() {
+                        $('#modalProductoNuevo').css({ 'display': 'block', 'opacity': '1', 'z-index': '1060' });
+                        $('.modal-backdrop').css('z-index', '1040');
+                        $('#modal_nombre').focus(); // Mover el cursor al nombre para empezar a escribir
+                    }, 150);
+
+                    return;
+                }
+
+                // ESCENARIO B: SI EL PRODUCTO SÍ EXISTE -> SELECCIONAR EN LA PANTALLA PRINCIPAL
+                let idABuscar = detalle.producto_id;
+                $('#producto_id').val(idABuscar).selectpicker('refresh').trigger('change');
+                $('#SKU').val(''); // Limpiar input principal
+                
+                if ($('#cantidad').length) {
+                    $('#cantidad').focus().select();
+                }
+            },
+            error: function(xhr) {
+                console.error("Error al validar el SKU en el servidor:", xhr.responseText);
+                Swal.fire('Error', 'Ocurrió un inconveniente al validar el código.', 'error');
+            }
+        });
+    }
+
+
+    // =========================================================================
+    // 3. CAPTURAR ENTRADAS LIBRES SI NO EXISTE LA OPCIÓN EN EL SELECTPICKER
+    // =========================================================================
+    // Modificar los selectpickers dentro del modal para avisar visualmente al usuario
+    $('.selectpicker').selectpicker({
+        noneResultsText: 'No se encontró, presione enter para registrar: {0}'
+    });
+
+    // Interceptar lo que digita el usuario en las cajas de búsqueda en vivo
+$(document).on('keyup', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function() {
+        let textoBusqueda = $(this).val().trim();
+        let selectId = $(this).closest('.bootstrap-select').find('select').attr('id');
+        
+        if (selectId === 'modal_marca_id') {
+            nuevaMarca =    $('#modal_marca_id').val() ? null : textoBusqueda;
+        } else if (selectId === 'modal_presentacione_id') {
+            nuevaPresentacion = $('#modal_presentacione_id').val() ? null : textoBusqueda;
+        }
+    });
+    // =========================================================================
+    // REINICIO PROFUNDO PROTEGIENDO COMBOS DE LA PANTALLA PRINCIPAL
+    // =========================================================================
+    $('#modalProductoNuevo').on('show.bs.modal', function () {
+        // 1. Respaldar el SKU detectado antes del reset
+        let skuRespaldado = $('#modal_codigo').val();
+
+        // 2. Reiniciar las variables globales de texto libre
+        nuevaMarca = null; 
+        nuevaPresentacion = null; 
+        nuevasCategorias = [];
+
+        // 3. Limpiar inputs comunes del formulario express
+        $('#formProductoExpress').trigger("reset"); 
+
+        // 4. Restaurar el SKU respaldado
+        $('#modal_codigo').val(skuRespaldado);
+
+        // 5. Vaciar los valores de los combos DEL MODAL exclusivamente usando sus IDs
+        $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').val('');
+        
+        // 6. Eliminar SOLO las opciones de texto libre anteriores de los combos del modal
+        $('#modal_marca_id option, #modal_presentacione_id option, #modal_categorias option').each(function() {
+            if (isNaN($(this).val()) && $(this).val() !== "") {
+                $(this).remove();
+            }
+        });
+
+        // =========================================================================
+        // 🚀 ¡SOLUCIÓN AQUÍ! REFRESCAR ÚNICAMENTE LOS COMBOS DEL MODAL EXPRESS
+        // =========================================================================
+        // Al apuntar por IDs separados por comas, la pantalla principal no se altera
+        $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('refresh');
+        // =========================================================================
+
+        // 7. Limpieza del panel multimedia de la cámara
+        if (streamCamara) {
+            streamCamara.getTracks().forEach(track => track.stop());
+            streamCamara = null;
+        }
+        $('#contenedor-camara-web').addClass('d-none');
+        $('#vista-previa-img').addClass('d-none').attr('src', ''); 
+        $('#texto-sin-foto').removeClass('d-none'); 
+        
+        console.log("Formulario express reseteado de forma aislada. Combos iniciales protegidos.");
+    });
+
+    // =========================================================================
+    // 4. CONTROL MULTIMEDIA NATIVO (ELEGIR IMAGEN / WEBCAM)
+    // =========================================================================
+    // Selección de archivo local
+    $('#modal_img_path').on('change', function(e) {
+        detenerHardwareCamara();
+        let archivo = e.target.files[0];
+        if (archivo) {
+            let lector = new FileReader();
+            lector.onload = function(event) {
+                $('#texto-sin-foto').addClass('d-none');
+                $('#vista-previa-img').attr('src', event.target.result).removeClass('d-none');
+            };
+            lector.readAsDataURL(archivo);
+        }
+    });
+
+    // Encender Cámara
+    $('#btn-activar-camara').on('click', function() {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(function(stream) {
+                streamCamara = stream;
+                let videoElement = document.getElementById('video-camara');
+                videoElement.srcObject = stream;
+                $('#contenedor-camara-web').removeClass('d-none');
+            })
+            .catch(function(err) {
+                alert("No se pudo iniciar la cámara web. Elija una foto manualmente.");
+            });
+        }
+    });
+
+    // Capturar Foto de la Cámara
+    $('#btn-capturar-foto').on('click', function() {
+        let video = document.getElementById('video-camara');
+        let canvas = document.getElementById('canvas-foto');
+        let ctx = canvas.getContext('2d');
+
+        if (video.videoWidth > 0) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            let fotoBase64 = canvas.toDataURL('image/jpeg', 0.9);
+            $('#texto-sin-foto').addClass('d-none');
+            $('#vista-previa-img').attr('src', fotoBase64).removeClass('d-none');
+            detenerHardwareCamara();
+        }
+    });
+
+    function detenerHardwareCamara() {
+        if (streamCamara) {
+            streamCamara.getTracks().forEach(track => track.stop());
+            streamCamara = null;
+        }
+        $('#contenedor-camara-web').addClass('d-none');
+    }
+
+    $('#modalProductoNuevo').on('hidden.bs.modal', function () {
+        detenerHardwareCamara();
+    });
+
+    $(document).on('keydown', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function(e) {
+        let textoBusqueda = $(this).val().trim();
+        let selectpickerContenedor = $(this).closest('.bootstrap-select');
+        let selectOriginal = selectpickerContenedor.find('select');
+        let selectId = selectOriginal.attr('id');
+
+        // Escuchar únicamente la tecla ENTER (Código 13) dentro del buscador
+        if (e.keyCode === 13 || e.which === 13) {
+            if (textoBusqueda !== "") {
+                e.preventDefault(); // Evita que se envíe el formulario principal del modal
+
+                // 1. Crear dinámicamente la nueva opción en el <select> oculto de HTML
+                // Le ponemos un value temporal igual al texto para identificar que es una opción nueva
+                let nuevaOpcionHtml = `<option value="${textoBusqueda}" selected>${textoBusqueda}</option>`;
+                selectOriginal.append(nuevaOpcionHtml);
+
+                // 2. Refrescar el plugin para que dibuje y preseleccione la nueva opción en la interfaz
+                selectOriginal.selectpicker('refresh');
+                selectOriginal.selectpicker('val', textoBusqueda);
+                selectOriginal.trigger('change');
+
+                // 3. Almacenar el valor en las variables globales correspondientes para Laravel
+                if (selectId === 'modal_marca_id') {
+                    nuevaMarca = textoBusqueda;
+                } else if (selectId === 'modal_presentacione_id') {
+                    nuevaPresentacion = textoBusqueda;
+                } else if (selectId === 'modal_categorias') {
+                    // Si es el de categorías, lo sumamos al arreglo múltiple
+                    if (!nuevasCategorias.includes(textoBusqueda)) {
+                        nuevasCategorias.push(textoBusqueda);
+                    }
+                }
+
+                // 4. Cerrar el menú desplegable automáticamente para mejorar la experiencia
+                selectOriginal.selectpicker('toggle');
+                
+                // Mover el foco al siguiente elemento lógico si es necesario
+                console.log(`Opción registrada temporalmente en ${selectId}:`, textoBusqueda);
+            }
+            return false;
+        }
+    });
+
+    // =========================================================================
+    // 5. ENVÍO EXPRESS DEL FORMULARIO HACIA LARAVEL POR AJAX
+    // =========================================================================
+ // Evento de Envío AJAX del Modal Express (Validado)
+    // Evento de Envío AJAX del Modal Express (Blindado contra doble clic)
+    $('#formProductoExpress').on('submit', function(e) {
+        e.preventDefault();
+        
+        // --- 🚀 SOLUCIÓN 1: BLOQUEAR DOBLE ENVÍO ---
+        let botonGuardar = $(this).find('button[type="submit"]');
+        botonGuardar.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+
+        var formData = new FormData(this);
+        formData.append('_token', '{{ csrf_token() }}');
+
+        // Capturar los valores de Marca y Presentación desde las variables globales o combos
+        let valorMarca = $('#modal_marca_id').val();
+        if (valorMarca && isNaN(valorMarca)) {
+            formData.append('nueva_marca_texto', valorMarca);
+        }
+
+        let valorPresentacion = $('#modal_presentacione_id').val();
+        if (valorPresentacion && isNaN(valorPresentacion)) {
+            formData.append('nueva_presentacion_texto', valorPresentacion);
+        }
+        
+        let valoresCategorias = $('#modal_categorias').val() || [];
+        valoresCategorias.forEach(function(cat) {
+            if (isNaN(cat)) {
+                formData.append('nuevas_categorias_texto[]', cat);
+            }
+        });
+
+        let srcPrevia = $('#vista-previa-img').attr('src');
+        if (srcPrevia && srcPrevia.startsWith('data:image')) {
+            formData.append('imagen_base64', srcPrevia);
+        }
+
+        // Mostrar alerta visual de carga
+        Swal.fire({
+            title: 'Procesando registro...',
+            text: 'Por favor espere un momento',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        $.ajax({
+            url: "{{ route('productos.storeExpress') }}", 
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                // Cerrar alertas y modal
+                Swal.close();
+                $('#modalProductoNuevo').modal('hide');
+                
+                Swal.fire('¡Éxito!', 'Producto registrado correctamente.', 'success');
+
+                // Auto-seleccionar el producto en la compra
+                let nuevaOpcion = `
+                    <option value="${response.producto.id}" data-stock="0" data-precio="0.00">
+                        ${response.producto.nombre} - 0
+                    </option>
+                `;
+                $('#producto_id').append(nuevaOpcion).val(response.producto.id).selectpicker('refresh').trigger('change');
+
+                setTimeout(function() {
+                    $('#cantidad').focus().select();
+                }, 300);
+            },
+            error: function(xhr) {
+                Swal.close();
+                // --- 🚀 REENTRENAR EL BOTÓN SI OCURRE UN ERRROR ---
+                botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
+                
+                let errorMsg = "No se pudo completar el registro express.";
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                }
+                Swal.fire('Error', errorMsg, 'error');
+            }
+        });
+    });
+
+
+
+document.getElementById("btnVerProducto").addEventListener("click", function() {
 
         let select = document.getElementById("producto_id");
         let selected = select.selectedOptions[0];
@@ -410,19 +905,16 @@
             return;
         }
 
-let imagen = selected.dataset.img; // ya no será undefined
-let detalle = selected.dataset.detalle;
-let ruta = "/storage/productos/" + imagen;
+        let imagen = selected.dataset.img; // ya no será undefined
+        let detalle = selected.dataset.detalle;
+        let ruta = "/storage/productos/" + imagen;
 
-document.getElementById("imgProducto").src = ruta;
-document.getElementById("detalleProducto").textContent = detalle;
+        document.getElementById("imgProducto").src = ruta;
+        document.getElementById("detalleProducto").textContent = detalle;
 
         let modal = new bootstrap.Modal(document.getElementById("modalProducto"));
         modal.show();
     });
-
-
-
 
 
             $('#btn_agregar').click(function() {
@@ -744,58 +1236,71 @@ document.getElementById("detalleProducto").textContent = detalle;
 
 
         }
-function agregarProductoScanner(sku) {
-    var comprobante = document.getElementById('comprobante_id').value;
-    if (comprobante === "") {
-        Swal.fire({ icon: 'error', title: 'Error', text: 'Seleccione un comprobante primero.' });
-        return false;
-    }
 
-    $.ajax({
-        url: '/comprar/SCANdetalles/' + sku,
-        type: 'GET',
-        success: function(response) {
-            // Log para ver qué llega exactamente del servidor
-            console.log("Respuesta del servidor:", response);
 
-            let detalle = Array.isArray(response) ? response[0] : response;
+// =========================================================================
+    // 2. FUNCIÓN CORE: ESCANEO Y BUSQUEDA ASÍNCRONA EN CATÁLOGO
+    // =========================================================================
+        function agregarProductoScanner(sku) {
+        var comprobante = document.getElementById('comprobante_id').value;
+        if (comprobante === "") {
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Seleccione un comprobante primero.' });
+            return false;
+        }
 
-            if (!detalle || !detalle.producto_id) {
-                Swal.fire({ icon: 'warning', title: 'No encontrado', text: 'Código: ' + sku });
-                return;
-            }
+        // === 🚀 SOLUCIÓN DIRECTA PARA EL SKU ===
+        // Inyectamos el SKU en el modal INMEDIATAMENTE al iniciar el escaneo.
+        // Si el producto resulta no existir, el modal ya tendrá el dato guardado de forma segura.
+        let skuAAsignar = sku || $('#SKU').val().trim();
+        $('#modal_codigo').val(skuAAsignar); 
 
-            let idABuscar = detalle.producto_id;
-            console.log("Intentando seleccionar ID:", idABuscar);
+        $.ajax({
+            url: '/comprar/SCANdetalles/' + skuAAsignar,
+            type: 'GET',
+            success: function(response) {
+                console.log("Respuesta de verificación de catálogo:", response);
 
-            // 1. Forzar el valor en el select nativo
-            $('#producto_id').val(idABuscar);
+                let detalle = null;
+                if (Array.isArray(response) && response.length > 0) {
+                    detalle = response;
+                } else if (response && typeof response === 'object' && !Array.isArray(response)) {
+                    detalle = response;
+                }
 
-            // 2. Refrescar el selectpicker para que se vea el cambio
-            $('#producto_id').selectpicker('refresh');
+                // ESCENARIO A: SI EL PRODUCTO NO EXISTE -> ABRIR EL MODAL QUE YA TIENE EL SKU
+                if (!detalle || !detalle.producto_id) {
+                    console.log("El producto es nuevo. Abriendo modal express para:", skuAAsignar);
+                    
+                    // Limpiamos el input de la pantalla principal para dejarlo listo
+                    $('#SKU').val(''); 
+                    
+                    // Forzar visualización correcta del Modal
+                    $('#modalProductoNuevo').modal('show');
+                    
+                    setTimeout(function() {
+                        $('#modalProductoNuevo').css({ 'display': 'block', 'opacity': '1', 'z-index': '1060' });
+                        $('.modal-backdrop').css('z-index', '1040');
+                        $('#modal_nombre').focus(); // Mover el cursor al nombre para empezar a escribir
+                    }, 150);
 
-            // 3. Disparar el evento change
-            $('#producto_id').change();
+                    return;
+                }
 
-            // VERIFICACIÓN: ¿Realmente se seleccionó algo?
-            if ($('#producto_id').val() == idABuscar) {
-                console.log("¡Éxito! Producto seleccionado en el DOM.");
+                // ESCENARIO B: SI EL PRODUCTO SÍ EXISTE -> SELECCIONAR EN LA PANTALLA PRINCIPAL
+                let idABuscar = detalle.producto_id;
+                $('#producto_id').val(idABuscar).selectpicker('refresh').trigger('change');
+                $('#SKU').val(''); // Limpiar input principal
+                
                 if ($('#cantidad').length) {
                     $('#cantidad').focus().select();
                 }
-            } else {
-                console.error("Error: El ID " + idABuscar + " no existe como value en las opciones del select.");
-                // Intentar buscar por texto si el ID falla (opcional)
+            },
+            error: function(xhr) {
+                console.error("Error al validar el SKU en el servidor:", xhr.responseText);
+                Swal.fire('Error', 'Ocurrió un inconveniente al validar el código.', 'error');
             }
-                                $('#cantidad').focus().select();
-
-        },
-        error: function(xhr) {
-            console.error("Error AJAX:", xhr.responseText);
-            Swal.fire('Error', 'No se pudo obtener la información del producto.', 'error');
-        }
-    });
-}
+        });
+    }
 
 
         function eliminarProducto(indice) {
@@ -1291,6 +1796,16 @@ error: function(xhr) {
 
     $(document).ready(function() {
 
+            // Forzar el cierre del modal al hacer clic en cualquier botón con data-dismiss="modal"
+    $(document).on('click', '#modalProductoNuevo [data-dismiss="modal"]', function() {
+        $('#modalProductoNuevo').modal('hide');
+        
+        // Corrección de estilos manuales por si se queda congelada la opacidad
+        $('#modalProductoNuevo').css({ 'display': 'none', 'opacity': '0' });
+        $('.modal-backdrop').remove(); // Elimina el fondo negro transparente de la pantalla
+        $('body').removeClass('modal-open').css('overflow', 'auto'); // Devuelve el scroll a la página
+    });
+
             $('#comprobante_id').on('change', function() {
         console.log("Comprobante seleccionado:", $(this).val());
     });
@@ -1351,30 +1866,22 @@ function iniciarScanner(tipo = "barra") {
         },
 
         (codigo) => {
-
             console.log("Código ver:", codigo);
 
+            // 1. Apagamos el escáner inmediatamente para liberar la cámara del dispositivo
             StopScanner();
-            if (tipo === "barra") {
-                agregarProductoScanner(codigo);
-            } else {
-                agregarProductoScanner(codigo);
-            }
-                                Swal.fire({
-    icon: 'warning',
-    title: 'Se ha seleccionado un producto',
-    text: 'Codigo: ' + codigo,
+            
+            // 2. Ejecutamos la búsqueda centralizada
+            // Si el producto no existe, esta misma función se encargará de levantar el modal express
+            agregarProductoScanner(codigo.trim());
 
-});
-
-
-
-            // 🔥 si quieres escaneo continuo → NO detener aquí
-            // scanner.stop();
+            // 🚀 NOTA: Se eliminó el Swal.fire de aquí. 
+            // Si el producto existe, tu función agregarProductoScanner ya maneja el foco en cantidad.
+            // Si el producto no existe, el modal express se abrirá limpiamente sin ventanas que lo tapen.
         },
 
         (error) => {
-            // ignorar errores
+            // Ignorar errores de enfoque de la cámara en vivo
         }
     );
 }

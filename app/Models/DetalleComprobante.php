@@ -26,5 +26,5 @@ class DetalleComprobante extends Model
     protected $primaryKey = 'id'; // Especifica la clave primaria
     public $incrementing = true; // Si es autoincremental
     protected $keyType = 'int'; // Tipo de la clave primaria
-    protected $fillable = ['id','nombre', 'formula','valorminimo','fkComprobante','fkCuentaContable','Naturaleza','created_at', 'update_at', 'formula','fkTienda']; // Agrega aquí todos los campos que deseas que sean "fillables"
+    protected $fillable = ['id','nombre', 'formula','valorminimo','fkComprobante','fkCuentaContable','Naturaleza','created_at', 'update_at', 'formula','fkTienda', 'tipo_arqueo']; // Agrega aquí todos los campos que deseas que sean "fillables"
 }

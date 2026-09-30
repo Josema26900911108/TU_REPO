@@ -13,7 +13,9 @@ use App\Models\Cliente;
 use App\Models\Tienda;
 use App\Models\Comprobante;
 use App\Models\CuentaContable;
+use App\Models\DetalleComprobante;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Log;
 
 class ArqueoCajaController extends Controller
 {
@@ -57,6 +59,121 @@ class ArqueoCajaController extends Controller
 
         return view('arqueocaja.index',compact('arqueocaja','caja'));
     }
+
+public function updateTipoArqueo(Request $request)
+{
+    $request->validate([
+        'id' => 'required|exists:detalle_comprobantes,id',
+        'tipo_arqueo' => 'required|string|in:NO_APLICA,CE,VO,CC,D,OG,CH,VA'
+    ]);
+
+    try {
+        $detalle = DetalleComprobante::findOrFail($request->id);
+        $detalle->tipo_arqueo = ($request->tipo_arqueo === 'NO_APLICA') ? null : $request->tipo_arqueo;
+        $detalle->save();
+
+        return response()->json(['success' => true]);
+
+    } catch (\Exception $e) {
+        // Al retornar json y el código 500, el JavaScript leerá automáticamente '$e->getMessage()'
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage() // Aquí viaja el SQLSTATE[42S22] directo a la pantalla
+        ], 500);
+    }
+}
+
+
+
+public function procesarCierreDinamico(Request $request, $idArqueoApertura)
+{
+    $request->validate([
+        'efectivo_fisico_contenedor' => 'required|numeric|min:0'
+    ]);
+
+    try {
+        DB::beginTransaction();
+
+        $arqueoApertura = ArqueoCaja::findOrFail($idArqueoApertura);
+        $fechaInicio = $arqueoApertura->created_at;
+        $fechaFin = now();
+        $fkTienda = $arqueoApertura->fkTienda;
+
+        // Efectivo físico real contado por el cajero en la pantalla
+        $cefRealContado = $request->input('efectivo_fisico_contenedor');
+
+        // =========================================================================
+        // 🚀 EXTRACCIÓN DINÁMICA UTILIZANDO TU COLUMNA 'tipoarqueo'
+        // =========================================================================
+        
+        // Función auxiliar interna para sumar montos según el indicador del catálogo
+        $obtenerMontoContable = function($identificadorArqueo, $naturaleza) use ($fechaInicio, $fechaFin, $fkTienda) {
+            return DB::table('detalle_folios')
+                ->join('folios', 'detalle_folios.fkFolio', '=', 'folios.idFolio')
+                // Cruzamos con tu tabla de configuración del comprobante para leer el 'tipoarqueo'
+                ->join('detalle_comprobantes', 'detalle_folios.fkCuenetaContable', '=', 'detalle_comprobantes.fkCuentaContable')
+                ->where('detalle_comprobantes.tipoarqueo', $identificadorArqueo)
+                ->where('detalle_folios.Naturaleza', $naturaleza)
+                ->where('detalle_folios.fkTienda', $fkTienda)
+                ->whereBetween('folios.FechaContabilizacion', [$fechaInicio, $fechaFin])
+                ->sum('detalle_folios.Monto') ?? 0;
+        };
+
+        // Extraer totales de los asientos contables usando las marcas dinámicas del catálogo
+        $vo   = $obtenerMontoContable('VO', 'D'); // Otros medios en el Debe
+        $cc   = $obtenerMontoContable('CC', 'D'); // Créditos en el Debe
+        $d    = $obtenerMontoContable('D',  'D'); // Descuentos en el Debe
+        
+        // Dinero en efectivo que SALIÓ de la caja (Haber 'H' en la cuenta de Efectivo 'CE')
+        $og   = $obtenerMontoContable('CE', 'H'); 
+        
+        $chCo = $obtenerMontoContable('CH', 'D'); // Cheques en el Debe
+        $vales= $obtenerMontoContable('VA', 'D'); // Vales en el Debe
+
+        // =========================================================================
+        // 3. APLICACIÓN DE TU FÓRMULA MATEMÁTICA OPERATIVA
+        // VD = CEF + CEI + VO - OG - D - CC
+        // =========================================================================
+        $vdCalculada = $cefRealContado + $arqueoApertura->CEI + $vo - $og - $d - $cc;
+
+        // 4. GENERAR EL REGISTRO DE ARQUEO FINAL DE TURNO
+        ArqueoCaja::create([
+            'CEI'       => $arqueoApertura->CEI,
+            'CEF'       => $cefRealContado,
+            'VD'        => $vdCalculada,
+            'VO'        => $vo,
+            'D'         => $d,
+            'CC'        => $cc,
+            'OG'        => $og,
+            'ChCo'      => $chCo,
+            'vales'     => $vales,
+            'fkTienda'  => $fkTienda,
+            'fkCaja'    => $arqueoApertura->fkCaja,
+            'Estatus'   => 'C' // Estado Cerrado
+        ]);
+
+        // Cambiar estado del registro de apertura a Inactivo / Procesado
+        $arqueoApertura->update(['Estatus' => 'I']);
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Arqueo operativo dinámico guardado con éxito.',
+            'totales' => [
+                'VentaDiaria' => $vdCalculada,
+                'Efectivo' => $cefRealContado,
+                'OtrosMedios' => $vo
+            ]
+        ], 200);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['error' => 'Fallo en cuadre dinámico: ' . $e->getMessage()], 500);
+    }
+}
+
+
     public function compras($arqueoqueja)
     {
 
@@ -770,19 +887,20 @@ if ($Estatus == 'ER') {
     // Actualiza el registro
 // Update the record
 $actualizararqueo->update([
-    'CEF' => $request->input("CEFC-{$id}"),
-    'VD' => $request->input("VDC-{$id}"),
-    'VO' => $request->input("VOC-{$id}"),
-    'D' => $request->input("DC-{$id}"),
-    'CC' => $request->input("CCC-{$id}"),
-    'OG' => $request->input("OGC-{$id}"),
-    'CEI' => $request->input("CEIC-{$id}"),
+    'CEF' => $request->input("CEFC"),
+    'VD'  => $request->input("VDC"),
+    'VO'  => $request->input("VOC"),
+    'D'   => $request->input("DC"),
+    'CC'  => $request->input("CCC"),
+    'OG'  => $request->input("OGC"),
+    'CEI' => $request->input("CEIC"),
     'ChCo' => 0,
     'vales' => 0,
     'opened_at' => now(),
     'updated_at' => now(),
     'Estatus' => 'C'
 ]);
+
 
 
     $caja = Cash_registers::findOrFail($id);
