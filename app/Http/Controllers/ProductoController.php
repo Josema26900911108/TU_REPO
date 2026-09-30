@@ -88,8 +88,7 @@ public function storeExpress(Request $request)
         // =======================================================
         // 1. PROCESAR MARCA (Evita duplicados)
         // =======================================================
-        $marcaId = $request->input('modal_marca_id');
-         $esPerecedero = $request->has('perecedero') ? 1 : 0;
+        $marcaId = $request->input('modal_marca_id') ?? $request->input('nueva_marca_texto');
         
         if ($marcaId && !is_numeric($marcaId)) {
             $caracMarca = Caracteristica::firstOrCreate(
@@ -103,10 +102,13 @@ public function storeExpress(Request $request)
             $marcaId = $nuevaM->id;
         }
 
+
         // =======================================================
         // 2. PROCESAR PRESENTACIÓN (Evita duplicados)
         // =======================================================
-        $presentacionId = $request->input('modal_presentacione_id');
+        
+        $presentacionId = $request->input('modal_presentacione_id') ?? $request->input('nueva_presentacion_texto') ?? $request->input('nueva_presentation_texto');
+
 
         if ($presentacionId && !is_numeric($presentacionId)) {
             $caracPres = Caracteristica::firstOrCreate(
@@ -165,7 +167,9 @@ public function storeExpress(Request $request)
         // 5. ASOCIACIÓN DINÁMICA DE CATEGORÍAS (Evita duplicados)
         // =======================================================
         $categorias = [];
-        
+
+
+
         $catsSeleccionadas = $request->input('categorias', []);
         foreach($catsSeleccionadas as $catS) {
             if (is_numeric($catS)) { $categorias[] = $catS; }
@@ -189,21 +193,44 @@ public function storeExpress(Request $request)
 
         $producto->categorias()->sync($categorias);
 
-        DB::commit();
+      DB::commit();
         
         // 🚀 LIBERAR EL CANDADO MANUALMENTE TRAS EL ÉXITO
         $lock->release();
 
-    return response()->json([
-        'status' => 'success',
-        'producto' => [
-            'id' => $producto->id,
-            'nombre' => $producto->nombre,
-            'descripcion' => $producto->descripcion,
-            'img_path' => $producto->img_path,
-            'perecedero' => $producto->perecedero // <-- 🚀 OBLIGATORIO: Retornarlo aquí
-        ]
-    ]);
+        $categoriasProcesadas = $producto->categorias->map(function($cat) {
+            return [
+                'id'     => $cat->id,
+                // Obtenemos el nombre real desde la tabla de características relacionada
+                'nombre' => $cat->caracteristica ? trim($cat->caracteristica->nombre) : ''
+            ];
+        });
+
+        // Obtener los nombres limpios directamente de las variables procesadas arriba
+        // para evitar que un fallo en las relaciones del modelo rompa la petición con un Error 500.
+        $nombreMarcaReal = $request->input('modal_marca_id') ?? $request->input('nueva_marca_texto');
+        $nombrePresentacionReal = $request->input('modal_presentacione_id') ?? $request->input('nueva_presentacion_texto');
+
+        return response()->json([
+            'status'   => 'success',
+            'producto' => [
+                'id'          => $producto->id,
+                'nombre'      => $producto->nombre,
+                'descripcion' => $producto->descripcion,
+                'img_path'    => $producto->img_path,
+                'perecedero'  => (int) $producto->perecedero 
+            ],
+            'marca' => $marcaId ? [
+                'id'     => $marcaId, 
+                'nombre' => trim($nombreMarcaReal)
+            ] : null,
+            'presentacion' => $presentacionId ? [
+                'id'     => $presentacionId, 
+                'nombre' => trim($nombrePresentacionReal)
+            ] : null,
+            // 🚀 ENVIAR LAS CATEGORÍAS EN LA RESPUESTA JSON
+            'categorias_procesadas' => $categoriasProcesadas
+        ]);
 
     } catch (\Exception $e) {
         DB::rollBack();
@@ -211,7 +238,8 @@ public function storeExpress(Request $request)
         // 🚀 ASEGURAR LIBERACIÓN DEL CANDADO SI OCURRE UN ERROR
         $lock->release();
 
-        return response()->json(['error' => 'Fallo en Registro: ' . $e->getMessage()], 500);
+        // Esto te permitirá ver en la alerta de SweetAlert qué línea exacta falló en PHP
+        return response()->json(['error' => 'Fallo en Registro: ' . $e->getMessage() . ' en línea ' . $e->getLine()], 500);
     }
 }
    

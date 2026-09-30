@@ -534,7 +534,55 @@ let nuevaPresentacion = null;
 let nuevasCategorias = [];
 let streamCamara = null;
 
+            function purgarDuplicadosVisuales() {
+    $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').each(function() {
+        let textosRegistrados = {};
+        
+        // Analizar cada <option> actual del select nativo
+        $(this).find('option').each(function() {
+            let textoLimpio = $(this).text().trim().toLowerCase();
+            let valorActual = $(this).val();
+
+            if (textoLimpio !== "" && valorActual !== "") {
+                // Si el texto ya fue procesado antes en este mismo combo, lo borramos físicamente del HTML
+                if (textosRegistrados[textoLimpio]) {
+                    $(this).remove(); 
+                } else {
+                    // Si es la primera vez que lo lee, lo guarda en el mapa temporal
+                    textosRegistrados[textoLimpio] = true;
+                }
+            }
+        });
+    });
+}
+
         $(document).ready(function() {
+
+    $(document).on('refreshed.bs.select loaded.bs.select', '#modal_marca_id, #modal_presentacione_id, #modal_categorias', function (e) {
+        
+        // Localizar el menú visual desplegable (la lista <ul> de divs que genera el plugin)
+        let dropdownMenu = $(this).closest('.dropdown-node, .bootstrap-select').find('ul.dropdown-menu.inner');
+        
+        if (dropdownMenu.length > 0) {
+            let textosVistosVisuales = {};
+            
+            // Recorrer cada elemento de lista <li> que ve el usuario en la pantalla
+            dropdownMenu.find('li').each(function() {
+                // Obtener el texto visible del ítem (ej: "Analgesicos", "Gallo", etc.)
+                let textoVisible = $(this).find('.text').text().trim().toLowerCase();
+                
+                if (textoVisible !== "") {
+                    // 🚀 SI EL TEXTO YA EXISTE EN LA PANTALLA, BORRAR EL ELEMENTO DE LISTA REPETIDO
+                    if (textosVistosVisuales[textoVisible]) {
+                        $(this).remove(); // Lo extirpamos físicamente de la interfaz visual
+                    } else {
+                        // Guardar en el registro que ya vimos este texto por primera vez
+                        textosVistosVisuales[textoVisible] = true;
+                    }
+                }
+            });
+        }
+    });
 
     // Forzar el cierre del modal al hacer clic en cualquier botón con data-dismiss="modal"
     $(document).on('click', '#modalProductoNuevo [data-dismiss="modal"]', function() {
@@ -544,6 +592,7 @@ let streamCamara = null;
         $('#modalProductoNuevo').css({ 'display': 'none', 'opacity': '0' });
         $('.modal-backdrop').remove(); // Elimina el fondo negro transparente de la pantalla
         $('body').removeClass('modal-open').css('overflow', 'auto'); // Devuelve el scroll a la página
+        purgarDuplicadosVisuales();
     });        
 
     // =========================================================================
@@ -609,7 +658,7 @@ let streamCamara = null;
                     
                     // Forzar visualización correcta del Modal
                     $('#modalProductoNuevo').modal('show');
-                    
+                    purgarDuplicadosVisuales();
                     setTimeout(function() {
                         $('#modalProductoNuevo').css({ 'display': 'block', 'opacity': '1', 'z-index': '1060' });
                         $('.modal-backdrop').css('z-index', '1040');
@@ -698,6 +747,8 @@ $(document).on('keyup', '#modalProductoNuevo .bootstrap-select .bs-searchbox inp
         $('#contenedor-camara-web').addClass('d-none');
         $('#vista-previa-img').addClass('d-none').attr('src', ''); 
         $('#texto-sin-foto').removeClass('d-none'); 
+
+        purgarDuplicadosVisuales();
         
         console.log("Formulario express reseteado de forma aislada. Combos iniciales protegidos.");
     });
@@ -761,47 +812,48 @@ $(document).on('keyup', '#modalProductoNuevo .bootstrap-select .bs-searchbox inp
         $('#contenedor-camara-web').addClass('d-none');
     }
 
-// --- 🚀 LIMPIEZA ABSOLUTA: DESTRUCCIÓN Y REINICIO ---
+// --- 🚀 LIMPIEZA INTELIGENTE AL CERRAR ---
 $('#modalProductoNuevo').on('hidden.bs.modal', function () {
     
-    // 1. Resetear textos, inputs y SKU de forma nativa
+    // 1. Resetear inputs nativos del formulario usando el elemento del DOM
     if ($('#formProductoExpress').length > 0) {
         $('#formProductoExpress')[0].reset(); 
     }
     
-    // 2. Limpiar la vista previa de la imagen
     $('#vista-previa-img').attr('src', '');
 
-    // 3. Purga física y eliminación de elementos extraños del DOM nativo
+    // 2. Limpiar selects del modal preservando los nuevos IDs reales
     $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').each(function() {
         
-        // Eliminar del SELECT nativo cualquier opción que haya creado el usuario en caliente (texto libre)
+        $(this).selectpicker('deselectAll'); // Comando nativo de la librería para quitar checks visuales
+        
         $(this).find('option').each(function() {
             let valor = $(this).val();
+            
+            // Si el valor sigue siendo texto (no se convirtió a número porque el formulario no se envió con éxito)
             if (isNaN(valor) && valor !== "") {
-                $(this).remove(); 
+                $(this).remove(); // Se purga por completo por ser basura temporal
             } else {
-                // Quitar toda propiedad selected de las opciones legítimas de la BD
+                // Si es un ID real (incluyendo las nuevas marcas inyectadas en el éxito), se conserva pero se desmarca
                 $(this).prop('selected', false).removeAttr('selected');
             }
         });
 
-        // Forzar el valor nativo a estar completamente vacío
+        // Limpiar el valor del componente nativo
         if ($(this).prop('multiple')) {
             $(this).val([]);
         } else {
             $(this).val('');
         }
 
-        // 4. 🚀 LA CLAVE: Destruir el plugin por completo para borrar su memoria interna
+        // Destruir la instancia del plugin para eliminar estados fantasma en memoria
         $(this).selectpicker('destroy');
     });
 
-    // 5. Limpiar cualquier texto que haya quedado atrapado en las cajas de filtro visuales
     $(this).find('.bs-searchbox input').val('');
+    purgarDuplicadosVisuales();
 
-    // 6. Volver a inicializar los selectpickers desde cero (como si se cargara la página por primera vez)
-    // Nota: Si usabas configuraciones especiales (como data-live-search="true"), se mantendrán por tus atributos HTML
+    // Reconstruir la interfaz visual desde el HTML purgado
     $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker();
 });
 
@@ -843,7 +895,7 @@ $('#modalProductoNuevo').on('hidden.bs.modal', function () {
 
                 // 4. Cerrar el menú desplegable automáticamente para mejorar la experiencia
                 selectOriginal.selectpicker('toggle');
-                
+                purgarDuplicadosVisuales();
                 // Mover el foco al siguiente elemento lógico si es necesario
                 console.log(`Opción registrada temporalmente en ${selectId}:`, textoBusqueda);
             }
@@ -905,6 +957,73 @@ $.ajax({
     contentType: false,
 success: function(response) {
     Swal.close();
+
+                // =========================================================
+                // 🚀 SINCRONIZAR MARCA (Limpiando textos acumulados)
+                // =========================================================
+                if (response.marca) {
+                    let existeId = $('#modal_marca_id option[value="' + response.marca.id + '"]').length > 0;
+                    if (!existeId) {
+                        // Buscamos la opción temporal que el usuario escribió
+                        let opcionTemporal = $('#modal_marca_id option[value="' + response.marca.nombre + '"]');
+                        if (opcionTemporal.length > 0) {
+                            // 🚀 CLAVE: Cambiamos el ID Y REEMPLAZAMOS el texto interno para que no se acumule
+                            opcionTemporal.val(response.marca.id)
+                                          .attr('value', response.marca.id)
+                                          .text(response.marca.nombre); // Reemplazo absoluto del texto visual
+                        } else {
+                            $('#modal_marca_id').append(`<option value="${response.marca.id}">${response.marca.nombre}</option>`);
+                        }
+                    }
+                }
+
+                // =========================================================
+                // 🚀 SINCRONIZAR PRESENTACIÓN (Limpiando textos acumulados)
+                // =========================================================
+                if (response.presentacion) {
+                    let existeId = $('#modal_presentacione_id option[value="' + response.presentacion.id + '"]').length > 0;
+                    if (!existeId) {
+                        let opcionTemporal = $('#modal_presentacione_id option[value="' + response.presentacion.nombre + '"]');
+                        if (opcionTemporal.length > 0) {
+                            // 🚀 CLAVE: Cambiamos el ID Y REEMPLAZAMOS el texto interno para que no se acumule
+                            opcionTemporal.val(response.presentacion.id)
+                                          .attr('value', response.presentacion.id)
+                                          .text(response.presentacion.nombre); // Reemplazo absoluto del texto visual
+                        } else {
+                            $('#modal_presentacione_id').append(`<option value="${response.presentacion.id}">${response.presentacion.nombre}</option>`);
+                        }
+                    }
+                }
+
+                // --- Sincronizar Categorías Múltiples ---
+                if (response.categorias_procesadas && response.categorias_procesadas.length > 0) {
+                    let categoriasSeleccionadas = $('#modal_categorias').val() || [];
+
+                    response.categorias_procesadas.forEach(function(catReal) {
+                        let existeOptionId = $(`#modal_categorias option[value="${catReal.id}"]`).length > 0;
+                        if (!existeOptionId) {
+                            let opcionTemporal = $(`#modal_categorias option[value="${catReal.nombre}"]`);
+                            if (opcionTemporal.length > 0) {
+                                // 🚀 CLAVE: Reemplazar también el texto en categorías por si acaso
+                                opcionTemporal.val(catReal.id)
+                                              .attr('value', catReal.id)
+                                              .text(catReal.nombre);
+                                              
+                                categoriasSeleccionadas = categoriasSeleccionadas.filter(item => item !== catReal.nombre);
+                                categoriasSeleccionadas.push(catReal.id.toString());
+                            } else {
+                                $('#modal_categorias').append(`<option value="${catReal.id}">${catReal.nombre}</option>`);
+                                categoriasSeleccionadas.push(catReal.id.toString());
+                            }
+                        }
+                    });
+                    $('#modal_categorias').val(categoriasSeleccionadas);
+                }
+
+    // C) Forzar a los selectpickers a asimilar los nuevos IDs reales antes de cerrar el modal
+        $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('refresh');
+
+
     $('#modalProductoNuevo').modal('hide');
     botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
     Swal.fire('¡Éxito!', 'Producto registrado correctamente.', 'success');
@@ -1344,7 +1463,7 @@ document.getElementById("btnVerProducto").addEventListener("click", function() {
                     
                     // Forzar visualización correcta del Modal
                     $('#modalProductoNuevo').modal('show');
-                    
+                    purgarDuplicadosVisuales();
                     setTimeout(function() {
                         $('#modalProductoNuevo').css({ 'display': 'block', 'opacity': '1', 'z-index': '1060' });
                         $('.modal-backdrop').css('z-index', '1040');
@@ -1864,6 +1983,32 @@ error: function(xhr) {
 
     $(document).ready(function() {
 
+            $(document).on('refreshed.bs.select loaded.bs.select', '#modal_marca_id, #modal_presentacione_id, #modal_categorias', function (e) {
+        
+        // Localizar el menú visual desplegable (la lista <ul> de divs que genera el plugin)
+        let dropdownMenu = $(this).closest('.dropdown-node, .bootstrap-select').find('ul.dropdown-menu.inner');
+        
+        if (dropdownMenu.length > 0) {
+            let textosVistosVisuales = {};
+            
+            // Recorrer cada elemento de lista <li> que ve el usuario en la pantalla
+            dropdownMenu.find('li').each(function() {
+                // Obtener el texto visible del ítem (ej: "Analgesicos", "Gallo", etc.)
+                let textoVisible = $(this).find('.text').text().trim().toLowerCase();
+                
+                if (textoVisible !== "") {
+                    // 🚀 SI EL TEXTO YA EXISTE EN LA PANTALLA, BORRAR EL ELEMENTO DE LISTA REPETIDO
+                    if (textosVistosVisuales[textoVisible]) {
+                        $(this).remove(); // Lo extirpamos físicamente de la interfaz visual
+                    } else {
+                        // Guardar en el registro que ya vimos este texto por primera vez
+                        textosVistosVisuales[textoVisible] = true;
+                    }
+                }
+            });
+        }
+    });
+
             // Forzar el cierre del modal al hacer clic en cualquier botón con data-dismiss="modal"
     $(document).on('click', '#modalProductoNuevo [data-dismiss="modal"]', function() {
         $('#modalProductoNuevo').modal('hide');
@@ -1872,6 +2017,7 @@ error: function(xhr) {
         $('#modalProductoNuevo').css({ 'display': 'none', 'opacity': '0' });
         $('.modal-backdrop').remove(); // Elimina el fondo negro transparente de la pantalla
         $('body').removeClass('modal-open').css('overflow', 'auto'); // Devuelve el scroll a la página
+        purgarDuplicadosVisuales();
     });
 
             $('#comprobante_id').on('change', function() {

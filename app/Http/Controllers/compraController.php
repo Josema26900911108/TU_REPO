@@ -161,13 +161,22 @@ $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
         })->where('estado', 1)->get();
     }
 
-    // === ¡INTEGRACIÓN AQUÍ! Consultas necesarias para alimentar tu modal express ===
-    $marcas = \App\Models\Marca::with('caracteristica')->get();
-    $presentaciones = \App\Models\Presentacione::with('caracteristica')->get();
+    // ==============================================================================
+    // === 🚀 CONSULTAS PURGADAS (EVITA DUPLICADOS DESDE EL INICIO) ===
+    // ==============================================================================
     
-    // Asumiendo que tu modelo para las categorías se llama Categoria. 
-    // Si es diferente (ej. Categorium), cambia el nombre del modelo aquí:
-    $categorias = \App\Models\Categoria::with('caracteristica')->get();
+    // Traemos las marcas y con ->unique() eliminamos registros que repitan el mismo nombre de característica
+    $marcas = Marca::with('caracteristica')->get()->unique(function ($item) {
+        return optional($item->caracteristica)->nombre;
+    });
+
+    $presentaciones = Presentacione::with('caracteristica')->get()->unique(function ($item) {
+        return optional($item->caracteristica)->nombre;
+    });
+    
+    $categorias = Categoria::with('caracteristica')->get()->unique(function ($item) {
+        return optional($item->caracteristica)->nombre;
+    });
     // ==============================================================================
 
     // Añadidas las tres variables al compact final
@@ -181,6 +190,7 @@ $compras = Compra::with('comprobante', 'proveedore.persona', 'tienda')
         'categorias'
     ));
 }
+
 
 
 
