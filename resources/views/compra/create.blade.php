@@ -400,8 +400,8 @@
                         <div class="col-md-2 mb-3">
                             <div class="form-check form-switch mt-4 pt-2">
                                 <input type="hidden" name="perecedero" value="0">
-                                <input class="form-check-input" type="checkbox" name="perecedero" id="modal_perecedero" value="1">
-                                <label class="form-check-label font-weight-bold" for="modal_perecedero">¿Perecedero?</label>
+                                <input class="form-check-input" type="checkbox" name="perecedero" id="perecedero" value="1">
+                                <label class="form-check-label font-weight-bold" for="perecedero">¿Perecedero?</label>
                             </div>
                         </div>
 
@@ -761,9 +761,52 @@ $(document).on('keyup', '#modalProductoNuevo .bootstrap-select .bs-searchbox inp
         $('#contenedor-camara-web').addClass('d-none');
     }
 
-    $('#modalProductoNuevo').on('hidden.bs.modal', function () {
-        detenerHardwareCamara();
+// --- 🚀 LIMPIEZA ABSOLUTA: DESTRUCCIÓN Y REINICIO ---
+$('#modalProductoNuevo').on('hidden.bs.modal', function () {
+    
+    // 1. Resetear textos, inputs y SKU de forma nativa
+    if ($('#formProductoExpress').length > 0) {
+        $('#formProductoExpress')[0].reset(); 
+    }
+    
+    // 2. Limpiar la vista previa de la imagen
+    $('#vista-previa-img').attr('src', '');
+
+    // 3. Purga física y eliminación de elementos extraños del DOM nativo
+    $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').each(function() {
+        
+        // Eliminar del SELECT nativo cualquier opción que haya creado el usuario en caliente (texto libre)
+        $(this).find('option').each(function() {
+            let valor = $(this).val();
+            if (isNaN(valor) && valor !== "") {
+                $(this).remove(); 
+            } else {
+                // Quitar toda propiedad selected de las opciones legítimas de la BD
+                $(this).prop('selected', false).removeAttr('selected');
+            }
+        });
+
+        // Forzar el valor nativo a estar completamente vacío
+        if ($(this).prop('multiple')) {
+            $(this).val([]);
+        } else {
+            $(this).val('');
+        }
+
+        // 4. 🚀 LA CLAVE: Destruir el plugin por completo para borrar su memoria interna
+        $(this).selectpicker('destroy');
     });
+
+    // 5. Limpiar cualquier texto que haya quedado atrapado en las cajas de filtro visuales
+    $(this).find('.bs-searchbox input').val('');
+
+    // 6. Volver a inicializar los selectpickers desde cero (como si se cargara la página por primera vez)
+    // Nota: Si usabas configuraciones especiales (como data-live-search="true"), se mantendrán por tus atributos HTML
+    $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker();
+});
+
+
+
 
     $(document).on('keydown', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function(e) {
         let textoBusqueda = $(this).val().trim();
@@ -854,43 +897,68 @@ $(document).on('keyup', '#modalProductoNuevo .bootstrap-select .bs-searchbox inp
             didOpen: () => { Swal.showLoading(); }
         });
 
-        $.ajax({
-            url: "{{ route('productos.storeExpress') }}", 
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                // Cerrar alertas y modal
-                Swal.close();
-                $('#modalProductoNuevo').modal('hide');
-                
-                Swal.fire('¡Éxito!', 'Producto registrado correctamente.', 'success');
+$.ajax({
+    url: "{{ route('productos.storeExpress') }}", 
+    type: 'POST',
+    data: formData,
+    processData: false,
+    contentType: false,
+success: function(response) {
+    Swal.close();
+    $('#modalProductoNuevo').modal('hide');
+    botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
+    Swal.fire('¡Éxito!', 'Producto registrado correctamente.', 'success');
 
-                // Auto-seleccionar el producto en la compra
-                let nuevaOpcion = `
-                    <option value="${response.producto.id}" data-stock="0" data-precio="0.00">
-                        ${response.producto.nombre} - 0
-                    </option>
-                `;
-                $('#producto_id').append(nuevaOpcion).val(response.producto.id).selectpicker('refresh').trigger('change');
+    // 1. Normalizar el valor de perecedero (Asegurar que sea 1 o 0)
+    let rawPerecedero = response.producto.perecedero;
+    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true') ? 1 : 0;
+    
+    let descripcion = response.producto.descripcion || '';
+    let imgPath = response.producto.img_path || '';
+    let nombreLimpio = response.producto.nombre.trim();
 
-                setTimeout(function() {
-                    $('#cantidad').focus().select();
-                }, 300);
-            },
-            error: function(xhr) {
-                Swal.close();
-                // --- 🚀 REENTRENAR EL BOTÓN SI OCURRE UN ERRROR ---
-                botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
-                
-                let errorMsg = "No se pudo completar el registro express.";
-                if (xhr.responseJSON && xhr.responseJSON.error) {
-                    errorMsg = xhr.responseJSON.error;
-                }
-                Swal.fire('Error', errorMsg, 'error');
-            }
-        });
+    // 2. 🚀 SOLUCIÓN: Crear el objeto OPTION usando jQuery puro (Evita problemas de lectura de data)
+    let $nuevaOpcion = $('<option></option>')
+        .val(response.producto.id)
+        .text(nombreLimpio)
+        .attr('data-stock', '0')
+        .attr('data-precio', '0.00')
+        .attr('data-perecedero', esPerecedero) // Grabado explícito como atributo HTML
+        .attr('data-img', imgPath)
+        .attr('data-detalle', descripcion)
+        .data('perecedero', esPerecedero);     // Grabado explícito en la memoria de jQuery
+
+    // 3. Inyectar en el select principal y actualizar la interfaz visual
+    $('#producto_id').append($nuevaOpcion);
+    $('#producto_id').val(response.producto.id);
+    $('#producto_id').selectpicker('refresh');
+
+    // 4. Forzar el disparo visual de la fecha de vencimiento manualmente
+    if (esPerecedero === 1) {
+        $('#contenedor_fecha').fadeIn();
+        $('#fecha_vencimiento').prop('required', true);
+    } else {
+        $('#contenedor_fecha').fadeOut();
+        $('#fecha_vencimiento').prop('required', false).val('');
+    }
+
+    setTimeout(function() {
+        $('#cantidad').focus().select();
+    }, 300);
+},
+
+    error: function(xhr) {
+        Swal.close();
+        botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
+        
+        let errorMsg = "No se pudo completar el registro express.";
+        if (xhr.responseJSON && xhr.responseJSON.error) {
+            errorMsg = xhr.responseJSON.error;
+        }
+        Swal.fire('Error', errorMsg, 'error');
+    }
+});
+
     });
 
 
@@ -1816,23 +1884,21 @@ error: function(xhr) {
     }, 100);
 
     
-    $('#producto_id').on('change', function() {
-        // Obtener la opción seleccionada
-        let selectedOption = $(this).find('option:selected');
+$('#producto_id').on('change', function() {
+    // Obtener la opción seleccionada nativa dentro del select
+    let selectedOption = $(this).find('option:selected');
+    let esPerecedero = selectedOption.data('perecedero');
 
-        // Obtener el valor del atributo data-perecedero (asegúrate que sea 1 o 0)
-        let esPerecedero = selectedOption.data('perecedero');
+    if (esPerecedero == 1 || esPerecedero === true) {
+        $('#contenedor_fecha').fadeIn();
+        $('#fecha_vencimiento').prop('required', true);
+    } else {
+        $('#contenedor_fecha').fadeOut();
+        $('#fecha_vencimiento').prop('required', false).val('');
+    }
+});
 
-        if (esPerecedero == 1) {
-            // Mostrar campo y hacerlo obligatorio
-            $('#contenedor_fecha').fadeIn();
-            $('#fecha_vencimiento').prop('required', true);
-        } else {
-            // Ocultar campo y limpiar valor
-            $('#contenedor_fecha').fadeOut();
-            $('#fecha_vencimiento').prop('required', false).val('');
-        }
-    });
+
 
        let datosViejos = {!! json_encode(old('items_tabla')) !!};
     

@@ -89,6 +89,7 @@ public function storeExpress(Request $request)
         // 1. PROCESAR MARCA (Evita duplicados)
         // =======================================================
         $marcaId = $request->input('modal_marca_id');
+         $esPerecedero = $request->has('perecedero') ? 1 : 0;
         
         if ($marcaId && !is_numeric($marcaId)) {
             $caracMarca = Caracteristica::firstOrCreate(
@@ -193,14 +194,16 @@ public function storeExpress(Request $request)
         // 🚀 LIBERAR EL CANDADO MANUALMENTE TRAS EL ÉXITO
         $lock->release();
 
-        return response()->json([
-            'success' => true,
-            'producto' => [
-                'id'     => $producto->id,
-                'nombre' => $producto->nombre,
-                'codigo' => $producto->codigo
-            ]
-        ], 200);
+    return response()->json([
+        'status' => 'success',
+        'producto' => [
+            'id' => $producto->id,
+            'nombre' => $producto->nombre,
+            'descripcion' => $producto->descripcion,
+            'img_path' => $producto->img_path,
+            'perecedero' => $producto->perecedero // <-- 🚀 OBLIGATORIO: Retornarlo aquí
+        ]
+    ]);
 
     } catch (\Exception $e) {
         DB::rollBack();
