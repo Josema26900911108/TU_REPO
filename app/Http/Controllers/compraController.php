@@ -1488,7 +1488,8 @@ public function mostrarDetallesCompraScanner($SKU)
             'stock AS existencia',
             'descripcion',
             'img_path AS imagen_producto',
-            'id AS producto_id'
+            'id AS producto_id',
+            'perecedero'
         )
         ->where('codigo', '=', $SKU)
         ->where('fkTienda', '=', $fkTienda)

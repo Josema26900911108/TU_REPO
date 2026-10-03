@@ -80,18 +80,23 @@
 
                 <div class="col-12">
 
-<select name="producto_id" id="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
-
-    @foreach($productos as $producto)
-        <option class="bs-title-option" value="{{ $producto->id }}"
-                data-img="{{ $producto->img_path }}"
-                data-perecedero="{{ $producto->perecedero }}"
-                data-detalle="{{ $producto->descripcion }}">
-            {{ $producto->nombre }}
+<!-- 🚀 SELECT DE PRODUCTOS RECONSTRUIDO CON EVALUACIÓN DIRECTA ESTRICTA -->
+<select id="producto_id" name="producto_id" class="form-control selectpicker" data-live-search="true" data-size="10" title="Busque un producto aquí">
+    @foreach ($productos as $item)
+        @php
+            $esPerecederoReal = (int) $item->perecedero;
+        @endphp
+        <!-- 🚀 SIN CLASES RESERVADAS: La etiqueta <option> debe iniciar limpia -->
+        <option value="{{ $item->id }}" 
+                data-img="{{ $item->img_path ?? '' }}" 
+                data-detalle="{{ $item->descripcion ?? '' }}" 
+                data-perecedero="{{ $esPerecederoReal == 1 ? 1 : 0 }}">
+            {{ $item->nombre }}
         </option>
     @endforeach
-
 </select>
+
+
 
 
 
@@ -102,11 +107,13 @@
 
                         </div>
 
-                        <div class="col-md-4" id="contenedor_fecha" style="display: none;">
+                        <!-- 🚀 HTML BLINDADO Y OPTIMIZADO PARA TRANSICIONES DINÁMICAS -->
+                        <div class="col-md-4 d-none" id="contenedor_fecha">
                             <label for="fecha_vencimiento" class="form-label">Fecha de Vencimiento:</label>
                             <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control">
                             <small class="text-danger">Producto perecedero: requiere fecha.</small>
                         </div>
+
 
 
                         <!-----Cantidad---->
@@ -498,587 +505,78 @@
 
 @push('js')
 <script src="https://cdn.jsdelivr.net/npm/bootstrap-select@1.14.0-beta3/dist/js/bootstrap-select.min.js"></script>
+<script src="https://cloudflare.com"></script>
+<script src="https://unpkg.com"></script>
 <script>
-    //Variables
-
+    // =========================================================================
+    // 1. VARIABLES Y CONSTANTES GLOBALES
+    // =========================================================================
     const contenedor = document.getElementById('contenedor-dinamico');
-        let cont = 0;
-        let idventacabecera=0;
-        let contcc = 0;
-        let MontoFol = [];
-        let subtotal = [];
-        let subiva = [];
-        let sumas = 0;
-        let sumadocdb = 0;
-        let IVA = 0;
-        let total = 0;
-        let formulas = [];
-        let monto = [];
-        let tipo = [];
-        let cuenta = [];
-        let idcuenta = [];
-        let producto= [];
-        let Cantidad= [];
-        let Descuento= [];
-        let preciocompra= [];
-        let precioventa= [];
-        let nombre= [];
-        let resultadoiva=0;
-        let cantidadarticulos = 0;
-        let formula='';
-        totalMASIVA = 0;
-        let formulaEvaluadaiva='';
-        const plantilla = document.getElementById('plantilla-select');
-        //Constantes
-        const impuesto = 12;
-        let skuTimeout = null;
-let nuevaMarca = null;
-let nuevaPresentacion = null;
-let nuevasCategorias = [];
-let streamCamara = null;
+    let cont = 0;
+    let idventacabecera = 0;
+    let contcc = 0;
+    let MontoFol = [];
+    let subtotal = [];
+    let subiva = [];
+    let sumas = 0;
+    let sumadocdb = 0;
+    let IVA = 0;
+    let total = 0;
+    let formulas = [];
+    let monto = [];
+    let tipo = [];
+    let cuenta = [];
+    let idcuenta = [];
+    let producto = [];
+    let Cantidad = [];
+    let Descuento = [];
+    let preciocompra = [];
+    let precioventa = [];
+    let nombre = [];
+    let resultadoiva = 0;
+    let cantidadarticulos = 0;
+    let formula = '';
+    let totalMASIVA = 0;
+    let formulaEvaluadaiva = '';
+    const plantilla = document.getElementById('plantilla-select');
+    const impuesto = 12;
 
-            function purgarDuplicadosVisuales() {
-    $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').each(function() {
-        let textosRegistrados = {};
-        
-        // Analizar cada <option> actual del select nativo
-        $(this).find('option').each(function() {
-            let textoLimpio = $(this).text().trim().toLowerCase();
-            let valorActual = $(this).val();
-
-            if (textoLimpio !== "" && valorActual !== "") {
-                // Si el texto ya fue procesado antes en este mismo combo, lo borramos físicamente del HTML
-                if (textosRegistrados[textoLimpio]) {
-                    $(this).remove(); 
-                } else {
-                    // Si es la primera vez que lo lee, lo guarda en el mapa temporal
-                    textosRegistrados[textoLimpio] = true;
-                }
-            }
-        });
-    });
-}
-
-        $(document).ready(function() {
-
-                $('.combo-modal').selectpicker({
-        noneResultsText: 'No se encontró, presione enter para registrar: {0}'
-    });
-
-    // Forzar el cierre del modal al hacer clic en cualquier botón con data-dismiss="modal"
-    $(document).on('click', '#modalProductoNuevo [data-dismiss="modal"]', function() {
-        $('#modalProductoNuevo').modal('hide');
-        
-        // Corrección de estilos manuales por si se queda congelada la opacidad
-        $('#modalProductoNuevo').css({ 'display': 'none', 'opacity': '0' });
-        $('.modal-backdrop').remove(); // Elimina el fondo negro transparente de la pantalla
-        $('body').removeClass('modal-open').css('overflow', 'auto'); // Devuelve el scroll a la página
-        purgarDuplicadosVisuales();
-    });        
-    
-        // 1. Forzar visualmente selección ÚNICA estricta para Marca y Presentación
-    // Inicializar Marca y Presentación asegurando selección ÚNICA estricta
-    $('#modal_marca_id, #modal_presentacione_id').selectpicker({
-        noneResultsText: 'No se encontró, presione enter para registrar: {0}',
-        multiple: false // 🚀 Elimina los checks flotantes por completo
-    });
-
-    // Inicializar Categorías manteniendo su comportamiento múltiple
-    $('#modal_categorias').selectpicker({
-        noneResultsText: 'No se encontró, presione enter para registrar: {0}'
-    });
-    // =========================================================================
-    // 1. CAPTURAR ENTRADA DEL SKU (ESCRITURA MANUAL O PISTOLA DE ESCANEO)
-    // =========================================================================
-    $('#SKU').on('keydown', function(e) {
-        clearTimeout(skuTimeout); 
-
-        // Si presionan ENTER (Lector de barras)
-        if (e.keyCode === 13 || e.which === 13) { 
-            e.preventDefault(); 
-            let valor = $(this).val().trim();
-            if (valor !== '') {
-                agregarProductoScanner(valor);
-            }
-            return false;
-        }
-
-        // Si escribe manualmente, esperar 500ms tras la última tecla
-        skuTimeout = setTimeout(function() {
-            let valor = $('#SKU').val().trim();
-            if (valor !== '') {
-                agregarProductoScanner(valor);
-            }
-        }, 500); 
-    });
+    // Variables de Control Express y Multimedia
+    let skuTimeout = null;
+    let timeoutEscaner = null; 
+    let nuevaMarca = null;
+    let nuevaPresentacion = null;
+    let nuevasCategorias = [];
+    let streamCamara = null;
+    let estaProcesandoScan = false; 
+    let scanner = null;
+    let escaneando = false;
 
     // =========================================================================
-    // 2. FUNCIÓN CORE: ESCANEO Y BUSQUEDA ASÍNCRONA EN CATÁLOGO
+    // 2. DEPURADOR DE OPCIONES DUPLICADAS EN EL DOM NATIVO
     // =========================================================================
-    function agregarProductoScanner(sku) {
-        var comprobante = document.getElementById('comprobante_id').value;
-        if (comprobante === "") {
-            Swal.fire({ icon: 'error', title: 'Error', text: 'Seleccione un comprobante primero.' });
-            return false;
-        }
-
-        // === 🚀 SOLUCIÓN DIRECTA PARA EL SKU ===
-        // Inyectamos el SKU en el modal INMEDIATAMENTE al iniciar el escaneo.
-        // Si el producto resulta no existir, el modal ya tendrá el dato guardado de forma segura.
-        let skuAAsignar = sku || $('#SKU').val().trim();
-        $('#modal_codigo').val(skuAAsignar); 
-
-        $.ajax({
-            url: '/comprar/SCANdetalles/' + skuAAsignar,
-            type: 'GET',
-            success: function(response) {
-                console.log("Respuesta de verificación de catálogo:", response);
-
-                let detalle = null;
-                if (Array.isArray(response) && response.length > 0) {
-                    detalle = response;
-                } else if (response && typeof response === 'object' && !Array.isArray(response)) {
-                    detalle = response;
-                }
-
-                // ESCENARIO A: SI EL PRODUCTO NO EXISTE -> ABRIR EL MODAL QUE YA TIENE EL SKU
-                if (!detalle || !detalle.producto_id) {
-                    console.log("El producto es nuevo. Abriendo modal express para:", skuAAsignar);
-                    
-                    // Limpiamos el input de la pantalla principal para dejarlo listo
-                    $('#SKU').val(''); 
-                    
-                    // Forzar visualización correcta del Modal
-                    $('#modalProductoNuevo').modal('show');
-                    purgarDuplicadosVisuales();
-                    setTimeout(function() {
-                        $('#modalProductoNuevo').css({ 'display': 'block', 'opacity': '1', 'z-index': '1060' });
-                        $('.modal-backdrop').css('z-index', '1040');
-                        $('#modal_nombre').focus(); // Mover el cursor al nombre para empezar a escribir
-                    }, 150);
-
-                    return;
-                }
-
-                // ESCENARIO B: SI EL PRODUCTO SÍ EXISTE -> SELECCIONAR EN LA PANTALLA PRINCIPAL
-                let idABuscar = detalle.producto_id;
-                $('#producto_id').val(idABuscar).selectpicker('refresh').trigger('change');
-                $('#SKU').val(''); // Limpiar input principal
-                
-                if ($('#cantidad').length) {
-                    $('#cantidad').focus().select();
-                }
-            },
-            error: function(xhr) {
-                console.error("Error al validar el SKU en el servidor:", xhr.responseText);
-                Swal.fire('Error', 'Ocurrió un inconveniente al validar el código.', 'error');
-            }
-        });
-    }
-
-
-    // =========================================================================
-    // 3. CAPTURAR ENTRADAS LIBRES SI NO EXISTE LA OPCIÓN EN EL SELECTPICKER
-    // =========================================================================
-    // Modificar los selectpickers dentro del modal para avisar visualmente al usuario
-    $('.selectpicker').selectpicker({
-        noneResultsText: 'No se encontró, presione enter para registrar: {0}'
-    });
-
-
-
-    // =========================================================================
-    // REINICIO PROFUNDO PROTEGIENDO COMBOS DE LA PANTALLA PRINCIPAL
-    // =========================================================================
-$('#modalProductoNuevo').on('show.bs.modal', function () {
-    let skuRespaldado = $('#modal_codigo').val();
-
-    nuevaMarca = null; 
-    nuevaPresentacion = null; 
-    nuevasCategorias = [];
-
-    // 1. Desmarcar selecciones visuales previas limpiamente
-    $('.select-modal-express').selectpicker('val', '');
-
-    // 2. Reiniciar los elementos HTML nativos del formulario express
-    if ($('#formProductoExpress').length > 0) {
-        $('#formProductoExpress')[0].reset(); 
-    }
-
-    // 3. Restaurar el SKU respaldado
-    $('#modal_codigo').val(skuRespaldado);
-    
-    // 4. Eliminar las opciones de texto libre anteriores (Valores de tipo texto/string)
-    $('.select-modal-express option').each(function() {
-        if (isNaN($(this).val()) && $(this).val() !== "") {
-            $(this).remove(); 
-        }
-    });
-
-    // 5. 🚀 REFRESCAR NATIVAMENTE UNA SOLA VEZ
-    // Redibuja el HTML del plugin sincronizado con el DOM real del formulario limpio
-    $('.select-modal-express').selectpicker('refresh');
-
-    // Control multimedia de cámara...
-    if (streamCamara) {
-        streamCamara.getTracks().forEach(track => track.stop());
-        streamCamara = null;
-    }
-    $('#contenedor-camara-web').addClass('d-none');
-    $('#vista-previa-img').addClass('d-none').attr('src', ''); 
-    $('#texto-sin-foto').removeClass('d-none'); 
-    
-    console.log("Formulario express reseteado de forma aislada sin duplicar instancias.");
-});
-
-
-    // =========================================================================
-    // 4. CONTROL MULTIMEDIA NATIVO (ELEGIR IMAGEN / WEBCAM)
-    // =========================================================================
-    // Selección de archivo local
-    $('#modal_img_path').on('change', function(e) {
-        detenerHardwareCamara();
-        let archivo = e.target.files[0];
-        if (archivo) {
-            let lector = new FileReader();
-            lector.onload = function(event) {
-                $('#texto-sin-foto').addClass('d-none');
-                $('#vista-previa-img').attr('src', event.target.result).removeClass('d-none');
-            };
-            lector.readAsDataURL(archivo);
-        }
-    });
-
-    // Encender Cámara
-    $('#btn-activar-camara').on('click', function() {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(function(stream) {
-                streamCamara = stream;
-                let videoElement = document.getElementById('video-camara');
-                videoElement.srcObject = stream;
-                $('#contenedor-camara-web').removeClass('d-none');
-            })
-            .catch(function(err) {
-                alert("No se pudo iniciar la cámara web. Elija una foto manualmente.");
-            });
-        }
-    });
-
-    // Capturar Foto de la Cámara
-    $('#btn-capturar-foto').on('click', function() {
-        let video = document.getElementById('video-camara');
-        let canvas = document.getElementById('canvas-foto');
-        let ctx = canvas.getContext('2d');
-
-        if (video.videoWidth > 0) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    function purgarDuplicadosVisuales() {
+        $('.select-modal-express, .combo-modal, .selectpicker').each(function() {
+            let textosRegistrados = {};
             
-            let fotoBase64 = canvas.toDataURL('image/jpeg', 0.9);
-            $('#texto-sin-foto').addClass('d-none');
-            $('#vista-previa-img').attr('src', fotoBase64).removeClass('d-none');
-            detenerHardwareCamara();
-        }
-    });
+            $(this).find('option').each(function() {
+                let textoLimpio = $(this).text().trim().toLowerCase();
+                let valorActual = $(this).val();
 
-    function detenerHardwareCamara() {
-        if (streamCamara) {
-            streamCamara.getTracks().forEach(track => track.stop());
-            streamCamara = null;
-        }
-        $('#contenedor-camara-web').addClass('d-none');
-    }
-
-
-$('#modalProductoNuevo').on('hidden.bs.modal', function () {
-    if ($('#formProductoExpress').length > 0) {
-        $('#formProductoExpress')[0].reset(); 
-    }
-    
-    $('#vista-previa-img').attr('src', '').addClass('d-none');
-    $('#texto-sin-foto').removeClass('d-none');
-
-    // Apuntar a .combo-modal
-    $('.combo-modal').each(function() {
-        $(this).selectpicker('val', ''); 
-        
-        $(this).find('option').each(function() {
-            let valor = $(this).val();
-            if (isNaN(valor) && valor !== "") {
-                $(this).remove(); 
-            } else {
-                $(this).prop('selected', false).removeAttr('selected');
-            }
-        });
-    });
-
-    $(this).find('.bs-searchbox input').val('');
-    
-    // Refrescar de forma segura la nueva clase única
-    $('.combo-modal').selectpicker('refresh');
-});
-
-
-// ✅ DEJA ÚNICAMENTE ESTE CONTROLADOR PARA EL ENTER (Borra el keyup de arriba)
-$(document).on('keydown', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function(e) {
-    let textoBusqueda = $(this).val().trim();
-    let selectpickerContenedor = $(this).closest('.bootstrap-select');
-    let selectOriginal = selectpickerContenedor.find('select');
-    let selectId = selectOriginal.attr('id');
-
-    // Escuchar únicamente la tecla ENTER (Código 13)
-    if (e.keyCode === 13 || e.which === 13) {
-        if (textoBusqueda !== "") {
-            e.preventDefault(); // Evita que se envíe el formulario principal
-
-            // 1. Validar si el texto ya existe exactamente en las opciones nativas
-            let existeOpcion = false;
-            selectOriginal.find('option').each(function() {
-                if ($(this).text().toLowerCase() === textoBusqueda.toLowerCase()) {
-                    existeOpcion = true;
-                    textoBusqueda = $(this).val(); // Conservamos el ID numérico real
+                if (textoLimpio !== "" && valorActual !== "") {
+                    if (textosRegistrados[textoLimpio]) {
+                        $(this).remove(); 
+                    } else {
+                        textosRegistrados[textoLimpio] = true;
+                    }
                 }
             });
-
-            // 2. Si no existe en la base de datos, la inyectamos limpia al HTML nativo
-            if (!existeOpcion) {
-                let nuevaOpcionHtml = `<option value="${textoBusqueda}">${textoBusqueda}</option>`;
-                selectOriginal.append(nuevaOpcionHtml);
-            }
-
-            // 3. 🚀 ASIGNACIÓN ÚNICA ESTRICTA
-            if (selectId === 'modal_marca_id' || selectId === 'modal_presentacione_id') {
-                selectOriginal.val(textoBusqueda); // Fuerza la selección de UN SOLO ítem
-                
-                // Guardar en la variable global para Laravel
-                if (selectId === 'modal_marca_id') nuevaMarca = textoBusqueda;
-                if (selectId === 'modal_presentacione_id') nuevaPresentacion = textoBusqueda;
-            } else {
-                // Modo múltiple exclusivo para categorías
-                let valoresActuales = selectOriginal.val() || [];
-                if (!valoresActuales.includes(textoBusqueda)) {
-                    valoresActuales.push(textoBusqueda);
-                }
-                selectOriginal.val(valoresActuales);
-                
-                if (!nuevasCategorias.includes(textoBusqueda)) {
-                    nuevasCategorias.push(textoBusqueda);
-                }
-            }
-
-            // 4. Refrescar una sola vez la interfaz visual
-            selectOriginal.selectpicker('refresh');
-            selectOriginal.trigger('change');
-            selectOriginal.selectpicker('toggle'); // Cierra el menú desplegable
-        }
-        return false;
-    }
-});
-
-
-
-    // =========================================================================
-    // 5. ENVÍO EXPRESS DEL FORMULARIO HACIA LARAVEL POR AJAX
-    // =========================================================================
- // Evento de Envío AJAX del Modal Express (Validado)
-    // Evento de Envío AJAX del Modal Express (Blindado contra doble clic)
-    $('#formProductoExpress').on('submit', function(e) {
-        e.preventDefault();
-        
-        // --- 🚀 SOLUCIÓN 1: BLOQUEAR DOBLE ENVÍO ---
-        let botonGuardar = $(this).find('button[type="submit"]');
-        botonGuardar.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
-
-        var formData = new FormData(this);
-        formData.append('_token', '{{ csrf_token() }}');
-
-        // Capturar los valores de Marca y Presentación desde las variables globales o combos
-        let valorMarca = $('#modal_marca_id').val();
-        if (valorMarca && isNaN(valorMarca)) {
-            formData.append('nueva_marca_texto', valorMarca);
-        }
-
-        let valorPresentacion = $('#modal_presentacione_id').val();
-        if (valorPresentacion && isNaN(valorPresentacion)) {
-            formData.append('nueva_presentacion_texto', valorPresentacion);
-        }
-        
-        let valoresCategorias = $('#modal_categorias').val() || [];
-        valoresCategorias.forEach(function(cat) {
-            if (isNaN(cat)) {
-                formData.append('nuevas_categorias_texto[]', cat);
-            }
         });
-
-        let srcPrevia = $('#vista-previa-img').attr('src');
-        if (srcPrevia && srcPrevia.startsWith('data:image')) {
-            formData.append('imagen_base64', srcPrevia);
-        }
-
-        // Mostrar alerta visual de carga
-        Swal.fire({
-            title: 'Procesando registro...',
-            text: 'Por favor espere un momento',
-            allowOutsideClick: false,
-            didOpen: () => { Swal.showLoading(); }
-        });
-
-$.ajax({
-    url: "{{ route('productos.storeExpress') }}", 
-    type: 'POST',
-    data: formData,
-    processData: false,
-    contentType: false,
-success: function(response) {
-    Swal.close();
-
-                // =========================================================
-                // 🚀 SINCRONIZAR MARCA (Limpiando textos acumulados)
-                // =========================================================
-                if (response.marca) {
-                    let existeId = $('#modal_marca_id option[value="' + response.marca.id + '"]').length > 0;
-                    if (!existeId) {
-                        // Buscamos la opción temporal que el usuario escribió
-                        let opcionTemporal = $('#modal_marca_id option[value="' + response.marca.nombre + '"]');
-                        if (opcionTemporal.length > 0) {
-                            // 🚀 CLAVE: Cambiamos el ID Y REEMPLAZAMOS el texto interno para que no se acumule
-                            opcionTemporal.val(response.marca.id)
-                                          .attr('value', response.marca.id)
-                                          .text(response.marca.nombre); // Reemplazo absoluto del texto visual
-                        } else {
-                            $('#modal_marca_id').append(`<option value="${response.marca.id}">${response.marca.nombre}</option>`);
-                        }
-                    }
-                }
-
-                // =========================================================
-                // 🚀 SINCRONIZAR PRESENTACIÓN (Limpiando textos acumulados)
-                // =========================================================
-                if (response.presentacion) {
-                    let existeId = $('#modal_presentacione_id option[value="' + response.presentacion.id + '"]').length > 0;
-                    if (!existeId) {
-                        let opcionTemporal = $('#modal_presentacione_id option[value="' + response.presentacion.nombre + '"]');
-                        if (opcionTemporal.length > 0) {
-                            // 🚀 CLAVE: Cambiamos el ID Y REEMPLAZAMOS el texto interno para que no se acumule
-                            opcionTemporal.val(response.presentacion.id)
-                                          .attr('value', response.presentacion.id)
-                                          .text(response.presentacion.nombre); // Reemplazo absoluto del texto visual
-                        } else {
-                            $('#modal_presentacione_id').append(`<option value="${response.presentacion.id}">${response.presentacion.nombre}</option>`);
-                        }
-                    }
-                }
-
-                // --- Sincronizar Categorías Múltiples ---
-                if (response.categorias_procesadas && response.categorias_procesadas.length > 0) {
-                    let categoriasSeleccionadas = $('#modal_categorias').val() || [];
-
-                    response.categorias_procesadas.forEach(function(catReal) {
-                        let existeOptionId = $(`#modal_categorias option[value="${catReal.id}"]`).length > 0;
-                        if (!existeOptionId) {
-                            let opcionTemporal = $(`#modal_categorias option[value="${catReal.nombre}"]`);
-                            if (opcionTemporal.length > 0) {
-                                // 🚀 CLAVE: Reemplazar también el texto en categorías por si acaso
-                                opcionTemporal.val(catReal.id)
-                                              .attr('value', catReal.id)
-                                              .text(catReal.nombre);
-                                              
-                                categoriasSeleccionadas = categoriasSeleccionadas.filter(item => item !== catReal.nombre);
-                                categoriasSeleccionadas.push(catReal.id.toString());
-                            } else {
-                                $('#modal_categorias').append(`<option value="${catReal.id}">${catReal.nombre}</option>`);
-                                categoriasSeleccionadas.push(catReal.id.toString());
-                            }
-                        }
-                    });
-                    $('#modal_categorias').val(categoriasSeleccionadas);
-                }
-
-    // C) Forzar a los selectpickers a asimilar los nuevos IDs reales antes de cerrar el modal
-        $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('refresh');
-
-
-    $('#modalProductoNuevo').modal('hide');
-    botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
-    Swal.fire('¡Éxito!', 'Producto registrado correctamente.', 'success');
-
-    // 1. Normalizar el valor de perecedero (Asegurar que sea 1 o 0)
-    let rawPerecedero = response.producto.perecedero;
-    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true') ? 1 : 0;
-    
-    let descripcion = response.producto.descripcion || '';
-    let imgPath = response.producto.img_path || '';
-    let nombreLimpio = response.producto.nombre.trim();
-
-    // 2. 🚀 SOLUCIÓN: Crear el objeto OPTION usando jQuery puro (Evita problemas de lectura de data)
-    let $nuevaOpcion = $('<option></option>')
-        .val(response.producto.id)
-        .text(nombreLimpio)
-        .attr('data-stock', '0')
-        .attr('data-precio', '0.00')
-        .attr('data-perecedero', esPerecedero) // Grabado explícito como atributo HTML
-        .attr('data-img', imgPath)
-        .attr('data-detalle', descripcion)
-        .data('perecedero', esPerecedero);     // Grabado explícito en la memoria de jQuery
-
-    // 3. Inyectar en el select principal y actualizar la interfaz visual
-    $('#producto_id').append($nuevaOpcion);
-    $('#producto_id').val(response.producto.id);
-    $('#producto_id').selectpicker('refresh');
-
-    // 4. Forzar el disparo visual de la fecha de vencimiento manualmente
-    if (esPerecedero === 1) {
-        $('#contenedor_fecha').fadeIn();
-        $('#fecha_vencimiento').prop('required', true);
-    } else {
-        $('#contenedor_fecha').fadeOut();
-        $('#fecha_vencimiento').prop('required', false).val('');
     }
-
-    setTimeout(function() {
-        $('#cantidad').focus().select();
-    }, 300);
-},
-
-    error: function(xhr) {
-        Swal.close();
-        botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
-        
-        let errorMsg = "No se pudo completar el registro express.";
-        if (xhr.responseJSON && xhr.responseJSON.error) {
-            errorMsg = xhr.responseJSON.error;
-        }
-        Swal.fire('Error', errorMsg, 'error');
-    }
-});
-
-    });
-
-
-
-document.getElementById("btnVerProducto").addEventListener("click", function() {
-
-        let select = document.getElementById("producto_id");
-        let selected = select.selectedOptions[0];
-
-        if (!selected) {
-            alert("Seleccione un producto primero");
-            return;
-        }
-
-        let imagen = selected.dataset.img; // ya no será undefined
-        let detalle = selected.dataset.detalle;
-        let ruta = "/storage/productos/" + imagen;
-
-        document.getElementById("imgProducto").src = ruta;
-        document.getElementById("detalleProducto").textContent = detalle;
-
-        let modal = new bootstrap.Modal(document.getElementById("modalProducto"));
-        modal.show();
-    });
-
+    // =========================================================================
+    // 3. INICIALIZACIÓN GENERAL (DOCUMENT READY)
+    // =========================================================================
+    $(document).ready(function() {
 
             $('#btn_agregar').click(function() {
                 agregarProducto();
@@ -1094,521 +592,27 @@ document.getElementById("btnVerProducto").addEventListener("click", function() {
 
             disableButtons();
 
-
-        $('#comprobante_id').on('change', function() {
-            var comprobanteId = $(this).val();
-
-            if (comprobanteId) {
-                $.ajax({
-                    url: '/compras/detalles/' + comprobanteId + '',
-                    type: 'GET',
-                    success: function(response) {
-                        var detalles = response.detalles;
-                        var tableBody = $('#detalle_tbody');
-                        tableBody.empty();
-
-                            formulas=[];
-                            monto=[];
-                            cuenta=[];
-                            tipo=[];
-                            formula='';
-
-                        // Iterar sobre los detalles y agregar filas a la tabla
-                        $.each(detalles, function(index, detalle) {
-                            var row = '<tr>' +
-                                '<td></td>' +
-                                '<td></td>' +
-                                '<td>' + detalle.cuenta_contable_nombre + '</td>' +
-                                '<td class="small-text">' + detalle.formula + '</td>' +
-                                '<td>' + detalle.valorminimo + '</td>' +
-                                '<td>' + detalle.Naturaleza + '</td>' +
-                                '</tr>';
-                            tableBody.append(row);
-                            formulas[index]=detalle.formula;
-                            monto[index]=detalle.valorminimo;
-                            cuenta[index]=detalle.cuenta_contable_nombre;
-                            tipo[index]=detalle.Naturaleza;
-                            formula=detalle.formuladoc;
-
-                            $('#impuesto').val(formula);
-                            sumarArreglos(formulas,monto);
-                        });
-
-                        llenarTabla();
-                    },
-                    error: function(xhr, status, error) {
-                        console.error("Error al cargar los detalles:", error);
-                    }
-                });
-            }
-        });
-        });
-
-        function llenarTabla() {
-    var tableBodyDetalle = $('#tabla_detalle body');
-    tableBodyDetalle.empty(); // Clear the table body
-
-    $.each(producto, function(index) {
-
-        CalcularFormula(formula,preciocompra[index]);
-        // Construct the row for the table
-        var fila = '<tr id="fila' + index + '">' +
-            '<th>' + (cont + 1) + '</th>' +
-            '<td><input type="hidden" name="arrayidproducto[]" value="' + producto[index] + '">' + nombre[index] + '</td>' +
-            '<td><input type="hidden" name="arraycantidad[]" value="' + Cantidad[index] + '">' + Cantidad[index] + '</td>' +
-            '<td><input type="hidden" name="arraypreciocompra[]" value="' + preciocompra[index] + '">' + preciocompra[index] + '</td>' +
-            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[index] + '">' + subiva[index] + '</td>' +
-            '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioventa[index] + '">' + precioventa[index] + '</td>' +
-            '<td>' + subtotal[index] + '</td>' +  // Use index instead of cont
-            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-            '</tr>';
-
-        // Append the row to the table body
-        tableBodyDetalle.append(fila);
-    });
-        }
-
-
-        function cancelarCompra() {
-            //Elimar el tbody de la tabla
-            $('#tabla_detalle tbody').empty();
-
-            //Añadir una nueva fila a la tabla
-            let fila = '<tr>' +
-                '<th></th>' +
-                '<td></td>' +
-                '<td></td>' +
-                '<td></td>' +
-                '<td></td>' +
-                '<td></td>' +
-                '<td></td>' +
-                '<td></td>' +
-                '</tr>';
-            $('#tabla_detalle').append(fila);
-
-            //Reiniciar valores de las variables
-            cont = 0;
-            subtotal = [];
-            subiva = [];
-            sumas = 0;
-            IVA = 0;
-            total = 0;
-            totalMASIVA = 0;
-            cantidadarticulos=0;
-
-
-            //Mostrar los campos calculados
-            $('#sumas').html('Q. '+cantidadarticulos);
-            $('#IVA').html('Q. '+IVA);
-            $('#total').html('Q. '+total);
-            $('#impuesto').val(impuesto + '%');
-            $('#inputTotal').val(total);
-
-            limpiarCampos();
-            disableButtons();
-
-
-        }
-
-        function disableButtons() {
-            if (total == 0) {
-                $('#guardar').hide();
-                $('#cancelar').hide();
-            } else {
-                $('#guardar').show();
-                $('#cancelar').show();
-            }
-        }
-
-    function sumarArreglos(arr1, arr2, A){
-        let resultados = []; // Inicializar el arreglo correctamente
-        let formulaEvaluada;
-        let resultado;
-        var tableBody = $('#detalle_tbody');
-        tableBody.empty();
-
-        // Sumar los elementos correspondientes de los arreglos
-        for (let i = 0; i < arr1.length; i++) {
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluada = arr1[i].replace(/A/g, total);
-            // Evaluar la fórmula usando math.js
-            resultado = math.evaluate(formulaEvaluada);
-            // Redondear el resultado a 2 decimales
-            resultado = parseFloat(resultado.toFixed(2));
-            arr2[i]=resultado;
-            // Sumar el valor evaluado al valor de arr2[i]
-            resultados.push(arr2[i]);
-        };
-                        // Iterar sobre los detalles y agregar filas a la tabla
-                        $.each(arr1, function(index, arr1) {
-                            var row = '<tr>' +
-                                '<td></td>' +
-                                '<td><input name="arrayidcuenta[]" type="hidden" class="form-control" value="' + idcuenta[index] + '" readonly></td>' +
-                                '<td>' + cuenta[index] + '</td>' +
-                                '<td class="small-text">' + formulas[index] + '</td>' +
-                                '<td><input name="arraymonto[]"  class="form-control" value="' + resultados[index] + '" readonly></td>' +
-                                '<td><input name="arraytipomovimiento[]" type="text" class="form-control" value="' + tipo[index] + '" readonly></td>' +
-                                '</tr>';
-                            tableBody.append(row);
-                            monto[index]=resultados[index];
-                            $('#impuesto').val(IVA);
-
-                        });
-
-        return resultados; // Devolver el arreglo de resultados
-    };
-
-  function CalcularFormula(formulalocal, montoA) {
-    try {
-        // 1. Validar que la fórmula no sea nula o vacía
-        if (!formulalocal) return 0;
-
-        // 2. Reemplazar "A" con el valor de montoA
-        // Usamos (montoA) entre paréntesis para evitar errores en fórmulas como A*2 -> (10)*2
-        let formulaEvaluadaiva = formulalocal.replace(/A/g, `(${montoA})`);
-
-        // 3. Evaluar con math.js
-        let resultadoiva = math.evaluate(formulaEvaluadaiva);
-
-        // 4. VALIDACIÓN CLAVE: Si mathjs devuelve un objeto complejo, obtener el valor primitivo
-        if (typeof resultadoiva === 'object' && resultadoiva.hasOwnProperty('value')) {
-            resultadoiva = resultadoiva.value;
-        }
-
-        // 5. Convertir a número y aplicar toFixed de forma segura
-        let numeroFinal = parseFloat(resultadoiva) || 0;
-        return parseFloat(numeroFinal.toFixed(2));
-
-    } catch (error) {
-        console.error("Error al calcular fórmula: " + formulalocal, error);
-        return 0;
-    }
-}
-
-
-
-        function agregarProducto() {
-            //Obtener valores de los campos
-            let idProducto = $('#producto_id').val();
-            let nameProducto = $('#producto_id').find('option:selected').text();
-            let cantidad = $('#cantidad').val();
-            let precioCompra = $('#precio_compra').val();
-            let precioVenta = $('#precio_venta').val();
-            let esPerecedero = $('#producto_id').find('option:selected').data('perecedero');
-            let fechaVencimiento = $('#fecha_vencimiento').val();
-
-
-            var comprobante = document.getElementById('comprobante_id').value;
-            if (comprobante === "") {
-            alert("Por favor, seleccione un comprobante.");
-            return false; // Detiene la ejecución de la función
-                    }
-
-                    if (!formula) {
-    alert("Error: No se ha cargado la fórmula del comprobante. Es probable que no cuente con detalles, por favor revise el comprobante seleccionado.");
-    return false;
-}
-
-            //Validaciones
-            //1.Para que los campos no esten vacíos
-            if (nameProducto != '' && nameProducto != undefined && cantidad != '' && precioCompra != '' && precioVenta != '') {
-
-                //2. Para que los valores ingresados sean los correctos
-                if (parseInt(cantidad) > 0 && (cantidad % 1 == 0) && parseFloat(precioCompra) > 0 && parseFloat(precioVenta) > 0) {
-
-                    //3. Para que el precio de compra sea menor que el precio de venta
-                    if (parseFloat(precioVenta) > parseFloat(precioCompra)) {
-                        //Calcular valores
-
-                        subtotal[cont] = round(cantidad * precioCompra);
-
-                        if (subtotal[cont] !== undefined) {
-
-                        sumas += subtotal[cont];
-
-                        totalMASIVA=sumas;
-                        total = totalMASIVA;
-
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluadaiva = formula.replace(/A/g, total);
-            // Evaluar la fórmula usando math.js
-            resultadoiva = math.evaluate(formulaEvaluadaiva);
-            // Redondear el resultado a 2 decimales
-            resultadoiva = parseFloat(resultadoiva.toFixed(2));
-            IVA = resultadoiva;
-
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluadaiva = formula.replace(/A/g, subtotal[cont]);
-            // Evaluar la fórmula usando math.js
-            resultadoiva = math.evaluate(formulaEvaluadaiva);
-            // Redondear el resultado a 2 decimales
-            resultadoiva = parseFloat(resultadoiva.toFixed(2));
-            subiva[cont]= resultadoiva;
-            producto[cont]=idProducto;
-            Cantidad[cont]=cantidad;
-            preciocompra[cont]=precioCompra;
-            precioventa[cont]=precioVenta;
-            nombre[cont]=nameProducto;
-            cantidadarticulos+=parseInt(Cantidad[cont],15);
-                        //Crear la fila
-                        let fila = '<tr id="fila' + cont + '">' +
-                            '<th>' + (cont + 1) + '</th>' +
-                            '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
-                            '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-                            '<td><input type="hidden" name="arraypreciocompra[]" value="' + precioCompra + '">' + precioCompra + '</td>' +
-                            '<td><input type="hidden" name="arrayfecha_vencimiento[]" value="' + fechaVencimiento + '">' + (esPerecedero == 1 ? fechaVencimiento : 'N/A') + '</td>' +
-                            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
-                            '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVenta + '">' + precioVenta + '</td>' +
-                            '<td>' + subtotal[cont] + '</td>' +
-                            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                            '</tr>';
-
-                        //Acciones después de añadir la fila
-                        $('#tabla_detalle').append(fila);
-                        limpiarCampos();
-                        cont++;
-                        disableButtons();
-                        let formulaEvaluada;
-                        let resultado;
-                        formulaEvaluada = formula.replace(/A/g, total);
-                        // Evaluar la fórmula usando math.js
-                        resultado = math.evaluate(formulaEvaluada);
-                        // Redondear el resultado a 2 decimales
-                        resultado = parseFloat(resultado.toFixed(2));
-                        //Mostrar los campos calculados
-                        $('#sumas').html(cantidadarticulos);
-                        $('#IVA').html(subiva[cont]);
-                        $('#total').html(total);
-                        $('#impuesto').val(IVA);
-                        $('#inputTotal').val(total-resultado);
-
-                        sumarArreglos(formulas,monto);
-                    }
-                    } else {
-                        showModal('Precio de compra incorrecto');
-                    }
-
-                } else {
-                    showModal('Valores incorrectos');
-                }
-
-            } else {
-                showModal('Le faltan campos por llenar');
-            }
-
-
-
-        }
-
-
-// =========================================================================
-    // 2. FUNCIÓN CORE: ESCANEO Y BUSQUEDA ASÍNCRONA EN CATÁLOGO
-    // =========================================================================
-        function agregarProductoScanner(sku) {
-        var comprobante = document.getElementById('comprobante_id').value;
-        if (comprobante === "") {
-            Swal.fire({ icon: 'error', title: 'Error', text: 'Seleccione un comprobante primero.' });
-            return false;
-        }
-
-        // === 🚀 SOLUCIÓN DIRECTA PARA EL SKU ===
-        // Inyectamos el SKU en el modal INMEDIATAMENTE al iniciar el escaneo.
-        // Si el producto resulta no existir, el modal ya tendrá el dato guardado de forma segura.
-        let skuAAsignar = sku || $('#SKU').val().trim();
-        $('#modal_codigo').val(skuAAsignar); 
-
-        $.ajax({
-            url: '/comprar/SCANdetalles/' + skuAAsignar,
-            type: 'GET',
-            success: function(response) {
-                console.log("Respuesta de verificación de catálogo:", response);
-
-                let detalle = null;
-                if (Array.isArray(response) && response.length > 0) {
-                    detalle = response;
-                } else if (response && typeof response === 'object' && !Array.isArray(response)) {
-                    detalle = response;
-                }
-
-                // ESCENARIO A: SI EL PRODUCTO NO EXISTE -> ABRIR EL MODAL QUE YA TIENE EL SKU
-                if (!detalle || !detalle.producto_id) {
-                    console.log("El producto es nuevo. Abriendo modal express para:", skuAAsignar);
-                    
-                    // Limpiamos el input de la pantalla principal para dejarlo listo
-                    $('#SKU').val(''); 
-                    
-                    // Forzar visualización correcta del Modal
-                    $('#modalProductoNuevo').modal('show');
-                    purgarDuplicadosVisuales();
-                    setTimeout(function() {
-                        $('#modalProductoNuevo').css({ 'display': 'block', 'opacity': '1', 'z-index': '1060' });
-                        $('.modal-backdrop').css('z-index', '1040');
-                        $('#modal_nombre').focus(); // Mover el cursor al nombre para empezar a escribir
-                    }, 150);
-
-                    return;
-                }
-
-                // ESCENARIO B: SI EL PRODUCTO SÍ EXISTE -> SELECCIONAR EN LA PANTALLA PRINCIPAL
-                let idABuscar = detalle.producto_id;
-                $('#producto_id').val(idABuscar).selectpicker('refresh').trigger('change');
-                $('#SKU').val(''); // Limpiar input principal
-                
-                if ($('#cantidad').length) {
-                    $('#cantidad').focus().select();
-                }
-            },
-            error: function(xhr) {
-                console.error("Error al validar el SKU en el servidor:", xhr.responseText);
-                Swal.fire('Error', 'Ocurrió un inconveniente al validar el código.', 'error');
-            }
-        });
-    }
-
-
-        function eliminarProducto(indice) {
-            //Calcular valores
-            sumas -= round(subtotal[indice]);
-            total = round(sumas);
-            subiva[indice] = round(sumas);
-            formulaEvaluadaiva = formula.replace(/A/g, total);
-            // Evaluar la fórmula usando math.js
-            resultadoiva = math.evaluate(formulaEvaluadaiva);
-            // Redondear el resultado a 2 decimales
-            resultadoiva = parseFloat(resultadoiva.toFixed(2));
-            IVA = resultadoiva;
-            cantidadarticulos-=parseInt(Cantidad[indice]);
-            //Mostrar los campos calculados
-            $('#sumas').html(cantidadarticulos);
-            $('#IVA').html(IVA);
-            $('#total').html(total);
-            $('#impuesto').val(IVA);
-            $('#InputTotal').val(total-IVA);
-
-            //Eliminar el fila de la tabla
-            $('#fila' + indice).remove();
-            sumarArreglos(formulas,monto);
-            disableButtons();
-
-            producto.splice(indice, 1);
-        nombre.splice(indice, 1);
-        Cantidad.splice(indice, 1);
-        preciocompra.splice(indice, 1);
-        subiva.splice(indice, 1);
-        precioventa.splice(indice, 1);
-        subtotal.splice(indice, 1);
-
-        }
-
-        function limpiarCampos() {
-            let select = $('#producto_id');
-            select.selectpicker('val', '');
-            $('#cantidad').val('');
-            $('#precio_compra').val('');
-            $('#precio_venta').val('');
-        }
-
-
-        function round(num, decimales = 2) {
-            var signo = (num >= 0 ? 1 : -1);
-            num = num * signo;
-            if (decimales === 0) //con 0 decimales
-                return signo * Math.round(num);
-            // round(x * 10 ^ decimales)
-            num = num.toString().split('e');
-            num = Math.round(+(num[0] + 'e' + (num[1] ? (+num[1] + decimales) : decimales)));
-            // x * 10 ^ (-decimales)
-            num = num.toString().split('e');
-            return signo * (num[0] + 'e' + (num[1] ? (+num[1] - decimales) : -decimales));
-        }
-        //Fuente: https://es.stackoverflow.com/questions/48958/redondear-a-dos-decimales-cuando-sea-necesario
-
-        function showModal(message, icon = 'error') {
-            const Toast = Swal.mixin({
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 3000,
-                timerProgressBar: true,
-                didOpen: (toast) => {
-                    toast.addEventListener('mouseenter', Swal.stopTimer)
-                    toast.addEventListener('mouseleave', Swal.resumeTimer)
-                }
-            })
-
-            Toast.fire({
-                icon: icon,
-                title: message
-            })
-        }
-
-    $('#TipoFolio').on('change', function(){
-    let tipoFolioSeleccionado = document.querySelector('input[name="TipoFolio"]:checked').value;
-    var tableBody = $('#detalle_tbody');
-    tableBody.empty();
-
-    var tableDINAMICO = $('#contenedor-dinamico');
-    tableDINAMICO.empty();
-
-   if (tipoFolioSeleccionado === "M") {
-    var tableBody = $('#detalle_tbody');
-    tableBody.empty();
-    var comprobanteId = document.getElementById('comprobante_id').value;
+ $('#comprobante_id').on('change', function() {
+    var comprobanteId = $(this).val();
 
     if (comprobanteId) {
         $.ajax({
-            url: '/compras/detalles/' + comprobanteId + '',
+            url: '/compras/detalles/' + comprobanteId,
             type: 'GET',
             success: function(response) {
                 var detalles = response.detalles;
                 var tableBody = $('#detalle_tbody');
-                tableBody.empty();
+                tableBody.empty(); // Limpiar el cuerpo contable de forma segura
 
-                // Iterar sobre los detalles y agregar filas a la tabla
+                // Reiniciar los arreglos globales de forma limpia antes de capturar
+                formulas = [];
+                monto = [];
+                cuenta = [];
+                tipo = [];
+                formula = '';
+
+                // 1. Primer paso: Guardar datos en memoria y pintar únicamente las filas HTML crudas
                 $.each(detalles, function(index, detalle) {
-
-                    var row = '<tr>' +
-                        '<td></td>' +
-                        '<td></td>' +
-                        '<td>' + detalle.cuenta_contable_nombre + '</td>' +
-                        '<td class="small-text">N/A</td>' +
-                        '<td><input type="number" class="form-control" value="' + detalle.valorminimo + '"></td>' +
-                        '<td>' + detalle.Naturaleza + '</td>' +
-                        '</tr>';
-                    tableBody.append(row);
-                    formulas[index]=detalle.formula;
-                    monto[index]=detalle.valorminimo;
-                    cuenta[index]=detalle.cuenta_contable_nombre;
-                    idcuenta[index]=detalle.id;
-                    tipo[index]=detalle.Naturaleza;
-                    formula=detalle.formuladoc;
-
-                    sumarArreglosInput(formulas,monto);
-
-                });
-
-                llenarTablaventas();
-            },
-            error: function(xhr, status, error) {
-                console.error("Error al cargar los detalles:", error);
-            }
-        });
-    }
-    }else if (tipoFolioSeleccionado === "A") {
-        var comprobanteId = document.getElementById('comprobante_id').value;
-
-    if (comprobanteId) {
-        $.ajax({
-            url: '/compras/detalles/' + comprobanteId + '',
-            type: 'GET',
-            success: function(response) {
-                var detalles = response.detalles;
-                var tableBody = $('#detalle_tbody');
-                tableBody.empty();
-
-                // Iterar sobre los detalles y agregar filas a la tabla
-                $.each(detalles, function(index, detalle) {
-
                     var row = '<tr>' +
                         '<td></td>' +
                         '<td></td>' +
@@ -1618,292 +622,39 @@ document.getElementById("btnVerProducto").addEventListener("click", function() {
                         '<td>' + detalle.Naturaleza + '</td>' +
                         '</tr>';
                     tableBody.append(row);
-                    formulas[index]=detalle.formula;
-                    monto[index]=detalle.valorminimo;
-                    cuenta[index]=detalle.cuenta_contable_nombre;
-                    idcuenta[index]=detalle.id;
-                    tipo[index]=detalle.Naturaleza;
-                    formula=detalle.formuladoc;
 
-                    sumarArreglos(formulas,monto);
-
+                    // Almacenar en las variables indexadas globales
+                    formulas[index] = detalle.formula;
+                    monto[index] = detalle.valorminimo;
+                    cuenta[index] = detalle.cuenta_contable_nombre;
+                    tipo[index] = detalle.Naturaleza;
+                    formula = detalle.formuladoc;
                 });
 
-                llenarTablaventas();
+                // 2. 🚀 CLAVE DEFINITIVA: Ejecutar el cálculo contable UNA SOLA VEZ fuera del bucle
+                // Esto previene que las órdenes de refresco visual colapsen y dupliquen textos
+                if (formula && formula !== "") {
+                    $('#impuesto').val(formula);
+                }
+
+                if (formulas.length > 0) {
+                    sumarArreglos(formulas, monto);
+                }
+
+                // 3. Renderizar los totales de los artículos en paralelo de forma segura
+                if (typeof llenarTablaventas === 'function') {
+                    llenarTablaventas();
+                }
             },
             error: function(xhr, status, error) {
-                console.error("Error al cargar los detalles:", error);
+                console.error("Error crítico al cargar los detalles del comprobante:", error);
             }
         });
     }
-    }
-    else if (tipoFolioSeleccionado === "F") {
-
-        var tableBody = $('#detalle_tbody');
-                    formulas=[];
-                    monto=[];
-                    cuenta=[];
-                    idcuenta=[];
-                    tipo=[];
-                    formula=[];
-                    contcc=0;
-        tableBody.empty();
-        const nuevoDiv = crearNuevoDiv();
-
-
-                    // Agregar el nuevo div al contenedor
-                    contenedor.appendChild(nuevoDiv);
-
-                    // Reinicializar el Selectpicker para los nuevos elementos
-                    $(nuevoDiv).find('.selectpicker').selectpicker('refresh');
-
-    }
-    });
-
-$('#comprobante_id').on('change', function() {
-
-let tipoFolioSeleccionado = document.querySelector('input[name="TipoFolio"]:checked').value;
-
-if (tipoFolioSeleccionado === "M") {
-
-    return;
-}
-
-    var comprobanteId = $(this).val();
-
-if (comprobanteId) {
-    $.ajax({
-        url: '/compras/detalles/' + comprobanteId + '',
-        type: 'GET',
-        success: function(response) {
-            var detalles = response.detalles;
-            var tableBody = $('#detalle_tbody');
-            tableBody.empty();
-
-            // Iterar sobre los detalles y agregar filas a la tabla
-            $.each(detalles, function(index, detalle) {
-
-                var row = '<tr>' +
-                    '<td></td>' +
-                    '<td></td>' +
-                    '<td>' + detalle.cuenta_contable_nombre + '</td>' +
-                    '<td class="small-text">' + detalle.formula + '</td>' +
-                    '<td>' + detalle.valorminimo + '</td>' +
-                    '<td>' + detalle.Naturaleza + '</td>' +
-                    '</tr>';
-                tableBody.append(row);
-                formulas[index]=detalle.formula;
-                monto[index]=detalle.valorminimo;
-                cuenta[index]=detalle.cuenta_contable_nombre;
-                idcuenta[index]=detalle.id;
-                tipo[index]=detalle.Naturaleza;
-                formula=detalle.formuladoc;
-
-                sumarArreglos(formulas,monto);
-
-            });
-
-            llenarTablaventas();
-        },
-        error: function(xhr, status, error) {
-            console.error("Error al cargar los detalles:", error);
-        }
-    });
-}
 });
-function agregarCuentaC() {
-        let idDocumento = document.getElementById('cuentacontable_id').value;
-        let select = document.getElementById('cuentacontable_id');
-        let NombreDocumento = select.options[select.selectedIndex].text;
-let debeacum=0;
-let haberacumb=0;
-        let Naturaleza = document.getElementById('Naturaleza').value;
-        let Monto = $('#valorminimo').val();
-
-        if (idDocumento === "") {
-            alert("Por favor, seleccione una Cuenta Contable.");
-            return false; // Detiene la ejecución de la función
-                    }
-
-        if (Monto === 0) {
-            alert("Por favor, el valor debe de ser mayor a cero.");
-            return false; // Detiene la ejecución de la función
-
-        }
-
-        idcuenta[contcc]=idDocumento;
-        cuenta[contcc]=NombreDocumento;
-        monto[contcc]=Monto;
-        tipo[contcc]=Naturaleza;
-
-        for (let i = 0; i < idcuenta.length; i++) {
-            if (tipo[i]==="D") { // omite undefined, null, "" (cadena vacía), 0 y false
-            debeacum=Number(debeacum)+Number(monto[i]);
-            }
-            if (tipo[i]==="H") { // omite undefined, null, "" (cadena vacía), 0 y false
-            haberacumb=Number(haberacumb)+Number(monto[i]);
-            }
-          }
-
-   if(Number(haberacumb)!==Number(debeacum)){
-        document.getElementById("msj").textContent = "⚠️ Los montos Debe y Haber sumados deben de coincidir .";
-        document.getElementById("msj").style.color = "red"; // opcional para que se vea en rojo
-    }else{
-        document.getElementById("msj").textContent ="";
-    }
-
-    if(Number(haberacumb)!==Number(total)){
-        document.getElementById("msj").textContent = "⚠️ Los montos Debe y Haber sumados deben de coincidir, y tambien debe de coincidir con el Total del documento.";
-        document.getElementById("msj").style.color = "red"; // opcional para que se vea en rojo
-    }else{
-        document.getElementById("msj").textContent ="";
-    }
-
-        construirsumarCC(idcuenta,monto[contcc]);
-
-        contcc++;
-        $('#valorminimo').val(0);
-        $('#Naturaleza').val("");
-  }
-    function eliminarCC(indice) {
-
-        //Eliminar el fila de la tabla
-        $('#filaCC' + indice).remove();
 
 
-        idcuenta.splice(indice, 1);
-         cuenta.splice(indice, 1);
-         monto.splice(indice, 1);
-         tipo.splice(indice, 1);
-         contcc--;
-        disableButtons();
-    }
-function construirsumarCC(arr1, arr2, A){
-        let resultados = []; // Inicializar el arreglo correctamente
-        let formulaEvaluada;
-        let resultado;
-        var tableBody = $('#detalle_tbody');
-        tableBody.empty();
-
-                        // Iterar sobre los detalles y agregar filas a la tabla
-                        $.each(arr1, function(index, arr1) {
-
-                            var row = '<tr id="filaCC' + index + '">' +
-                                '<td></td>' +
-                                '<td><input name="arrayidcuenta[]" type="hidden" class="form-control" value="' + idcuenta[index] + '"></td>' +
-                                '<td>' + cuenta[index] + '</td>' +
-                                '<td class="small-text">N/A</td>' +
-                                '<td><input name="arraymonto[]" type="number" class="form-control" value="' + monto[index] + '"></td>' +
-                                '<td><input name="arraytipomovimiento[]" type="text" class="form-control" value="' + tipo[index] +'"></td>' +
-                                '<td><button class="btn btn-danger" type="button" onClick="eliminarCC(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-
-                                '</tr>';
-                            tableBody.append(row);
-
-                            $('#impuesto').val(IVA);
-
-                        });
-
-        return resultados; // Devolver el arreglo de resultados
-    };
-    function sumarArreglosInput(arr1, arr2, A){
-        let resultados = []; // Inicializar el arreglo correctamente
-        let formulaEvaluada;
-        let resultado;
-        var tableBody = $('#detalle_tbody');
-        tableBody.empty();
-
-        // Sumar los elementos correspondientes de los arreglos
-        for (let i = 0; i < arr1.length; i++) {
-            // Reemplazar "A" en la fórmula con el valor de la variable A
-            formulaEvaluada = arr1[i].replace(/A/g, total);
-            // Evaluar la fórmula usando math.js
-            resultado = math.evaluate(formulaEvaluada);
-            // Redondear el resultado a 2 decimales
-            resultado = parseFloat(resultado.toFixed(2));
-            arr2[i]=resultado;
-            // Sumar el valor evaluado al valor de arr2[i]
-            resultados.push(arr2[i]);
-        };
-                        // Iterar sobre los detalles y agregar filas a la tabla
-                        $.each(arr1, function(index, arr1) {
-                            var row = '<tr>' +
-                                '<td></td>' +
-                                '<td><input name="arrayidcuenta[]" type="hidden" class="form-control" value="' + idcuenta[index] + '"></td>' +
-                                '<td>' + cuenta[index] + '</td>' +
-                                '<td class="small-text">N/A</td>' +
-                                '<td><input name="arraymonto[]" type="number" class="form-control" value="' + resultados[index] + '"></td>' +
-                                '<td><input name="arraytipomovimiento[]" type="text" class="form-control" value="' + tipo[index] +'"></td>' +
-
-                                '</tr>';
-                            tableBody.append(row);
-                            monto[index]=resultados[index];
-                            $('#impuesto').val(IVA);
-
-                        });
-
-        return resultados; // Devolver el arreglo de resultados
-    };
-    function crearNuevoDiv() {
-    const nuevoDiv = document.createElement('div');
-    nuevoDiv.className = 'table table-hover';
-    const uniqueId = Date.now(); // Genera un ID único basado en la fecha actual
-    nuevoDiv.innerHTML = `
-
-                <div class="col-12 mb-2">
-                <select id="cuentacontable_id" name="cuentacontable_id" class="form-control selectpicker" data-live-search="true" data-size="5" title="Busque un Cuenta Contable aquí">
-                    @foreach ($cuentasContables as $item)
-                        <option value="{{$item->id}}">{{$item->formula}}-{{$item->nombre}}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="col-12 mb-2">
-                <select id="Naturaleza" name="Naturaleza" class="form-control selectpicker" data-live-search="true" data-size="2" title="Elija Naturaleza de la cuenta">
-                    <option value="D">Debe</option>
-                    <option value="H">Haber</option>
-                </select>
-            </div>
-            <div class="col-4 mb-2">
-                <label for="valorminimo" class="form-label">Valor Minimo:</label>
-                <input type="number" id="valorminimo" name="valorminimo" class="form-control" step="0.1">
-                </div>
-                                    <!-----botón para agregar--->
-                        <div class="col-12 text-end">
-                            <button id="btn_agregarCC" onclick="agregarCuentaC()" class="btn btn-primary" type="button">Agregar</button>
-                        </div>
-    `;
-    return nuevoDiv;
-}
-
-    function llenarTablaventas() {
-        var tableBodyDetalle = $('#tabla_detalle_tbody');
-        tableBodyDetalle.empty(); // Clear the table body
-
-        $.each(producto, function(index) {
-            let precioVentaActual = subtotal[index];
-
-            let resultadoIva =  CalcularFormula(formula, precioVentaActual);
-            subiva[index]=resultadoIva;
-            // Construct the row for the table
-            var fila = '<tr id="fila' + index + '">' +
-                '<th>' + (index + 1) + '</th>' +
-                            '<td><input type="hidden" name="arrayidproducto[]" value="' + producto[index] + '">' + nombre[index] + '</td>' +
-                            '<td><input type="hidden" name="arraycantidad[]" value="' + Cantidad[index] + '">' + Cantidad[index] + '</td>' +
-                            '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioventa[index] + '">' + precioventa[index] + '</td>' +
-                            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[index] + '">' + subiva[index] + '</td>' +
-                            '<td><input type="hidden" name="arraydescuento[]" value="' + Descuento[index] + '">' + Descuento[index] + '</td>' +
-                            '<td>' + subtotal[index] + '</td>' +
-                            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                            '</tr>';
-
-            // Append the row to the table body
-            tableBodyDetalle.append(fila);
-        });
-        IVA=CalcularFormula(formula, total);
-
-        $('#impuesto').val(IVA);
-    }
-$('#guardar').on('click', function(e) {
+        $('#guardar').on('click', function(e) {
     e.preventDefault();
 
     let formElement = document.getElementById('formCompra');
@@ -1956,142 +707,1624 @@ error: function(xhr) {
     });
 });
 
-
-    $(document).ready(function() {
-
-            $(document).on('refreshed.bs.select loaded.bs.select', '#modal_marca_id, #modal_presentacione_id, #modal_categorias', function (e) {
+// =========================================================================
+// 🛡️ ESCUDO DE INTERFAZ: PROTECCIÓN GLOBAL CONTRA NOMBRES ACUMULADOS
+// =========================================================================
+$(document).on('refreshed.bs.select loaded.bs.select', '#proveedor_id, #comprobante_id, #producto_id', function (e) {
+    // Localizar el nodo del menú visual desplegable generado por el plugin
+    let dropdownMenu = $(this).closest('.bootstrap-select').find('ul.dropdown-menu.inner');
+    
+    if (dropdownMenu.length > 0) {
+        let textosVistosVisuales = {};
         
-        // Localizar el menú visual desplegable (la lista <ul> de divs que genera el plugin)
-        let dropdownMenu = $(this).closest('.dropdown-node, .bootstrap-select').find('ul.dropdown-menu.inner');
-        
-        if (dropdownMenu.length > 0) {
-            let textosVistosVisuales = {};
+        // Recorrer los ítems <li> de la lista que ve el usuario en pantalla
+        dropdownMenu.find('li').each(function() {
+            let elementoTexto = $(this).find('.text');
+            let textoCompleto = elementoTexto.text().trim();
             
-            // Recorrer cada elemento de lista <li> que ve el usuario en la pantalla
-            dropdownMenu.find('li').each(function() {
-                // Obtener el texto visible del ítem (ej: "Analgesicos", "Gallo", etc.)
-                let textoVisible = $(this).find('.text').text().trim().toLowerCase();
+            if (textoCompleto !== "") {
+                // 🔍 Si el texto tiene el nombre repetido consecutivamente (Ej: "GalloGallo" o "FacturaFactura")
+                // Lo cortamos matemáticamente a la mitad para dejar una sola palabra limpia
+                let mitadLargo = textoCompleto.length / 2;
+                let primeraMitad = textoCompleto.substring(0, mitadLargo);
+                let segundaMitad = textoCompleto.substring(mitadLargo);
                 
-                if (textoVisible !== "") {
-                    // 🚀 SI EL TEXTO YA EXISTE EN LA PANTALLA, BORRAR EL ELEMENTO DE LISTA REPETIDO
-                    if (textosVistosVisuales[textoVisible]) {
-                        $(this).remove(); // Lo extirpamos físicamente de la interfaz visual
-                    } else {
-                        // Guardar en el registro que ya vimos este texto por primera vez
-                        textosVistosVisuales[textoVisible] = true;
+                if (primeraMitad === segundaMitad) {
+                    elementoTexto.text(primeraMitad);
+                    textoCompleto = primeraMitad;
+                }
+
+                // 🗑️ Si el ítem completo está duplicado en la lista, lo removemos físicamente
+                let textoLimpioMinusc = textoCompleto.toLowerCase();
+                if (textosVistosVisuales[textoLimpioMinusc]) {
+                    $(this).remove(); 
+                } else {
+                    textosVistosVisuales[textoLimpioMinusc] = true;
+                }
+            }
+        });
+    }
+});
+
+
+        // 1. Inicializar de golpe y de forma única los selectpickers maestros de la pantalla trasera
+        $('#proveedor_id, #comprobante_id, #producto_id').selectpicker();
+
+        // 2. Inicializar de forma aislada los componentes específicos del modal express
+        $('#modal_marca_id, #modal_presentacione_id').selectpicker({
+            noneResultsText: 'No se encontró, presione enter para registrar: {0}',
+            multiple: false 
+        });
+
+        $('#modal_categorias').selectpicker({
+            noneResultsText: 'No se encontró, presione enter para registrar: {0}'
+        });
+
+                // 3. Carga asíncrona de catálogos nativos (Evita colisiones en la red)
+        if (typeof cargarProveedoresInicio === 'function') { cargarProveedoresInicio(); }
+        if (typeof cargarComprobantesInicio === 'function') { cargarComprobantesInicio(); }
+
+        // =========================================================================
+        // DISPARO CONTROLADO DE ENTRADA (SUSTITUTO SIN REFRESH DESTRUCTIVO)
+        // =========================================================================
+        setTimeout(function() {
+            let selectComprobante = $('#comprobante_id');
+            let valorActual = selectComprobante.val();
+
+            if (valorActual && valorActual !== "") {
+                console.log("🚀 [Entrada] Comprobante inicial detectado:", valorActual, ". Forzando carga de póliza contable.");
+                
+                // 1. Despertar el evento change de forma limpia para que cargue el AJAX contable
+                selectComprobante.trigger('change');
+            } else {
+                // 2. Si no hay valor por defecto, simplemente forzar el estado vacío visual sin redibujar el DOM
+                $('.selectpicker').selectpicker('val', '');
+            }
+            
+            // 🛑 ELIMINADO: $('.selectpicker').selectpicker('refresh'); 
+            // Ya no es necesario porque los combos se inicializaron correctamente arriba
+        }, 200);
+
+
+                // 5. 🚀 RECONSTRUCCIÓN SEGURA DE OLD ITEMS DE LARAVEL (CORREGIDA)
+        // Mapea correctamente hacia tu función centralizada de renderizado 'llenarTablaventas'
+        let datosViejos = {!! json_encode(old('items_tabla')) !!};
+        if (datosViejos && datosViejos !== "null" && datosViejos !== "") {
+            try {
+                let productosViejos = typeof datosViejos === 'string' ? JSON.parse(datosViejos) : datosViejos;
+                if (Array.isArray(productosViejos) && productosViejos.length > 0) {
+                    
+                    // Inyectar en los arreglos globales antes de pintar
+                    productosViejos.forEach((p, idx) => {
+                        producto[idx] = p.id_producto || p.producto_id;
+                        nombre[idx] = p.nombre || '';
+                        Cantidad[indexActual] = parseInt(p.cantidad, 10) || 0;
+                        preciocompra[idx] = parseFloat(p.precio_compra) || 0;
+                        precioventa[idx] = parseFloat(p.precio_venta) || 0;
+                        subtotal[idx] = parseFloat((Cantidad[idx] * preciocompra[idx]).toFixed(2));
+                    });
+
+                    // Invocar una única vez el redibujado en lugar de hacerlo en un bucle pesado
+                    llenarTablaventas();
+                    disableButtons();
+                }
+            } catch (err) {
+                console.error("Advertencia en el mapeo de Old Items:", err);
+            }
+        }
+
+        // Control manual de cierre y limpieza del modal express
+        $(document).on('click', '#modalProductoNuevo [data-dismiss="modal"]', function() {
+            $('#modalProductoNuevo').modal('hide');
+            $('#modalProductoNuevo').css({ 'display': 'none', 'opacity': '0' });
+            $('.modal-backdrop').remove(); 
+            $('body').removeClass('modal-open').css('overflow', 'auto'); 
+            purgarDuplicadosVisuales();
+        });             
+
+        // Interceptor para gatillar el cambio preventivo en Comprobante
+        $('#comprobante_id').on('change', function() {
+            console.log("Comprobante seleccionado:", $(this).val());
+        });
+
+        setTimeout(function() {
+            $('#comprobante_id').trigger('change');
+        }, 100);
+
+        // Control de botones de la interfaz
+        disableButtons();
+
+        // =========================================================================
+        // 4. CAPTURAR ENTRADA DEL SKU (ESCRITURA MANUAL O PISTOLA DE ESCANEO)
+        // =========================================================================
+        $('#SKU').on('keydown', function(e) {
+            clearTimeout(skuTimeout); 
+
+            if (estaProcesandoScan) {
+                e.preventDefault();
+                return false;
+            }
+
+            if (e.keyCode === 13 || e.which === 13) { 
+                e.preventDefault(); 
+                let valor = $(this).val().trim();
+                if (valor !== '') {
+                    agregarProductoScanner(valor);
+                }
+                return false;
+            }
+
+            skuTimeout = setTimeout(function() {
+                if (!estaProcesandoScan) {
+                    let valor = $('#SKU').val().trim();
+                    if (valor !== '') {
+                        agregarProductoScanner(valor);
                     }
                 }
+            }, 500); 
+        });
+
+// =========================================================================
+// 🔄 INTERCEPTOR DE CAMBIO: DETECTOR DE PRODUCTO SELECCIONADO (BLINDADO)
+// =========================================================================
+$('#producto_id').on('change', function() {
+    // 1. Localizar la opción que el usuario seleccionó físicamente con el mouse
+    let selectedOption = $(this).find('option:selected');
+    
+    // 2. Leer el atributo del HTML de forma directa saltándose la caché de jQuery
+    let rawPerecedero = selectedOption.attr('data-perecedero') || selectedOption.data('perecedero') || 0;
+    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
+
+    console.log("🔄 [Cambio Manual] Producto:", selectedOption.text().trim(), "| ¿Es Perecedero?:", esPerecedero);
+
+    // 3. Ejecutar la acción visual sin invocar jamás a .selectpicker('refresh') para evitar bucles
+    if (esPerecedero === 1) {
+        console.log("⏰ [Lote] Producto perecedero detectado de entrada. Mostrando campo de fecha.");
+        $('#contenedor_fecha').removeClass('d-none');
+        $('#fecha_vencimiento').prop('required', true);
+        
+        // Mover el foco al cuadro de fecha de forma automática
+        setTimeout(function() {
+            $('#fecha_vencimiento').focus();
+        }, 100);
+    } else {
+        console.log("📦 [Regular] Producto estándar. Ocultando campo de fecha.");
+        $('#contenedor_fecha').addClass('d-none');
+        $('#fecha_vencimiento').prop('required', false).val('');
+    }
+    
+    // 🛑 PROHIBIDO COLOCAR AQUÍ: $('#producto_id').selectpicker('refresh');
+});
+
+
+
+
+        // =========================================================================
+        // 5. FUNCIÓN CORE: ESCANEO Y BUSQUEDA ASÍNCRONA EN CATÁLOGO
+        // =========================================================================
+function agregarProductoScanner(sku) {
+    if (estaProcesandoScan) return;
+    
+    var comprobante = document.getElementById('comprobante_id').value;
+    if (comprobante === "") {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Seleccione un comprobante primero.' });
+        return false;
+    }
+
+    let skuAAsignar = sku || $('#SKU').val().trim();
+    if (skuAAsignar === '') return;
+
+    // Encender el escudo protector contra dobles ráfagas de la pistola
+    estaProcesandoScan = true;
+    $('#modal_codigo').val(skuAAsignar); 
+
+    console.log("🔍 [Escáner] Iniciando verificación cruzada para el SKU:", skuAAsignar);
+
+    $.ajax({
+        url: '/comprar/SCANdetalles/' + skuAAsignar,
+        type: 'GET',
+        success: function(response) {
+            console.log("🟢 [Servidor] Respuesta de verificación de catálogo:", response);
+
+            // 1. Normalizar la respuesta por si Laravel devuelve un array u objeto envuelto
+            let detalle = null;
+            if (Array.isArray(response) && response.length > 0) {
+                detalle = response[0];
+            } else if (response && typeof response === 'object' && !Array.isArray(response)) {
+                // Si la respuesta viene envuelta en un nodo "data" o "producto"
+                detalle = response.producto || response.data || response;
+            }
+
+            // 2. Extraer el ID real usando flexibilidad de nombres de columnas comunes
+            let idEncontrado = null;
+            if (detalle) {
+                idEncontrado = detalle.producto_id || detalle.id || (detalle.producto && detalle.producto.id);
+            }
+
+            // 3. 🚨 CONTROL DE SEGURIDAD SECUNDARIO (BÚSQUEDA LOCAL):
+            // Si el servidor falló o no devolvió el ID exacto, escudriñamos el select nativo
+            // por si el código coincide con el valor o con parte del texto del catálogo actual.
+            if (!idEncontrado) {
+                let codigoSinCeros = skuAAsignar.replace(/^0+/, '');
+                $('#producto_id option').each(function() {
+                    let valorOption = $(this).val();
+                    let textoOption = $(this).text().trim().toLowerCase();
+                    
+                    if (valorOption == skuAAsignar || textoOption.includes(skuAAsignar.toLowerCase()) || (codigoSinCeros !== "" && textoOption.includes(codigoSinCeros.toLowerCase()))) {
+                        idEncontrado = valorOption;
+                        return false; // Romper bucle de búsqueda local
+                    }
+                });
+            }
+
+            // =========================================================================            
+            // DECISIÓN FINAL: ¿EXISTE O SE ABRE EL MODAL EXPRESS?
+            // =========================================================================
+            // =========================================================================
+            // DECISIÓN FINAL: ¿EXISTE O SE ABRE EL MODAL EXPRESS?
+            // =========================================================================
+            if (idEncontrado) {
+                console.log("🎯 [Éxito] Producto localizado con ID:", idEncontrado);
+
+                // 1. Desempaquetar la respuesta asíncrona de red [{...}]
+                let itemData = Array.isArray(response) ? response : (response.producto || response.data || response);
+                if (Array.isArray(itemData) && itemData.length > 0) {
+                    itemData = itemData[0]; // Asegurar la extracción del objeto crudo limpio
+                }
+                
+                // 2. Extraer el 1 o 0 real verificado desde la base de datos de Laravel
+                let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
+                let esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
+                let nombreProdClean = (itemData.nombre || 'Producto').trim();
+
+                // Verificar si la opción ya existe físicamente en el HTML original de entrada
+                let opcionExistente = $('#producto_id option[value="' + idEncontrado + '"]');
+                
+                if (opcionExistente.length === 0) {
+                    // 🚀 SI NO EXISTE: Lo inyectamos de cero de forma limpia con sus atributos reales
+                    let nuevaOpt = $('<option></option>')
+                        .val(idEncontrado)
+                        .text(nombreProdClean)
+                        .attr('data-perecedero', esPerecederoReal)
+                        .data('perecedero', esPerecederoReal);
+                    $('#producto_id').append(nuevaOpt);
+                } else {
+                    // 🚀 SI YA EXISTE: ¡PROHIBIDO USAR .text()! 
+                    // Únicamente actualizamos el atributo 'data-perecedero' para machacar el '0' viejo del HTML
+                    opcionExistente.attr('data-perecedero', esPerecederoReal)
+                                   .data('perecedero', esPerecederoReal);
+                }
+
+                // =========================================================================
+                // 🚀 ELIMINAR CACHÉ VISUAL ANTES DE SELECCIONAR:
+                // Desmarcar limpiamente cualquier selección previa para evitar textos encimados
+                // =========================================================================
+                $('#producto_id').selectpicker('val', ''); 
+
+                // Asignar el nuevo valor, reconstruir la interfaz gráfica limpia y disparar el change
+                $('#producto_id').val(idEncontrado).selectpicker('refresh').trigger('change'); 
+                
+                // Limpiar campos de búsqueda e inputs del escáner
+                $('#modalProductoNuevo').modal('hide');
+                $('#SKU').val(''); 
+                $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
+
+                // 3. Retraso de protección visual para mover el foco del cursor
+                setTimeout(function() {
+                    if (esPerecederoReal === 1) {
+                        $('#fecha_vencimiento').focus();
+                    } else {
+                        if ($('#cantidad').length) $('#cantidad').focus().select();
+                    }
+                }, 150);
+
+            } else {
+
+
+                // ÚNICAMENTE si no se localizó ni en la consulta de red ni en la local, es un producto NUEVO de verdad
+                console.log("🆕 [Nuevo] El producto no existe en el catálogo. Abriendo modal express para:", skuAAsignar);
+                
+                $('#SKU').val(''); 
+                $('#modalProductoNuevo').modal('show');
+                purgarDuplicadosVisuales();
+                
+                setTimeout(function() {
+                    $('#modalProductoNuevo').css({ 'display': 'block', 'opacity': '1', 'z-index': '1060' });
+                    $('.modal-backdrop').css('z-index', '1040');
+                    $('#modal_nombre').focus(); 
+                }, 150);
+            }
+        },
+        error: function(xhr) {
+            console.error("❌ [Error AJAX] Fallo al validar el SKU en el servidor:", xhr.responseText);
+            // Caída segura preventiva: Si el servidor está caído (Error 404 o 500), abrir el modal express para no truncar la caja
+            $('#modalProductoNuevo').modal('show');
+        },
+        complete: function() {
+            // Apagar la bandera de control de concurrencia al terminar para liberar el escáner
+            estaProcesandoScan = false; 
+        }
+    });
+}
+
+        // =========================================================================
+        // REINICIO DE COMBOS AL ABRIR EL MODAL EXPRESS (SHOW)
+        // =========================================================================
+        $('#modalProductoNuevo').on('show.bs.modal', function () {
+            let skuRespaldado = $('#modal_codigo').val();
+
+            nuevaMarca = null; 
+            nuevaPresentacion = null; 
+            nuevasCategorias = [];
+
+            $('.select-modal-express, .combo-modal, #modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('val', '');
+
+            if ($('#formProductoExpress').length > 0) {
+                $('#formProductoExpress')[0].reset(); 
+            }
+
+            $('#modal_codigo').val(skuRespaldado);
+            
+            $('.select-modal-express option, .combo-modal option, #modal_marca_id option, #modal_presentacione_id option, #modal_categorias option').each(function() {
+                if (isNaN($(this).val()) && $(this).val() !== "") {
+                    $(this).remove(); 
+                }
             });
+
+            // ❌ ANTES (Causaba acumulación infinita de nombres al redibujar el DOM):
+// $('.select-modal-express, .combo-modal, #modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('refresh');
+
+// 🎯 AHORA (Limpio, directo y libre de duplicados):
+$('.select-modal-express, .combo-modal, #modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('val', '');
+
+
+            detenerHardwareCamara();
+            $('#vista-previa-img').addClass('d-none').attr('src', ''); 
+            $('#texto-sin-foto').removeClass('d-none'); 
+            
+            console.log("Formulario express reseteado de forma aislada sin duplicar instancias.");
+        });
+
+        // =========================================================================
+        // LIMPIEZA TOTAL AL CERRAR EL MODAL EXPRESS (HIDDEN)
+        // =========================================================================
+        $('#modalProductoNuevo').on('hidden.bs.modal', function () {
+            if ($('#formProductoExpress').length > 0) {
+                $('#formProductoExpress')[0].reset(); 
+            }
+            
+            $('#vista-previa-img').attr('src', '').addClass('d-none');
+            $('#texto-sin-foto').removeClass('d-none');
+
+            $('.select-modal-express, .combo-modal, #modal_marca_id, #modal_presentacione_id, #modal_categorias').each(function() {
+                $(this).selectpicker('deselectAll'); 
+                
+                $(this).find('option').each(function() {
+                    let valor = $(this).val();
+                    if (isNaN(valor) && valor !== "") {
+                        $(this).remove(); 
+                    } else {
+                        $(this).prop('selected', false).removeAttr('selected');
+                    }
+                });
+            });
+
+            $(this).find('.bs-searchbox input').val('');
+            $('.select-modal-express, .combo-modal, #modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('refresh');
+        });
+        // =========================================================================
+        // INTERCEPTOR PARA EL BUSCADOR PRINCIPAL DE COMPRAS (LIVE-SEARCH DE ATRÁS)
+        // =========================================================================
+        $(document).on('keyup keydown', '.bootstrap-select .bs-searchbox input', function(e) {
+            let inputBuscador = $(this);
+            
+            if (inputBuscador.closest('.bootstrap-select').find('select').attr('id') === 'producto_id') {
+                if (e.keyCode === 13 || e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    evaluarCodigoEscaneado(inputBuscador.val().trim());
+                    return false;
+                }
+
+                clearTimeout(timeoutEscaner);
+                timeoutEscaner = setTimeout(function() {
+                    evaluarCodigoEscaneado(inputBuscador.val().trim());
+                }, 250); 
+            }
+        });
+
+
+function llenarTablaventas() {
+    // 🚀 CLAVE: Apuntar con precisión quirúrgica al tbody de la tabla de ítems de productos
+    var tableBodyDetalle = $('#tabla_detalle_tbody');
+    
+    // Si en tu HTML el ID se llama diferente (ej: #detalle_tbody o #tabla_detalle tbody),
+    // nos aseguramos de limpiar ambos por si acaso:
+    tableBodyDetalle.empty(); 
+    $('#tabla_detalle tbody').empty(); 
+
+    $.each(producto, function(index) {
+        let precioVentaActual = subtotal[index] || 0;
+        let resultadoIva = CalcularFormula(formula, precioVentaActual);
+        subiva[index] = resultadoIva;
+
+        // Construir la fila exacta con los nombres de inputs array correspondientes para Laravel
+        var fila = '<tr id="fila' + index + '">' +
+            '<th>' + (index + 1) + '</th>' +
+            '<td><input type="hidden" name="arrayidproducto[]" value="' + producto[index] + '">' + nombre[index] + '</td>' +
+            '<td><input type="hidden" name="arraycantidad[]" value="' + Cantidad[index] + '">' + Cantidad[index] + '</td>' +
+            '<td><input type="hidden" name="arraypreciocompra[]" value="' + (preciocompra[index] || 0) + '">' + (preciocompra[index] || 0) + '</td>' +
+            '<td><input type="hidden" name="arrayfecha_vencimiento[]" value="' + (window.arrayFechasGlobal ? window.arrayFechasGlobal[index] : 'N/A') + '">' + (window.arrayFechasGlobal ? window.arrayFechasGlobal[index] : 'N/A') + '</td>' +
+            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[index] + '">' + subiva[index] + '</td>' +
+            '<td><input type="hidden" name="arrayprecioventa[]" value="' + (precioventa[index] || 0) + '">' + (precioventa[index] || 0) + '</td>' +
+            '<td>' + subtotal[index] + '</td>' +
+            '<td><button class="btn btn-danger btn-sm" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+            '</tr>';
+        
+        // Inyectar la fila de forma garantizada en el contenedor de los ítems
+        tableBodyDetalle.append(fila);
+        
+        // Caída segura: si el primer selector falló, la inyectamos en el cuerpo nativo de la tabla
+        if (tableBodyDetalle.children().length === 0) {
+            $('#tabla_detalle tbody').append(fila);
         }
     });
 
-            // Forzar el cierre del modal al hacer clic en cualquier botón con data-dismiss="modal"
-    $(document).on('click', '#modalProductoNuevo [data-dismiss="modal"]', function() {
-        $('#modalProductoNuevo').modal('hide');
+    // Calcular el IVA global y mostrarlo en la interfaz de forma aislada
+    IVA = CalcularFormula(formula, total);
+    if ($('#total_iva_visual').length > 0) {
+        $('#total_iva_visual').html('Q. ' + IVA);
+    }
+}
+
+
+function evaluarCodigoEscaneado(codigo) {
+    if (!codigo || codigo.length < 3) return; // Ignorar búsquedas vacías
+
+    // Mostrar un log de control en la consola
+    console.log("Evaluando código desde el buscador live-search:", codigo);
+
+    // 1. Intentar buscar primero si el código coincide directamente con un value o texto existente
+    let encontradoLocal = false;
+    let idProductoEncontrado = null;
+    let codigoSinCeros = codigo.replace(/^0+/, '');
+
+    $('#producto_id option').each(function() {
+        let valorOption = $(this).val();
+        let textoOption = $(this).text().trim().toLowerCase();
         
-        // Corrección de estilos manuales por si se queda congelada la opacidad
-        $('#modalProductoNuevo').css({ 'display': 'none', 'opacity': '0' });
-        $('.modal-backdrop').remove(); // Elimina el fondo negro transparente de la pantalla
-        $('body').removeClass('modal-open').css('overflow', 'auto'); // Devuelve el scroll a la página
-        purgarDuplicadosVisuales();
+        // Comparación flexible local
+        if (valorOption == codigo || textoOption.includes(codigo.toLowerCase()) || textoOption.includes(codigoSinCeros.toLowerCase())) {
+            encontradoLocal = true;
+            idProductoEncontrado = valorOption;
+            return false; // Romper bucle
+        }
     });
 
-            $('#comprobante_id').on('change', function() {
-        console.log("Comprobante seleccionado:", $(this).val());
+    // ESCENARIO A: Si se encontró localmente en el DOM de atrás, seleccionarlo de inmediato
+    if (encontradoLocal) {
+        console.log("¡Producto encontrado localmente! Seleccionando ID: " + idProductoEncontrado);
+        $('#producto_id').val(idProductoEncontrado).selectpicker('refresh').trigger('change');
+        $('#modalProductoNuevo').modal('hide'); 
+        setTimeout(function() { $('#cantidad').focus().select(); }, 100);
+        return;
+    }
+
+    // ESCENARIO B: Si no se encontró localmente, consultar al servidor por AJAX de forma preventiva
+    // Esto asegura que si el producto ya existe en la base de datos, lo recupere en lugar de abrir el modal express
+    $.ajax({
+        url: '/comprar/SCANdetalles/' + codigo,
+        type: 'GET',
+        success: function(response) {
+            let detalle = null;
+            if (Array.isArray(response) && response.length > 0) {
+                detalle = response[0];
+            } else if (response && typeof response === 'object' && !Array.isArray(response)) {
+                detalle = response;
+            }
+
+            // Si el servidor confirma que SÍ existe en la BD
+            if (detalle && detalle.producto_id) {
+                console.log("Producto recuperado desde el servidor. ID:", detalle.producto_id);
+                
+                // Si el producto no estaba en el select de atrás por filtros de sucursal, lo inyectamos rápido
+                let existeOptionId = $(`#producto_id option[value="${detalle.producto_id}"]`).length > 0;
+                if (!existeOptionId) {
+                    let nombreProd = detalle.nombre || 'Producto Recuperado';
+                    let nuevaOpt = $('<option></option>')
+                        .val(detalle.producto_id)
+                        .text(nombreProd)
+                        .attr('data-perecedero', detalle.perecedero || 0)
+                        .data('perecedero', detalle.perecedero || 0);
+                    $('#producto_id').append(nuevaOpt);
+                }
+
+                // Seleccionar e iluminar en la pantalla principal
+                $('#producto_id').val(detalle.producto_id).selectpicker('refresh').trigger('change');
+
+                $('#modalProductoNuevo').modal('hide');
+                
+                // Limpiar los buscadores visuales que se quedaron abiertos
+                $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
+                
+                setTimeout(function() { $('#cantidad').focus().select(); }, 100);
+            } else {
+                // ESCENARIO C: Si el servidor confirma que NO existe en ningún lado, procedemos a abrir el modal express
+                console.log("El código no existe en la BD. Abriendo modal express para registrarlo.");
+                if (!$('#modalProductoNuevo').is(':visible')) {
+                    $('#modal_codigo').val(codigo);
+                    $('#modalProductoNuevo').modal('show');
+                    purgarDuplicadosVisuales();
+                }
+            }
+        },
+        error: function(xhr) {
+            console.error("Error al validar código en la verificación cruzada:", xhr.responseText);
+            // Caída segura: si el AJAX falla, abrir el modal express para no truncar la operación
+            if (!$('#modalProductoNuevo').is(':visible')) {
+                $('#modal_codigo').val(codigo);
+                $('#modalProductoNuevo').modal('show');
+            }
+        }
     });
+}
 
-    // Darle 100ms al plugin para que se dibuje y luego forzar el cambio
-    setTimeout(function() {
-        $('#comprobante_id').trigger('change');
-    }, 100);
 
-    
-$('#producto_id').on('change', function() {
-    // Obtener la opción seleccionada nativa dentro del select
-    let selectedOption = $(this).find('option:selected');
-    let esPerecedero = selectedOption.data('perecedero');
+        // =========================================================================
+        // 6. CONTROLADOR DE ENTER EN EL BUSCADOR DEL MODAL (CREACIÓN EN CALIENTE)
+        // =========================================================================
+        $(document).on('keydown', '#modalProductoNuevo .bootstrap-select .bs-searchbox input', function(e) {
+            let textoBusqueda = $(this).val().trim();
+            let selectpickerContenedor = $(this).closest('.bootstrap-select');
+            let selectOriginal = selectpickerContenedor.find('select');
+            let selectId = selectOriginal.attr('id');
 
-    if (esPerecedero == 1 || esPerecedero === true) {
+            if (e.keyCode === 13 || e.which === 13) {
+                if (textoBusqueda !== "") {
+                    e.preventDefault(); 
+
+                    let existeOpcion = false;
+                    selectOriginal.find('option').each(function() {
+                        if ($(this).text().trim().toLowerCase() === textoBusqueda.toLowerCase()) {
+                            existeOpcion = true;
+                            textoBusqueda = $(this).val(); 
+                        }
+                    });
+
+                    if (!existeOpcion) {
+                        let nuevaOpcionHtml = `<option value="${textoBusqueda}">${textoBusqueda}</option> `;
+                        selectOriginal.append(nuevaOpcionHtml);
+                    }
+
+                    if (selectId === 'modal_marca_id' || selectId === 'modal_presentacione_id') {
+                        selectOriginal.val(textoBusqueda); 
+                        if (selectId === 'modal_marca_id') nuevaMarca = textoBusqueda;
+                        if (selectId === 'modal_presentacione_id') nuevaPresentacion = textoBusqueda;
+                    } else {
+                        let valoresActuales = selectOriginal.val() || [];
+                        if (!valoresActuales.includes(textoBusqueda)) {
+                            valoresActuales.push(textoBusqueda);
+                        }
+                        selectOriginal.val(valoresActuales);
+                        
+                        if (!nuevasCategorias.includes(textoBusqueda)) {
+                            nuevasCategorias.push(textoBusqueda);
+                        }
+                    }
+
+                    selectOriginal.selectpicker('refresh');
+                    selectOriginal.trigger('change');
+                    selectOriginal.selectpicker('toggle'); 
+                }
+                return false;
+            }
+        });
+        // =========================================================================
+        // 7. ENVÍO AJAX DEL FORMULARIO EXPRESS HACIA LARAVEL
+        // =========================================================================
+        $(document).on('submit', '#formProductoExpress', function(e) {
+            e.preventDefault();
+            
+            let botonGuardar = $(this).find('button[type="submit"]');
+            botonGuardar.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+
+            var formData = new FormData(this);
+            formData.append('_token', '{{ csrf_token() }}');
+
+            let selectMarca = $('#modal_marca_id');
+            let valorMarca = selectMarca.val();
+            if (!valorMarca || valorMarca === "") {
+                valorMarca = selectMarca.find('option:selected').val() || selectMarca.find('option').filter(function() { return this.selected; }).val();
+            }
+            if (valorMarca) {
+                if (isNaN(valorMarca)) { formData.append('nueva_marca_texto', valorMarca.trim()); }
+                else { formData.append('modal_marca_id', valorMarca); }
+            }
+
+            let selectPres = $('#modal_presentacione_id');
+            let valorPresentacion = selectPres.val();
+            if (!valorPresentacion || valorPresentacion === "") {
+                valorPresentacion = selectPres.find('option:selected').val() || selectPres.find('option').filter(function() { return this.selected; }).val();
+            }
+            if (valorPresentacion) {
+                if (isNaN(valorPresentacion)) { formData.append('nueva_presentacion_texto', valorPresentacion.trim()); }
+                else { formData.append('modal_presentacione_id', valorPresentacion); }
+            }
+            
+            let valoresCategorias = $('#modal_categorias').val() || [];
+            valoresCategorias.forEach(function(cat) {
+                if (isNaN(cat)) { formData.append('nuevas_categorias_texto[]', cat.trim()); }
+                else { formData.append('categorias[]', cat); }
+            });
+
+            let srcPrevia = $('#vista-previa-img').attr('src');
+            if (srcPrevia && srcPrevia.startsWith('data:image')) {
+                formData.append('imagen_base64', srcPrevia);
+            }
+
+            Swal.fire({
+                title: 'Procesando registro...',
+                text: 'Por favor espere un momento',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            $.ajax({
+                url: "{{ route('productos.storeExpress') }}", 
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    Swal.close();
+
+                    if (response.marca) {
+                        let existeId = $('#modal_marca_id option[value="' + response.marca.id + '"]').length > 0;
+                        if (!existeId) {
+                            let opcionTemporal = $('#modal_marca_id option[value="' + response.marca.nombre + '"]');
+                            if (opcionTemporal.length > 0) {
+                                opcionTemporal.val(response.marca.id).attr('value', response.marca.id).text(response.marca.nombre);
+                            } else {
+                                $('#modal_marca_id').append(`<option value="${response.marca.id}">${response.marca.nombre}</option>`);
+                            }
+                        }
+                    }
+
+                    if (response.presentacion) {
+                        let existeId = $('#modal_presentacione_id option[value="' + response.presentacion.id + '"]').length > 0;
+                        if (!existeId) {
+                            let opcionTemporal = $('#modal_presentacione_id option[value="' + response.presentacion.nombre + '"]');
+                            if (opcionTemporal.length > 0) {
+                                opcionTemporal.val(response.presentacion.id).attr('value', response.presentacion.id).text(response.presentacion.nombre);
+                            } else {
+                                $('#modal_presentacione_id').append(`<option value="${response.presentacion.id}">${response.presentacion.nombre}</option>`);
+                            }
+                        }
+                    }
+
+                    if (response.categorias_procesadas && response.categorias_procesadas.length > 0) {
+                        let categoriasSeleccionadas = $('#modal_categorias').val() || [];
+
+                        response.categorias_procesadas.forEach(function(catReal) {
+                            let existeOptionId = $(`#modal_categorias option[value="${catReal.id}"]`).length > 0;
+                            if (!existeOptionId) {
+                                let opcionTemporal = $(`#modal_categorias option[value="${catReal.nombre}"]`);
+                                if (opcionTemporal.length > 0) {
+                                    opcionTemporal.val(catReal.id).attr('value', catReal.id).text(catReal.nombre);
+                                    categoriasSeleccionadas = categoriasSeleccionadas.filter(item => item !== catReal.nombre);
+                                    categoriasSeleccionadas.push(catReal.id.toString());
+                                } else {
+                                    $('#modal_categorias').append(`<option value="${catReal.id}">${catReal.nombre}</option>`);
+                                    categoriasSeleccionadas.push(catReal.id.toString());
+                                }
+                            }
+                        });
+                        $('#modal_categorias').val(categoriasSeleccionadas);
+                    }
+
+                    $('#modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('val', '');
+
+                    $('#modalProductoNuevo').modal('hide');
+                    
+                    botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
+                    Swal.fire('¡Éxito!', 'Producto registrado correctamente.', 'success');
+
+                    let rawPerecedero = response.producto.perecedero;
+                    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true') ? 1 : 0;
+                    
+
+                    let nombreLimpio = response.producto.nombre.trim();
+
+                    let $nuevaOpcion = $('<option></option>')
+                        .val(response.producto.id)
+                        .text(nombreLimpio)
+                        .attr('data-stock', '0')
+                        .attr('data-precio', '0.00')
+                        .attr('data-perecedero', esPerecedero) 
+                        .attr('data-img', response.producto.img_path)
+                        .attr('data-detalle', response.producto.descripcion)
+                        .data('perecedero', esPerecedero);     
+
+                    $('#producto_id').append($nuevaOpcion).val(response.producto.id).selectpicker('refresh').trigger('change');
+                    $('#producto_id').val(response.producto.id).selectpicker('refresh').trigger('change');
+
+                        // 4. Forzar el disparo visual de la fecha de vencimiento manualmente
+    if (esPerecedero === 1) {
         $('#contenedor_fecha').fadeIn();
         $('#fecha_vencimiento').prop('required', true);
     } else {
         $('#contenedor_fecha').fadeOut();
         $('#fecha_vencimiento').prop('required', false).val('');
     }
-});
 
 
-
-       let datosViejos = {!! json_encode(old('items_tabla')) !!};
-    
-    if (datosViejos) {
-        let productos = JSON.parse(datosViejos);
-        productos.forEach(p => {
-            // Llamas a tu función que dibuja la fila en la tabla
-            agregarFilaATabla(p); 
+                    setTimeout(function() { $('#cantidad').focus().select(); }, 300);
+                },
+                error: function(xhr) {
+                    Swal.close();
+                    botonGuardar.prop('disabled', false).text('Guardar e Inyectar a Compra');
+                    
+                    let errorMsg = "No se pudo completar el registro express.";
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMsg = xhr.responseJSON.error;
+                    }
+                    Swal.fire('Error', errorMsg, 'error');
+                }
+            });
         });
+
+        // =========================================================================
+        // CONTROL MULTIMEDIA NATIVO (IMAGEN / WEBCAM)
+        // =========================================================================
+        $('#modal_img_path').on('change', function(e) {
+            detenerHardwareCamara();
+            let archivo = e.target.files;
+            if (archivo) {
+                let lector = new FileReader();
+                lector.onload = function(event) {
+                    $('#texto-sin-foto').addClass('d-none');
+                    $('#vista-previa-img').attr('src', event.target.result).removeClass('d-none');
+                };
+                lector.readAsDataURL(archivo);
+            }
+        });
+
+        $('#btn-activar-camara').on('click', function() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(function(stream) {
+                    streamCamara = stream;
+                    let videoElement = document.getElementById('video-camara');
+                    videoElement.srcObject = stream;
+                    $('#contenedor-camara-web').removeClass('d-none');
+                })
+                .catch(function(err) {
+                    alert("No se pudo iniciar la cámara web. Elija una foto manualmente.");
+                });
+            }
+        });
+
+        $('#btn-capturar-foto').on('click', function() {
+            let video = document.getElementById('video-camara');
+            let canvas = document.getElementById('canvas-foto');
+            let ctx = canvas.getContext('2d');
+
+            if (video.videoWidth > 0) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                let fotoBase64 = canvas.toDataURL('image/jpeg', 0.9);
+                $('#texto-sin-foto').addClass('d-none');
+                $('#vista-previa-img').attr('src', fotoBase64).removeClass('d-none');
+detenerHardwareCamara();
+}
+});
+function detenerHardwareCamara() {
+if (streamCamara) {
+streamCamara.getTracks().forEach(track => track.stop());
+streamCamara = null;
+}
+$('#contenedor-camara-web').addClass('d-none');
+}
+    // =========================================================================
+    // 8. LOGICA MATEMÁTICA Y PARTIDA DOBLE DE LA COMPRA
+    // =========================================================================
+        function disableButtons() {
+            if (total == 0) {
+                $('#guardar').hide();
+                $('#cancelar').hide();
+            } else {
+                $('#guardar').show();
+                $('#cancelar').show();
+            }
+        }
+
+function sumarArreglos(arr1, arr2, A) {
+    let resultados = []; 
+    let formulaEvaluada;
+    let resultado;
+    var tableBody = $('#detalle_tbody');
+    tableBody.empty(); // Limpiar el cuerpo de la tabla contable de forma segura
+
+    // 1. Recorrer las fórmulas y calcular los montos contables con math.js
+    for (let i = 0; i < arr1.length; i++) {
+        if (arr1[i] && arr1[i] !== "") {
+            formulaEvaluada = arr1[i].replace(/A/g, total);
+            resultado = math.evaluate(formulaEvaluada);
+            resultado = parseFloat(resultado.toFixed(2));
+            arr2[i] = resultado;
+        } else {
+            arr2[i] = parseFloat(monto[i]) || 0;
+        }
+        resultados.push(arr2[i]);
+    }
+
+    // 2. Redibujar las filas asegurando la inyección de los IDs y nombres de inputs correctos
+    $.each(arr1, function(index, value) {
+        // 🚀 CONTROL EXTRA-SEGURO DE ID CONTABLE:
+        // Si el ID de la cuenta en el array idcuenta viene como undefined o vacío,
+        // usamos el índice actual o una caída segura para que nunca ponga el texto "undefined".
+        let idReal = idcuenta[index];
+        if (!idReal || idReal === "undefined" || idReal === undefined) {
+            idReal = index + 1; // Caída segura temporal si no se definió
+        }
+
+        var row = '<tr id="filaCC' + index + '">' +
+            '<td></td>' +
+            '<td>' +
+                '<input name="idcuenta[]" type="hidden" value="' + idReal + '">' +
+                '<input name="arrayidcuenta[]" type="hidden" value="' + idReal + '">' +
+                '<input name="cuentacontable_id[]" type="hidden" value="' + idReal + '">' +
+                '<input name="fkCuenetaContable[]" type="hidden" value="' + idReal + '">' + // Error ortográfico de tu DB
+            '</td>' +
+            '<td>' + (cuenta[index] || 'Cuenta Contable') + '</td>' +
+            '<td class="small-text">N/A</td>' +
+            '<td><input name="arraymonto[]" type="number" class="form-control form-control-sm" value="' + resultados[index] + '" readonly></td>' +
+            '<td><input name="arraytipomovimiento[]" type="text" class="form-control form-control-sm" value="' + tipo[index] + '" readonly></td>' +
+            '<td><button class="btn btn-danger btn-sm" type="button" onClick="eliminarCC(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+            '</tr>';
+        
+        tableBody.append(row);
+        monto[index] = resultados[index];
+    });
+
+    return resultados; 
+}
+
+function sumarArreglosInput(arr1, arr2, A) {
+    let resultados = []; 
+    let formulaEvaluada;
+    let resultado;
+    var tableBody = $('#detalle_tbody');
+    tableBody.empty();
+
+    for (let i = 0; i < arr1.length; i++) {
+        if (arr1[i] && arr1[i] !== "") {
+            formulaEvaluada = arr1[i].replace(/A/g, total);
+            resultado = math.evaluate(formulaEvaluada);
+            resultado = parseFloat(resultado.toFixed(2));
+            arr2[i] = resultado;
+        } else {
+            arr2[i] = parseFloat(monto[i]) || 0;
+        }
+        resultados.push(arr2[i]);
+    }
+
+    $.each(arr1, function(index, value) {
+        let idReal = idcuenta[index];
+        if (!idReal || idReal === "undefined" || idReal === undefined) {
+            idReal = index + 1;
+        }
+
+        var row = '<tr id="filaCC' + index + '">' +
+            '<td></td>' +
+            '<td>' +
+                '<input name="idcuenta[]" type="hidden" value="' + idReal + '">' +
+                '<input name="arrayidcuenta[]" type="hidden" value="' + idReal + '">' +
+                '<input name="cuentacontable_id[]" type="hidden" value="' + idReal + '">' +
+                '<input name="fkCuenetaContable[]" type="hidden" value="' + idReal + '">' +
+            '</td>' +
+            '<td>' + (cuenta[index] || 'Cuenta Contable') + '</td>' +
+            '<td class="small-text">N/A</td>' +
+            '<td><input name="arraymonto[]" type="number" class="form-control form-control-sm" value="' + resultados[index] + '"></td>' +
+            '<td><input name="arraytipomovimiento[]" type="text" class="form-control form-control-sm" value="' + tipo[index] + '" readonly></td>' +
+            '<td><button class="btn btn-danger btn-sm" type="button" onClick="eliminarCC(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+            '</tr>';
+        
+        tableBody.append(row);
+        monto[index] = resultados[index];
+    });
+
+    return resultados; 
+}
+
+
+  function CalcularFormula(formulalocal, montoA) {
+    try {
+        // 1. Validar que la fórmula no sea nula o vacía
+        if (!formulalocal) return 0;
+
+        // 2. Reemplazar "A" con el valor de montoA
+        // Usamos (montoA) entre paréntesis para evitar errores en fórmulas como A*2 -> (10)*2
+        let formulaEvaluadaiva = formulalocal.replace(/A/g, `(${montoA})`);
+
+        // 3. Evaluar con math.js
+        let resultadoiva = math.evaluate(formulaEvaluadaiva);
+
+        // 4. VALIDACIÓN CLAVE: Si mathjs devuelve un objeto complejo, obtener el valor primitivo
+        if (typeof resultadoiva === 'object' && resultadoiva.hasOwnProperty('value')) {
+            resultadoiva = resultadoiva.value;
+        }
+
+        // 5. Convertir a número y aplicar toFixed de forma segura
+        let numeroFinal = parseFloat(resultadoiva) || 0;
+        return parseFloat(numeroFinal.toFixed(2));
+
+    } catch (error) {
+        console.error("Error al calcular fórmula: " + formulalocal, error);
+        return 0;
+    }
+}
+
+// =========================================================================
+// 🔄 INTERCEPTOR CORREGIDO: ESCUCHAR EL CAMBIO POR NOMBRE DEL RADIO (input[name="TipoFolio"])
+// =========================================================================
+$(document).on('change', 'input[name="TipoFolio"]', function() {
+    // Capturar el valor del radio seleccionado (A, M o F)
+    let tipoFolioSeleccionado = $(this).val();
+    
+    console.log("🎛️ [TipoFolio] Opción contable cambiada a:", tipoFolioSeleccionado);
+
+    var tableBody = $('#detalle_tbody');
+    tableBody.empty(); // Limpiar el cuerpo de la póliza contable de forma segura
+
+    var tableDINAMICO = $('#contenedor-dinamico');
+    tableDINAMICO.empty(); // Limpiar el bloque dinámico libre si existía alguno anterior
+
+    // Reiniciar los arreglos globales para evitar que los datos viejos se queden encimados
+    formulas = [];
+    monto = [];
+    cuenta = [];
+    idcuenta = [];
+    tipo = [];
+    formula = '';
+    contcc = 0;
+
+    var comprobanteId = document.getElementById('comprobante_id').value;
+
+    // =========================================================================
+    // ESCENARIO M: MODO ASISTIDO MANUAL
+    // =========================================================================
+    if (tipoFolioSeleccionado === "M") {
+        if (comprobanteId) {
+            $.ajax({
+                url: '/compras/detalles/' + comprobanteId,
+                type: 'GET',
+                success: function(response) {
+                    var detalles = response.detalles;
+                    tableBody.empty();
+
+                    // 1. Pintar las filas e indexar datos en la memoria intermedia
+                    $.each(detalles, function(index, detalle) {
+                        // 🚀 COMPATIBILIDAD ROBUSTA DE VARIABLES PARA EL ID CONTABLE:
+                        // Captura la columna real sin importar si Laravel la manda como id, id_cuenta, o cuenta_contable_id
+                        let idCuentaVerificada = detalle.id || detalle.id_cuenta || detalle.cuenta_contable_id || detalle.fkCuenta || detalle.id_cuenta_contable;
+                        
+                        // Si por alguna razón sigue fallando, le asignamos de contingencia el índice + 1 para que nunca sea undefined
+                        if (!idCuentaVerificada || idCuentaVerificada === "undefined" || idCuentaVerificada === undefined) {
+                            idCuentaVerificada = index + 1;
+                        }
+
+                        formulas[index] = detalle.formula;
+                        monto[index] = detalle.valorminimo;
+                        cuenta[index] = detalle.cuenta_contable_nombre;
+                        idcuenta[index] = idCuentaVerificada; // <-- Guardamos el ID legítimo verificado
+                        tipo[index] = detalle.Naturaleza;
+                        formula = detalle.formuladoc;
+                    });
+
+                    // 2. 🚀 CLAVE: Ejecutar la sumatoria una única vez fuera del bucle para evitar duplicados y textos encimados
+                    if (formulas.length > 0) {
+                        sumarArreglosInput(formulas, monto);
+                    }
+                    
+                    if (typeof llenarTablaventas === 'function') { llenarTablaventas(); }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error al cargar detalles manuales:", error);
+                }
+            });
+        }
+    }
+    // =========================================================================
+    // ESCENARIO A: MODO ASISTIDO AUTOMÁTICO (FÓRMULAS FIJAS)
+    // =========================================================================
+    else if (tipoFolioSeleccionado === "A") {
+        if (comprobanteId) {
+            $.ajax({
+                url: '/compras/detalles/' + comprobanteId,
+                type: 'GET',
+                success: function(response) {
+                    var detalles = response.detalles;
+                    tableBody.empty();
+
+                    // 1. Pintar las filas contables automáticas en el DOM
+                    $.each(detalles, function(index, detalle) {
+                        // 🚀 COMPATIBILIDAD ROBUSTA DE VARIABLES PARA EL ID CONTABLE:
+                        let idCuentaVerificada = detalle.id || detalle.id_cuenta || detalle.cuenta_contable_id || detalle.fkCuenta || detalle.id_cuenta_contable;
+                        
+                        if (!idCuentaVerificada || idCuentaVerificada === "undefined" || idCuentaVerificada === undefined) {
+                            idCuentaVerificada = index + 1;
+                        }
+
+                        formulas[index] = detalle.formula;
+                        monto[index] = detalle.valorminimo;
+                        cuenta[index] = detalle.cuenta_contable_nombre;
+                        idcuenta[index] = idCuentaVerificada; // <-- Guardamos el ID legítimo verificado
+                        tipo[index] = detalle.Naturaleza;
+                        formula = detalle.formuladoc;
+                    });
+
+                    // 2. 🚀 CLAVE: Calcular póliza balanceada automatizada fuera del bucle
+                    if (formulas.length > 0) {
+                        sumarArreglos(formulas, monto);
+                    }
+                    
+                    if (typeof llenarTablaventas === 'function') { llenarTablaventas(); }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error al cargar detalles automáticos:", error);
+                }
+            });
+        }
+    }
+    // =========================================================================
+    // ESCENARIO F: MODO LIBRE (CREACIÓN DINÁMICA DE CUENTAS EN CALIENTE)
+    // =========================================================================
+    else if (tipoFolioSeleccionado === "F") {
+        if (contenedor) {
+            const nuevoDiv = crearNuevoDiv();
+            contenedor.appendChild(nuevoDiv);
+            
+            // Usar la alternativa val visual en lugar de refrescar masivamente para que no duplique nombres
+            $(nuevoDiv).find('.selectpicker').selectpicker('destroy').selectpicker({
+                noneResultsText: 'No se encontró, presione enter para registrar: {0}'
+            }).selectpicker('val', '');
+        }
     }
 });
 
 
-
-
-function iniciarScanner(tipo = "barra") {
-
-    if (escaneando) return;
-
-    scanner = new Html5Qrcode("reader");
-
-    escaneando = true;
-
-    scanner.start(
-        { facingMode: "environment" },
-        {
-            fps: 10,
-            qrbox: tipo === "barra"
-                ? { width: 250, height: 150 }
-                : 250
-        },
-
-        (codigo) => {
-            console.log("Código ver:", codigo);
-
-            // 1. Apagamos el escáner inmediatamente para liberar la cámara del dispositivo
-            StopScanner();
-            
-            // 2. Ejecutamos la búsqueda centralizada
-            // Si el producto no existe, esta misma función se encargará de levantar el modal express
-            agregarProductoScanner(codigo.trim());
-
-            // 🚀 NOTA: Se eliminó el Swal.fire de aquí. 
-            // Si el producto existe, tu función agregarProductoScanner ya maneja el foco en cantidad.
-            // Si el producto no existe, el modal express se abrirá limpiamente sin ventanas que lo tapen.
-        },
-
-        (error) => {
-            // Ignorar errores de enfoque de la cámara en vivo
-        }
-    );
+function crearNuevoDiv() {
+    // 1. Crear el contenedor principal de forma segura
+    const nuevoDiv = document.createElement('div');
+    nuevoDiv.className = 'card p-3 mb-3 bg-light boundary-cc-block';
+    
+    // 2. Construir la estructura por piezas para que el editor de código no se rompa
+    let filaContenedora = $('<div class="row"></div>');
+    
+    // Bloque del selector de cuenta contable (Inyectando el Blade de Laravel de forma aislada)
+    let bloqueCuenta = $('<div class="col-12 mb-2"></div>');
+    let selectCuenta = $('<select name="cuentacontable_id" class="form-control selectpicker clase_dinamica_cuenta" data-live-search="true" data-size="5" title="Busque un Cuenta Contable aquí"></select>');
+    
+    @foreach ($cuentasContables as $item)
+        selectCuenta.append('<option value="{{$item->id}}">{{$item->formula}} - {{$item->nombre}}</option>');
+    @endforeach
+    
+    bloqueCuenta.append(selectCuenta);
+    
+    // Bloque de la Naturaleza (Debe / Haber)
+    let bloqueNaturaleza = $('<div class="col-12 mb-2"></div>');
+    let selectNaturaleza = $('<select name="Naturaleza" class="form-control selectpicker clase_dinamica_naturaleza" title="Elija Naturaleza de la cuenta"><option value="D">Debe</option><option value="H">Haber</option></select>');
+    bloqueNaturaleza.append(selectNaturaleza);
+    
+    // Bloque del Monto Mínimo
+    let bloqueMonto = $('<div class="col-4 mb-2"><label class="form-label">Valor Minimo:</label><input type="number" name="valorminimo" class="form-control clase_dinamica_monto" step="0.1" value="0"></div>');
+    
+    // Bloque del Botón de Agregar
+    let bloqueBoton = $('<div class="col-12 text-end"><button onclick="ejecutarAdicionDinamicaCC(this)" class="btn btn-primary" type="button">Agregar</button></div>');
+    
+    // 3. Unificar todo dentro del div principal
+    filaContenedora.append(bloqueCuenta).append(bloqueNaturaleza).append(bloqueMonto).append(bloqueBoton);
+    $(nuevoDiv).append(filaContenedora);
+    
+    return nuevoDiv;
 }
 
-function StopScanner() {
 
-    if (!scanner || !escaneando) return;
 
-    scanner.stop()
-    .then(() => {
-        console.log("Scanner detenido");
-        escaneando = false;
-        scanner = null;
-    })
-    .catch(err => {
-        console.error("Error al detener:", err);
+
+    // =========================================================================
+    // 9. GESTIÓN DE PRODUCTOS SELECCIONADOS (AGREGAR / ELIMINAR / CUADRES)
+    // =========================================================================
+// 🚀 CORREGIDO: Recibe el parámetro 'e' (evento) del clic para poder frenar la duplicación
+function agregarProducto(e) {
+    // Si el navegador envió el evento, congelamos de inmediato la doble ejecución
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    console.log("🚀 [Añadir] Iniciando flujo de inyección de artículo por captura posicional...");
+
+    // 1. Localizar el selector principal y su ID
+    let selectNativo = document.getElementById('producto_id');
+    let idProducto = selectNativo ? selectNativo.value : '';
+    if (!idProducto || idProducto === "" || idProducto === "undefined") {
+        idProducto = $('#producto_id').find('option:selected').val() || '';
+    }
+
+    let optionSeleccionada = $('#producto_id option[value="' + idProducto + '"]').length > 0 
+        ? $('#producto_id option[value="' + idProducto + '"]') 
+        : $('#producto_id').find('option:selected');
+
+    let nameProducto = optionSeleccionada.text() ? optionSeleccionada.text().trim() : '';
+
+    // Captura posicional blindada
+    let cantidadRaw = $('#cantidad').val() || $('input[type="number"]').eq(0).val() || '';
+    let precioCompraRaw = $('#precio_compra').val() || $('input[id*="compra"]').val() || $('input[name*="compra"]').val() || $('input[type="number"]').eq(1).val() || '';
+    let precioVentaRaw = $('#precio_venta').val() || $('input[id*="venta"]').val() || $('input[name*="venta"]').val() || $('input[type="number"]').eq(2).val() || '';
+    
+    let cantNum = parseInt(cantidadRaw, 10);
+    let compraNum = parseFloat(precioCompraRaw);
+    let ventaNum = parseFloat(precioVentaRaw);
+
+    let rawPerecedero = optionSeleccionada.attr('data-perecedero') || optionSeleccionada.data('perecedero') || 0;
+    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
+    let fechaVencimiento = $('#fecha_vencimiento').val() || $('input[type="date"]').val() || '';
+
+    var comprobante = document.getElementById('comprobante_id').value;
+    if (comprobante === "") { 
+        alert("Por favor, seleccione un comprobante primero."); 
+        return false; 
+    }
+    if (!formula) { 
+        alert("Error: No se ha cargado la fórmula contable del comprobante."); 
+        return false; 
+    }
+
+    // 🔍 INSPECCIÓN CRÍTICA EN LA CONSOLA (F12)
+    console.log("📊 [Auditoría Completa de Inputs Reales]:", {
+        idProducto: idProducto,
+        nameProducto: nameProducto,
+        cantidadRaw: cantidadRaw,
+        precioCompraRaw: precioCompraRaw,
+        precioVentaRaw: precioVentaRaw,
+        cantNum: cantNum,
+        compraNum: compraNum,
+        ventaNum: ventaNum,
+        esPerecedero: esPerecedero,
+        fechaVencimiento: fechaVencimiento
+    });
+
+    // =========================================================================
+    // 2. CONDICIONALES DE REBOTE CONTROLADOS
+    // =========================================================================
+    if (!idProducto || idProducto === "" || idProducto === "undefined" || idProducto === "null") {
+        alert("Por favor, seleccione un producto válido del catálogo.");
+        return false;
+    }
+
+    if (isNaN(cantNum) || isNaN(compraNum) || isNaN(ventaNum)) {
+        alert("Por favor, llene la cantidad, precio de compra y precio de venta con valores numéricos válidos.");
+        return false;
+    }
+
+    if (cantNum <= 0 || compraNum <= 0 || ventaNum <= 0) {
+        alert("Valores incorrectos. La cantidad debe ser un número entero y los precios mayores a cero.");
+        return false;
+    }
+
+    if (ventaNum <= compraNum) {
+        alert("El precio de venta debe ser mayor al precio de compra.");
+        return false;
+    }
+
+    if (esPerecedero === 1 && (!fechaVencimiento || fechaVencimiento === "")) {
+        alert("Este producto es perecedero. Por favor, asigne una fecha de vencimiento válida.");
+        return false;
+    }
+
+    // =========================================================================
+    // 3. PROCESAMIENTO CONTABLE E INSERCIÓN EN TABLAS
+    // =========================================================================
+    try {
+        let indexActual = producto.length;
+        
+        subtotal[indexActual] = parseFloat((cantNum * compraNum).toFixed(2));
+        sumas = parseFloat((sumas + subtotal[indexActual]).toFixed(2));
+        totalMASIVA = sumas;
+        total = totalMASIVA;
+
+        formulaEvaluadaiva = formula.replace(/A/g, total);
+        IVA = parseFloat(math.evaluate(formulaEvaluadaiva).toFixed(2));
+
+        formulaEvaluadaiva = formula.replace(/A/g, subtotal[indexActual]);
+        subiva[indexActual] = parseFloat(math.evaluate(formulaEvaluadaiva).toFixed(2));
+
+        producto[indexActual] = idProducto;
+        Cantidad[indexActual] = cantNum;
+        preciocompra[indexActual] = compraNum;
+        precioventa[indexActual] = ventaNum;
+        nombre[indexActual] = nameProducto !== "" ? nameProducto : "Producto ID " + idProducto;
+        
+        if (!window.arrayFechasGlobal) window.arrayFechasGlobal = [];
+        window.arrayFechasGlobal[indexActual] = (esPerecedero === 1) ? fechaVencimiento : 'N/A';
+        
+        cantidadarticulos += cantNum;
+
+        if (typeof llenarTablaventas === 'function') { llenarTablaventas(); }
+        
+        limpiarCampos();
+        disableButtons();
+
+        $('#sumas').html(cantidadarticulos);
+        $('#IVA').html(IVA);
+        $('#total').html(total);
+        $('#impuesto').val(IVA);
+        $('#inputTotal').val(total - IVA);
+
+        if (typeof sumarArreglos === 'function') { 
+            sumarArreglos(formulas, monto); 
+        }
+
+        console.log("🎯 [Éxito] Artículo inyectado correctamente en ambas tablas.");
+        
+        // Retornar falso para romper la burbuja del dispatcher de jQuery
+        return false;
+
+    } catch (error) {
+        console.error("❌ Error crítico en el cálculo matemático interno:", error);
+        alert("Ocurrió un inconveniente al calcular los subtotales del comprobante.");
+        return false;
+    }
+}
+
+
+
+function eliminarProducto(indice) {
+        sumas -= round(subtotal[indice]);
+        total = round(sumas);
+        subiva[indice] = round(sumas);
+        formulaEvaluadaiva = formula.replace(/A/g, total);
+        resultadoiva = math.evaluate(formulaEvaluadaiva);
+        IVA = parseFloat(resultadoiva.toFixed(2));
+        cantidadarticulos -= parseInt(Cantidad[indice], 10);
+
+        $('#sumas').html(cantidadarticulos);
+        $('#IVA').html(IVA);
+        $('#total').html(total);
+        $('#impuesto').val(IVA);
+        $('#InputTotal').val(total - IVA);
+
+        $('#fila' + indice).remove();
+        
+        producto.splice(indice, 1);
+        nombre.splice(indice, 1);
+        Cantidad.splice(indice, 1);
+        preciocompra.splice(indice, 1);
+        subiva.splice(indice, 1);
+        precioventa.splice(indice, 1);
+        subtotal.splice(indice, 1);
+        if(window.arrayFechasGlobal) window.arrayFechasGlobal.splice(indice, 1);
+
+        sumarArreglos(formulas, monto);
+        disableButtons();
+    }
+
+
+
+   function cancelarCompra() {
+            //Elimar el tbody de la tabla
+            $('#tabla_detalle tbody').empty();
+
+            //Añadir una nueva fila a la tabla
+            let fila = '<tr>' +
+                '<th></th>' +
+                '<td></td>' +
+                '<td></td>' +
+                '<td></td>' +
+                '<td></td>' +
+                '<td></td>' +
+                '<td></td>' +
+                '<td></td>' +
+                '</tr>';
+            $('#tabla_detalle').append(fila);
+
+            //Reiniciar valores de las variables
+            cont = 0;
+            subtotal = [];
+            subiva = [];
+            sumas = 0;
+            IVA = 0;
+            total = 0;
+            totalMASIVA = 0;
+            cantidadarticulos=0;
+
+
+            //Mostrar los campos calculados
+            $('#sumas').html('Q. '+cantidadarticulos);
+            $('#IVA').html('Q. '+IVA);
+            $('#total').html('Q. '+total);
+            $('#impuesto').val(impuesto + '%');
+            $('#inputTotal').val(total);
+
+            limpiarCampos();
+            disableButtons();
+
+
+        }
+
+function limpiarCampos() {
+$('#producto_id').selectpicker('val', '');
+$('#cantidad').val('');
+$('#precio_compra').val('');
+$('#precio_venta').val('');
+}
+function round(num, decimales = 2) {
+var signo = (num >= 0 ? 1 : -1);
+num = num * signo;
+if (decimales === 0) return signo * Math.round(num);
+num = num.toString().split('e');
+num = Math.round(+(num + 'e' + (num ? (+num + decimales) : decimales)));
+num = num.toString().split('e');
+return signo * (num + 'e' + (num ? (+num - decimales) : -decimales));
+}
+    // =========================================================================
+    // 10. LECTOR DE CÓDIGOS QR / BARRAS EXTERNO (HTML5-QRCODE)
+    // =========================================================================
+    function iniciarScanner(tipo = "barra") {
+        if (escaneando) return;
+        scanner = new Html5Qrcode("reader");
+        escaneando = true;
+
+        scanner.start(
+            { facingMode: "environment" },
+            {
+                fps: 10,
+                qrbox: tipo === "barra" ? { width: 250, height: 150 } : 250
+            },
+            (codigo) => {
+                console.log("Código ver:", codigo);
+                StopScanner();
+                agregarProductoScanner(codigo.trim());
+            },
+            (error) => { /* Silenciar advertencias */ }
+        );
+    }
+
+    function StopScanner() {
+        if (!scanner || !escaneando) return;
+        scanner.stop()
+        .then(() => {
+            console.log("Scanner detenido");
+            escaneando = false;
+            scanner = null;
+        })
+        .catch(err => console.error("Error al detener:", err));
+    }
+
+// 🚀 ¡AQUÍ ESTÁ LA SOLUCIÓN! Cerramos el $(document).ready AL FINAL de todo el código
+}); 
+
+// =========================================================================
+// 🚀 GESTIÓN DE CUENTAS CONTABLES Y PARTIDA DOBLE (CORREGIDO)
+// =========================================================================
+
+function ejecutarAdicionDinamicaCC(boton) {
+    // 1. Obtener el contenedor padre usando jQuery nativo para evitar colisiones
+    let $bloquePadre = $(boton).closest('.boundary-cc-block');
+    if ($bloquePadre.length === 0) return false;
+
+    // 2. 🚀 CAPTURA QUIRÚRGICA DIRECTA POR ATRIBUTO NAME:
+    // Buscamos el elemento nativo usando el atributo name="cuentacontable_id" que inyectamos en el HTML.
+    // Esto es 100% inmune a las clases visuales intermedias de Bootstrap Select.
+    let selectCuentaNat = $bloquePadre.find('select[name="cuentacontable_id"]');
+    let idDocumento = selectCuentaNat.val();
+    
+    // Caída segura preventiva por si el selectpicker alteró el .val() en el nodo raíz
+    if (!idDocumento || idDocumento === "" || idDocumento === "undefined" || idDocumento === undefined) {
+        idDocumento = selectCuentaNat.find('option:selected').val() || '';
+    }
+
+    // Capturar la naturaleza (Debe / Haber) buscando por su atributo NAME nativo
+    let selectNaturalezaNat = $bloquePadre.find('select[name="Naturaleza"]');
+    let Naturaleza = selectNaturalezaNat.val();
+    if (!Naturaleza || Naturaleza === "" || Naturaleza === "undefined") {
+        Naturaleza = selectNaturalezaNat.find('option:selected').val() || '';
+    }
+
+    // Capturar el Monto
+    let inputMontoNat = $bloquePadre.find('input[name="valorminimo"]').length ? $bloquePadre.find('input[name="valorminimo"]') : $bloquePadre.find('.clase_dinamica_monto');
+    let MontoRaw = inputMontoNat.val();
+    let Monto = parseFloat(MontoRaw) || 0;
+
+    // Obtener el texto de la cuenta seleccionada para la visualización de la tabla
+    let NombreDocumento = selectCuentaNat.find('option:selected').text() || '';
+
+    // 🔍 LOG DE AUDITORÍA EN CONSOLA (F12)
+    console.log("📊 [Modo Libre F] Verificación de Variables Crudas:", {
+        idDocumento: idDocumento,
+        NombreDocumento: NombreDocumento.trim(),
+        Naturaleza: Naturaleza,
+        Monto: Monto
+    });
+
+    // 3. 🚨 ESCUDO PROTECTOR: Validación estricta que frena el código si detecta un 'undefined'
+    // Impide físicamente que se ensucie el arreglo global idcuenta si el select falló en el DOM
+    if (!idDocumento || idDocumento === "" || idDocumento === "undefined" || idDocumento === undefined ||
+        !Naturaleza || Naturaleza === "" || Naturaleza === "undefined" || Naturaleza === undefined || Monto <= 0) {
+        alert("Por favor, complete todos los campos de la cuenta contable de forma válida (Seleccione Cuenta, Naturaleza y asigne un Monto mayor a cero).");
+        return false;
+    }
+    
+    // =========================================================================
+    // 4. INYECTAR DIRECTAMENTE EN LOS ARREGLOS GLOBALES CONTABLES
+    // =========================================================================
+    let indexCC = idcuenta.length;
+    
+    idcuenta[indexCC] = idDocumento;
+    cuenta[indexCC] = NombreDocumento.trim();
+    monto[indexCC] = Monto;
+    tipo[indexCC] = Naturaleza;
+
+    // 5. Calcular balance de sumas acumuladas locales para control visual de partida doble
+    let debeacum = 0;
+    let haberacumb = 0;
+    for (let i = 0; i < idcuenta.length; i++) {
+        if (tipo[i] === "D") debeacum = Number(debeacum) + Number(monto[i]);
+        if (tipo[i] === "H") haberacumb = Number(haberacumb) + Number(monto[i]);
+    }
+
+    let msgContenedor = document.getElementById("msj");
+    if (msgContenedor) {
+        if (Number(haberacumb) !== Number(debeacum)) {
+            msgContenedor.textContent = "⚠️ Los montos Debe y Haber sumados deben de coincidir.";
+            msgContenedor.style.color = "red";
+        } else if (Number(haberacumb) !== Number(total)) {
+            msgContenedor.textContent = "⚠️ Los montos Debe y Haber sumados deben de coincidir con el Total del documento.";
+            msgContenedor.style.color = "red";
+        } else { 
+            msgContenedor.textContent = ""; 
+        }
+    }
+
+    // 6. Invocar al dibujador oficial de la tabla con el arreglo 100% limpio y libre de undefined
+    construirsumarCC(idcuenta, monto[indexCC]);
+
+    // 7. Limpieza de los selectores del bloque dinámico para el siguiente registro
+    inputMontoNat.val(0);
+    selectCuentaNat.selectpicker('val', '');
+    selectNaturalezaNat.selectpicker('val', '');
+}
+
+
+function agregarCuentaC() {
+    let idDocumento = document.getElementById('cuentacontable_id') ? document.getElementById('cuentacontable_id').value : '';
+    let select = document.getElementById('cuentacontable_id');
+    let NombreDocumento = (select && select.selectedIndex >= 0) ? select.options[select.selectedIndex].text : '';
+    let debeacum = 0;
+    let haberacumb = 0;
+    let Naturaleza = document.getElementById('Naturaleza') ? document.getElementById('Naturaleza').value : '';
+    let Monto = $('#valorminimo').val() || 0;
+
+    if (idDocumento === "") { alert("Por favor, seleccione una Cuenta Contable."); return false; }
+    if (Monto == 0) { alert("Por favor, el valor debe de ser mayor a cero."); return false; }
+
+    let indexCC = idcuenta.length;
+    idcuenta[indexCC] = idDocumento;
+    cuenta[indexCC] = NombreDocumento;
+    monto[indexCC] = Monto;
+    tipo[indexCC] = Naturaleza;
+
+    for (let i = 0; i < idcuenta.length; i++) {
+        if (tipo[i] === "D") debeacum = Number(debeacum) + Number(monto[i]);
+        if (tipo[i] === "H") haberacumb = Number(haberacumb) + Number(monto[i]);
+    }
+
+    let msgContenedor = document.getElementById("msj");
+    if(msgContenedor) {
+        if (Number(haberacumb) !== Number(debeacum)) {
+            msgContenedor.textContent = "⚠️ Los montos Debe y Haber sumados deben de coincidir.";
+            msgContenedor.style.color = "red";
+        } else if (Number(haberacumb) !== Number(total)) {
+            msgContenedor.textContent = "⚠️ Los montos Debe y Haber sumados deben de coincidir con el Total del documento.";
+            msgContenedor.style.color = "red";
+        } else { msgContenedor.textContent = ""; }
+    }
+
+    construirsumarCC(idcuenta, monto[indexCC]);
+    if (document.getElementById('valorminimo')) $('#valorminimo').val(0);
+    if (document.getElementById('Naturaleza')) $('#Naturaleza').val("");
+}
+
+function eliminarCC(indice) {
+    $('#filaCC' + indice).remove();
+    idcuenta.splice(indice, 1);
+    cuenta.splice(indice, 1);
+    monto.splice(indice, 1);
+    tipo.splice(indice, 1);
+    construirsumarCC(idcuenta, 0);
+    disableButtons();
+}
+
+function construirsumarCC(arr1, arr2) {
+    var tableBody = $('#detalle_tbody');
+    tableBody.empty(); // Limpiar el cuerpo de la tabla de forma segura antes de redibujar
+
+    $.each(arr1, function(index, value) {
+        // 🚀 TRIPLE COMPATIBILIDAD DE INPUTS OCULTOS:
+        // Inyectamos las tres llaves posibles para que Laravel capture el ID legítimo (como el '13')
+        // y nunca más vuelva a enviar un string 'undefined' a la base de datos.
+        var row = '<tr id="filaCC' + index + '">' +
+            '<td>' +
+                '<input name="idcuenta[]" type="hidden" value="' + idcuenta[index] + '">' +
+                '<input name="arrayidcuenta[]" type="hidden" value="' + idcuenta[index] + '">' +
+                '<input name="cuentacontable_id[]" type="hidden" value="' + idcuenta[index] + '">' +
+            '</td>' +
+            '<td>' + cuenta[index] + '</td>' +
+            '<td class="small-text">N/A</td>' +
+            '<td><input name="arraymonto[]" type="number" class="form-control form-control-sm" value="' + monto[index] + '"></td>' +
+            '<td><input name="arraytipomovimiento[]" type="text" class="form-control form-control-sm" value="' + tipo[index] + '" readonly></td>' +
+            '<td><button class="btn btn-danger btn-sm" type="button" onClick="eliminarCC(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+            '</tr>';
+        
+        tableBody.append(row);
     });
 }
 
 
-let scanner = null;
-let escaneando = false;
 
-    </script>
+function llenarTablaventas() {
+    var tableBodyDetalle = $('#tabla_detalle_tbody');
+    tableBodyDetalle.empty(); 
+    $('#tabla_detalle tbody').empty(); 
+
+    $.each(producto, function(index) {
+        let precioVentaActual = subtotal[index] || 0;
+        let resultadoIva = CalcularFormula(formula, precioVentaActual);
+        subiva[index] = resultadoIva;
+
+        var fila = '<tr id="fila' + index + '">' +
+            '<th>' + (index + 1) + '</th>' +
+            '<td><input type="hidden" name="arrayidproducto[]" value="' + producto[index] + '">' + nombre[index] + '</td>' +
+            '<td><input type="hidden" name="arraycantidad[]" value="' + Cantidad[index] + '">' + Cantidad[index] + '</td>' +
+            '<td><input type="hidden" name="arraypreciocompra[]" value="' + (preciocompra[index] || 0) + '">' + (preciocompra[index] || 0) + '</td>' +
+            '<td><input type="hidden" name="arrayfecha_vencimiento[]" value="' + (window.arrayFechasGlobal ? window.arrayFechasGlobal[index] : 'N/A') + '">' + (window.arrayFechasGlobal ? window.arrayFechasGlobal[index] : 'N/A') + '</td>' +
+            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[index] + '">' + subiva[index] + '</td>' +
+            '<td><input type="hidden" name="arrayprecioventa[]" value="' + (precioventa[index] || 0) + '">' + (precioventa[index] || 0) + '</td>' +
+            '<td>' + subtotal[index] + '</td>' +
+            '<td><button class="btn btn-danger btn-sm" type="button" onClick="eliminarProducto(' + index + ')"><i class="fa-solid fa-trash"></i></button></td>' +
+            '</tr>';
+        
+        tableBodyDetalle.append(fila);
+        if (tableBodyDetalle.children().length === 0) {
+            $('#tabla_detalle tbody').append(fila);
+        }
+    });
+
+    IVA = CalcularFormula(formula, total);
+    if ($('#total_iva_visual').length > 0) {
+        $('#total_iva_visual').html('Q. ' + IVA);
+    }
+}
+
+function CalcularFormula(formulalocal, montoA) {
+    try {
+        if (!formulalocal) return 0;
+        let formulaEvaluadaiva = formulalocal.replace(/A/g, `(${montoA})`);
+        let resultadoiva = math.evaluate(formulaEvaluadaiva);
+        if (typeof resultadoiva === 'object' && resultadoiva.hasOwnProperty('value')) {
+            resultadoiva = resultadoiva.value;
+        }
+        let numeroFinal = parseFloat(resultadoiva) || 0;
+        return parseFloat(numeroFinal.toFixed(2));
+    } catch (error) {
+        console.error("Error al calcular fórmula:", error);
+        return 0;
+    }
+}
+
+</script>
 @endpush

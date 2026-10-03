@@ -171,6 +171,8 @@ Route::get('/arqueocaja/ventas/{ventas}', [ArqueoCajaController::class, 'ventas'
 
 Route::get('/arqueocaja/cobrarventas/{ventas}', [ArqueoCajaController::class, 'cobrarventas'])->name('arqueocaja.cobrarventas');
 Route::get('/arqueoc/cobventasdirecta/', [ArqueoCajaController::class, 'cobrarventasdir'])->name('arqueocaja.cobventasdir');
+// web.php
+Route::get('/caja/balances-turno/{id}', [ArqueoCajaController::class, 'obtenerBalancesTurno'])->name('caja.balancesTurno');
 
 
 
@@ -236,7 +238,7 @@ Route::get('/cajaregistradora', [CajaRegistradoraController::class, 'index'])->n
 Route::post('/cajaregistradora/open', [CajaRegistradoraController::class, 'open'])->name('cajaregistradora.open.submit');
 Route::resource('cash', CashRegisterController::class);
 Route::post('/arqueocaja/store/{arqueocaja}', [ArqueoCajaController::class, 'store'])->name('arqueocaja.store');
-Route::post('/detallecomprobante/update-arqueo', [ArqueoCajaController::class, 'updateTipoArqueo'])
+Route::post('/detallecomprobante/update-arqueo', [ArqueoCajaController::class, 'obtenerDetalleArqueoContable'])
      ->name('detallecomprobante.update-arqueo');
 
 

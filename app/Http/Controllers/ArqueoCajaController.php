@@ -60,6 +60,120 @@ class ArqueoCajaController extends Controller
         return view('arqueocaja.index',compact('arqueocaja','caja'));
     }
 
+    public function obtenerBalancesTurno($id)
+{
+    try {
+        $arqueo = ArqueoCaja::findOrFail($id);
+        
+        $fechaInicio = $arqueo->created_at;
+        $fechaFin    = ($arqueo->Estatus == 'C') ? $arqueo->updated_at : now();
+        $fkTienda    = $arqueo->fkTienda;
+
+        // Función interna para sumar los montos del libro diario usando las marcas de tu catálogo
+        $calcularMontoContable = function($identificadorArqueo, $naturaleza) use ($fechaInicio, $fechaFin, $fkTienda) {
+            return DB::table('detalle_folios')
+                ->join('folios', 'detalle_folios.fkFolio', '=', 'folios.idFolio')
+                ->join('detalle_comprobantes', 'detalle_folios.fkCuenetaContable', '=', 'detalle_comprobantes.fkCuentaContable')
+                ->where('detalle_comprobantes.tipoarqueo', $identificadorArqueo)
+                ->where('detalle_folios.Naturaleza', $naturaleza)
+                ->where('detalle_folios.fkTienda', $fkTienda)
+                ->whereBetween('folios.FechaContabilizacion', [$fechaInicio, $fechaFin])
+                ->sum('detalle_folios.Monto') ?? 0;
+        };
+
+        if ($arqueo->Estatus == 'C') {
+            $response = [
+                ['MetodoPago' => 'CEI', 'Monto' => (float)$arqueo->CEI],
+                ['MetodoPago' => 'CEF', 'Monto' => (float)$arqueo->CEF],
+                ['MetodoPago' => 'VD',  'Monto' => (float)$arqueo->VD],
+                ['MetodoPago' => 'VO',  'Monto' => (float)$arqueo->VO],
+                ['MetodoPago' => 'D',   'Monto' => (float)$arqueo->D],
+                ['MetodoPago' => 'CC',  'Monto' => (float)$arqueo->CC],
+                ['MetodoPago' => 'OG',  'Monto' => (float)$arqueo->OG],
+            ];
+        } else {
+            $vo = $calcularMontoContable('VO', 'D'); 
+            $cc = $calcularMontoContable('CC', 'D'); 
+            $d  = $calcularMontoContable('D',  'D'); 
+            $og = $calcularMontoContable('CE', 'H'); 
+            $vd = $calcularMontoContable('CE', 'D'); 
+
+            $response = [
+                ['MetodoPago' => 'CEI', 'Monto' => (float)$arqueo->CEI],
+                ['MetodoPago' => 'VD',  'Monto' => (float)$vd],
+                ['MetodoPago' => 'VO',  'Monto' => (float)$vo],
+                ['MetodoPago' => 'D',   'Monto' => (float)$d],
+                ['MetodoPago' => 'CC',  'Monto' => (float)$cc],
+                ['MetodoPago' => 'OG',  'Monto' => (float)$og],
+            ];
+        }
+
+        return response()->json($response, 200);
+
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Error en el cálculo: ' . $e->getMessage()], 500);
+    }
+}
+
+public function obtenerDetalleArqueoContable(Request $request)
+{
+    try {
+        // Capturamos el ID que envía el parámetro del AJAX mediante el request
+        $idCaja = $request->input('id'); 
+        $arqueo = ArqueoCaja::findOrFail($idCaja);
+        
+        $fechaInicio = $arqueo->created_at;
+        $fechaFin    = ($arqueo->Estatus == 'C') ? $arqueo->updated_at : now();
+        $fkTienda    = $arqueo->fkTienda;
+
+        // Función interna para sumar montos en la tabla contable usando marcas del catálogo
+        $calcularMontoContable = function($identificadorArqueo, $naturaleza) use ($fechaInicio, $fechaFin, $fkTienda) {
+            return DB::table('detalle_folios')
+                ->join('folios', 'detalle_folios.fkFolio', '=', 'folios.idFolio')
+                ->join('detalle_comprobantes', 'detalle_folios.fkCuenetaContable', '=', 'detalle_comprobantes.fkCuentaContable')
+                ->where('detalle_comprobantes.tipoarqueo', $identificadorArqueo)
+                ->where('detalle_folios.Naturaleza', $naturaleza)
+                ->where('detalle_folios.fkTienda', $fkTienda)
+                ->whereBetween('folios.FechaContabilizacion', [$fechaInicio, $fechaFin])
+                ->sum('detalle_folios.Monto') ?? 0;
+        };
+
+        if ($arqueo->Estatus == 'C') {
+            $response = [
+                ['MetodoPago' => 'CEI', 'Monto' => (float)$arqueo->CEI],
+                ['MetodoPago' => 'CEF', 'Monto' => (float)$arqueo->CEF],
+                ['MetodoPago' => 'VD',  'Monto' => (float)$arqueo->VD],
+                ['MetodoPago' => 'VO',  'Monto' => (float)$arqueo->VO],
+                ['MetodoPago' => 'D',   'Monto' => (float)$arqueo->D],
+                ['MetodoPago' => 'CC',  'Monto' => (float)$arqueo->CC],
+                ['MetodoPago' => 'OG',  'Monto' => (float)$arqueo->OG],
+            ];
+        } else {
+            $vo = $calcularMontoContable('VO', 'D'); 
+            $cc = $calcularMontoContable('CC', 'D'); 
+            $d  = $calcularMontoContable('D',  'D'); 
+            $og = $calcularMontoContable('CE', 'H'); 
+            $vd = $calcularMontoContable('CE', 'D'); 
+
+            $response = [
+                ['MetodoPago' => 'CEI', 'Monto' => (float)$arqueo->CEI],
+                ['MetodoPago' => 'VD',  'Monto' => (float)$vd],
+                ['MetodoPago' => 'VO',  'Monto' => (float)$vo],
+                ['MetodoPago' => 'D',   'Monto' => (float)$d],
+                ['MetodoPago' => 'CC',  'Monto' => (float)$cc],
+                ['MetodoPago' => 'OG',  'Monto' => (float)$og],
+            ];
+        }
+
+        return response()->json($response, 200);
+
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Error en el cálculo contable: ' . $e->getMessage()], 500);
+    }
+}
+
+
+
 public function updateTipoArqueo(Request $request)
 {
     $request->validate([
