@@ -708,23 +708,19 @@ error: function(xhr) {
 });
 
 // =========================================================================
-// 🛡️ ESCUDO DE INTERFAZ: PROTECCIÓN GLOBAL CONTRA NOMBRES ACUMULADOS
+// 🛡️ GUARDIÁN DEL SELECTOR: PURGA AUTOMÁTICA DE DUPLICADOS EN LA LISTA AZUL
 // =========================================================================
-$(document).on('refreshed.bs.select loaded.bs.select', '#proveedor_id, #comprobante_id, #producto_id', function (e) {
-    // Localizar el nodo del menú visual desplegable generado por el plugin
+$(document).on('refreshed.bs.select loaded.bs.select render.bs.select', '#producto_id', function () {
     let dropdownMenu = $(this).closest('.bootstrap-select').find('ul.dropdown-menu.inner');
-    
     if (dropdownMenu.length > 0) {
         let textosVistosVisuales = {};
         
-        // Recorrer los ítems <li> de la lista que ve el usuario en pantalla
         dropdownMenu.find('li').each(function() {
             let elementoTexto = $(this).find('.text');
             let textoCompleto = elementoTexto.text().trim();
             
             if (textoCompleto !== "") {
-                // 🔍 Si el texto tiene el nombre repetido consecutivamente (Ej: "GalloGallo" o "FacturaFactura")
-                // Lo cortamos matemáticamente a la mitad para dejar una sola palabra limpia
+                // Reparar de inmediato strings pegados (Ej: "Alka-seltzerAlka-seltzer" -> "Alka-seltzer")
                 let mitadLargo = textoCompleto.length / 2;
                 let primeraMitad = textoCompleto.substring(0, mitadLargo);
                 let segundaMitad = textoCompleto.substring(mitadLargo);
@@ -734,7 +730,7 @@ $(document).on('refreshed.bs.select loaded.bs.select', '#proveedor_id, #comproba
                     textoCompleto = primeraMitad;
                 }
 
-                // 🗑️ Si el ítem completo está duplicado en la lista, lo removemos físicamente
+                // Borrar el elemento físico repetido de la lista desplegable visual
                 let textoLimpioMinusc = textoCompleto.toLowerCase();
                 if (textosVistosVisuales[textoLimpioMinusc]) {
                     $(this).remove(); 
@@ -747,8 +743,36 @@ $(document).on('refreshed.bs.select loaded.bs.select', '#proveedor_id, #comproba
 });
 
 
+
         // 1. Inicializar de golpe y de forma única los selectpickers maestros de la pantalla trasera
-        $('#proveedor_id, #comprobante_id, #producto_id').selectpicker();
+        $('#proveedor_id, #comprobante_id, #producto_id').selectpicker('destroy');
+
+                $('#producto_id').selectpicker({
+            liveSearch: true,           // Activa el buscador manual escribiendo
+            size: 10,                   // Muestra hasta 10 elementos antes de poner scroll
+            noneResultsText: 'No se encontró ningún producto con: {0}',
+            liveSearchPlaceholder: 'Escriba para buscar el artículo...',
+            selectOnTab: false          // 🛑 DETIENE LA PRESELECCIÓN AUTOMÁTICA AL USAR EL TECLADO
+        });
+
+                $('#proveedor_id, #comprobante_id').selectpicker({
+            liveSearch: true,
+            size: 10,
+            noneResultsText: 'No se encontraron coincidencias: {0}'
+        });
+
+
+        // 3. Inicializar los selectores estándar del modal express de forma aislada
+        $('.combo-modal, .select-modal-express').selectpicker({
+            noneResultsText: 'No se encontró, presione enter para registrar: {0}'
+        });
+
+        // Asegurar selección ÚNICA estricta para Marca y Presentación del modal express
+        $('#modal_marca_id, #modal_presentacione_id').selectpicker({
+            noneResultsText: 'No se encontró, presione enter para registrar: {0}',
+            multiple: false 
+        });
+
 
         // 2. Inicializar de forma aislada los componentes específicos del modal express
         $('#modal_marca_id, #modal_presentacione_id').selectpicker({
@@ -763,6 +787,7 @@ $(document).on('refreshed.bs.select loaded.bs.select', '#proveedor_id, #comproba
                 // 3. Carga asíncrona de catálogos nativos (Evita colisiones en la red)
         if (typeof cargarProveedoresInicio === 'function') { cargarProveedoresInicio(); }
         if (typeof cargarComprobantesInicio === 'function') { cargarComprobantesInicio(); }
+
 
         // =========================================================================
         // DISPARO CONTROLADO DE ENTRADA (SUSTITUTO SIN REFRESH DESTRUCTIVO)
@@ -783,6 +808,12 @@ $(document).on('refreshed.bs.select loaded.bs.select', '#proveedor_id, #comproba
             
             // 🛑 ELIMINADO: $('.selectpicker').selectpicker('refresh'); 
             // Ya no es necesario porque los combos se inicializaron correctamente arriba
+        }, 200);
+
+                setTimeout(function() {
+            if ($('#comprobante_id').val() && $('#comprobante_id').val() !== "") {
+                $('#comprobante_id').trigger('change');
+            }
         }, 200);
 
 
@@ -868,6 +899,7 @@ $(document).on('refreshed.bs.select loaded.bs.select', '#proveedor_id, #comproba
 // 🔄 INTERCEPTOR DE CAMBIO: DETECTOR DE PRODUCTO SELECCIONADO (BLINDADO)
 // =========================================================================
 $('#producto_id').on('change', function() {
+
     // 1. Localizar la opción que el usuario seleccionó físicamente con el mouse
     let selectedOption = $(this).find('option:selected');
     
@@ -1002,7 +1034,7 @@ function agregarProductoScanner(sku) {
                 $('#producto_id').selectpicker('val', ''); 
 
                 // Asignar el nuevo valor, reconstruir la interfaz gráfica limpia y disparar el change
-                $('#producto_id').val(idEncontrado).selectpicker('refresh').trigger('change'); 
+                $('#producto_id').val(idEncontrado).selectpicker('').trigger('change'); 
                 
                 // Limpiar campos de búsqueda e inputs del escáner
                 $('#modalProductoNuevo').modal('hide');
@@ -1112,26 +1144,69 @@ $('.select-modal-express, .combo-modal, #modal_marca_id, #modal_presentacione_id
             $(this).find('.bs-searchbox input').val('');
             $('.select-modal-express, .combo-modal, #modal_marca_id, #modal_presentacione_id, #modal_categorias').selectpicker('refresh');
         });
-        // =========================================================================
-        // INTERCEPTOR PARA EL BUSCADOR PRINCIPAL DE COMPRAS (LIVE-SEARCH DE ATRÁS)
-        // =========================================================================
-        $(document).on('keyup keydown', '.bootstrap-select .bs-searchbox input', function(e) {
-            let inputBuscador = $(this);
-            
-            if (inputBuscador.closest('.bootstrap-select').find('select').attr('id') === 'producto_id') {
-                if (e.keyCode === 13 || e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    evaluarCodigoEscaneado(inputBuscador.val().trim());
-                    return false;
-                }
 
-                clearTimeout(timeoutEscaner);
-                timeoutEscaner = setTimeout(function() {
-                    evaluarCodigoEscaneado(inputBuscador.val().trim());
-                }, 250); 
+        // =========================================================================
+// 🛒 INTERCEPTOR DE BUSCADOR: MODO PASIVO MANUAL / ACTIVO POR ENTER (CORREGIDO)
+// =========================================================================
+$(document).on('keydown', '.bootstrap-select .bs-searchbox input', function(e) {
+    let inputBuscador = $(this);
+    
+    // Verificar si estamos parados específicamente en el buscador del combo de productos
+    if (inputBuscador.closest('.bootstrap-select').find('select').attr('id') === 'producto_id') {
+        
+        // 🚀 CLAVE: ÚNICAMENTE procesar la búsqueda forzada si presionan la tecla Enter
+        // Esto confirma que pasaron un escáner físico o que el usuario terminó y dio Enter manual
+        if (e.keyCode === 13 || e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            let codigoCrudo = inputBuscador.val().trim();
+            if (codigoCrudo !== "") {
+                console.log("🎯 [Buscador] Confirmación por Enter detectada. Evaluando código:", codigoCrudo);
+                if (typeof evaluarCodigoEscaneado === 'function') {
+                    evaluarCodigoEscaneado(codigoCrudo);
+                }
             }
-        });
+            return false;
+        }
+
+        // 🛑 ELIMINADO POR COMPLETO EL TIMEOUT DE 250ms:
+        // Dejamos que el usuario escriba libremente a su propio ritmo. El plugin filtrará
+        // las opciones de forma nativa y visual sin disparar funciones de selección automáticas en ráfaga.
+    }
+});
+
+// =========================================================================
+// 🚀 REGLA DE ORO DE INYECCIÓN CONTABLE: DETENER DUPLICADOS FÍSICOS
+// =========================================================================
+function actualizarCatalogoProductosVisual(productosNuevos) {
+    let select = $('#producto_id');
+    
+    // 🛑 1. EL PASO CLAVE: Vaciar físicamente el HTML anterior del select nativo.
+    // Si no pones esta línea, cada llamada duplicará las opciones infinitamente.
+    select.empty(); 
+
+    // 2. Inyectar la opción en blanco inicial por defecto (Placeholder)
+    select.append('<option value="">Busque un producto aquí</option>');
+
+    // 3. Recorrer la colección e inyectar las etiquetas limpias
+    $.each(productosNuevos, function(index, item) {
+        let esPerecederoReal = parseInt(item.perecedero, 10) || 0;
+        
+        let optionHtml = $('<option></option>')
+            .val(item.id)
+            .text((item.nombre || '').trim())
+            .attr('data-img', item.img_path || '')
+            .attr('data-detalle', item.descripcion || '')
+            .attr('data-perecedero', esPerecederoReal)
+            .data('perecedero', esPerecederoReal);
+            
+        select.append(optionHtml);
+    });
+
+    // 4. Refrescar visualmente la interfaz de Bootstrap de forma aislada
+    select.selectpicker('refresh');
+}
 
 
 function llenarTablaventas() {
@@ -1178,92 +1253,68 @@ function llenarTablaventas() {
 }
 
 
+// =========================================================================
+// 🚀 CONTROL ABSOLUTO CONTRA DUPLICACIÓN DE OPCIONES AL PRESIONAR ENTER
+// =========================================================================
 function evaluarCodigoEscaneado(codigo) {
-    if (!codigo || codigo.length < 3) return; // Ignorar búsquedas vacías
+    if (!codigo || codigo.length < 3) return;
 
-    // Mostrar un log de control en la consola
-    console.log("Evaluando código desde el buscador live-search:", codigo);
-
-    // 1. Intentar buscar primero si el código coincide directamente con un value o texto existente
-    let encontradoLocal = false;
-    let idProductoEncontrado = null;
     let codigoSinCeros = codigo.replace(/^0+/, '');
+    let idEncontradoLocal = null;
 
+    // 1. Escudriñar de forma estricta si el código o el texto ya existen en el HTML
     $('#producto_id option').each(function() {
         let valorOption = $(this).val();
         let textoOption = $(this).text().trim().toLowerCase();
         
-        // Comparación flexible local
-        if (valorOption == codigo || textoOption.includes(codigo.toLowerCase()) || textoOption.includes(codigoSinCeros.toLowerCase())) {
-            encontradoLocal = true;
-            idProductoEncontrado = valorOption;
-            return false; // Romper bucle
+        if (valorOption == codigo || textoOption === codigo.toLowerCase() || (codigoSinCeros !== "" && textoOption === codigoSinCeros.toLowerCase())) {
+            idEncontradoLocal = valorOption;
+            return false; // Romper bucle si ya existe físicamente
         }
     });
 
-    // ESCENARIO A: Si se encontró localmente en el DOM de atrás, seleccionarlo de inmediato
-    if (encontradoLocal) {
-        console.log("¡Producto encontrado localmente! Seleccionando ID: " + idProductoEncontrado);
-        $('#producto_id').val(idProductoEncontrado).selectpicker('refresh').trigger('change');
-        $('#modalProductoNuevo').modal('hide'); 
-        setTimeout(function() { $('#cantidad').focus().select(); }, 100);
-        return;
+    // ESCENARIO A: Si el producto ya existe de entrada en el select nativo, NO INYECTAR CLONES
+    if (idEncontradoLocal) {
+        console.log("🎯 [Match Local] El producto ya existe en el combo. Seleccionando ID: " + idEncontradoLocal);
+        
+        // Limpiar la selección rota anterior, asignar el ID legítimo y disparar el change contable
+        $('#producto_id').selectpicker('val', '');
+        $('#producto_id').val(idEncontradoLocal).selectpicker('refresh').trigger('change');
+        
+        // Limpiar la caja de texto del buscador para la siguiente operación
+        $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
+        return; // Finalizar ejecución de forma segura
     }
 
-    // ESCENARIO B: Si no se encontró localmente, consultar al servidor por AJAX de forma preventiva
-    // Esto asegura que si el producto ya existe en la base de datos, lo recupere en lugar de abrir el modal express
+    // ESCENARIO B: Consultar al servidor únicamente si de verdad es un código de barras nuevo
     $.ajax({
         url: '/comprar/SCANdetalles/' + codigo,
         type: 'GET',
         success: function(response) {
-            let detalle = null;
-            if (Array.isArray(response) && response.length > 0) {
-                detalle = response[0];
-            } else if (response && typeof response === 'object' && !Array.isArray(response)) {
-                detalle = response;
-            }
+            let detalle = Array.isArray(response) ? response[0] : (response.producto || response.data || response);
+            
+            if (detalle && (detalle.producto_id || detalle.id)) {
+                let idServer = detalle.producto_id || detalle.id;
+                let nombreProd = (detalle.nombre || 'Producto Recuperado').trim();
+                let rawPerecedero = detalle.perecedero !== undefined ? detalle.perecedero : 0;
+                let esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
 
-            // Si el servidor confirma que SÍ existe en la BD
-            if (detalle && detalle.producto_id) {
-                console.log("Producto recuperado desde el servidor. ID:", detalle.producto_id);
+                // Doble escudo: Verificar que el ID del servidor no esté duplicado de entrada
+                let existeYaId = $('#producto_id option[value="' + idServer + '"]').length > 0;
                 
-                // Si el producto no estaba en el select de atrás por filtros de sucursal, lo inyectamos rápido
-                let existeOptionId = $(`#producto_id option[value="${detalle.producto_id}"]`).length > 0;
-                if (!existeOptionId) {
-                    let nombreProd = detalle.nombre || 'Producto Recuperado';
+                if (!existeYaId) {
+                    console.log("🆕 Inyectando producto nuevo legítimo desde el servidor:", nombreProd);
                     let nuevaOpt = $('<option></option>')
-                        .val(detalle.producto_id)
+                        .val(idServer)
                         .text(nombreProd)
-                        .attr('data-perecedero', detalle.perecedero || 0)
-                        .data('perecedero', detalle.perecedero || 0);
+                        .attr('data-perecedero', esPerecederoReal)
+                        .data('perecedero', esPerecederoReal);
                     $('#producto_id').append(nuevaOpt);
                 }
 
-                // Seleccionar e iluminar en la pantalla principal
-                $('#producto_id').val(detalle.producto_id).selectpicker('refresh').trigger('change');
-
-                $('#modalProductoNuevo').modal('hide');
-                
-                // Limpiar los buscadores visuales que se quedaron abiertos
+                $('#producto_id').selectpicker('val', '');
+                $('#producto_id').val(idServer).selectpicker('refresh').trigger('change');
                 $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
-                
-                setTimeout(function() { $('#cantidad').focus().select(); }, 100);
-            } else {
-                // ESCENARIO C: Si el servidor confirma que NO existe en ningún lado, procedemos a abrir el modal express
-                console.log("El código no existe en la BD. Abriendo modal express para registrarlo.");
-                if (!$('#modalProductoNuevo').is(':visible')) {
-                    $('#modal_codigo').val(codigo);
-                    $('#modalProductoNuevo').modal('show');
-                    purgarDuplicadosVisuales();
-                }
-            }
-        },
-        error: function(xhr) {
-            console.error("Error al validar código en la verificación cruzada:", xhr.responseText);
-            // Caída segura: si el AJAX falla, abrir el modal express para no truncar la operación
-            if (!$('#modalProductoNuevo').is(':visible')) {
-                $('#modal_codigo').val(codigo);
-                $('#modalProductoNuevo').modal('show');
             }
         }
     });
@@ -2057,11 +2108,19 @@ function eliminarProducto(indice) {
         }
 
 function limpiarCampos() {
-$('#producto_id').selectpicker('val', '');
-$('#cantidad').val('');
-$('#precio_compra').val('');
-$('#precio_venta').val('');
+    // 🚀 ALTERNATIVA SEGURA: Deselecciona el producto sin disparar eventos recursivos destructivos
+    // y limpia los inputs numéricos de forma instantánea
+    $('#producto_id').val('').selectpicker('deselectAll');
+    
+    // Forzar el redibujado limpio del botón visual a su marcador de posición (Placeholder)
+    $('#producto_id').selectpicker('render');
+
+    $('#cantidad').val('');
+    $('#precio_compra').val('');
+    $('#precio_venta').val('');
+    $('#fecha_vencimiento').val('');
 }
+
 function round(num, decimales = 2) {
 var signo = (num >= 0 ? 1 : -1);
 num = num * signo;
