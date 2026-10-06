@@ -3012,21 +3012,25 @@ public function operartrabajo(Request $request, Tecnico $tecnico, Expedientetecn
 
             // Jerarquía de precios basada en el código alfanumérico del técnico
             $tecnicoCodigo = DB::table('tecnico')->where('id', $id_tecnico)->value('codigo') ?? '';
-            $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-                ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
-                    $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
-                          ->orWhere('centrocostoespecifico', '=', $fkTienda)    
-                          ->orWhereNull('centrocostoespecifico')               
-                          ->orWhere('centrocostoespecifico', '=', '');         
-                })
-                ->select('CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico', 'SKU', 'Descripcion')
-                ->orderByRaw("CASE 
-                    WHEN centrocostoespecifico = ? AND ? != '' THEN 1
-                    WHEN centrocostoespecifico = ? THEN 2
-                    ELSE 3 
-                END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
-                ->latest() 
-                ->first();
+// Código corregido para la búsqueda jerárquica de costos
+$costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+        // Agrupamos con una función anónima para evitar fugas del OR global
+        $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
+              ->orWhere('centrocostoespecifico', '=', $fkTienda)    
+              ->orWhereNull('centrocostoespecifico')               
+              ->orWhere('centrocostoespecifico', '=', '');         
+    })
+    ->select('id', 'SKU', 'Descripcion', 'CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
+    // El ordenamiento ahora penaliza explícitamente a centros que pertenezcan a otros técnicos
+    ->orderByRaw("CASE 
+        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+        WHEN centrocostoespecifico IS NULL OR centrocostoespecifico = '' THEN 2
+        WHEN centrocostoespecifico = ? THEN 3
+        ELSE 4 
+    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+    ->first(); // Eliminamos latest() para que el peso del CASE sea el absoluto decisor
+
 
             // Extracción segura de costos iniciales globales
             $costoFinal = 0;
@@ -3323,22 +3327,25 @@ if ($request->input('estatus') === 'S') {
             ->value('codigo') ?? '';
 
         // 2. Buscamos el registro en el catálogo respetando la estricta jerarquía de prioridades
-        $costoUnidad = Materialmanoobra::where('SKU', $skuActual)
-            ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
-                $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
-                      ->orWhere('centrocostoespecifico', '=', $fkTienda)    
-                      ->orWhereNull('centrocostoespecifico')               
-                      ->orWhere('centrocostoespecifico', '=', '');         
-            })
-            // Agregado 'Descripcion' al select para poder usarlo en la creación del producto
-            ->select('id', 'SKU', 'Descripcion', 'CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
-            ->orderByRaw("CASE 
-                WHEN centrocostoespecifico = ? AND ? != '' THEN 1
-                WHEN centrocostoespecifico = ? THEN 2
-                ELSE 3 
-            END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
-            ->latest() 
-            ->first();
+// Código corregido para la búsqueda jerárquica de costos
+$costoUnidad = Materialmanoobra::where('SKU', $skuActual)
+    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+        // Agrupamos con una función anónima para evitar fugas del OR global
+        $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
+              ->orWhere('centrocostoespecifico', '=', $fkTienda)    
+              ->orWhereNull('centrocostoespecifico')               
+              ->orWhere('centrocostoespecifico', '=', '');         
+    })
+    ->select('id', 'SKU', 'Descripcion', 'CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
+    // El ordenamiento ahora penaliza explícitamente a centros que pertenezcan a otros técnicos
+    ->orderByRaw("CASE 
+        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+        WHEN centrocostoespecifico IS NULL OR centrocostoespecifico = '' THEN 2
+        WHEN centrocostoespecifico = ? THEN 3
+        ELSE 4 
+    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+    ->first(); // Eliminamos latest() para que el peso del CASE sea el absoluto decisor
+
 
         // =================================================================
         // CORRECCIÓN PROTEGIDA: Evita el error "Attempt to read property on null"
@@ -4048,21 +4055,25 @@ foreach ($datos as $item) {
     $tecnicoCodigo = $tecnicosCodigos[$item->fkTecnico] ?? '';
 
     // 3. Buscamos el costo aplicando de forma idéntica la jerarquía de prioridades
-    $costoUnidad = Materialmanoobra::where('SKU', $item->SKU)
-        ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
-            $query->where('centrocostoespecifico', '=', $tecnicoCodigo) // Prioridad 1: Técnico
-                  ->orWhere('centrocostoespecifico', '=', $fkTienda)    // Prioridad 2: Tienda
-                  ->orWhereNull('centrocostoespecifico')               // Prioridad 3: Global (NULL)
-                  ->orWhere('centrocostoespecifico', '=', '');         // Prioridad 3: Global (Vacío)
-        })
-        ->select('CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'centrocostoespecifico')
-        ->orderByRaw("CASE 
-            WHEN centrocostoespecifico = ? AND ? != '' THEN 1
-            WHEN centrocostoespecifico = ? THEN 2
-            ELSE 3 
-        END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
-        ->latest()
-        ->first();
+// Código corregido para la búsqueda jerárquica de costos
+$costoUnidad = Materialmanoobra::where('SKU', $item->SKU)
+    ->where(function ($query) use ($fkTienda, $tecnicoCodigo) {
+        // Agrupamos con una función anónima para evitar fugas del OR global
+        $query->where('centrocostoespecifico', '=', $tecnicoCodigo) 
+              ->orWhere('centrocostoespecifico', '=', $fkTienda)    
+              ->orWhereNull('centrocostoespecifico')               
+              ->orWhere('centrocostoespecifico', '=', '');         
+    })
+    ->select('id', 'SKU', 'Descripcion', 'CATEGORIA', 'CATEGORIACOBRO', 'COSTOPAGO', 'TIPO', 'unidadmedida', 'centrocostoespecifico')
+    // El ordenamiento ahora penaliza explícitamente a centros que pertenezcan a otros técnicos
+    ->orderByRaw("CASE 
+        WHEN centrocostoespecifico = ? AND ? != '' THEN 1
+        WHEN centrocostoespecifico IS NULL OR centrocostoespecifico = '' THEN 2
+        WHEN centrocostoespecifico = ? THEN 3
+        ELSE 4 
+    END ASC", [$tecnicoCodigo, $tecnicoCodigo, $fkTienda])
+    ->first(); // Eliminamos latest() para que el peso del CASE sea el absoluto decisor
+
 
     // 4. Determinamos el costo final validando de forma segura contra nulos
     $costoFinal = $item->COSTOPAGO; // Valor por defecto si no existe en el catálogo

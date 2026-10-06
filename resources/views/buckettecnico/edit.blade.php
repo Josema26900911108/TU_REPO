@@ -2540,31 +2540,113 @@ $("#itemmanoobra").off('change').on('change', function () {
 }
 });
 
-$('#btnAbrirCamaraNativa').click(function() {
-    var selectItem = $('#itemmanoobraamterial');
-    var errorItemJS = $('#error-item-js');
-    var tieneError = false;
+// =========================================================================
+// 📸 CONTROLADOR DE CÁMARA MÓVIL BLINDADO Y CORREGIDO (100% INVICTO)
+// =========================================================================
+$('#btnAbrirCamaraNativa').click(function(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
 
-    // 1. Contar cuántas opciones válidas tiene el select (excluyendo la opción vacía inicial)
-    var totalOpciones = selectItem.find('option').not('[disabled]').length;
-
-
-    // Validación de categoría (se mantiene igual)
     var selectCategoria = $('#categoriafoto');
-    var errorCategoria = $('#error-categoria'); // Asegúrate de tener este id en tu html de categoría
-    
-    if (selectCategoria.val() === "" || selectCategoria.val() === null) {
-        errorCategoria.text('* Debe seleccionar la categoría de la fotografía.').removeClass('d-none');
-        selectCategoria.closest('.col-12, .bootstrap-select').find('.dropdown-toggle, .form-control').addClass('is-invalid').css('border', '1px solid #dc3545');
-        tieneError = true;
-    } else {
-        errorCategoria.addClass('d-none').text('');
-        selectCategoria.closest('.col-12, .bootstrap-select').find('.dropdown-toggle, .form-control').removeClass('is-invalid').css('border', '');
+    var selectTecnologia = $('#itemtecnologia');
+
+    // Limpiador preventivo ANTES (Causaba el colapso del treeview):
+    // $('.form-control, .bootstrap-select, .dropdown-toggle').removeClass('is-invalid');
+
+    // 🎯 AHORA (LMPLEMENTACIÓN QUIRÚRGICA: Solo limpia los dos combos de la cámara)
+    $('#categoriafoto, #itemtecnologia').removeClass('is-invalid').css('border', '');
+    $('#categoriafoto, #itemtecnologia').closest('.bootstrap-select').find('.dropdown-toggle').removeClass('is-invalid').css('border', '');
+    $('#error-categoria, #error-itemtecnologia').addClass('d-none').text('');
+
+
+    // 🚀 FUNCIÓN INTERNA NATIVA: Alerta, pinta de rojo y desliza el celular hacia el elemento VISIBLE
+    function alertarYDesplazarMóvil(selectorInput, mensajeEspecifico, errorLabelId) {
+        // Mostrar el mensaje descriptivo en la etiqueta text-danger inferior si existe
+        if ($(errorLabelId).length > 0) {
+            $(errorLabelId).text(mensajeEspecifico).removeClass('d-none');
+        }
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Dato Requerido',
+            text: mensajeEspecifico,
+            confirmButtonText: 'Seleccionar ahora'
+        }).then(() => {
+            let $selectNativo = $(selectorInput);
+            let elementoDestino = document.querySelector(selectorInput);
+
+            // 🚀 CLAVE: Interceptar el contenedor de Bootstrap Select clonado que SÍ es visible en la pantalla
+            if ($selectNativo.closest('.bootstrap-select').length > 0) {
+                let $contenedorVisual = $selectNativo.closest('.bootstrap-select');
+                
+                // Pintar el borde rojo de error sobre el botón oficial del selectpicker
+                $contenedorVisual.find('.dropdown-toggle').addClass('is-invalid').css('border', '1px solid #dc3545');
+                
+                // Reemplazar el objetivo de desplazamiento por el div visual que sí tiene tamaño físico
+                elementoDestino = $contenedorVisual[0]; 
+            } else {
+                $selectNativo.addClass('is-invalid').css('border', '1px solid #dc3545');
+            }
+
+            // 🎯 INSTRUCCIÓN NATIVA: Desliza el scroll del celular de forma automática e infalible
+            // block: 'center' obliga al teléfono a dejar el selector vacío perfectamente centrado en medio de la pantalla
+            if (elementoDestino && typeof elementoDestino.scrollIntoView === 'function') {
+                elementoDestino.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center',
+                    inline: 'nearest'
+                });
+            }
+
+            // Forzar el enfoque táctil en el selector tras el deslizamiento gráfico
+            setTimeout(function() {
+                if ($selectNativo.closest('.bootstrap-select').length > 0) {
+                    $selectNativo.closest('.bootstrap-select').find('.dropdown-toggle').focus();
+                } else {
+                    $selectNativo.focus();
+                }
+            }, 450);
+        });
+        
+        return false; // Detener la ejecución contable inmediatamente
     }
 
-    // Disparar cámara si no hay errores
-    if (!tieneError) {
-        $('#inputCamaraNativa').click();
+    // =========================================================================
+    // EVALUACIÓN CRONOLÓGICA PASO A PASO (REBOTE INDIVIDUAL SIN VARIABLES INDEFINIDAS)
+    // =========================================================================
+
+    // 🕵️‍♂️ PASO 1: Verificar de forma obligatoria la Categoría de la Foto
+    if (selectCategoria.val() === "" || selectCategoria.val() === null) {
+        alertarYDesplazarMóvil('#categoriafoto', 'Por favor, defina la Categoría de la fotografía antes de encender la cámara.', '#error-categoria');
+        return false;
+    }
+
+    // 🕵️‍♂️ PASO 2: Si la categoría está bien, verificar de forma obligatoria la Tecnología
+    if (selectTecnologia.val() === "" || selectTecnologia.val() === null) {
+        alertarYDesplazarMóvil('#itemtecnologia', 'Por favor, seleccione el tipo de Tecnología correspondiente en el listado.', '#error-itemtecnologia');
+        return false;
+    }
+
+    // 🌟 CONTROL PASADO: Si ambos campos están perfectamente llenos, disparar la cámara nativa
+    console.log("📸 [Cámara] Validación correcta. Activando obturador del dispositivo móvil...");
+    $('#inputCamaraNativa').click();
+});
+
+// =========================================================================
+// 🔄 LIMPIADORES EN CALIENTE AL SELECCIONAR CON EL DEDO (CHANGE BLINDADOS)
+// =========================================================================
+$('#categoriafoto').change(function() {
+    if ($(this).val() !== "") {
+        $('#error-categoria').addClass('d-none').text('');
+        $(this).closest('.bootstrap-select').find('.dropdown-toggle').removeClass('is-invalid').css('border', '');
+        $(this).removeClass('is-invalid').css('border', '');
+    }
+});
+
+$('#itemtecnologia').change(function() {
+    if ($(this).val() !== "") {
+        $('#error-itemtecnologia').addClass('d-none').text('');
+        $(this).closest('.bootstrap-select').find('.dropdown-toggle').removeClass('is-invalid').css('border', '');
+        $(this).removeClass('is-invalid').css('border', '');
     }
 });
 
@@ -2576,12 +2658,6 @@ $('#itemmanoobraamterial').change(function() {
     }
 });
 
-$('#categoriafoto').change(function() {
-    if ($(this).val() !== "") {
-        $('#error-error-categoria').addClass('d-none').text('');
-        $(this).closest('.bootstrap-select').removeClass('is-invalid').css('border', '');
-    }
-});
 
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
