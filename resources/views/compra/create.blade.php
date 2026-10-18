@@ -690,25 +690,42 @@ function agregarProductoScanner(sku) {
                 });
             }
 
-                       if (idEncontrado) {
+            if (idEncontrado) {
                 console.log("🎯 [Éxito] Producto localizado con ID:", idEncontrado);
 
-                // 1. Desempaquetar la respuesta asíncrona de red [{...}]
-                let itemData = Array.isArray(response) ? response : (response.producto || response.data || response);
-                if (Array.isArray(itemData) && itemData.length > 0) {
-                    itemData = itemData[0]; // Asegurar la extracción del objeto crudo limpio
+                // 1. Extraer el primer objeto del array de Laravel [{...}] de forma estricta
+                let itemData = null;
+                if (Array.isArray(response) && response.length > 0) {
+                    itemData = response[0]; // 👈 CORRECCIÓN CRÍTICA: Extraer la posición 0 del array
+                } else if (response && typeof response === 'object') {
+                    let nodoInterno = response.producto || response.data || response;
+                    itemData = Array.isArray(nodoInterno) ? nodoInterno[0] : nodoInterno;
                 }
                 
-                // 2. Extraer el 1 o 0 real verificado desde la base de datos de Laravel
-                let rawPerecedero = itemData && itemData.perecedero !== undefined ? itemData.perecedero : 0;
+                // 2. Extraer parámetros usando los nombres de columna reales de tu servidor
+                let rawPerecedero = (itemData && itemData.perecedero !== undefined) ? itemData.perecedero : 0;
                 let esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-                let nombreProdClean = (itemData && itemData.nombre ? itemData.nombre : 'Producto').trim();
+                
+                // Mapear con la columna real de tu JSON: 'producto_nombre'
+                let nombreProdClean = "Producto Cargado";
+                if (itemData && itemData.producto_nombre) {
+                    nombreProdClean = itemData.producto_nombre.trim();
+                } else if (itemData && itemData.nombre) {
+                    nombreProdClean = itemData.nombre.trim();
+                } else {
+                    let optLocal = $('#producto_id option[value="' + idEncontrado + '"]');
+                    if (optLocal.length && optLocal.text().trim() !== "") {
+                        nombreProdClean = optLocal.text().trim();
+                    }
+                }
 
-                // Verificar si la opción ya existe físicamente en el HTML original de entrada
+                console.log("📦 [Garantía] Mapeo Correcto -> Nombre:", nombreProdClean, " | ID:", idEncontrado, " | Perecedero:", esPerecederoReal);
+
+                // 3. Modificar el DOM Nativo antes de interactuar con el Selectpicker
                 let opcionExistente = $('#producto_id option[value="' + idEncontrado + '"]');
                 
                 if (opcionExistente.length === 0) {
-                    // 🚀 SI NO EXISTE: Lo inyectamos de cero de forma limpia con sus atributos reales
+                    // Inyección limpia obligatoria con el nombre real recuperado
                     let nuevaOpt = $('<option></option>')
                         .val(idEncontrado)
                         .text(nombreProdClean)
@@ -716,42 +733,49 @@ function agregarProductoScanner(sku) {
                         .data('perecedero', esPerecederoReal);
                     $('#producto_id').append(nuevaOpt);
                 } else {
-                    // 🚀 SI YA EXISTE: Únicamente actualizamos el atributo 'data-perecedero'
-                    opcionExistente.attr('data-perecedero', esPerecederoReal)
+                    // Si ya existe en el HTML, nos aseguramos de actualizarle el texto por si estaba vacío
+                    opcionExistente.text(nombreProdClean)
+                                   .attr('data-perecedero', esPerecederoReal)
                                    .data('perecedero', esPerecederoReal);
                 }
 
                 // =========================================================================
-                // 🚀 ACTUALIZACIÓN CORRECTA DE BOOTSTRAP SELECT
+                // 🚀 SINCRONIZACIÓN ATÓMICA DE INTERFAZ GRÁFICA (SELECTPICKER)
                 // =========================================================================
-                // Desmarcar visualmente de forma segura usando el método nativo 'val' de selectpicker
-                $('#producto_id').selectpicker('val', ''); 
-
-                // Asignar el nuevo ID nativo, REFRESCAR el componente visual y disparar el change
-                $('#producto_id').val(idEncontrado).selectpicker('refresh').trigger('change'); 
+                // 1. Asignar el ID al elemento HTML nativo
+                $('#producto_id').val(idEncontrado);
                 
-                // Limpiar campos de búsqueda e inputs del escáner
-                $('#modalProductoNuevo').modal('hide');
-                $('#SKU').val(''); 
-                $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
-
-                // 3. Retraso de protección visual para mover el foco del cursor
+                // 2. Reconstruir el menú visual de Bootstrap Select para que asimile el texto
+                $('#producto_id').selectpicker('refresh');
+                
+                // 3. Darle 80ms al DOM para renderizarse por completo antes de disparar el evento "change"
                 setTimeout(function() {
-                    // Convertimos a entero por seguridad en la validación
+                    console.log("📣 [Despachador] Disparando evento change para:", nombreProdClean);
+                    $('#producto_id').trigger('change');
+                    
+                    // Limpieza de campos complementarios
+                    $('#modalProductoNuevo').modal('hide');
+                    $('#SKU').val(''); 
+                    $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
+                }, 80);
+
+                // 4. Mover el foco del cursor al input correspondiente
+                setTimeout(function() {
                     if (parseInt(esPerecederoReal) === 1) {
-                        $('#fecha_vencimiento').focus();
+                        if ($('#fecha_vencimiento').length) {
+                            console.log("⏳ [Enfoque] Saltando a fecha_vencimiento");
+                            $('#fecha_vencimiento').focus();
+                        }
                     } else {
-                        // Forzamos el foco y la selección total del texto del input cantidad
                         let $cantidadInput = $('#cantidad');
                         if ($cantidadInput.length) {
+                            console.log("⚡ [Enfoque] Saltando a cantidad.");
                             $cantidadInput.focus().select();
                         }
                     }
-                }, 180); // Ajustado a 180ms para dar tiempo al render de Bootstrap Select
+                }, 280);
 
             } else {
-
-
 
                 // ÚNICAMENTE si no se localizó ni en la consulta de red ni en la local, es un producto NUEVO de verdad
                 console.log("🆕 [Nuevo] El producto no existe en el catálogo. Abriendo modal express para:", skuAAsignar);
