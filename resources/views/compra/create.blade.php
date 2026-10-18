@@ -1361,22 +1361,20 @@ function agregarProductoScanner(sku) {
             if (idEncontrado) {
                 console.log("🎯 [Éxito] Producto localizado con ID:", idEncontrado);
 
-                // 1. Desempaquetar de forma segura asegurando el objeto crudo [ {...} ]
+                // 1. EXTRAER EL OBJETO REAL (Solución al array de Laravel [{...}])
                 let itemData = null;
                 if (Array.isArray(response) && response.length > 0) {
-                    itemData = response[0];
+                    itemData = response[0]; // 👈 CORRECCIÓN: Extraer el primer elemento del array directamente
                 } else if (response && typeof response === 'object') {
-                    itemData = response.producto || response.data || response;
-                    if (Array.isArray(itemData) && itemData.length > 0) {
-                        itemData = itemData[0];
-                    }
+                    let nodoInterno = response.producto || response.data || response;
+                    itemData = Array.isArray(nodoInterno) ? nodoInterno[0] : nodoInterno;
                 }
                 
                 // 2. Extraer valores con caídas seguras robustas
                 let rawPerecedero = (itemData && itemData.perecedero !== undefined) ? itemData.perecedero : 0;
                 let esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
                 
-                // Si el servidor no mandó nombre, buscamos el texto que ya tenga el select localmente
+                // Extraer el nombre real devuelto por la base de datos
                 let nombreProdClean = "Producto";
                 if (itemData && itemData.nombre) {
                     nombreProdClean = itemData.nombre.trim();
@@ -1387,11 +1385,13 @@ function agregarProductoScanner(sku) {
                     }
                 }
 
+                console.log("📦 [Datos Extraídos] Nombre:", nombreProdClean, " | Perecedero:", esPerecederoReal);
+
                 // Verificar si la opción ya existe físicamente en el HTML original
                 let opcionExistente = $('#producto_id option[value="' + idEncontrado + '"]');
                 
                 if (opcionExistente.length === 0) {
-                    // 🚀 SI NO EXISTE: Lo inyectamos de cero garantizando TEXTO y Atributos
+                    // 🚀 SI NO EXISTE: Lo inyectamos de cero con su NOMBRE real de la BD
                     let nuevaOpt = $('<option></option>')
                         .val(idEncontrado)
                         .text(nombreProdClean)
@@ -1399,23 +1399,20 @@ function agregarProductoScanner(sku) {
                         .data('perecedero', esPerecederoReal);
                     $('#producto_id').append(nuevaOpt);
                 } else {
-                    // 🚀 SI YA EXISTE: Actualizamos únicamente los atributos críticos sin romper el texto existente
+                    // 🚀 SI YA EXISTE: Actualizamos únicamente los atributos sin machacar el texto original
                     opcionExistente.attr('data-perecedero', esPerecederoReal)
                                    .data('perecedero', esPerecederoReal);
                 }
 
                 // =========================================================================
-                // 🚀 SINCRONIZACIÓN DE INTERFAZ GRÁFICA (SELECTPICKER)
+                // 🚀 SINCRONIZACIÓN ATÓMICA DE INTERFAZ GRÁFICA (SELECTPICKER)
                 // =========================================================================
-                // En lugar de vaciar con 'val', '', asignamos directamente el ID nativo 
-                // y luego le pedimos a selectpicker que se renderice sobre ese ID.
+                // Asignamos el valor en el select nativo, refrescamos bootstrap-select y disparamos change
                 $('#producto_id').val(idEncontrado);
                 $('#producto_id').selectpicker('refresh');
-                
-                // Disparamos el evento change RECIÉN cuando selectpicker terminó de acoplarse
                 $('#producto_id').trigger('change'); 
                 
-                // Limpiar campos de búsqueda auxiliares
+                // Limpiar campos de búsqueda e inputs del escáner
                 $('#modalProductoNuevo').modal('hide');
                 $('#SKU').val(''); 
                 $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
@@ -1433,9 +1430,10 @@ function agregarProductoScanner(sku) {
                             $cantidadInput.focus().select();
                         }
                     }
-                }, 250); // Aumentado ligeramente a 250ms para asegurar estabilidad en móviles y WebRTC
+                }, 250);
 
             } else {
+
 
 
                 // ÚNICAMENTE si no se localizó ni en la consulta de red ni en la local, es un producto NUEVO de verdad
