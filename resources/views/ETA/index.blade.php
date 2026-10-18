@@ -101,30 +101,49 @@
         <!-- SECCIÓN 2: FORMULARIOS DE PROCESAMIENTO -->
         <div class="row g-4">
             
-            <!-- Formulario A: Trabajar Lotes -->
-            <div class="col-12 col-lg-8 border-end">
-                <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-tasks me-1"></i> Procesar por Lotes Semanales</h6>
-                <form action="{{ route('etadirect.AutomataValidarMamo') }}" method="POST" enctype="multipart/form-data">
-                    @csrf
-                    <div class="row g-3">
-                        <div class="col-12 col-sm-4">
-                            <label class="form-label small fw-bold text-muted mb-1">Cantidad de órdenes:</label>
-                            <input type="text" id="Orden" name="Orden" class="form-control" placeholder="Ej: 10">
-                        </div>
-                        <div class="col-12 col-sm-4">
-                            <label for="fechaincio" class="form-label small fw-bold text-muted mb-1">Fecha Inicio:</label>
-                            <input type="date" name="fechaincio" id="fechaincio" class="form-control" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
-                        </div>
-                        <div class="col-12 col-sm-4">
-                            <label for="fechafin" class="form-label small fw-bold text-muted mb-1">Fecha Fin:</label>
-                            <input type="date" name="fechafin" id="fechafin" class="form-control" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
-                        </div>
-                        <div class="col-12 text-end mt-2">
-                            <button type="submit" class="btn btn-success px-4">Trabajar Lotes</button>
-                        </div>
-                    </div>
-                </form>
+<!-- Formulario A: Trabajar Lotes -->
+<div class="col-12 col-lg-8 border-end">
+    <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-tasks me-1"></i> Procesar por Lotes (Descargas en Tiempo Real cada 2 Órdenes)</h6>
+    <form id="formLotesRealTime" action="{{ route('etadirect.AutomataValidarMamo') }}" method="POST" enctype="multipart/form-data">
+        @csrf
+        <div class="row g-3">
+            <div class="col-12 col-sm-6">
+                <label for="fechaincio" class="form-label small fw-bold text-muted mb-1">Fecha Inicio:</label>
+                <input type="date" name="fechaincio" id="fechaincio" class="form-control" required value="{{ date('Y-m-d',strtotime('-7 day')) }}">
             </div>
+            <div class="col-12 col-sm-6">
+                <label for="fechafin" class="form-label small fw-bold text-muted mb-1">Fecha Fin:</label>
+                <input type="date" name="fechafin" id="fechafin" class="form-control" required value="{{ date('Y-m-d',strtotime('+1 day')) }}">
+            </div>
+            
+            <!-- 🚫 CAMPO REINTEGRADO: CARGAR ÓRDENES A OMITIR (CSV) -->
+            <div class="col-12">
+                <label for="csv_excluidas" class="form-label small fw-bold text-danger mb-1">
+                    <i class="fa fa-file-csv me-1"></i> Excluir Órdenes (Subir archivo .csv de órdenes trabajadas):
+                </label>
+                <input type="file" name="csv_excluidas" id="csv_excluidas" class="form-control" accept=".csv">
+                <div class="form-text text-muted small">Opcional. Las órdenes dentro de este archivo serán saltadas automáticamente por el autómata.</div>
+            </div>
+            
+            <!-- Barra de progreso visual -->
+            <div class="col-12 d-none" id="contenedorProgreso">
+                <label class="form-label small fw-bold text-primary" id="textoProgreso">Procesando...</label>
+                <div class="progress" style="height: 20px;">
+                    <div id="barraProgreso" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;">0%</div>
+                </div>
+            </div>
+
+            <div class="col-12 text-end mt-2">
+                <!-- Ejemplo de tus botones en el formulario -->
+                <button type="submit" id="btnSubmit" class="btn btn-primary">Iniciar Validación</button>
+                <button type="button" id="btnCancelar" class="btn btn-danger d-none">Detener Validación</button>
+
+            </div>
+        </div>
+    </form>
+</div>
+
+
 
             <!-- Formulario B: Reporte de Discrepancias de Materiales -->
 <div class="col-12 col-lg-4">
@@ -150,10 +169,28 @@
 </div>
 
 
-            <!-- Formulario B: Revisar Orden Individual -->
+<!-- Formulario B: Revisar Orden Individual -->
+<div class="col-12 col-lg-4 d-flex flex-column justify-content-between">
+    <div>
+        <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-search me-1"></i> Validación Express</h6>
+        <!-- Interceptamos el submit para controlarlo con JavaScript de forma segura -->
+        <form id="formOrdenIndividual" onsubmit="event.preventDefault(); descargarOrdenIndividual();">
+            @csrf
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-muted mb-1">Orden de Trabajo:</label>
+                <!-- Conservamos el ID original que usa tu vista -->
+                <input type="text" id="OrdenIndividual" name="Orden" class="form-control" placeholder="Número de orden" required>
+            </div>
+            <!-- Añadimos el ID btnIndividual para manejar los estados de carga -->
+            <button type="button" id="btnIndividual" onclick="descargarOrdenIndividual()" class="btn btn-success w-100">Revisar orden</button>
+        </form>
+    </div>
+</div>
+
+<!-- Formulario B: Revisar Orden Individual -->
             <div class="col-12 col-lg-4 d-flex flex-column justify-content-between">
                 <div>
-                    <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-search me-1"></i> Validación Express</h6>
+                    <h6 class="fw-bold text-secondary mb-3"><i class="fa fa-search me-1"></i> Validación Express Json</h6>
                     <form action="{{ route('etadirect.AutomataValidarMamoOrden') }}" method="POST" enctype="multipart/form-data">
                         @csrf
                         <div class="mb-3">
@@ -164,6 +201,7 @@
                     </form>
                 </div>
             </div>
+
 
         </div>
 
@@ -1031,6 +1069,377 @@ function fillRelacionS() {
     });
 }
 
+
+
 // REMOVER LA FUNCIÓN DUPLICADA fillRelacionS que está al final
 </script>
+<script>
+async function descargarPorLotes() {
+    const btn = document.getElementById('btnProcesar');
+    
+    // Deshabilitamos el botón e indicamos estado de carga
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Procesando...';
+
+    let lote = 1;
+    let procesando = true;
+    
+    const orden = document.getElementById('Orden').value || 10;
+    const fechaincio = document.getElementById('fechaincio').value;
+    const fechafin = document.getElementById('fechafin').value;
+
+    const urlBase = "{{ route('etadirect.AutomataValidarMamo') }}";
+
+    while (procesando) {
+        console.log(`Solicitando lote número: ${lote}`);
+        const url = `${urlBase}?fechaincio=${fechaincio}&fechafin=${fechafin}&Orden=${orden}&lote=${lote}`;
+        
+        try {
+            // 🚀 ÚNICA PETICIÓN AL SERVIDOR: Obtenemos la respuesta directa
+            const respuesta = await fetch(url, { method: 'GET' });
+            
+            if (!respuesta.ok) {
+                throw new Error(`Error en el servidor: Código HTTP ${respuesta.status}`);
+            }
+
+            const tipoContenido = respuesta.headers.get('content-type') || '';
+
+            // Caso A: Si el servidor nos responde con JSON, significa que terminamos
+            if (tipoContenido.includes('application/json')) {
+                const data = await respuesta.json();
+                if (data.status === 'completado' || data.mensaje) {
+                    alert("¡Proceso finalizado! Se han descargado todos los lotes disponibles.");
+                    procesando = false;
+                    break;
+                }
+            }
+
+            // Caso B: Si es el archivo CSV, lo descargamos directamente desde la memoria
+            // Esto evita llamar a la URL una segunda vez y protege tu XAMPP local
+            const datosArchivo = await respuesta.blob();
+            const urlDescargaDescarga = window.URL.createObjectURL(datosArchivo);
+            
+            const nombreArchivo = `validaciones_lote_${lote}_ordenes.csv`;
+            const link = document.createElement('a');
+            link.href = urlDescargaDescarga;
+            link.setAttribute('download', nombreArchivo);
+            document.body.appendChild(link);
+            link.click();
+            
+            // Limpieza de residuos en el navegador
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(urlDescargaDescarga);
+
+            // Pausa estratégica de 3 segundos para que el servidor respire antes del siguiente lote
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            lote++;
+
+        } catch (error) {
+            console.error("Error crítico al procesar el lote:", error);
+            alert("El lote actual tardó demasiado o el servidor local se desconectó. Revisa la consola (F12) o los logs de Laravel.");
+            procesando = false;
+        }
+    }
+
+    // Restauramos el botón a su estado original al finalizar todo el ciclo
+    btn.disabled = false;
+    btn.innerHTML = 'Trabajar Lotes';
+}
+
+async function descargarOrdenIndividual() {
+    const btn = document.getElementById('btnIndividual');
+    if (!btn) return;
+
+    // 1. Estado visual de carga inmediato
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Procesando Orden...';
+
+    // 2. Extraemos el valor del input del formulario
+    const ordenInput = document.getElementById('OrdenIndividual');
+    const orden = ordenInput ? ordenInput.value : '';
+    
+    if (!orden || !orden.trim()) {
+        alert("Por favor, ingresa un número de orden válido.");
+        btn.disabled = false;
+        btn.innerHTML = 'Revisar orden';
+        return;
+    }
+
+    const urlBase = "{{ route('etadirect.AutomataValidarMamoOrdenExcel') }}";
+    const url = `${urlBase}?Orden=${encodeURIComponent(orden.trim())}`;
+    
+    try {
+        console.log("Enviando petición a la URL:", url);
+        
+        // 🚀 PETICIÓN SEGURA: Añadimos cabeceras para que Laravel no pida token CSRF en solicitudes GET
+        const respuesta = await fetch(url, { 
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json, text/csv'
+            }
+        });
+        
+        if (!respuesta.ok) {
+            throw new Error(`Error en el servidor local: Código HTTP ${respuesta.status}`);
+        }
+
+        const tipoContenido = respuesta.headers.get('content-type') || '';
+
+        // Caso A: Si el servidor falló por credenciales u otra excepción y devuelve JSON
+        if (tipoContenido.includes('application/json')) {
+            const data = await respuesta.json();
+            if (data.error || data.mensaje) {
+                alert(`Atención: ${data.error || data.mensaje}`);
+                btn.disabled = false;
+                btn.innerHTML = 'Revisar orden';
+                return;
+            }
+        }
+
+        // Caso B: El autómata recursivo entró con éxito y procesó la orden única
+        const datosArchivo = await respuesta.blob();
+        const urlDescarga = window.URL.createObjectURL(datosArchivo);
+        
+        // Forzamos la descarga instantánea en el navegador desde el Blob
+        const link = document.createElement('a');
+        link.href = urlDescarga;
+        link.setAttribute('download', `validaciones_orden_${orden.trim()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        
+        // Purgamos hilos de memoria
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(urlDescarga);
+        console.log(`¡Descarga completada con éxito para la orden ${orden}!`);
+
+    } catch (error) {
+        console.error("Error crítico de comunicación:", error);
+        alert("No se pudo conectar con el controlador. Verifica en tu terminal de comandos si el proceso de 'php artisan serve' sigue encendido.");
+    }
+
+    // Restauramos el botón a su estado original
+    btn.disabled = false;
+    btn.innerHTML = 'Revisar orden';
+}
+
+</script>
+<script>
+// Variable de control global para manejar la detención
+let detenerProceso = false;
+
+// Evento para el botón de cancelar
+document.getElementById('btnCancelar').addEventListener('click', function() {
+    detenerProceso = true;
+    this.disabled = true; // Evitar múltiples clics al cancelar
+    document.getElementById('textoProgreso').innerText = "Cancelando proceso... Esperando a que termine el bloque actual.";
+});
+document.getElementById('formLotesRealTime').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    detenerProceso = false; // Inicializar estado de detención
+
+    const btn = document.getElementById('btnSubmit');
+    const btnCancelar = document.getElementById('btnCancelar'); 
+    const contenedorProgreso = document.getElementById('contenedorProgreso');
+    const barraProgreso = document.getElementById('barraProgreso');
+    const textoProgreso = document.getElementById('textoProgreso');
+    
+    btn.disabled = true;
+    if (btnCancelar) btnCancelar.classList.remove('d-none'); 
+    contenedorProgreso.classList.remove('d-none');
+    
+    let offset = 0;
+    const tamanoLote = 2;
+    let totalOrdenes = 0;
+    
+    let todasLasValidaciones = [];
+    let todasLasOrdenesProcesadas = [];
+    let ordenesAnalizadasTotales = []; // Acumulador del total grande
+
+    try {
+        // 1. OBTENER EL TOTAL
+        const baseFormData = new FormData(this);
+        baseFormData.append('obtener_total', '1');
+        
+        const resInicio = await fetch(this.action, { 
+            method: 'POST', 
+            body: baseFormData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        
+        if (!resInicio.ok) throw new Error('Error al inicializar el autómata.');
+        const dataInicio = await resInicio.json();
+        totalOrdenes = dataInicio.total_ordenes;
+
+        if (totalOrdenes === 0) {
+            alert('No se encontraron órdenes para procesar (o todas fueron excluidas).');
+            btn.disabled = false;
+            if (btnCancelar) btnCancelar.classList.add('d-none');
+            contenedorProgreso.classList.add('d-none');
+            return;
+        }
+
+        // 2. BUCLE ITERATIVO (De 2 en 2)
+        while (offset < totalOrdenes) {
+            
+            // Si el usuario presionó detener, rompemos el bucle pero NO matamos la función
+            if (detenerProceso) {
+                console.log(`Procesamiento detenido por el usuario en el índice ${offset}.`);
+                break; 
+            }
+
+            const loteFormData = new FormData();
+            loteFormData.append('_token', document.querySelector('input[name="_token"]').value);
+            loteFormData.append('fechaincio', document.getElementById('fechaincio').value);
+            loteFormData.append('fechafin', document.getElementById('fechafin').value);
+            loteFormData.append('offset', offset.toString());
+
+            textoProgreso.innerText = `Procesando órdenes del índice ${offset} al ${offset + tamanoLote} de un total de ${totalOrdenes}...`;
+
+            const response = await fetch(this.action, { 
+                method: 'POST', 
+                body: loteFormData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            
+            if (!response.ok) throw new Error(`Fallo en el bloque del índice ${offset}`);
+            const resultado = await response.json();
+
+            if (resultado.status === 'completado') break;
+
+            // EXPORTACIÓN INMEDIATA EN TIEMPO REAL (Parciales)
+            if (resultado.datos_lote && resultado.datos_lote.length > 0) {
+                const numLoteActual = offset + resultado.ordenes_lote.length;
+                descargarDesdeCliente(resultado.datos_lote, `parcial_lote_${numLoteActual}_ordenes.csv`);
+                todasLasValidaciones = todasLasValidaciones.concat(resultado.datos_lote);
+            }
+            
+            // ACUMULAR Y LIMPIAR ÓRDENES PROCESADAS
+            if (resultado.ordenes_lote && resultado.ordenes_lote.length > 0) {
+                let loteLimpio = [];
+                resultado.ordenes_lote.forEach(elemento => {
+                    let numeroOrden = elemento;
+                    
+                    // Extraer solo el número limpio si viene envuelto como JSON string
+                    if (typeof elemento === 'string' && elemento.startsWith('{')) {
+                        try { numeroOrden = JSON.parse(elemento).Orden || elemento; } catch (e) {}
+                    } else if (typeof elemento === 'object' && elemento !== null) {
+                        numeroOrden = elemento.Orden || Object.values(elemento);
+                    }
+                    
+                    loteLimpio.push({ "Orden": numeroOrden });
+                });
+
+                todasLasOrdenesProcesadas = todasLasOrdenesProcesadas.concat(loteLimpio);
+                ordenesAnalizadasTotales = ordenesAnalizadasTotales.concat(loteLimpio);
+            }
+
+            offset += tamanoLote;
+            const porcentaje = Math.min(Math.round((offset / totalOrdenes) * 100), 100);
+            barraProgreso.style.width = `${porcentaje}%`;
+            barraProgreso.innerText = `${porcentaje}%`;
+        }
+        // 3. LLAMADA DE CIERRE (Solo si NO se presionó detener)
+        let resultadoFinal = null;
+        if (!detenerProceso) {
+            textoProgreso.innerText = "Finalizando procesamiento y recolectando auditoría global...";
+            
+            const finalFormData = new FormData();
+            finalFormData.append('_token', document.querySelector('input[name="_token"]').value);
+            finalFormData.append('fechaincio', document.getElementById('fechaincio').value);
+            finalFormData.append('fechafin', document.getElementById('fechafin').value);
+            finalFormData.append('offset', offset.toString());
+
+            const resFinal = await fetch(this.action, { 
+                method: 'POST', 
+                body: finalFormData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            
+            resultadoFinal = await resFinal.json();
+            
+            if (resultadoFinal.status === 'completado' && resultadoFinal.ordenes_analizadas_totales && resultadoFinal.ordenes_analizadas_totales.length > 0) {
+                ordenesAnalizadasTotales = resultadoFinal.ordenes_analizadas_totales.map(el => {
+                    if (typeof el === 'string' && el.startsWith('{')) {
+                        try { return { "Orden": JSON.parse(el).Orden }; } catch(e){}
+                    }
+                    return typeof el === 'object' ? { "Orden": el.Orden } : { "Orden": el };
+                });
+            }
+        }
+
+        // 4. DESCARGAS MAESTRAS FINALES (Ocurre al terminar o al dar Detener)
+        textoProgreso.innerText = detenerProceso 
+            ? "Descargando reportes acumulados hasta la detención..." 
+            : "¡Universo completado! Descargando reportes maestros finales...";
+        
+        const sufijo = detenerProceso ? '_parcial.csv' : '_universo_completo.csv';
+
+        if (todasLasValidaciones.length > 0) {
+            descargarDesdeCliente(todasLasValidaciones, `validaciones${sufijo}`);
+        }
+        
+        if (todasLasOrdenesProcesadas.length > 0) {
+            descargarDesdeCliente(todasLasOrdenesProcesadas, `ordenes_procesadas_totales${sufijo}`);
+        }
+        
+        // ¡Aquí se descarga el total grande acumulado!
+        if (ordenesAnalizadasTotales.length > 0) {
+            descargarDesdeCliente(ordenesAnalizadasTotales, `ordenes_analizadas_totales${sufijo}`);
+        }
+        
+        if (detenerProceso) {
+            alert('El proceso ha sido detenido por el usuario. Se exportó el total de órdenes analizadas hasta el momento.');
+        } else {
+            alert('El proceso ha finalizado correctamente.');
+        }
+
+    } catch (error) {
+        console.error(error);
+        textoProgreso.innerText = "Se detectó un error en el procesamiento.";
+        alert('Ocurrió un error en la comunicación con el servidor.');
+    } finally {
+        btn.disabled = false;
+        if (btnCancelar) {
+            btnCancelar.classList.add('d-none');
+            btnCancelar.disabled = false; 
+        }
+        contenedorProgreso.classList.add('d-none');
+    }
+});
+function descargarDesdeCliente(dataJson, nombreArchivo) {
+    if (!dataJson || dataJson.length === 0) return;
+
+    // CORRECCIÓN CLAVE: Leer el índice 0 para construir las columnas reales en base a la propiedad ("Orden")
+    const cabeceras = Object.keys(dataJson[0]);
+    const filasCsv = [cabeceras.join(',')];
+
+    for (const fila of dataJson) {
+        const valores = cabeceras.map(cabecera => {
+            let valor = fila[cabecera];
+            if (valor === null || valor === undefined) return '""';
+            if (typeof valor === 'object') valor = JSON.stringify(valor);
+            const valorLimpio = typeof valor === 'string' ? valor.replace(/"/g, '""') : valor;
+            return `"${valorLimpio}"`;
+        });
+        filasCsv.push(valores.join(','));
+    }
+
+    const contenidoCsv = '\uFEFF' + filasCsv.join('\n');
+    const blob = new Blob([contenidoCsv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    
+    if (link.download !== undefined) {
+        link.setAttribute("href", URL.createObjectURL(blob));
+        link.setAttribute("download", nombreArchivo);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+
+</script>
+
 @endpush

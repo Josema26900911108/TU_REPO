@@ -552,6 +552,42 @@
     let scanner = null;
     let escaneando = false;
 
+        // =========================================================================
+    // 10. LECTOR DE CÓDIGOS QR / BARRAS EXTERNO (HTML5-QRCODE)
+    // =========================================================================
+    function iniciarScanner(tipo = "barra") {
+        if (escaneando) return;
+        scanner = new Html5Qrcode("reader");
+        escaneando = true;
+
+        scanner.start(
+            { facingMode: "environment" },
+            {
+                fps: 10,
+                qrbox: tipo === "barra" ? { width: 250, height: 150 } : 250
+            },
+            (codigo) => {
+                console.log("Código ver:", codigo);
+                StopScanner();
+                agregarProductoScanner(codigo.trim());
+            },
+            (error) => { /* Silenciar advertencias */ }
+        );
+    }
+
+    function StopScanner() {
+        if (!scanner || !escaneando) return;
+        scanner.stop()
+        .then(() => {
+            console.log("Scanner detenido");
+            escaneando = false;
+            scanner = null;
+        })
+        .catch(err => console.error("Error al detener:", err));
+    }
+
+
+
     // =========================================================================
     // 2. DEPURADOR DE OPCIONES DUPLICADAS EN EL DOM NATIVO
     // =========================================================================
@@ -573,6 +609,7 @@
             });
         });
     }
+    
     // =========================================================================
     // 3. INICIALIZACIÓN GENERAL (DOCUMENT READY)
     // =========================================================================

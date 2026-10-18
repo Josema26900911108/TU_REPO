@@ -450,8 +450,21 @@ Route::post('/etadirect/reporte-discrepancias', [etadirectController::class, 're
 
 Route::get('/etadirect-formatoEta',[etadirectController::class,'descargarFormeta'])->name('etadirect.formeta');
 Route::post('/etadirect-JoboCommand',[etadirectController::class,'JoboCommand'])->name('etadirect.JoboCommand');
-Route::post('/etadirect-AutomataValidarMamo',[etadirectController::class,'AutomataValidarMamo'])->name('etadirect.AutomataValidarMamo');
-Route::post('/etadirect-AutomataValidarMamoOrden',[etadirectController::class,'AutomataValidarMamoOrden'])->name('etadirect.AutomataValidarMamoOrden');
+//Route::post('/etadirect-AutomataValidarMamo',[etadirectController::class,'AutomataValidarMamo'])->name('etadirect.AutomataValidarMamo');
+//Route::post('/etadirect-AutomataValidarMamoOrden',[etadirectController::class,'AutomataValidarMamoOrden'])->name('etadirect.AutomataValidarMamoOrden');
+
+// 📅 1. Ruta para el Formulario A (Lotes Semanales de 500)
+Route::any('/etadirect-AutomataValidarMamo', [etadirectController::class, 'AutomataValidarMamo'])
+     ->name('etadirect.AutomataValidarMamo');
+
+// 📦 2. Ruta para el Formulario B (Validación Express de una sola Orden)
+Route::any('/etadirect-AutomataValidarMamoOrden', [etadirectController::class, 'AutomataValidarMamoOrden'])
+     ->name('etadirect.AutomataValidarMamoOrden');
+
+     // 📦 3. Ruta para el Formulario B (Validación Express de una sola Orden)
+Route::any('/etadirect-ExcelAutomataValidarMamoOrden', [etadirectController::class, 'AutomataValidarMamoOrdenExcel'])
+     ->name('etadirect.AutomataValidarMamoOrdenExcel');
+     
 Route::post('/etadirect/importar',[etadirectController::class,'importarMAMO'])->name('etadirect.importar');
 Route::post('/exportar-etadirect', [etadirectController::class, 'exportar'])->name('etadirect.exportar');
 

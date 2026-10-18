@@ -227,10 +227,13 @@ class pagotecnicoController  extends Controller
 
 public function index(Request $request)
 {
-    // 1. Iniciar la consulta base sobre el modelo Pagotecnico
-    $query = Pagotecnico::with('tienda');
+    // Obtener el ID de la tienda desde la sesión con un valor por defecto seguro (0)
+    $tiendaId = session('user_fkTienda', 0);
+
+    // 1. Iniciar la consulta base aplicando el filtro obligatorio de la tienda del usuario
+    $query = Pagotecnico::with('tienda')->where('fkTienda', $tiendaId);
     
-    $orden=$request->input('Status');
+    $orden = $request->input('Status');
 
     // 2. Aplicar Filtro por Orden/Expediente si se proporciona y no está vacío
     if ($request->has('orden') && $request->input('orden') !== null && $request->input('orden') !== '') {
@@ -242,7 +245,7 @@ public function index(Request $request)
         $query->where('fkTecnico', $request->input('tecnico_id'));
     }
 
-    // 4. CORREGIDO: Filtro por Estatus de Pago (Validación estricta de presencia)
+    // 4. Filtro por Estatus de Pago (Validación estricta de presencia)
     if ($request->has('Status') && $request->input('Status') !== null && $request->input('Status') !== '') {
         $query->where('Status', $request->input('Status'));
     }
@@ -255,7 +258,7 @@ public function index(Request $request)
         $query->whereDate('updated_at', '<=', $request->input('fecha_fin'));
     }
 
-    // 6. CORREGIDO: Se eliminó duplicidad de ordenamiento (Solo dejamos orden por ID descendente)
+    // 6. Ordenar por ID descendente y ejecutar la consulta filtrada por tienda
     $pagostecnico = $query->orderBy('id', 'desc')->get();
 
     // 7. LOGICA DE BALANCES ALGEBRAICOS (Suma 'H' y Resta 'D')
@@ -266,7 +269,7 @@ public function index(Request $request)
         }, 0);
     };
 
-    // Balance General (Todo lo que arrojó el filtro actual)
+    // Balance General (Todo lo que arrojó el filtro actual de la tienda)
     $totalBalance = $calcularBalance($pagostecnico);
 
     // Balances específicos filtrados desde la colección en memoria
@@ -274,8 +277,7 @@ public function index(Request $request)
     $balanceS = $calcularBalance($pagostecnico->where('Status', 'S'));
     $balanceB = $calcularBalance($pagostecnico->where('Status', 'B'));
 
-    // Obtener lista de técnicos para el select del filtro con validación de sesión
-    $tiendaId = session('user_fkTienda', 0); // Evita romper si la sesión es null
+    // Obtener lista de técnicos filtrados para la tienda actual
     $tecnicos = DB::table('tecnico')
         ->select('id', 'nombre')
         ->where('fkTienda', $tiendaId)
@@ -653,8 +655,17 @@ public function exportarFotosZip(Request $request)
     // Iniciar transferencia masiva al navegador y purgar el archivo de XAMPP automáticamente
     return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
 }
-public function descargarFormatoPago()
+
+
+public function descargarFormatoPago(Request $request)
 {
+    // 🚀 RECUPERAR DE SESIÓN: Obtenemos la tienda activa del usuario para la fila de ejemplo
+    $tiendaId = session('user_fkTienda', 5); // 5 por defecto si no hay sesión activa
+
+    // 🔍 DETECTOR DINÁMICO DE DELIMITADOR DE SALIDA (Evita datos amontonados en Windows)
+    $lang = $request->server('HTTP_ACCEPT_LANGUAGE');
+    $delimitadorSalida = (strpos($lang, 'es') !== false) ? ";" : ",";
+
     $headers = [
         "Content-type"        => "text/csv; charset=UTF-8",
         "Content-Disposition" => "attachment; filename=Formato_Desglose_Pagos_Tecnicos.csv",
@@ -668,33 +679,36 @@ public function descargarFormatoPago()
         'COSTOPAGO', 'Status', 'Naturaleza', 'fkTecnico', 'fkTienda'
     ];
 
-    $callback = function () use ($columnas) {
+    $callback = function () use ($columnas, $delimitadorSalida, $tiendaId) {
         $file = fopen('php://output', 'w');
         
-        // Añadir el BOM UTF-8 para que Excel reconozca los acentos correctamente
+        // Añadir el BOM UTF-8 para que Excel reconozca los acentos y eñes correctamente en Windows
         fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
         
-        // === CONFIGURACIÓN SEGURA DE COMAS ===
-        fputcsv($file, $columnas, ',', '"'); // Delimitador: , Enclosure: "
+        // === CONFIGURACIÓN DINÁMICA DE SEPARADORES ===
+        // Usamos el delimitador adaptado a la PC del usuario (, o ;)
+        fputcsv($file, $columnas, $delimitadorSalida, '"'); 
 
+        // Escribimos la fila de ejemplo con datos limpios y el delimitador correcto
         fputcsv($file, [
             'ORD-100254',
             'SKU-MO-001',
-            'INSTALACION TRIPLE PLAY TV VOZ Y DATOS', // Texto protegido contra rupturas
+            'INSTALACION TRIPLE PLAY TV VOZ Y DATOS', 
             'Instalación Caja Adicional Servicio Técnico',            
             1,
             250.00,
             'C', 
             'H', 
             12,
-            5
-        ], ',', '"'); // Delimitador: , Enclosure: "
+            $tiendaId // 🚀 Dinámico: Muestra al usuario su número de tienda asignada actual
+        ], $delimitadorSalida, '"'); 
 
         fclose($file);
     };
 
     return response()->stream($callback, 200, $headers);
 }
+
 
 public function descargarFormatoModificacionPago()
 {

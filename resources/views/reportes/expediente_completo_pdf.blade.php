@@ -158,7 +158,7 @@
 
         <p style="margin: 0; line-height: 1.5;">
             Ingeniero<br>
-            <strong>Jorge Mario Fingado</strong><br>
+            <strong>Elmer Garibaldi Flores Velasquez</strong><br>
             Región Occidente<br>
             Quetzaltenango
         </p>
