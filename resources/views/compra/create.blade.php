@@ -576,25 +576,44 @@
                 qrbox: tipo === "barra" ? { width: 250, height: 150 } : 250
             },
             (codigo) => {
-                console.log("Código ver:", codigo);
-                StopScanner();
-                agregarProductoScanner(codigo.trim());
+                let codigoLimpio = codigo.trim();
+                console.log("🎯 [Escáner Cámara] Código detectado:", codigoLimpio);
+                
+                // 1. Apagamos la cámara PRIMERO y esperamos a que termine su promesa
+                if (scanner) {
+                    scanner.stop()
+                    .then(() => {
+                        console.log("🟢 Scanner detenido con éxito. Procesando SKU...");
+                        escaneando = false;
+                        scanner = null;
+                        
+                        // 2. Ejecutamos la búsqueda RECIÉN cuando el DOM y la cámara se liberaron
+                        agregarProductoScanner(codigoLimpio);
+                    })
+                    .catch(err => {
+                        console.error("Error al detener el scanner en éxito:", err);
+                        // Caída segura: Procesar de todos modos si falla el apagado
+                        escaneando = false;
+                        agregarProductoScanner(codigoLimpio);
+                    });
+                }
             },
-            (error) => { /* Silenciar advertencias */ }
+            (error) => { /* Silenciar advertencias de enfoque de cámara */ }
         );
     }
 
+    // Mantén tu función StopScanner limpia para cierres manuales (botones de cerrar modal, etc.)
     function StopScanner() {
         if (!scanner || !escaneando) return;
-        scanner.stop()
+        return scanner.stop() // Retornamos la promesa por si se requiere encadenar
         .then(() => {
-            console.log("Scanner detenido");
+            console.log("Scanner detenido manualmente");
             escaneando = false;
             scanner = null;
         })
-        .catch(err => console.error("Error al detener:", err));
+        .catch(err => console.error("Error al detener manualmente:", err));
     }
-
+    
 
 
     // =========================================================================
