@@ -702,28 +702,39 @@ function procesarSeleccionProducto(id, itemData) {
     // Apagar temporalmente el evento change manual para evitar parpadeos visuales corruptos
     $('#producto_id').off('change');
 
+    // =========================================================================
+    // 🚀 GESTIÓN DE OPCIONES EN EL DOM SIN DUPLICADOS VISUALES
+    // =========================================================================
     if (opcionExistente.length > 0) {
-        // Extraer el atributo directamente de tu estructura Blade corregida
+        // 1. SI YA EXISTE: ¡PROHIBIDO USAR .text()! Esto evita el duplicado en selectpicker
         let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
         esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
-        console.log("♻️ [Visibilidad] Cargando producto existente. ¿Es Perecedero?:", esPerecederoReal);
+        
+        console.log("♻️ [Visibilidad] Producto existente detectado. Manteniendo texto original. ¿Perecedero?:", esPerecederoReal);
     } else if (itemData) {
-        // En caso de que se cree de cero desde el servidor
+        // 2. SI NO EXISTE: Aquí sí creamos el nodo de texto limpiamente por única vez
         let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
         esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === '1') ? 1 : 0;
+        
+        // Mapear con prioridad a la respuesta de Laravel
         let nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
 
         let nuevaOpt = $('<option></option>')
             .val(id)
-            .text(nombreProdClean)
+            .text(nombreProdClean) // Se inyecta una sola vez de forma limpia
             .attr('data-perecedero', esPerecederoReal);
+            
         $('#producto_id').append(nuevaOpt);
-        console.log("✨ [Inyección] Nueva opción inyectada al select.");
+        console.log("✨ [Inyección] Nueva opción agregada con éxito al select.");
     }
 
-    // 🚀 SINCRONIZACIÓN DE INTERFAZ GRÁFICA
+    // =========================================================================
+    // 🚀 RECONSTRUCCIÓN ATÓMICA DE INTERFAZ GRÁFICA
+    // =========================================================================
+    // Asignamos el valor al select nativo y refrescamos de manera limpia
     $('#producto_id').val(id);
     $('#producto_id').selectpicker('refresh');
+
 
     // Aplicar los estilos de visibilidad de forma inmediata e imperativa (Rompe el bloqueo de d-none)
     if (esPerecederoReal === 1) {
@@ -1485,26 +1496,36 @@ function procesarSeleccionProducto(id, itemData) {
     // Apagar temporalmente el evento change manual para evitar parpadeos visuales corruptos
     $('#producto_id').off('change');
 
+    // =========================================================================
+    // 🚀 GESTIÓN DE OPCIONES EN EL DOM SIN DUPLICADOS VISUALES
+    // =========================================================================
     if (opcionExistente.length > 0) {
-        // Extraer el atributo directamente de tu estructura Blade corregida
+        // 1. SI YA EXISTE: ¡PROHIBIDO USAR .text()! Esto evita el duplicado en selectpicker
         let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
         esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
-        console.log("♻️ [Visibilidad] Cargando producto existente. ¿Es Perecedero?:", esPerecederoReal);
+        
+        console.log("♻️ [Visibilidad] Producto existente detectado. Manteniendo texto original. ¿Perecedero?:", esPerecederoReal);
     } else if (itemData) {
-        // En caso de que se cree de cero desde el servidor
+        // 2. SI NO EXISTE: Aquí sí creamos el nodo de texto limpiamente por única vez
         let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
         esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === '1') ? 1 : 0;
+        
+        // Mapear con prioridad a la respuesta de Laravel
         let nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
 
         let nuevaOpt = $('<option></option>')
             .val(id)
-            .text(nombreProdClean)
+            .text(nombreProdClean) // Se inyecta una sola vez de forma limpia
             .attr('data-perecedero', esPerecederoReal);
+            
         $('#producto_id').append(nuevaOpt);
-        console.log("✨ [Inyección] Nueva opción inyectada al select.");
+        console.log("✨ [Inyección] Nueva opción agregada con éxito al select.");
     }
 
-    // 🚀 SINCRONIZACIÓN DE INTERFAZ GRÁFICA
+    // =========================================================================
+    // 🚀 RECONSTRUCCIÓN ATÓMICA DE INTERFAZ GRÁFICA
+    // =========================================================================
+    // Asignamos el valor al select nativo y refrescamos de manera limpia
     $('#producto_id').val(id);
     $('#producto_id').selectpicker('refresh');
 
