@@ -607,54 +607,6 @@ document.getElementById("SKU").addEventListener("keydown", function (e) {
     }
 });
 
-// =========================================================================
-// BUSCA ESTA FUNCIÓN EN TU CÓDIGO (Línea ~4863) Y REEMPLÁZALA POR ESTA:
-// =========================================================================
-$('#producto_id').on('change', function() {
-    let idProducto = $(this).val();
-
-    // 🚨 FILTRO DE SEGURIDAD: Si no hay un ID válido seleccionado, ignoramos el evento
-    // Esto evita que las limpiezas visuales transitorias saboteen el escaneo
-    if (!idProducto || idProducto === "" || idProducto === null) {
-        console.log("⚠️ [Cambio Manual] Evento ignorado: No hay ningún producto seleccionado real.");
-        return;
-    }
-
-    // Obtener la opción seleccionada directamente del DOM nativo
-    let $opcionSeleccionada = $(this).find('option[value="' + idProducto + '"]');
-    
-    // Si por alguna razón no la encuentra por valor, caemos en la seleccionada actual
-    if ($opcionSeleccionada.length === 0) {
-        $opcionSeleccionada = $(this).find('option:selected');
-    }
-
-    // Extraer el texto de forma limpia
-    let nombreProducto = $opcionSeleccionada.text().trim();
-    
-    // Extraer de forma segura el atributo perecedero del DOM
-    let rawPerecedero = $opcionSeleccionada.attr('data-perecedero') || $opcionSeleccionada.data('perecedero') || 0;
-    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-
-    console.log("🔄 [Cambio Manual] Producto:", nombreProducto, " | ¿Es Perecedero?:", esPerecedero);
-
-    if (esPerecedero === 1) {
-        console.log("⏳ [Perecedero] Mostrando campo de fecha de vencimiento.");
-        
-        // 💡 REEMPLAZA ESTAS LÍNEAS POR TU LÓGICA REAL PARA MOSTRAR LA FECHA:
-        $('#contenedor_fecha').show(); // O la clase/ID que uses para mostrar el contenedor
-        if ($('#fecha_vencimiento').length) {
-            $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
-        }
-    } else {
-        console.log("📦 [Regular] Producto estándar. Ocultando campo de fecha.");
-        
-        // 💡 REEMPLAZA ESTAS LÍNEAS POR TU LÓGICA REAL PARA OCULTAR LA FECHA:
-        $('#contenedor_fecha').hide();
-        if ($('#fecha_vencimiento').length) {
-            $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
-        }
-    }
-});
 
 
 function agregarProductoScanner(sku) {
