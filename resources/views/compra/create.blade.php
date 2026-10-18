@@ -397,6 +397,8 @@
                             <input type="text" name="modal_codigo" id="modal_codigo" class="form-control border-primary font-weight-bold" readonly>
                         </div>
 
+                        <button type="button" id="btn-generar-codigo" class="btn btn-secondary">Generar</button>
+
                         <!--- Nombre ---->
                         <div class="col-md-6 mb-3">
                             <label for="modal_nombre" class="form-label font-weight-bold">Nombre del Producto *</label>
@@ -2422,4 +2424,27 @@ function CalcularFormula(formulalocal, montoA) {
 }
 
 </script>
+
+<script>
+$('#btn-generar-codigo').on('click', function(e) {
+    // 💡 ESTO DETIENE EL BLOQUEO DEL LECTOR Y EVITA QUE SE RECARGUE LA PÁGINA
+    e.preventDefault(); 
+    e.stopPropagation();
+
+    $.ajax({
+        url: '/ajax-interno/generar-codigo-barras-unico',
+        type: 'GET',
+        success: function(response) {
+            var datos = (typeof response === 'object') ? response : JSON.parse(response.trim());
+            if (datos && datos.codigo) {
+                $('#modal_codigo').val(datos.codigo);
+            }
+        },
+        error: function(xhr) {
+            console.error("Error al generar el código:", xhr.responseText);
+        }
+    });
+});
+</script>
+
 @endpush
