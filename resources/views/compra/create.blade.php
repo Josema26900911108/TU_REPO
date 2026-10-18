@@ -619,13 +619,14 @@ function agregarProductoScanner(sku) {
     let skuAAsignar = sku || $('#SKU').val().trim();
     if (skuAAsignar === '') return;
 
+    // Encender protección contra dobles ráfagas
     estaProcesandoScan = true;
     $('#modal_codigo').val(skuAAsignar); 
 
-    console.log("🔍 [Escáner] Iniciando verificación para el SKU:", skuAAsignar);
+    console.log("🔍 [Escáner] Iniciando búsqueda local estricta para el SKU:", skuAAsignar);
 
     // =========================================================================
-    // 🚨 PASO 1: PASAPORTE DE SEGURIDAD LOCAL PRIMERO
+    // 🎯 PASO 1: BÚSQUEDA LOCAL ROBUSTA EN EL SELECT DE BLADE
     // =========================================================================
     let idEncontrado = null;
     let codigoSinCeros = skuAAsignar.replace(/^0+/, '');
@@ -634,31 +635,32 @@ function agregarProductoScanner(sku) {
         let valorOption = $(this).val();
         let textoOption = $(this).text().trim().toLowerCase();
         
+        // Comprobar si el ID coincide con el SKU, si el texto lo incluye, o si coincide sin ceros
         if (valorOption == skuAAsignar || 
             textoOption.includes(skuAAsignar.toLowerCase()) || 
             (codigoSinCeros !== "" && textoOption.includes(codigoSinCeros.toLowerCase()))) {
             idEncontrado = valorOption;
-            return false; // Romper búsqueda local
+            return false; // Romper bucle .each() al encontrar coincidencia
         }
     });
 
-    // Si ya existe localmente en el HTML, lo seleccionamos DIRECTO sin esperar al servidor
+    // Si el producto ya existe en tu listado Blade, lo procesamos de inmediato localmente
     if (idEncontrado) {
-        console.log("🎯 [Local] Producto encontrado en el combo nativo. ID:", idEncontrado);
+        console.log("🎯 [Éxito Local] Producto hallado en el HTML. ID:", idEncontrado);
         procesarSeleccionProducto(idEncontrado, null);
-        return;
+        return; // Detenemos la ejecución aquí, evitando peticiones de red innecesarias
     }
 
     // =========================================================================
-    // 🌐 PASO 2: CONSULTA AL SERVIDOR SOLO SI NO EXISTE LOCALMENTE
+    // 🌐 PASO 2: CONSULTA AL SERVIDOR SOLO SI NO EXISTE EN EL HTML
     // =========================================================================
+    console.log("🌐 [Servidor] El SKU no coincide localmente. Consultando catálogo general...");
     $.ajax({
         url: '/comprar/SCANdetalles/' + skuAAsignar,
         type: 'GET',
         success: function(response) {
             console.log("🟢 [Servidor] Respuesta de red recibida:", response);
 
-            // Desempaquetar el objeto de Laravel (manejando arrays u objetos indexados)
             let itemData = null;
             if (Array.isArray(response) && response.length > 0) {
                 itemData = response[0];
@@ -670,7 +672,8 @@ function agregarProductoScanner(sku) {
             }
 
             if (itemData) {
-                idEncontrado = itemData.producto_id || itemData.id || (itemData.producto && itemData.producto.id);
+                // Adaptabilidad de ID según lo que devuelva tu servidor
+                idEncontrado = itemData.id || itemData.producto_id || (itemData.producto && itemData.producto.id);
             }
 
             if (idEncontrado && itemData) {
@@ -680,7 +683,7 @@ function agregarProductoScanner(sku) {
             }
         },
         error: function(xhr) {
-            console.error("❌ [Error AJAX] Servidor no responde. Intentando apertura express.");
+            console.error("❌ [Error AJAX] No se pudo verificar el SKU. Abriendo modal express.");
             abrirModalExpressProductoNuevo(skuAAsignar);
         },
         complete: function() {
@@ -690,65 +693,90 @@ function agregarProductoScanner(sku) {
 }
 
 // =========================================================================
-// 🚀 FUNCIÓN CENTRALIZADA DE SELECCIÓN Y ENFOQUE
+// 🚀 FUNCIÓN CENTRALIZADA DE SELECCIÓN Y ENFOQUE CORREGIDA
 // =========================================================================
 function procesarSeleccionProducto(id, itemData) {
     let opcionExistente = $('#producto_id option[value="' + id + '"]');
     let esPerecederoReal = 0;
 
+    // Apagar temporalmente el evento change manual para evitar parpadeos visuales corruptos
+    $('#producto_id').off('change');
+
     if (opcionExistente.length > 0) {
-        // 1. Si existe localmente, leemos sus atributos actuales del HTML
-        let rawPerecedero = opcionExistente.attr('data-perecedero') || opcionExistente.data('perecedero') || 0;
-        esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-        console.log("♻️ [Selección] Usando configuración local. ¿Perecedero?:", esPerecederoReal);
+        // Extraer el atributo directamente de tu estructura Blade corregida
+        let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
+        esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
+        console.log("♻️ [Visibilidad] Cargando producto existente. ¿Es Perecedero?:", esPerecederoReal);
     } else if (itemData) {
-        // 2. Si es un producto nuevo traído del servidor, procesamos sus campos
+        // En caso de que se cree de cero desde el servidor
         let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
-        esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-        let nombreProdClean = (itemData.nombre || 'Producto').trim();
+        esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === '1') ? 1 : 0;
+        let nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
 
         let nuevaOpt = $('<option></option>')
             .val(id)
             .text(nombreProdClean)
-            .attr('data-perecedero', esPerecederoReal)
-            .data('perecedero', esPerecederoReal);
+            .attr('data-perecedero', esPerecederoReal);
         $('#producto_id').append(nuevaOpt);
-        console.log("✨ [Inyección] Nuevo producto agregado al combo. ¿Perecedero?:", esPerecederoReal);
+        console.log("✨ [Inyección] Nueva opción inyectada al select.");
     }
 
-    // Sincronizar limpiamente Bootstrap Select
+    // 🚀 SINCRONIZACIÓN DE INTERFAZ GRÁFICA
     $('#producto_id').val(id);
     $('#producto_id').selectpicker('refresh');
-    
-    // Forzar un retraso antes del trigger para que el plugin termine de renderizar el HTML secundario
+
+    // Aplicar los estilos de visibilidad de forma inmediata e imperativa (Rompe el bloqueo de d-none)
+    if (esPerecederoReal === 1) {
+        console.log("🛠️ [Blindaje Visual] Mostrando campo de fecha.");
+        $('#contenedor_fecha').removeClass('d-none').show();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
+        }
+    } else {
+        console.log("🛠️ [Blindaje Visual] Ocultando campo de fecha.");
+        $('#contenedor_fecha').addClass('d-none').hide();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
+        }
+    }
+
+    // Limpieza de inputs auxiliares del escáner
+    $('#modalProductoNuevo').modal('hide');
+    $('#SKU').val(''); 
+    $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
+
+    // Reactivar y disparar el change de la página tras un leve retraso para que selectpicker se estabilice
     setTimeout(function() {
-        console.log("📣 [Evento] Disparando cambio en la interfaz para ID:", id);
+        // Volver a vincular tu función change original si se requiere (o se ejecuta nativamente al lanzar el trigger)
+        console.log("📣 [Despachador] Disparando evento change controlado.");
+        
+        // Re-enganchar el evento change si fue removido globalmente
+        if (typeof window.funcionChangeProductoOriginal === "function") {
+            $('#producto_id').on('change', window.funcionChangeProductoOriginal);
+        }
+        
         $('#producto_id').trigger('change');
+    }, 120);
 
-        // Limpiar inputs del escáner principal
-        $('#modalProductoNuevo').modal('hide');
-        $('#SKU').val(''); 
-        $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
-    }, 60);
-
-    // Mover el foco del cursor según el tipo de producto
+    // Mover el foco del cursor de forma atómica y prioritaria
     setTimeout(function() {
         if (esPerecederoReal === 1) {
             if ($('#fecha_vencimiento').length) {
-                console.log("⏳ [Foco] Producto Perecedero. Saltando a Fecha de Vencimiento.");
-                $('#fecha_vencimiento').focus();
+                console.log("⏳ [Foco] Posicionando cursor en Fecha de Vencimiento.");
+                $('#fecha_vencimiento').focus().select();
             }
         } else {
             let $cantidadInput = $('#cantidad');
             if ($cantidadInput.length) {
-                console.log("📦 [Foco] Producto Estándar. Saltando a Cantidad.");
+                console.log("📦 [Foco] Posicionando cursor en Cantidad.");
                 $cantidadInput.focus().select();
             }
         }
-        // Apagar la bandera aquí si el flujo fue puramente local
+        // Liberar la pistola para el próximo escaneo
         estaProcesandoScan = false;
-    }, 250);
+    }, 280);
 }
+
 
 function abrirModalExpressProductoNuevo(skuAAsignar) {
     console.log("🆕 [Nuevo] Abriendo modal express para:", skuAAsignar);
@@ -1374,24 +1402,51 @@ function agregarProductoScanner(sku) {
     let skuAAsignar = sku || $('#SKU').val().trim();
     if (skuAAsignar === '') return;
 
+    // Encender protección contra dobles ráfagas
     estaProcesandoScan = true;
     $('#modal_codigo').val(skuAAsignar); 
 
-    console.log("🔍 [Escáner] Iniciando verificación para el SKU:", skuAAsignar);
+    console.log("🔍 [Escáner] Iniciando búsqueda local estricta para el SKU:", skuAAsignar);
 
     // =========================================================================
-    // 🌐 CONSULTA AL SERVIDOR DIRECTA (Garantiza buscar por código real)
+    // 🎯 PASO 1: BÚSQUEDA LOCAL ROBUSTA EN EL SELECT DE BLADE
     // =========================================================================
+    let idEncontrado = null;
+    let codigoSinCeros = skuAAsignar.replace(/^0+/, '');
+    
+    $('#producto_id option').each(function() {
+        let valorOption = $(this).val();
+        let textoOption = $(this).text().trim().toLowerCase();
+        
+        // Comprobar si el ID coincide con el SKU, si el texto lo incluye, o si coincide sin ceros
+        if (valorOption == skuAAsignar || 
+            textoOption.includes(skuAAsignar.toLowerCase()) || 
+            (codigoSinCeros !== "" && textoOption.includes(codigoSinCeros.toLowerCase()))) {
+            idEncontrado = valorOption;
+            return false; // Romper bucle .each() al encontrar coincidencia
+        }
+    });
+
+    // Si el producto ya existe en tu listado Blade, lo procesamos de inmediato localmente
+    if (idEncontrado) {
+        console.log("🎯 [Éxito Local] Producto hallado en el HTML. ID:", idEncontrado);
+        procesarSeleccionProducto(idEncontrado, null);
+        return; // Detenemos la ejecución aquí, evitando peticiones de red innecesarias
+    }
+
+    // =========================================================================
+    // 🌐 PASO 2: CONSULTA AL SERVIDOR SOLO SI NO EXISTE EN EL HTML
+    // =========================================================================
+    console.log("🌐 [Servidor] El SKU no coincide localmente. Consultando catálogo general...");
     $.ajax({
         url: '/comprar/SCANdetalles/' + skuAAsignar,
         type: 'GET',
         success: function(response) {
             console.log("🟢 [Servidor] Respuesta de red recibida:", response);
 
-            // Desempaquetar el objeto del array de Laravel [{...}]
             let itemData = null;
             if (Array.isArray(response) && response.length > 0) {
-                itemData = response[0]; // Extraer el primer objeto del array
+                itemData = response[0];
             } else if (response && typeof response === 'object') {
                 itemData = response.producto || response.data || response;
                 if (Array.isArray(itemData) && itemData.length > 0) {
@@ -1399,21 +1454,19 @@ function agregarProductoScanner(sku) {
                 }
             }
 
-            // Extraer el ID real usando la flexibilidad de nombres de columnas comunes
-            let idEncontrado = null;
             if (itemData) {
-                idEncontrado = itemData.producto_id || itemData.id || (itemData.producto && itemData.producto.id);
+                // Adaptabilidad de ID según lo que devuelva tu servidor
+                idEncontrado = itemData.id || itemData.producto_id || (itemData.producto && itemData.producto.id);
             }
 
             if (idEncontrado && itemData) {
-                // Enviamos el ID y los datos limpios del servidor a la selección
                 procesarSeleccionProducto(idEncontrado, itemData);
             } else {
                 abrirModalExpressProductoNuevo(skuAAsignar);
             }
         },
         error: function(xhr) {
-            console.error("❌ [Error AJAX] Servidor no responde.");
+            console.error("❌ [Error AJAX] No se pudo verificar el SKU. Abriendo modal express.");
             abrirModalExpressProductoNuevo(skuAAsignar);
         },
         complete: function() {
@@ -1423,65 +1476,87 @@ function agregarProductoScanner(sku) {
 }
 
 // =========================================================================
-// 🚀 FUNCIÓN CENTRALIZADA DE SELECCIÓN Y ENFOQUE
+// 🚀 FUNCIÓN CENTRALIZADA DE SELECCIÓN Y ENFOQUE CORREGIDA
 // =========================================================================
 function procesarSeleccionProducto(id, itemData) {
     let opcionExistente = $('#producto_id option[value="' + id + '"]');
     let esPerecederoReal = 0;
-    let nombreProdClean = "Producto Cargado";
 
-    // Mapear los datos reales del servidor
-    if (itemData) {
+    // Apagar temporalmente el evento change manual para evitar parpadeos visuales corruptos
+    $('#producto_id').off('change');
+
+    if (opcionExistente.length > 0) {
+        // Extraer el atributo directamente de tu estructura Blade corregida
+        let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
+        esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
+        console.log("♻️ [Visibilidad] Cargando producto existente. ¿Es Perecedero?:", esPerecederoReal);
+    } else if (itemData) {
+        // En caso de que se cree de cero desde el servidor
         let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
-        esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-        
-        // 🚀 Usamos 'producto_nombre' que es el campo real de tu JSON de Laravel
-        nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
-    }
+        esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === '1') ? 1 : 0;
+        let nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
 
-    // Si la opción no existe físicamente en el select vacío, la creamos e inyectamos inmediatamente
-    if (opcionExistente.length === 0) {
         let nuevaOpt = $('<option></option>')
             .val(id)
             .text(nombreProdClean)
-            .attr('data-perecedero', esPerecederoReal)
-            .data('perecedero', esPerecederoReal);
+            .attr('data-perecedero', esPerecederoReal);
         $('#producto_id').append(nuevaOpt);
-        console.log("✨ [Inyección] Opción creada dinámicamente:", nombreProdClean);
-    } else {
-        opcionExistente.text(nombreProdClean)
-                       .attr('data-perecedero', esPerecederoReal)
-                       .data('perecedero', esPerecederoReal);
+        console.log("✨ [Inyección] Nueva opción inyectada al select.");
     }
 
-    // Sincronizar de forma segura el Bootstrap Select
+    // 🚀 SINCRONIZACIÓN DE INTERFAZ GRÁFICA
     $('#producto_id').val(id);
     $('#producto_id').selectpicker('refresh');
-    
-    // Retraso para dar estabilidad al render antes del trigger
+
+    // Aplicar los estilos de visibilidad de forma inmediata e imperativa (Rompe el bloqueo de d-none)
+    if (esPerecederoReal === 1) {
+        console.log("🛠️ [Blindaje Visual] Mostrando campo de fecha.");
+        $('#contenedor_fecha').removeClass('d-none').show();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
+        }
+    } else {
+        console.log("🛠️ [Blindaje Visual] Ocultando campo de fecha.");
+        $('#contenedor_fecha').addClass('d-none').hide();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
+        }
+    }
+
+    // Limpieza de inputs auxiliares del escáner
+    $('#modalProductoNuevo').modal('hide');
+    $('#SKU').val(''); 
+    $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
+
+    // Reactivar y disparar el change de la página tras un leve retraso para que selectpicker se estabilice
     setTimeout(function() {
-        console.log("📣 [Evento] Disparando cambio para:", nombreProdClean);
+        // Volver a vincular tu función change original si se requiere (o se ejecuta nativamente al lanzar el trigger)
+        console.log("📣 [Despachador] Disparando evento change controlado.");
+        
+        // Re-enganchar el evento change si fue removido globalmente
+        if (typeof window.funcionChangeProductoOriginal === "function") {
+            $('#producto_id').on('change', window.funcionChangeProductoOriginal);
+        }
+        
         $('#producto_id').trigger('change');
+    }, 120);
 
-        $('#modalProductoNuevo').modal('hide');
-        $('#SKU').val(''); 
-        $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
-    }, 100);
-
-    // Mover el foco del cursor sin interferencias
+    // Mover el foco del cursor de forma atómica y prioritaria
     setTimeout(function() {
         if (esPerecederoReal === 1) {
             if ($('#fecha_vencimiento').length) {
-                console.log("⏳ [Foco] Saltando a Fecha de Vencimiento.");
-                $('#fecha_vencimiento').focus();
+                console.log("⏳ [Foco] Posicionando cursor en Fecha de Vencimiento.");
+                $('#fecha_vencimiento').focus().select();
             }
         } else {
             let $cantidadInput = $('#cantidad');
             if ($cantidadInput.length) {
-                console.log("📦 [Foco] Saltando a Cantidad.");
+                console.log("📦 [Foco] Posicionando cursor en Cantidad.");
                 $cantidadInput.focus().select();
             }
         }
+        // Liberar la pistola para el próximo escaneo
+        estaProcesandoScan = false;
     }, 280);
 }
 
