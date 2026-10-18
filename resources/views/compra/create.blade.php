@@ -879,6 +879,13 @@ function actualizarCatalogoProductosVisual(productosNuevos) {
     // 4. Refrescar visualmente la interfaz de Bootstrap de forma aislada
     select.selectpicker('refresh');
 }
+function detenerHardwareCamara() {
+if (streamCamara) {
+streamCamara.getTracks().forEach(track => track.stop());
+streamCamara = null;
+}
+$('#contenedor-camara-web').addClass('d-none');
+}
         // =========================================================================
     // 10. LECTOR DE CÓDIGOS QR / BARRAS EXTERNO (HTML5-QRCODE)
     // =========================================================================
