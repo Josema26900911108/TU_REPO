@@ -1358,40 +1358,46 @@ function agregarProductoScanner(sku) {
             }
 
             // 2. Extraer el ID real usando flexibilidad de nombres de columnas comunes
-            if (idEncontrado) {
+            let idEncontrado = null;
+            if (detalle) {
+                idEncontrado = detalle.producto_id || detalle.id || (detalle.producto && detalle.producto.id);
+            }
+
+            // 3. 🚨 CONTROL DE SEGURIDAD SECUNDARIO (BÚSQUEDA LOCAL):
+            // Si el servidor falló o no devolvió el ID exacto, escudriñamos el select nativo
+            // por si el código coincide con el valor o con parte del texto del catálogo actual.
+            if (!idEncontrado) {
+                let codigoSinCeros = skuAAsignar.replace(/^0+/, '');
+                $('#producto_id option').each(function() {
+                    let valorOption = $(this).val();
+                    let textoOption = $(this).text().trim().toLowerCase();
+                    
+                    if (valorOption == skuAAsignar || textoOption.includes(skuAAsignar.toLowerCase()) || (codigoSinCeros !== "" && textoOption.includes(codigoSinCeros.toLowerCase()))) {
+                        idEncontrado = valorOption;
+                        return false; // Romper bucle de búsqueda local
+                    }
+                });
+            }
+
+                       if (idEncontrado) {
                 console.log("🎯 [Éxito] Producto localizado con ID:", idEncontrado);
 
-                // 1. EXTRAER EL OBJETO REAL (Solución al array de Laravel [{...}])
-                let itemData = null;
-                if (Array.isArray(response) && response.length > 0) {
-                    itemData = response[0]; // 👈 CORRECCIÓN: Extraer el primer elemento del array directamente
-                } else if (response && typeof response === 'object') {
-                    let nodoInterno = response.producto || response.data || response;
-                    itemData = Array.isArray(nodoInterno) ? nodoInterno[0] : nodoInterno;
+                // 1. Desempaquetar la respuesta asíncrona de red [{...}]
+                let itemData = Array.isArray(response) ? response : (response.producto || response.data || response);
+                if (Array.isArray(itemData) && itemData.length > 0) {
+                    itemData = itemData[0]; // Asegurar la extracción del objeto crudo limpio
                 }
                 
-                // 2. Extraer valores con caídas seguras robustas
-                let rawPerecedero = (itemData && itemData.perecedero !== undefined) ? itemData.perecedero : 0;
+                // 2. Extraer el 1 o 0 real verificado desde la base de datos de Laravel
+                let rawPerecedero = itemData && itemData.perecedero !== undefined ? itemData.perecedero : 0;
                 let esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-                
-                // Extraer el nombre real devuelto por la base de datos
-                let nombreProdClean = "Producto";
-                if (itemData && itemData.nombre) {
-                    nombreProdClean = itemData.nombre.trim();
-                } else {
-                    let optLocal = $('#producto_id option[value="' + idEncontrado + '"]');
-                    if (optLocal.length && optLocal.text().trim() !== "") {
-                        nombreProdClean = optLocal.text().trim();
-                    }
-                }
+                let nombreProdClean = (itemData && itemData.nombre ? itemData.nombre : 'Producto').trim();
 
-                console.log("📦 [Datos Extraídos] Nombre:", nombreProdClean, " | Perecedero:", esPerecederoReal);
-
-                // Verificar si la opción ya existe físicamente en el HTML original
+                // Verificar si la opción ya existe físicamente en el HTML original de entrada
                 let opcionExistente = $('#producto_id option[value="' + idEncontrado + '"]');
                 
                 if (opcionExistente.length === 0) {
-                    // 🚀 SI NO EXISTE: Lo inyectamos de cero con su NOMBRE real de la BD
+                    // 🚀 SI NO EXISTE: Lo inyectamos de cero de forma limpia con sus atributos reales
                     let nuevaOpt = $('<option></option>')
                         .val(idEncontrado)
                         .text(nombreProdClean)
@@ -1399,38 +1405,38 @@ function agregarProductoScanner(sku) {
                         .data('perecedero', esPerecederoReal);
                     $('#producto_id').append(nuevaOpt);
                 } else {
-                    // 🚀 SI YA EXISTE: Actualizamos únicamente los atributos sin machacar el texto original
+                    // 🚀 SI YA EXISTE: Únicamente actualizamos el atributo 'data-perecedero'
                     opcionExistente.attr('data-perecedero', esPerecederoReal)
                                    .data('perecedero', esPerecederoReal);
                 }
 
                 // =========================================================================
-                // 🚀 SINCRONIZACIÓN ATÓMICA DE INTERFAZ GRÁFICA (SELECTPICKER)
+                // 🚀 ACTUALIZACIÓN CORRECTA DE BOOTSTRAP SELECT
                 // =========================================================================
-                // Asignamos el valor en el select nativo, refrescamos bootstrap-select y disparamos change
-                $('#producto_id').val(idEncontrado);
-                $('#producto_id').selectpicker('refresh');
-                $('#producto_id').trigger('change'); 
+                // Desmarcar visualmente de forma segura usando el método nativo 'val' de selectpicker
+                $('#producto_id').selectpicker('val', ''); 
+
+                // Asignar el nuevo ID nativo, REFRESCAR el componente visual y disparar el change
+                $('#producto_id').val(idEncontrado).selectpicker('refresh').trigger('change'); 
                 
                 // Limpiar campos de búsqueda e inputs del escáner
                 $('#modalProductoNuevo').modal('hide');
                 $('#SKU').val(''); 
                 $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
 
-                // 3. Retraso controlado para transferir el foco al input de cantidad
+                // 3. Retraso de protección visual para mover el foco del cursor
                 setTimeout(function() {
+                    // Convertimos a entero por seguridad en la validación
                     if (parseInt(esPerecederoReal) === 1) {
-                        if ($('#fecha_vencimiento').length) {
-                            $('#fecha_vencimiento').focus();
-                        }
+                        $('#fecha_vencimiento').focus();
                     } else {
+                        // Forzamos el foco y la selección total del texto del input cantidad
                         let $cantidadInput = $('#cantidad');
                         if ($cantidadInput.length) {
-                            console.log("⚡ [Enfoque] Moviendo cursor al campo cantidad.");
                             $cantidadInput.focus().select();
                         }
                     }
-                }, 250);
+                }, 180); // Ajustado a 180ms para dar tiempo al render de Bootstrap Select
 
             } else {
 
