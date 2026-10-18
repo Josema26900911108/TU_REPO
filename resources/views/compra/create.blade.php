@@ -698,95 +698,94 @@ function agregarProductoScanner(sku) {
 function procesarSeleccionProducto(id, itemData) {
     let opcionExistente = $('#producto_id option[value="' + id + '"]');
     let esPerecederoReal = 0;
+    let nombreProdClean = "";
 
-    // Apagar temporalmente el evento change manual para evitar parpadeos visuales corruptos
+    // 1. Apagar temporalmente el evento change para evitar interferencias
     $('#producto_id').off('change');
 
-    // =========================================================================
-    // 🚀 GESTIÓN DE OPCIONES EN EL DOM SIN DUPLICADOS VISUALES
-    // =========================================================================
+    // 2. Extraer el estado perecedero y limpiar el texto
     if (opcionExistente.length > 0) {
-        // 1. SI YA EXISTE: ¡PROHIBIDO USAR .text()! Esto evita el duplicado en selectpicker
         let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
         esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
-        
-        console.log("♻️ [Visibilidad] Producto existente detectado. Manteniendo texto original. ¿Perecedero?:", esPerecederoReal);
+        nombreProdClean = opcionExistente.text().trim();
     } else if (itemData) {
-        // 2. SI NO EXISTE: Aquí sí creamos el nodo de texto limpiamente por única vez
         let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
         esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === '1') ? 1 : 0;
-        
-        // Mapear con prioridad a la respuesta de Laravel
-        let nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
+        nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
+    }
 
+    // 🚀 CORTAFUEGOS DE TEXTO: Si el DOM ya tenía el texto duplicado, lo limpiamos de raíz
+    if (nombreProdClean) {
+        nombreProdClean = nombreProdClean.replace(/(.+?)\1+/g, '$1').trim();
+    }
+
+    // 3. Garantizar que la opción nativa tenga un único texto limpio
+    if (opcionExistente.length > 0) {
+        opcionExistente.text(nombreProdClean); 
+    } else {
         let nuevaOpt = $('<option></option>')
             .val(id)
-            .text(nombreProdClean) // Se inyecta una sola vez de forma limpia
+            .text(nombreProdClean)
             .attr('data-perecedero', esPerecederoReal);
-            
         $('#producto_id').append(nuevaOpt);
-        console.log("✨ [Inyección] Nueva opción agregada con éxito al select.");
     }
 
     // =========================================================================
-    // 🚀 RECONSTRUCCIÓN ATÓMICA DE INTERFAZ GRÁFICA
+    // 🚀 SELECCIÓN AUTOMÁTICA USANDO LA API OFICIAL DE SELECTPICKER
     // =========================================================================
-    // Asignamos el valor al select nativo y refrescamos de manera limpia
-    $('#producto_id').val(id);
-    $('#producto_id').selectpicker('refresh');
+    // Al usar 'val' directamente dentro del método del plugin, la librería limpia 
+    // el contenedor de texto antiguo de forma idéntica a cuando haces un clic manual.
+    $('#producto_id').selectpicker('val', id);
 
-
-    // Aplicar los estilos de visibilidad de forma inmediata e imperativa (Rompe el bloqueo de d-none)
+    // 4. Aplicar estilos de visibilidad (Manejo correcto de d-none de Bootstrap)
     if (esPerecederoReal === 1) {
-        console.log("🛠️ [Blindaje Visual] Mostrando campo de fecha.");
+        console.log("🛠️ [Escáner] Mostrando campo de fecha para:", nombreProdClean);
         $('#contenedor_fecha').removeClass('d-none').show();
         if ($('#fecha_vencimiento').length) {
             $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
         }
     } else {
-        console.log("🛠️ [Blindaje Visual] Ocultando campo de fecha.");
+        console.log("🛠️ [Escáner] Ocultando campo de fecha para:", nombreProdClean);
         $('#contenedor_fecha').addClass('d-none').hide();
         if ($('#fecha_vencimiento').length) {
             $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
         }
     }
 
-    // Limpieza de inputs auxiliares del escáner
+    // Limpieza de campos auxiliares del escáner
     $('#modalProductoNuevo').modal('hide');
     $('#SKU').val(''); 
     $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
 
-    // Reactivar y disparar el change de la página tras un leve retraso para que selectpicker se estabilice
+    // 5. Retraso controlado para simular el comportamiento del clic manual y disparar eventos
     setTimeout(function() {
-        // Volver a vincular tu función change original si se requiere (o se ejecuta nativamente al lanzar el trigger)
-        console.log("📣 [Despachador] Disparando evento change controlado.");
+        console.log("📣 [Escáner] Sincronización visual completada con éxito.");
         
-        // Re-enganchar el evento change si fue removido globalmente
+        // Volver a vincular el change si guardaste la función original
         if (typeof window.funcionChangeProductoOriginal === "function") {
             $('#producto_id').on('change', window.funcionChangeProductoOriginal);
         }
         
+        // Disparamos el trigger nativo para que el resto de tu pantalla procese el producto
         $('#producto_id').trigger('change');
-    }, 120);
+    }, 100);
 
-    // Mover el foco del cursor de forma atómica y prioritaria
+    // 6. Mover el foco del cursor al input correspondiente
     setTimeout(function() {
         if (esPerecederoReal === 1) {
             if ($('#fecha_vencimiento').length) {
-                console.log("⏳ [Foco] Posicionando cursor en Fecha de Vencimiento.");
                 $('#fecha_vencimiento').focus().select();
             }
         } else {
             let $cantidadInput = $('#cantidad');
             if ($cantidadInput.length) {
-                console.log("📦 [Foco] Posicionando cursor en Cantidad.");
                 $cantidadInput.focus().select();
             }
         }
-        // Liberar la pistola para el próximo escaneo
-        estaProcesandoScan = false;
-    }, 280);
+        estaProcesandoScan = false; // Liberar la pistola para el siguiente escaneo
+    }, 250);
 }
+
 
 
 function abrirModalExpressProductoNuevo(skuAAsignar) {
@@ -1492,94 +1491,94 @@ function agregarProductoScanner(sku) {
 function procesarSeleccionProducto(id, itemData) {
     let opcionExistente = $('#producto_id option[value="' + id + '"]');
     let esPerecederoReal = 0;
+    let nombreProdClean = "";
 
-    // Apagar temporalmente el evento change manual para evitar parpadeos visuales corruptos
+    // 1. Apagar temporalmente el evento change para evitar interferencias
     $('#producto_id').off('change');
 
-    // =========================================================================
-    // 🚀 GESTIÓN DE OPCIONES EN EL DOM SIN DUPLICADOS VISUALES
-    // =========================================================================
+    // 2. Extraer el estado perecedero y limpiar el texto
     if (opcionExistente.length > 0) {
-        // 1. SI YA EXISTE: ¡PROHIBIDO USAR .text()! Esto evita el duplicado en selectpicker
         let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
         esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
-        
-        console.log("♻️ [Visibilidad] Producto existente detectado. Manteniendo texto original. ¿Perecedero?:", esPerecederoReal);
+        nombreProdClean = opcionExistente.text().trim();
     } else if (itemData) {
-        // 2. SI NO EXISTE: Aquí sí creamos el nodo de texto limpiamente por única vez
         let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
         esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === '1') ? 1 : 0;
-        
-        // Mapear con prioridad a la respuesta de Laravel
-        let nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
+        nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
+    }
 
+    // 🚀 CORTAFUEGOS DE TEXTO: Si el DOM ya tenía el texto duplicado, lo limpiamos de raíz
+    if (nombreProdClean) {
+        nombreProdClean = nombreProdClean.replace(/(.+?)\1+/g, '$1').trim();
+    }
+
+    // 3. Garantizar que la opción nativa tenga un único texto limpio
+    if (opcionExistente.length > 0) {
+        opcionExistente.text(nombreProdClean); 
+    } else {
         let nuevaOpt = $('<option></option>')
             .val(id)
-            .text(nombreProdClean) // Se inyecta una sola vez de forma limpia
+            .text(nombreProdClean)
             .attr('data-perecedero', esPerecederoReal);
-            
         $('#producto_id').append(nuevaOpt);
-        console.log("✨ [Inyección] Nueva opción agregada con éxito al select.");
     }
 
     // =========================================================================
-    // 🚀 RECONSTRUCCIÓN ATÓMICA DE INTERFAZ GRÁFICA
+    // 🚀 SELECCIÓN AUTOMÁTICA USANDO LA API OFICIAL DE SELECTPICKER
     // =========================================================================
-    // Asignamos el valor al select nativo y refrescamos de manera limpia
-    $('#producto_id').val(id);
-    $('#producto_id').selectpicker('refresh');
+    // Al usar 'val' directamente dentro del método del plugin, la librería limpia 
+    // el contenedor de texto antiguo de forma idéntica a cuando haces un clic manual.
+    $('#producto_id').selectpicker('val', id);
 
-    // Aplicar los estilos de visibilidad de forma inmediata e imperativa (Rompe el bloqueo de d-none)
+    // 4. Aplicar estilos de visibilidad (Manejo correcto de d-none de Bootstrap)
     if (esPerecederoReal === 1) {
-        console.log("🛠️ [Blindaje Visual] Mostrando campo de fecha.");
+        console.log("🛠️ [Escáner] Mostrando campo de fecha para:", nombreProdClean);
         $('#contenedor_fecha').removeClass('d-none').show();
         if ($('#fecha_vencimiento').length) {
             $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
         }
     } else {
-        console.log("🛠️ [Blindaje Visual] Ocultando campo de fecha.");
+        console.log("🛠️ [Escáner] Ocultando campo de fecha para:", nombreProdClean);
         $('#contenedor_fecha').addClass('d-none').hide();
         if ($('#fecha_vencimiento').length) {
             $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
         }
     }
 
-    // Limpieza de inputs auxiliares del escáner
+    // Limpieza de campos auxiliares del escáner
     $('#modalProductoNuevo').modal('hide');
     $('#SKU').val(''); 
     $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
 
-    // Reactivar y disparar el change de la página tras un leve retraso para que selectpicker se estabilice
+    // 5. Retraso controlado para simular el comportamiento del clic manual y disparar eventos
     setTimeout(function() {
-        // Volver a vincular tu función change original si se requiere (o se ejecuta nativamente al lanzar el trigger)
-        console.log("📣 [Despachador] Disparando evento change controlado.");
+        console.log("📣 [Escáner] Sincronización visual completada con éxito.");
         
-        // Re-enganchar el evento change si fue removido globalmente
+        // Volver a vincular el change si guardaste la función original
         if (typeof window.funcionChangeProductoOriginal === "function") {
             $('#producto_id').on('change', window.funcionChangeProductoOriginal);
         }
         
+        // Disparamos el trigger nativo para que el resto de tu pantalla procese el producto
         $('#producto_id').trigger('change');
-    }, 120);
+    }, 100);
 
-    // Mover el foco del cursor de forma atómica y prioritaria
+    // 6. Mover el foco del cursor al input correspondiente
     setTimeout(function() {
         if (esPerecederoReal === 1) {
             if ($('#fecha_vencimiento').length) {
-                console.log("⏳ [Foco] Posicionando cursor en Fecha de Vencimiento.");
                 $('#fecha_vencimiento').focus().select();
             }
         } else {
             let $cantidadInput = $('#cantidad');
             if ($cantidadInput.length) {
-                console.log("📦 [Foco] Posicionando cursor en Cantidad.");
                 $cantidadInput.focus().select();
             }
         }
-        // Liberar la pistola para el próximo escaneo
-        estaProcesandoScan = false;
-    }, 280);
+        estaProcesandoScan = false; // Liberar la pistola para el siguiente escaneo
+    }, 250);
 }
+
 
 
 function abrirModalExpressProductoNuevo(skuAAsignar) {
