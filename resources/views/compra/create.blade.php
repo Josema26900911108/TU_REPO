@@ -696,14 +696,16 @@ function agregarProductoScanner(sku) {
 // 🚀 FUNCIÓN CENTRALIZADA DE SELECCIÓN Y ENFOQUE CORREGIDA
 // =========================================================================
 function procesarSeleccionProducto(id, itemData) {
-    let opcionExistente = $('#producto_id option[value="' + id + '"]');
+    // 🚨 CRÍTICO: Forzar que el ID sea una cadena de texto para que coincida exactamente con el HTML de Blade
+    let idString = String(id).trim();
+    let opcionExistente = $('#producto_id option[value="' + idString + '"]');
     let esPerecederoReal = 0;
     let nombreProdClean = "";
 
-    // 1. Apagar temporalmente el evento change para evitar interferencias
+    // 1. Apagar temporalmente el evento change para evitar bucles visuales intermedios
     $('#producto_id').off('change');
 
-    // 2. Extraer el estado perecedero y limpiar el texto
+    // 2. Extraer el estado perecedero y limpiar el texto original de Blade o Servidor
     if (opcionExistente.length > 0) {
         let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
         esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
@@ -714,28 +716,34 @@ function procesarSeleccionProducto(id, itemData) {
         nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
     }
 
-    // 🚀 CORTAFUEGOS DE TEXTO: Si el DOM ya tenía el texto duplicado, lo limpiamos de raíz
+    // 🚀 PURGA DE TEXTO: Si por errores previos el texto ya venía duplicado, lo recortamos de raíz
     if (nombreProdClean) {
         nombreProdClean = nombreProdClean.replace(/(.+?)\1+/g, '$1').trim();
     }
 
-    // 3. Garantizar que la opción nativa tenga un único texto limpio
+    // 3. Garantizar que la opción nativa tenga un único texto limpio y el ID en string
     if (opcionExistente.length > 0) {
         opcionExistente.text(nombreProdClean); 
     } else {
         let nuevaOpt = $('<option></option>')
-            .val(id)
+            .val(idString)
             .text(nombreProdClean)
             .attr('data-perecedero', esPerecederoReal);
         $('#producto_id').append(nuevaOpt);
     }
 
     // =========================================================================
-    // 🚀 SELECCIÓN AUTOMÁTICA USANDO LA API OFICIAL DE SELECTPICKER
+    // 🚀 SINCRONIZACIÓN ATÓMICA REPARADA
     // =========================================================================
-    // Al usar 'val' directamente dentro del método del plugin, la librería limpia 
-    // el contenedor de texto antiguo de forma idéntica a cuando haces un clic manual.
-    $('#producto_id').selectpicker('val', id);
+    // Primero seleccionamos el valor a nivel nativo en el HTML
+    $('#producto_id').val(idString);
+
+    // 💥 SOLUCIÓN AL DUPLICADO: Antes de refrescar, vaciamos manualmente el texto del botón 
+    // de Bootstrap Select que se quedó pegado en el renderizado anterior del escáner.
+    $('#producto_id').closest('.bootstrap-select').find('.filter-option-inner-inner').text('');
+
+    // Refrescamos el componente para que dibuje el texto limpio actual
+    $('#producto_id').selectpicker('refresh');
 
     // 4. Aplicar estilos de visibilidad (Manejo correcto de d-none de Bootstrap)
     if (esPerecederoReal === 1) {
@@ -757,16 +765,16 @@ function procesarSeleccionProducto(id, itemData) {
     $('#SKU').val(''); 
     $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
 
-    // 5. Retraso controlado para simular el comportamiento del clic manual y disparar eventos
+    // 5. Retraso controlado para estabilizar la interfaz gráfica y lanzar el cambio
     setTimeout(function() {
-        console.log("📣 [Escáner] Sincronización visual completada con éxito.");
+        console.log("📣 [Escáner] Sincronización visual completada sin duplicados.");
         
-        // Volver a vincular el change si guardaste la función original
+        // Re-enganchar tu evento change original de la página si aplica
         if (typeof window.funcionChangeProductoOriginal === "function") {
             $('#producto_id').on('change', window.funcionChangeProductoOriginal);
         }
         
-        // Disparamos el trigger nativo para que el resto de tu pantalla procese el producto
+        // Disparamos el trigger nativo para que el resto de tu formulario procese el producto
         $('#producto_id').trigger('change');
     }, 100);
 
@@ -785,7 +793,6 @@ function procesarSeleccionProducto(id, itemData) {
         estaProcesandoScan = false; // Liberar la pistola para el siguiente escaneo
     }, 250);
 }
-
 
 
 function abrirModalExpressProductoNuevo(skuAAsignar) {
@@ -1489,14 +1496,16 @@ function agregarProductoScanner(sku) {
 // 🚀 FUNCIÓN CENTRALIZADA DE SELECCIÓN Y ENFOQUE CORREGIDA
 // =========================================================================
 function procesarSeleccionProducto(id, itemData) {
-    let opcionExistente = $('#producto_id option[value="' + id + '"]');
+    // 🚨 CRÍTICO: Forzar que el ID sea una cadena de texto para que coincida exactamente con el HTML de Blade
+    let idString = String(id).trim();
+    let opcionExistente = $('#producto_id option[value="' + idString + '"]');
     let esPerecederoReal = 0;
     let nombreProdClean = "";
 
-    // 1. Apagar temporalmente el evento change para evitar interferencias
+    // 1. Apagar temporalmente el evento change para evitar bucles visuales intermedios
     $('#producto_id').off('change');
 
-    // 2. Extraer el estado perecedero y limpiar el texto
+    // 2. Extraer el estado perecedero y limpiar el texto original de Blade o Servidor
     if (opcionExistente.length > 0) {
         let rawPerecedero = opcionExistente.attr('data-perecedero') || 0;
         esPerecederoReal = parseInt(rawPerecedero) === 1 ? 1 : 0;
@@ -1507,28 +1516,34 @@ function procesarSeleccionProducto(id, itemData) {
         nombreProdClean = (itemData.producto_nombre || itemData.nombre || 'Producto').trim();
     }
 
-    // 🚀 CORTAFUEGOS DE TEXTO: Si el DOM ya tenía el texto duplicado, lo limpiamos de raíz
+    // 🚀 PURGA DE TEXTO: Si por errores previos el texto ya venía duplicado, lo recortamos de raíz
     if (nombreProdClean) {
         nombreProdClean = nombreProdClean.replace(/(.+?)\1+/g, '$1').trim();
     }
 
-    // 3. Garantizar que la opción nativa tenga un único texto limpio
+    // 3. Garantizar que la opción nativa tenga un único texto limpio y el ID en string
     if (opcionExistente.length > 0) {
         opcionExistente.text(nombreProdClean); 
     } else {
         let nuevaOpt = $('<option></option>')
-            .val(id)
+            .val(idString)
             .text(nombreProdClean)
             .attr('data-perecedero', esPerecederoReal);
         $('#producto_id').append(nuevaOpt);
     }
 
     // =========================================================================
-    // 🚀 SELECCIÓN AUTOMÁTICA USANDO LA API OFICIAL DE SELECTPICKER
+    // 🚀 SINCRONIZACIÓN ATÓMICA REPARADA
     // =========================================================================
-    // Al usar 'val' directamente dentro del método del plugin, la librería limpia 
-    // el contenedor de texto antiguo de forma idéntica a cuando haces un clic manual.
-    $('#producto_id').selectpicker('val', id);
+    // Primero seleccionamos el valor a nivel nativo en el HTML
+    $('#producto_id').val(idString);
+
+    // 💥 SOLUCIÓN AL DUPLICADO: Antes de refrescar, vaciamos manualmente el texto del botón 
+    // de Bootstrap Select que se quedó pegado en el renderizado anterior del escáner.
+    $('#producto_id').closest('.bootstrap-select').find('.filter-option-inner-inner').text('');
+
+    // Refrescamos el componente para que dibuje el texto limpio actual
+    $('#producto_id').selectpicker('refresh');
 
     // 4. Aplicar estilos de visibilidad (Manejo correcto de d-none de Bootstrap)
     if (esPerecederoReal === 1) {
@@ -1550,16 +1565,16 @@ function procesarSeleccionProducto(id, itemData) {
     $('#SKU').val(''); 
     $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
 
-    // 5. Retraso controlado para simular el comportamiento del clic manual y disparar eventos
+    // 5. Retraso controlado para estabilizar la interfaz gráfica y lanzar el cambio
     setTimeout(function() {
-        console.log("📣 [Escáner] Sincronización visual completada con éxito.");
+        console.log("📣 [Escáner] Sincronización visual completada sin duplicados.");
         
-        // Volver a vincular el change si guardaste la función original
+        // Re-enganchar tu evento change original de la página si aplica
         if (typeof window.funcionChangeProductoOriginal === "function") {
             $('#producto_id').on('change', window.funcionChangeProductoOriginal);
         }
         
-        // Disparamos el trigger nativo para que el resto de tu pantalla procese el producto
+        // Disparamos el trigger nativo para que el resto de tu formulario procese el producto
         $('#producto_id').trigger('change');
     }, 100);
 
