@@ -391,13 +391,20 @@
                 <div class="modal-body bg-light">
                     <div class="row g-3">
                         
-                        <!--- Código (Bloqueado con el SKU escaneado) ---->
-                        <div class="col-md-4 mb-3">
-                            <label for="modal_codigo" class="form-label font-weight-bold">Código / SKU:</label>
-                            <input type="text" name="modal_codigo" id="modal_codigo" class="form-control border-primary font-weight-bold" readonly>
-                        </div>
-
-                        <button type="button" id="btn-generar-codigo" class="btn btn-secondary">Generar</button>
+<div class="row align-items-end mb-3">
+    <!-- Columna del Input (Ocupa la mayor parte de la línea) -->
+    <div class="col-8 col-md-9">
+        <label for="modal_codigo" class="form-label font-weight-bold mb-1">Código / SKU:</label>
+        <input type="text" name="modal_codigo" id="modal_codigo" class="form-control border-primary font-weight-bold" readonly>
+    </div>
+    
+    <!-- Columna del Botón (Alineado perfectamente a la derecha) -->
+    <div class="col-4 col-md-3 pl-0">
+        <button type="button" id="btn-generar-codigo" class="btn btn-secondary w-100">
+            Generar
+        </button>
+    </div>
+</div>
 
                         <!--- Nombre ---->
                         <div class="col-md-6 mb-3">
