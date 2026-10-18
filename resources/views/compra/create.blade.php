@@ -607,6 +607,34 @@ document.getElementById("SKU").addEventListener("keydown", function (e) {
     }
 });
 
+// BUSCA ESTA FUNCIÓN EN TU CÓDIGO (LA QUE IMPRIME LA LÍNEA 4811) Y CORRÍGELA ASÍ:
+$('#producto_id').on('change', function() {
+    // 1. Obtener la opción seleccionada real en este milisegundo
+    let $opcionSeleccionada = $(this).find('option:selected');
+    let idProducto = $(this).val();
+
+    // Si no hay nada seleccionado realmente, abortamos para evitar lecturas vacías
+    if (!idProducto || idProducto === "") return;
+
+    let nombreProducto = $opcionSeleccionada.text().trim();
+    
+    // 2. Leer el atributo de manera doble (attr y data) por si acaso
+    let rawPerecedero = $opcionSeleccionada.attr('data-perecedero') || $opcionSeleccionada.data('perecedero') || 0;
+    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
+
+    console.log("🔄 [Cambio Manual] Producto:", nombreProducto, " | ¿Es Perecedero?:", esPerecedero);
+
+    if (esPerecedero === 1) {
+        console.log("⏳ [Perecedero] Mostrando campo de fecha.");
+        $('#contenedor_fecha').show(); // O la lógica que uses para mostrarlo
+        // NOTA: Si usas algún plugin de fecha (como datepicker), puedes inicializarlo aquí
+    } else {
+        console.log("📦 [Regular] Producto estándar. Ocultando campo de fecha.");
+        $('#contenedor_fecha').hide();
+    }
+});
+
+
 function agregarProductoScanner(sku) {
     if (estaProcesandoScan) return;
     
