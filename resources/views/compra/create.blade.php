@@ -564,6 +564,50 @@
     // Variables para detectar si es lector de barras
 let lastInputTime = 0;
 
+$('#producto_id').on('change', function() {
+    let idProducto = $(this).val();
+
+    // 🚨 CORTAFUEGOS INDISPENSABLE: Si Bootstrap Select dispara un evento transitorio
+    // con un valor nulo o vacío, lo ignoramos por completo.
+    // Esto evita que destruya la visibilidad configurada previamente por el escáner.
+    if (!idProducto || idProducto === "" || idProducto === null) {
+        console.log("⚠️ [Cambio Manual] Evento ignorado transitoriamente: Sin ID de producto real.");
+        return;
+    }
+
+    // Obtener la opción seleccionada de forma robusta
+    let $opcionSeleccionada = $(this).find('option[value="' + idProducto + '"]');
+    if ($opcionSeleccionada.length === 0) {
+        $opcionSeleccionada = $(this).find('option:selected');
+    }
+
+    let nombreProducto = $opcionSeleccionada.text().trim();
+    
+    // Leer de forma segura el atributo de perecedero del HTML original
+    let rawPerecedero = $opcionSeleccionada.attr('data-perecedero') || $opcionSeleccionada.data('perecedero') || 0;
+    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
+
+    console.log("🔄 [Cambio Manual] Producto:", nombreProducto, " | ¿Es Perecedero?:", esPerecedero);
+
+    // =========================================================================
+    // 💡 TU LÓGICA DE VISIBILIDAD ORIGINAL:
+    // =========================================================================
+    if (esPerecedero === 1) {
+        // Asegúrate de usar aquí las clases o IDs reales con los que muestras tu contenedor de fecha
+        $('#contenedor_fecha').show(); 
+        $('.contenedor_fecha').show();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
+        }
+    } else {
+        $('#contenedor_fecha').hide();
+        $('.contenedor_fecha').hide();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
+        }
+    }
+});
+
 document.getElementById("SKU").addEventListener("keydown", function (e) {
 
     // Registrar tiempo entre teclas
