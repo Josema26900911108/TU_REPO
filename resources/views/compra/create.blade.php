@@ -1026,13 +1026,7 @@ function agregarProductoScanner(sku) {
                 });
             }
 
-            // =========================================================================            
-            // DECISIÓN FINAL: ¿EXISTE O SE ABRE EL MODAL EXPRESS?
-            // =========================================================================
-            // =========================================================================
-            // DECISIÓN FINAL: ¿EXISTE O SE ABRE EL MODAL EXPRESS?
-            // =========================================================================
-            if (idEncontrado) {
+                       if (idEncontrado) {
                 console.log("🎯 [Éxito] Producto localizado con ID:", idEncontrado);
 
                 // 1. Desempaquetar la respuesta asíncrona de red [{...}]
@@ -1042,9 +1036,9 @@ function agregarProductoScanner(sku) {
                 }
                 
                 // 2. Extraer el 1 o 0 real verificado desde la base de datos de Laravel
-                let rawPerecedero = itemData.perecedero !== undefined ? itemData.perecedero : 0;
+                let rawPerecedero = itemData && itemData.perecedero !== undefined ? itemData.perecedero : 0;
                 let esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-                let nombreProdClean = (itemData.nombre || 'Producto').trim();
+                let nombreProdClean = (itemData && itemData.nombre ? itemData.nombre : 'Producto').trim();
 
                 // Verificar si la opción ya existe físicamente en el HTML original de entrada
                 let opcionExistente = $('#producto_id option[value="' + idEncontrado + '"]');
@@ -1058,20 +1052,19 @@ function agregarProductoScanner(sku) {
                         .data('perecedero', esPerecederoReal);
                     $('#producto_id').append(nuevaOpt);
                 } else {
-                    // 🚀 SI YA EXISTE: ¡PROHIBIDO USAR .text()! 
-                    // Únicamente actualizamos el atributo 'data-perecedero' para machacar el '0' viejo del HTML
+                    // 🚀 SI YA EXISTE: Únicamente actualizamos el atributo 'data-perecedero'
                     opcionExistente.attr('data-perecedero', esPerecederoReal)
                                    .data('perecedero', esPerecederoReal);
                 }
 
                 // =========================================================================
-                // 🚀 ELIMINAR CACHÉ VISUAL ANTES DE SELECCIONAR:
-                // Desmarcar limpiamente cualquier selección previa para evitar textos encimados
+                // 🚀 ACTUALIZACIÓN CORRECTA DE BOOTSTRAP SELECT
                 // =========================================================================
+                // Desmarcar visualmente de forma segura usando el método nativo 'val' de selectpicker
                 $('#producto_id').selectpicker('val', ''); 
 
-                // Asignar el nuevo valor, reconstruir la interfaz gráfica limpia y disparar el change
-                $('#producto_id').val(idEncontrado).selectpicker('').trigger('change'); 
+                // Asignar el nuevo ID nativo, REFRESCAR el componente visual y disparar el change
+                $('#producto_id').val(idEncontrado).selectpicker('refresh').trigger('change'); 
                 
                 // Limpiar campos de búsqueda e inputs del escáner
                 $('#modalProductoNuevo').modal('hide');
@@ -1080,14 +1073,20 @@ function agregarProductoScanner(sku) {
 
                 // 3. Retraso de protección visual para mover el foco del cursor
                 setTimeout(function() {
-                    if (esPerecederoReal === 1) {
+                    // Convertimos a entero por seguridad en la validación
+                    if (parseInt(esPerecederoReal) === 1) {
                         $('#fecha_vencimiento').focus();
                     } else {
-                        if ($('#cantidad').length) $('#cantidad').focus().select();
+                        // Forzamos el foco y la selección total del texto del input cantidad
+                        let $cantidadInput = $('#cantidad');
+                        if ($cantidadInput.length) {
+                            $cantidadInput.focus().select();
+                        }
                     }
-                }, 150);
+                }, 180); // Ajustado a 180ms para dar tiempo al render de Bootstrap Select
 
             } else {
+
 
 
                 // ÚNICAMENTE si no se localizó ni en la consulta de red ni en la local, es un producto NUEVO de verdad
