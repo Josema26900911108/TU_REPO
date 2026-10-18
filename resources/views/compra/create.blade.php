@@ -607,6 +607,32 @@ document.getElementById("SKU").addEventListener("keydown", function (e) {
     }
 });
 
+// BUSCA ESTA FUNCIÓN EN TU CÓDIGO (LA QUE IMPRIME LA LÍNEA 4811) Y CORRÍGELA ASÍ:
+$('#producto_id').on('change', function() {
+    // 1. Obtener la opción seleccionada real en este milisegundo
+    let $opcionSeleccionada = $(this).find('option:selected');
+    let idProducto = $(this).val();
+
+    // Si no hay nada seleccionado realmente, abortamos para evitar lecturas vacías
+    if (!idProducto || idProducto === "") return;
+
+    let nombreProducto = $opcionSeleccionada.text().trim();
+    
+    // 2. Leer el atributo de manera doble (attr y data) por si acaso
+    let rawPerecedero = $opcionSeleccionada.attr('data-perecedero') || $opcionSeleccionada.data('perecedero') || 0;
+    let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
+
+    console.log("🔄 [Cambio Manual] Producto:", nombreProducto, " | ¿Es Perecedero?:", esPerecedero);
+
+    if (esPerecedero === 1) {
+        console.log("⏳ [Perecedero] Mostrando campo de fecha.");
+        $('#contenedor_fecha').show(); // O la lógica que uses para mostrarlo
+        // NOTA: Si usas algún plugin de fecha (como datepicker), puedes inicializarlo aquí
+    } else {
+        console.log("📦 [Regular] Producto estándar. Ocultando campo de fecha.");
+        $('#contenedor_fecha').hide();
+    }
+});
 
 
 function agregarProductoScanner(sku) {
@@ -652,104 +678,79 @@ function agregarProductoScanner(sku) {
             // Si el servidor falló o no devolvió el ID exacto, escudriñamos el select nativo
             // por si el código coincide con el valor o con parte del texto del catálogo actual.
             if (!idEncontrado) {
-                let codigoSinCeros = skuAAsignar.replace(/^0+/, '');
-                $('#producto_id option').each(function() {
-                    let valorOption = $(this).val();
-                    let textoOption = $(this).text().trim().toLowerCase();
-                    
-                    if (valorOption == skuAAsignar || textoOption.includes(skuAAsignar.toLowerCase()) || (codigoSinCeros !== "" && textoOption.includes(codigoSinCeros.toLowerCase()))) {
-                        idEncontrado = valorOption;
-                        return false; // Romper bucle de búsqueda local
-                    }
-                });
-            }
-
-            if (idEncontrado) {
-                console.log("🎯 [Éxito] Producto localizado con ID:", idEncontrado);
-
-                // 1. Extraer el primer objeto del array de Laravel [{...}] de forma estricta
-                let itemData = null;
-                if (Array.isArray(response) && response.length > 0) {
-                    itemData = response[0]; // 👈 CORRECCIÓN CRÍTICA: Extraer la posición 0 del array
-                } else if (response && typeof response === 'object') {
-                    let nodoInterno = response.producto || response.data || response;
-                    itemData = Array.isArray(nodoInterno) ? nodoInterno[0] : nodoInterno;
-                }
-                
-                // 2. Extraer parámetros usando los nombres de columna reales de tu servidor
-                let rawPerecedero = (itemData && itemData.perecedero !== undefined) ? itemData.perecedero : 0;
-                let esPerecederoReal = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
-                
-                // Mapear con la columna real de tu JSON: 'producto_nombre'
-                let nombreProdClean = "Producto Cargado";
-                if (itemData && itemData.producto_nombre) {
-                    nombreProdClean = itemData.producto_nombre.trim();
-                } else if (itemData && itemData.nombre) {
-                    nombreProdClean = itemData.nombre.trim();
-                } else {
-                    let optLocal = $('#producto_id option[value="' + idEncontrado + '"]');
-                    if (optLocal.length && optLocal.text().trim() !== "") {
-                        nombreProdClean = optLocal.text().trim();
-                    }
-                }
-
-                console.log("📦 [Garantía] Mapeo Correcto -> Nombre:", nombreProdClean, " | ID:", idEncontrado, " | Perecedero:", esPerecederoReal);
-
-                // 3. Modificar el DOM Nativo antes de interactuar con el Selectpicker
-                let opcionExistente = $('#producto_id option[value="' + idEncontrado + '"]');
-                
-                if (opcionExistente.length === 0) {
-                    // Inyección limpia obligatoria con el nombre real recuperado
-                    let nuevaOpt = $('<option></option>')
-                        .val(idEncontrado)
-                        .text(nombreProdClean)
-                        .attr('data-perecedero', esPerecederoReal)
-                        .data('perecedero', esPerecederoReal);
-                    $('#producto_id').append(nuevaOpt);
-                } else {
-                    // Si ya existe en el HTML, nos aseguramos de actualizarle el texto por si estaba vacío
-                    opcionExistente.text(nombreProdClean)
-                                   .attr('data-perecedero', esPerecederoReal)
-                                   .data('perecedero', esPerecederoReal);
-                }
-
                 // =========================================================================
-                // 🚀 SINCRONIZACIÓN ATÓMICA DE INTERFAZ GRÁFICA (SELECTPICKER)
+                // 🚀 SINCRONIZACIÓN CON AISLAMIENTO DE EVENTOS FANTASMA
                 // =========================================================================
-                // 1. Asignar el ID al elemento HTML nativo
+                
+                // 1. Clonar temporalmente la función nativa del change manual para no perderla
+                //    y remover el evento del elemento para que el 'refresh' no dispare nada.
+                let unbindChange = $('#producto_id').data('events') || $._data($('#producto_id')[0], 'events');
+                
+                // Apagamos CUALQUIER escucha de change en este select temporalmente
+                $('#producto_id').off('change');
+
+                // 2. Asignar el ID al elemento HTML nativo y refrescar la caché visual
                 $('#producto_id').val(idEncontrado);
-                
-                // 2. Reconstruir el menú visual de Bootstrap Select para que asimile el texto
                 $('#producto_id').selectpicker('refresh');
                 
-// En tu función agregarProductoScanner, incrementa el tiempo de 80ms a 150ms:
-setTimeout(function() {
-    console.log("📣 [Despachador] Disparando evento change para:", nombreProdClean);
-    $('#producto_id').trigger('change');
-    
-    $('#modalProductoNuevo').modal('hide');
-    $('#SKU').val(''); 
-    $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
-}, 150); // Aumentado a 150ms para total estabilidad visual
+                // 3. Forzar manualmente las acciones de visibilidad para Perecederos
+                if (parseInt(esPerecederoReal) === 1) {
+                    console.log("🛠️ [Blindaje] Forzando visualización de campos perecederos.");
+                    // 💡 Asegúrate de usar las clases o IDs reales de tus contenedores de fecha aquí:
+                    $('#contenedor_fecha').show(); 
+                    $('.contenedor_fecha').show();
+                    if ($('#fecha_vencimiento').length) {
+                        $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
+                    }
+                } else {
+                    console.log("🛠️ [Blindaje] Forzando ocultación de campos perecederos.");
+                    $('#contenedor_fecha').hide();
+                    $('.contenedor_fecha').hide();
+                    if ($('#fecha_vencimiento').length) {
+                        $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
+                    }
+                }
 
+                // 4. Limpieza de inputs complementarios del escáner
+                $('#modalProductoNuevo').modal('hide');
+                $('#SKU').val(''); 
+                $('.bootstrap-select .bs-searchbox input').val('').trigger('input');
 
-                // 4. Mover el foco del cursor al input correspondiente
+                // 5. Dejar pasar 100ms para que selectpicker se estabilice por completo
+                setTimeout(function() {
+                    console.log("📣 [Despachador] Reactivando y disparando change manual controlado para:", nombreProdClean);
+                    
+                    // Volvemos a encender tu lógica de cambio manual (la línea 4837 se volverá a acoplar aquí)
+                    // Si tienes el método del change en una función global ejecútala aquí, 
+                    // o simplemente dispara el trigger porque el input ya tiene el valor asentado y visualmente cargado.
+                    
+                    // Volver a activar el change general de la página de forma limpia
+                    // NOTA: Si tenías asignado el evento directamente, con el trigger se ejecutará leyendo los datos perfectos.
+                    $('#producto_id').on('change', window.funcionChangeProductoOriginal); 
+                    
+                    // Disparamos el cambio manual de forma segura leyendo el objeto ya renderizado
+                    $('#producto_id').trigger('change');
+                }, 100);
+
+                // 6. Mover el foco del cursor al input correspondiente de forma prioritaria
                 setTimeout(function() {
                     if (parseInt(esPerecederoReal) === 1) {
                         if ($('#fecha_vencimiento').length) {
-                            console.log("⏳ [Enfoque] Saltando a fecha_vencimiento");
-                            $('#fecha_vencimiento').focus();
+                            console.log("⏳ [Enfoque] Forzando cursor en fecha_vencimiento.");
+                            $('#fecha_vencimiento').focus().select();
                         }
                     } else {
                         let $cantidadInput = $('#cantidad');
                         if ($cantidadInput.length) {
-                            console.log("⚡ [Enfoque] Saltando a cantidad.");
+                            console.log("⚡ [Enfoque] Forzando cursor en cantidad.");
                             $cantidadInput.focus().select();
                         }
                     }
-                }, 280);
+                }, 250);
 
             } else {
+
+
 
                 // ÚNICAMENTE si no se localizó ni en la consulta de red ni en la local, es un producto NUEVO de verdad
                 console.log("🆕 [Nuevo] El producto no existe en el catálogo. Abriendo modal express para:", skuAAsignar);
