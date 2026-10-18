@@ -1299,41 +1299,51 @@ $(document).on('refreshed.bs.select loaded.bs.select render.bs.select', '#produc
         });
 
 // =========================================================================
-// 🔄 INTERCEPTOR DE CAMBIO: DETECTOR DE PRODUCTO SELECCIONADO (BLINDADO)
+// BUSCA ESTA FUNCIÓN EN TU ARCHIVO (Línea ~4824) Y REEMPLÁZALA:
 // =========================================================================
 $('#producto_id').on('change', function() {
+    let idProducto = $(this).val();
 
-    // 1. Localizar la opción que el usuario seleccionó físicamente con el mouse
-    let selectedOption = $(this).find('option:selected');
+    // 🚨 CORTAFUEGOS INDISPENSABLE: Si Bootstrap Select dispara un evento transitorio
+    // con un valor nulo o vacío, lo ignoramos por completo.
+    // Esto evita que destruya la visibilidad configurada previamente por el escáner.
+    if (!idProducto || idProducto === "" || idProducto === null) {
+        console.log("⚠️ [Cambio Manual] Evento ignorado transitoriamente: Sin ID de producto real.");
+        return;
+    }
+
+    // Obtener la opción seleccionada de forma robusta
+    let $opcionSeleccionada = $(this).find('option[value="' + idProducto + '"]');
+    if ($opcionSeleccionada.length === 0) {
+        $opcionSeleccionada = $(this).find('option:selected');
+    }
+
+    let nombreProducto = $opcionSeleccionada.text().trim();
     
-    // 2. Leer el atributo del HTML de forma directa saltándose la caché de jQuery
-    let rawPerecedero = selectedOption.attr('data-perecedero') || selectedOption.data('perecedero') || 0;
+    // Leer de forma segura el atributo de perecedero del HTML original
+    let rawPerecedero = $opcionSeleccionada.attr('data-perecedero') || $opcionSeleccionada.data('perecedero') || 0;
     let esPerecedero = (rawPerecedero == 1 || rawPerecedero === true || rawPerecedero === 'true' || rawPerecedero === '1') ? 1 : 0;
 
-    console.log("🔄 [Cambio Manual] Producto:", selectedOption.text().trim(), "| ¿Es Perecedero?:", esPerecedero);
+    console.log("🔄 [Cambio Manual] Producto:", nombreProducto, " | ¿Es Perecedero?:", esPerecedero);
 
-    // 3. Ejecutar la acción visual sin invocar jamás a .selectpicker('refresh') para evitar bucles
+    // =========================================================================
+    // 💡 TU LÓGICA DE VISIBILIDAD ORIGINAL:
+    // =========================================================================
     if (esPerecedero === 1) {
-        console.log("⏰ [Lote] Producto perecedero detectado de entrada. Mostrando campo de fecha.");
-        $('#contenedor_fecha').removeClass('d-none');
-        $('#fecha_vencimiento').prop('required', true);
-        
-        // Mover el foco al cuadro de fecha de forma automática
-        setTimeout(function() {
-            $('#fecha_vencimiento').focus();
-        }, 100);
+        // Asegúrate de usar aquí las clases o IDs reales con los que muestras tu contenedor de fecha
+        $('#contenedor_fecha').show(); 
+        $('.contenedor_fecha').show();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').prop('disabled', false).prop('required', true);
+        }
     } else {
-        console.log("📦 [Regular] Producto estándar. Ocultando campo de fecha.");
-        $('#contenedor_fecha').addClass('d-none');
-        $('#fecha_vencimiento').prop('required', false).val('');
+        $('#contenedor_fecha').hide();
+        $('.contenedor_fecha').hide();
+        if ($('#fecha_vencimiento').length) {
+            $('#fecha_vencimiento').val('').prop('disabled', true).prop('required', false);
+        }
     }
-    
-    // 🛑 PROHIBIDO COLOCAR AQUÍ: $('#producto_id').selectpicker('refresh');
 });
-
-
-
-
         // =========================================================================
         // 5. FUNCIÓN CORE: ESCANEO Y BUSQUEDA ASÍNCRONA EN CATÁLOGO
         // =========================================================================
