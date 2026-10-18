@@ -561,6 +561,53 @@
     let scanner = null;
     let escaneando = false;
 
+    // Variables para detectar si es lector de barras
+let lastInputTime = 0;
+
+document.getElementById("SKU").addEventListener("keydown", function (e) {
+
+    // Registrar tiempo entre teclas
+    const now = Date.now();
+    const delta = now - lastInputTime;
+    lastInputTime = now;
+
+    // Si presiona ENTER
+    if (e.key === "Enter") {
+        e.preventDefault();
+
+        let sku = this.value.trim();
+
+        // Si no hay nada, solo limpiar y enfocar
+        if (sku === "") {
+            this.focus();
+            return;
+        }
+
+        // Detectar si fue lector de código de barras:
+        // Si la escritura fue demasiado rápida (<80ms por tecla)
+        const isScanner = delta < 80;
+        const cantidades = $("#cantidad").val();
+
+
+        if (isScanner) {
+            // Caso lector de código de barras
+            if(cantidades===1 || cantidades===""){
+                $("#cantidad").val(1);
+            }
+            $("#descuento").val(0);
+            $("#SKU").val("");     // limpiar
+            $("#SKU").focus();     // regresar el foco
+            agregarProductoScanner(sku);
+        } else {
+            // Caso ingreso manual con teclado
+            $("#cantidad").val(sku);  // copiar número del SKU a cantidad
+            $("#SKU").val("");        // limpiar
+            $("#SKU").focus();        // regresar el foco
+        }
+    }
+});
+
+
         // =========================================================================
     // 10. LECTOR DE CÓDIGOS QR / BARRAS EXTERNO (HTML5-QRCODE)
     // =========================================================================
@@ -613,7 +660,7 @@
         })
         .catch(err => console.error("Error al detener manualmente:", err));
     }
-    
+
 
 
     // =========================================================================
