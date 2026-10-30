@@ -468,6 +468,8 @@ Route::any('/etadirect-ExcelAutomataValidarMamoOrden', [etadirectController::cla
 Route::post('/etadirect/importar',[etadirectController::class,'importarMAMO'])->name('etadirect.importar');
 Route::post('/exportar-etadirect', [etadirectController::class, 'exportar'])->name('etadirect.exportar');
 
+Route::get('/mamo/progreso', [etadiRECTController::class, 'consultarProgresoMamo'])->name('mamo.progreso');
+
 Route::get('/abrmateriales', [ArbolMaterialesController::class, 'fetch2'])->name('fetchabrmateriales');
 Route::get('/abrmatpadres', [ArbolMaterialesController::class, 'fillParentCategory'])->name('abrpadres');
 Route::get('/abrmatcategoria', [ArbolMaterialesController::class, 'fillEstructura'])->name('abrcategoria');

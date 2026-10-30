@@ -20,9 +20,314 @@ use MathParser\StdMathParser;
 use MathParser\Interpreting\Evaluator;
 use  App\Models\Caracteristica;
 use Illuminate\Support\Facades\Cache;
+use Symfony\Component\Cache\Adapter\NullAdapter;
+use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 
+
+trait AutomataMamoTrait
+{
+    /** Instancia única por request */
+    private static ?ExpressionLanguage $exprLang = null;
+    /** AST por fórmula */
+    private static array $astCache = [];
+    /** Resultado por (fórmula + variables) */
+    private static array $resCache = [];
+
+    // =========================================================================
+    // PRECARGA — 4 a 6 queries por orden
+    // =========================================================================
+protected function precargarContextoOrden(string $orden, string $fkTienda): array
+{
+    $t0 = microtime(true);
+
+    // 1. Items de la orden
+    $itemsEta = DB::table('ETA')
+        ->where('Orden', $orden)
+        ->where('fkTienda', $fkTienda)
+        ->select('SKU', 'CENTRO', 'TIPO_DE_SERVICIO', DB::raw('SUM(Cantidad) as Cantidad'))
+        ->groupBy('SKU', 'CENTRO', 'TIPO_DE_SERVICIO')
+        ->get();
+
+    $skusEta = $itemsEta->pluck('SKU')->map(fn($s) => trim((string)$s))->unique()->values()->all();
+
+    // 2. Árbol completo (join al padre en una sola pasada)
+    $arbol = DB::table('treematerialescategoria as tm')
+        ->leftJoin('treematerialescategoria as tmc', 'tm.padre_id', '=', 'tmc.id')
+        ->where('tm.fkTienda', $fkTienda)
+        ->select(
+            'tm.SKU as sku', 
+            'tm.padre_id', 
+            'tm.id as id_nodo',
+            'tmc.id as id_padre', 
+            'tmc.SKU as sku_padre',
+            'tmc.nombre as nombre_padre', 
+            'tmc.minimo as minimo_padre',
+            'tmc.limite as limite_padre', 
+            'tmc.tipo as tipo_padre', 
+            'tmc.valor as valor_padre'
+        )->get();
+
+    $mapaNodo = [];      
+    $mapaHermanos = [];  
+    $padreCategoriaPorSku = [];
+
+    foreach ($arbol as $row) {
+        $skuL = trim((string)$row->sku);
+        $mapaNodo[$skuL] = $row;
+        
+        // Construcción del mapa de hermanos
+        if ($row->padre_id !== null) {
+            $mapaHermanos[$row->padre_id][] = $skuL;
+        }
+        
+        if ($row->sku_padre) {
+            $padreCategoriaPorSku[$skuL] = (object)[
+                'SKU' => $row->sku_padre, 'nombre' => $row->nombre_padre, 
+                'minimo' => $row->minimo_padre, 'limite' => $row->limite_padre, 
+                'tipo' => $row->tipo_padre, 'valor' => $row->valor_padre,
+            ];
+        }
+    }
+
+// 3. CONSULTA MAESTRA DE RELACIONES
+$relacionesRaw = collect();
+$skufinalesRelevantes = [];
+
+if (!empty($skusEta)) {
+    // 3.a) Buscar skufinales directos de los SKUs de la orden
+    $skufinalesDirectos = DB::table('material_relaciones')
+        ->where('fkTienda', $fkTienda)
+        ->whereIn('SKU', $skusEta)
+        ->pluck('skufinal')
+        ->map(fn($s) => trim((string)$s))
+        ->filter()->unique()->all();
+
+    foreach ($skufinalesDirectos as $skf) {
+        $skufinalesRelevantes[$skf] = true;
+    }
+
+    // 3.b) Verificar si hay reglas con maximo=10000
+    $hayReglasConMaximo10000 = DB::table('material_relaciones')
+        ->where('fkTienda', $fkTienda)
+        ->whereIn('SKU', $skusEta)
+        ->where('maximo', 10000.0)
+        ->exists();
+
+    // 3.c) Si hay reglas con maximo=10000, buscar skufinales de hermanos EN BLOQUE
+    if ($hayReglasConMaximo10000) {
+        // Recopilar todos los hermanos de los SKUs de la orden
+        $hermanos = [];
+        foreach ($itemsEta as $item) {
+            $sku = trim((string)$item->SKU);
+            $nodo = $mapaNodo[$sku] ?? null;
+            
+            if ($nodo && $nodo->padre_id !== null) {
+                foreach ($mapaHermanos[$nodo->padre_id] ?? [] as $h) {
+                    $hermanos[trim((string)$h)] = true;
+                }
+            }
+        }
+        $hermanos = array_keys($hermanos);
+
+        // UNA SOLA consulta para todos los hermanos
+        if (!empty($hermanos)) {
+            $skufinalesHermanos = DB::table('material_relaciones')
+                ->where('fkTienda', $fkTienda)
+                ->where(function($q) use ($hermanos) {
+                    $q->whereIn('SKU', $hermanos)
+                      ->orWhereIn('depende_SKU', $hermanos);
+                })
+                ->where('maximo', 10000.0)
+                ->pluck('skufinal')
+                ->map(fn($s) => trim((string)$s))
+                ->filter()->unique()->all();
+
+            foreach ($skufinalesHermanos as $skf) {
+                $skufinalesRelevantes[$skf] = true;
+            }
+        }
+    }
+
+    $skufinalesRelevantes = array_keys($skufinalesRelevantes);
+
+    // 3.d) Traer TODAS las reglas de esos skufinales
+    if (!empty($skufinalesRelevantes)) {
+        $relacionesRaw = DB::table('material_relaciones')
+            ->where('fkTienda', $fkTienda)
+            ->whereIn('skufinal', $skufinalesRelevantes)
+            ->orderBy('id', 'ASC')
+            ->get();
+    }
+}
+
+    // Indexación rápida
+    $relPorDepende = []; $relPorSkufinal = []; $relPorSku = []; $relacionesPorSkufinalSinFiltro = [];
+    foreach ($relacionesRaw as $r) {
+        $dep = trim((string)$r->depende_SKU);
+        $sku = trim((string)$r->SKU);
+        $skf = trim((string)$r->skufinal);
+        
+        $relPorDepende[$dep][] = $r;
+        $relPorSkufinal[$skf][] = $r;
+        $relPorSku[$sku][] = $r;
+        $relacionesPorSkufinalSinFiltro[$skf][] = $r;
+    }
+    
+    $conteoSinFiltroPorSkufinal = array_map('count', $relacionesPorSkufinalSinFiltro);
+
+    // 4. ETA por SKU (Para los cálculos en RAM)
+    $etaPorSku = [];
+    foreach ($itemsEta as $it) {
+        $etaPorSku[trim((string)$it->SKU)][] = $it;
+    }
+
+    // 5. Mapa O(1)
+    $itemsReportados = array_flip($skusEta);
+
+    Log::info(sprintf(
+        'Precarga orden %s: %.1fms (items=%d, arbol=%d, rel=%d, skf=%d)',
+        $orden, (microtime(true) - $t0) * 1000,
+        $itemsEta->count(), $arbol->count(),
+        $relacionesRaw->count(), count($relacionesPorSkufinalSinFiltro)
+    ));
+
+    return compact(
+        'itemsEta', 'skusEta', 'mapaNodo', 'mapaHermanos', 'padreCategoriaPorSku',
+        'relPorDepende', 'relPorSkufinal', 'relPorSku',
+        'relacionesPorSkufinalSinFiltro', 'conteoSinFiltroPorSkufinal',
+        'etaPorSku', 'itemsReportados'
+    );
+}    // =========================================================================
+    // CÁLCULO USADO — pivote = SKU
+    //   - minimo==1 && maximo==10000 → Σ hermanos(SKU) + SKU
+    //   - cualquier otro caso        → Σ SKU específico
+    // =========================================================================
+private function calcularUsadoEnRam(string $skuPivote, float $minimo, float $maximo, array $ctx): float
+{
+    $sku = trim($skuPivote);
+    $sumar = fn(array $skus): float => $this->sumarCantidades($skus, $ctx);
+
+        
+    
+    // 🆕 LOG DE DIAGNÓSTICO PARA LA REGLA 819
+    if ($sku === '4018238') {
+        $nodo = $ctx['mapaNodo'][$sku] ?? null;
+        $hermanos = $nodo ? ($ctx['mapaHermanos'][$nodo->padre_id] ?? []) : [];
+        Log::info('USADO_4018238', [
+            'minimo' => $minimo,
+            'maximo' => $maximo,
+            'nodo_existe' => $nodo !== null,
+            'padre_id' => $nodo->padre_id ?? null,
+            'hermanos' => $hermanos,
+            'eta_keys' => array_keys($ctx['etaPorSku']),
+            'suma' => $this->sumarCantidades($hermanos, $ctx),
+        ]);
+    }
+
+    // 🚀 REGLA DE NEGOCIO: El 'usado' expande a hermanos si MINIMO == 10000
+    if ($minimo == 10000.0) {
+        $nodo = $ctx['mapaNodo'][$sku] ?? null;
+        
+        // Si el SKU no tiene padre en el árbol, solo se suma él mismo
+        if (!$nodo || $nodo->padre_id === null) {
+            return $sumar([$sku]);
+        }
+        
+        // Traemos a los hermanos y nos aseguramos de incluir al SKU específico
+        $hermanos = $ctx['mapaHermanos'][$nodo->padre_id] ?? [];
+        if (!in_array($sku, $hermanos, true)) {
+            $hermanos[] = $sku;
+        }
+        
+        return $sumar($hermanos);
+    }
+
+    // Si el minimo NO es 10000, solo sumamos el SKU específico
+    return $sumar([$sku]);
+}
+
+    private function sumarCantidades(array $skus, array $ctx): float
+    {
+        $t = 0.0;
+        foreach ($skus as $s) {
+            $s = trim((string)$s);
+            if (isset($ctx['etaPorSku'][$s])) {
+                foreach ($ctx['etaPorSku'][$s] as $row) {
+                    $t += (float)$row->Cantidad;
+                }
+            }
+        }
+        return $t;
+    }
+
+    
+
+    // =========================================================================
+    // EVALUADOR DE FÓRMULAS (AST + caché resultado)
+    // =========================================================================
+    protected function getExpressionLanguage(): ExpressionLanguage
+    {
+        if (self::$exprLang === null) {
+            self::$exprLang = new ExpressionLanguage(new NullAdapter());
+            self::$exprLang->register('round',
+                fn($v, $p = 0) => sprintf('round(%s, %s)', $v, $p),
+                fn($vars, $v, $p = 0) => round((float)$v, (int)$p));
+            self::$exprLang->register('floor',
+                fn($v) => sprintf('floor(%s)', $v),
+                fn($vars, $v) => floor((float)$v));
+            self::$exprLang->register('ceil',
+                fn($v) => sprintf('ceil(%s)', $v),
+                fn($vars, $v) => ceil((float)$v));
+            self::$exprLang->register('abs',
+                fn($v) => sprintf('abs(%s)', $v),
+                fn($vars, $v) => abs((float)$v));
+            self::$exprLang->register('max',
+                fn(...$a) => sprintf('max(%s)', implode(', ', $a)),
+                fn($vars, ...$a) => max(...$a));
+            self::$exprLang->register('min',
+                fn(...$a) => sprintf('min(%s)', implode(', ', $a)),
+                fn($vars, ...$a) => min(...$a));
+        }
+        return self::$exprLang;
+    }
+
+    protected function evaluarFormulaexp(string $formula, array $variables)
+    {
+        $formula = strtolower(trim($formula));
+        if ($formula === '') return 0;
+
+        // Fast path del original
+        if (($variables['usado'] ?? null) == 1 && str_contains($formula, 'usado - 1')) {
+            return 0;
+        }
+
+        // Reparar paréntesis
+        $a = substr_count($formula, '(');
+        $c = substr_count($formula, ')');
+        if ($a > $c) $formula .= str_repeat(')', $a - $c);
+
+        $hash = md5($formula . '|' . serialize($variables));
+        if (isset(self::$resCache[$hash])) return self::$resCache[$hash];
+
+        try {
+            $expr = $this->getExpressionLanguage();
+            if (!isset(self::$astCache[$formula])) {
+                self::$astCache[$formula] = $expr->parse($formula, array_keys($variables));
+            }
+            $resultado = self::$astCache[$formula]->getNodes()->evaluate($expr, $variables);
+            return self::$resCache[$hash] = $resultado;
+        } catch (\Throwable $e) {
+            Log::error('Error evaluando fórmula: ' . $e->getMessage(), [
+                'formula' => $formula, 'variables' => $variables,
+            ]);
+            return self::$resCache[$hash] = 0;
+        }
+    }
+}
 class etadirectController extends Controller
 {
+    use AutomataMamoTrait;
+
     public function __construct()
     {
         // Aplicar middleware de permisos
@@ -31,7 +336,10 @@ class etadirectController extends Controller
         $this->middleware('permission:editar-eta', ['only' => ['edit', 'update']]);
         $this->middleware('permission:eliminar-eta', ['only' => ['destroy']]);
 
+
     }
+
+
 
     public function index()
     {
@@ -202,6 +510,49 @@ LEFT JOIN (
 }
 
 
+/**
+ * VALOR = cantidad asociada al depende_SKU pivote.
+ * - maximo == 10000 → Σ hermanos(depende_SKU) + depende_SKU
+ * - cualquier otro  → Σ depende_SKU específico
+ */
+private function calcularValorEnRam(string $dependeSkuPivote, float $minimo, float $maximo, array $ctx): float
+{
+    $sku = trim($dependeSkuPivote);
+
+    $sumar = function (array $skus) use ($ctx): float {
+        $t = 0.0;
+        foreach ($skus as $s) {
+            $s = trim((string)$s);
+            if (isset($ctx['etaPorSku'][$s])) {
+                foreach ($ctx['etaPorSku'][$s] as $row) {
+                    $t += (float)$row->Cantidad;
+                }
+            }
+        }
+        return $t;
+    };
+
+    // Expansión a hermanos SOLO si maximo == 10000
+    if ($maximo == 10000.0) {
+        $nodo = $ctx['mapaNodo'][$sku] ?? null;
+        if (!$nodo || $nodo->padre_id === null) {
+            return $sumar([$sku]);
+        }
+        $hermanos = $ctx['mapaHermanos'][$nodo->padre_id] ?? [];
+        if (!in_array($sku, $hermanos, true)) {
+            $hermanos[] = $sku;
+        }
+        return $sumar($hermanos);
+    }
+
+    // Cualquier otro caso → solo el SKU específico
+    return $sumar([$sku]);
+}
+
+/**
+ * Suma cantidades de una lista de SKUs consultando etaPorSku.
+ * Helper usado por calcularValorEnRam y calcularUsadoEnRam.
+ */
 
 
     public function exportarExcel(Request $request)
@@ -554,7 +905,8 @@ private function procesarYFiltrarLote(array $batchData, callable $limpiarTexto):
     return 0;
 }
 
-private function ejecutarLogicaInterna($orden, $item, &$procesados, &$rastro, $limpiarCache = false)
+
+private function ejecutarLogicaInternasss($orden, $item, &$procesados, &$rastro, $limpiarCache = false)
 {
     // Variables estáticas para persistencia en memoria RAM de consultas repetitivas de base de datos
     static $cacheNormales = [];
@@ -974,6 +1326,14 @@ if($skuActual=="34006334")  {
         $resultadoMostrar = $resultado;
         $resultado = $resultado == 20000 ? 0 : $resultado;
 
+        $cambiarvalant=$this->contarDecimales($resultado);
+
+if ($cambiarvalant === 6) {
+    $resultadoMostrar = $resultado * 1000000;
+    $valor=$resultadoMostrar;
+    $val=$resultadoMostrar;
+} 
+
         if ($resultado > 0 || $resultado < 0) {
             if ($tipoRelacion == 'requiere' || $tipoRelacion == 'incompatible') {
                 $existePadreRelacion = $colVirtual->filter(function($item) use ($skuActual) {
@@ -1041,454 +1401,6 @@ if($skuActual=="34006334")  {
     }
 }
 
-
-
-public function AutomataRecursivo(
-    string $skuActual,
-    int $orden,
-    int $recuento,
-    float $valor,
-    float $maximo,
-    float $minimo,
-    string $formula,
-    array &$procesados,
-    string $tipoRelacion,
-    float $val,
-    array &$rastro,
-    string $skuOrigen,
-    string $skuOrigenraiz,
-    int $nivel = 0,
-    string $skufinal,
-    ?object &$padre,
-    string $Centro,
-    string $mensaj=''
-) {
-    try {
-        // 🚀 MEMORIA RAM ESTÁTICA EXCLUSIVA DEL AUTÓMATA (Evita duplicar queries pesados en MySQL)
-        static $cacheTotalesRecursivo   = [];
-        static $cachePadresCalculo      = [];
-        static $cachePadresCategoria    = [];
-        static $cacheRelacionesNodo     = [];
-
-        // Interceptor de control para vaciar cachés de BD entre cambios de órdenes del lote
-        if ($skuActual === 'RESET_CACHE' || $orden === 0) {
-            $cacheTotalesRecursivo   = [];
-            $cachePadresCalculo      = [];
-            $cachePadresCategoria    = [];
-            $cacheRelacionesNodo     = [];
-            return;
-        }
-
-        // 🛑 CASO BASE 1
-        if ($valor <= 0 && $nivel == 0) {
-            return;
-        }
-        $cantidad = substr_count($skuOrigen, ".");
-
-        $clave = $orden . '_' . $skuActual. '_' .$skuOrigen . '_' . $skufinal.'_'.$tipoRelacion;
-        $CANT = substr_count($clave, "40144661001856");
-        if($CANT > 0){
-            $a = "25188580_34028679_1021133_102113334028679";
-        }
-
-        if (isset($procesados[$clave])) {
-            return; // 🚫 Ya fue procesado este Orden + SKU
-        }
-
-        // 🚀 OPTIMIZACIÓN SUPREMA O(1): Buscamos por LLAVE en lugar de in_array pesados.
-        // El rastro NO se borra, sigue acumulándose de forma nativa e intacta.
-        if (isset($rastro[$clave])) {
-            return; // 🔁 ciclo detectado de forma instantánea
-        }
-
-        // Guardamos la marca usando la clave como LLAVE del arreglo asociativo
-        $rastro[$clave] = true;
-
-        if($nivel > ($recuento + 1) && $tipoRelacion == 'calculo' ){
-            return;
-        }
-
-
-
-    // =========================================================================
-    // 🌳 1. DETERMINACIÓN DEL PIVOTE Y CÁLCULO DE "VALOR" (Fijado contra Binary Error)
-    // =========================================================================
-    $llaveValorRAM = "valor_{$orden}_{$skuActual}_{$skuOrigen}_{$maximo}_{$minimo}";
-
-    if (!isset($cacheTotalesRecursivo[$llaveValorRAM])) {
-
-        $totalValor = DB::selectOne("
-            SELECT COALESCE(SUM(e.Cantidad), 0) AS total_valor_calculado
-            FROM ETA e
-            INNER JOIN treematerialescategoria tm 
-               ON CAST(e.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(tm.SKU AS CHAR) COLLATE utf8mb4_unicode_ci
-            WHERE e.Orden = ? 
-              AND e.fkTienda = ?
-              AND tm.fkTienda = ?
-              AND (
-                  -- 🔹 ESCENARIO 1: Se cumple la regla y el SKU NO tiene puntos (Busca hermanos)
-                  (
-                      ? = 10000.0 AND ? = 10000.0 
-                      AND INSTR(CAST(? AS CHAR), '.') = 0 
-                      AND tm.padre_id = (
-                          SELECT sub_tm.padre_id 
-                          FROM treematerialescategoria sub_tm 
-                          WHERE CAST(sub_tm.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci 
-                            AND sub_tm.fkTienda = ? 
-                          LIMIT 1
-                      )
-                  )
-                  OR
-                  -- 🔹 ESCENARIO 2: El SKU origen YA es la categoría padre (Tiene puntos ej: '04.05')
-                  (
-                      INSTR(CAST(? AS CHAR), '.') > 0 
-                      AND tm.padre_id = (
-                          SELECT sub_tmc.id 
-                          FROM treematerialescategoria sub_tmc 
-                          WHERE CAST(sub_tmc.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci 
-                            AND sub_tmc.fkTienda = ? 
-                          LIMIT 1
-                      )
-                  )
-                  OR
-                  -- 🔹 ESCENARIO 3: Es un material individual normal estándar (Suma solo el SKU origen)
-                  (
-                      NOT (? = 10000.0 AND ? = 10000.0 AND INSTR(CAST(? AS CHAR), '.') = 0)
-                      AND INSTR(CAST(? AS CHAR), '.') = 0 
-                      AND CAST(tm.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci
-                  )
-              )
-        ", [
-            $orden, session('user_fkTienda'), session('user_fkTienda'),
-            $maximo, $minimo, $skuOrigen, $skuOrigen, session('user_fkTienda'), // Escenario 1
-            $skuOrigen, $skuOrigen, session('user_fkTienda'), // Escenario 2
-            $maximo, $minimo, $skuOrigen, $skuOrigen, $skuOrigen // Escenario 3
-        ]);
-
-        $cacheTotalesRecursivo[$llaveValorRAM] = $totalValor->total_valor_calculado ?? 0;
-    }
-    $valor = $cacheTotalesRecursivo[$llaveValorRAM];
-
-
-    // =========================================================================
-    // 🌳 2. DETERMINACIÓN DEL PIVOTE Y CÁLCULO DE "USADO" (Fijado contra Binary Error)
-    // =========================================================================
-    $llaveUsadoRAM = "usado_{$orden}_{$skuActual}_{$maximo}";
-
-    if (!isset($cacheTotalesRecursivo[$llaveUsadoRAM])) {
-
-        $totalUsado = DB::selectOne("
-            SELECT COALESCE(SUM(e.Cantidad), 0) AS total_usado_calculado
-            FROM ETA e
-            INNER JOIN treematerialescategoria tm 
-               ON CAST(e.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(tm.SKU AS CHAR) COLLATE utf8mb4_unicode_ci
-            WHERE e.Orden = ? 
-              AND e.fkTienda = ?
-              AND tm.fkTienda = ?
-              AND (
-                  -- 🔹 ESCENARIO 1: Tiene puntos (ej: '04.03') -> Busca directo por la categoría del padre
-                  (
-                      INSTR(CAST(? AS CHAR), '.') > 0 
-                      AND tm.padre_id = (
-                          SELECT sub_tmc.id 
-                          FROM treematerialescategoria sub_tmc 
-                          WHERE CAST(sub_tmc.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci 
-                            AND sub_tmc.fkTienda = ? 
-                          LIMIT 1
-                      )
-                  )
-                  OR
-                  -- 🔹 ESCENARIO 2: NO tiene puntos pero maximo = 10000 (Es un hijo que debe sumar a sus hermanos)
-                  (
-                      INSTR(CAST(? AS CHAR), '.') = 0 
-                      AND ? = 10000.0
-                      AND tm.padre_id = (
-                          SELECT sub_tm.padre_id 
-                          FROM treematerialescategoria sub_tm 
-                          WHERE CAST(sub_tm.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci 
-                            AND sub_tm.fkTienda = ? 
-                          LIMIT 1
-                      )
-                  )
-                  OR
-                  -- 🔹 ESCENARIO 3: Es un material individual normal estándar (Suma solo el SKU actual)
-                  (
-                      INSTR(CAST(? AS CHAR), '.') = 0 
-                      AND ? <> 10000.0
-                      AND CAST(tm.SKU AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci
-                  )
-              )
-        ", [
-            $orden, session('user_fkTienda'), session('user_fkTienda'),
-            $skuActual, $skuActual, session('user_fkTienda'), // Escenario 1
-            $skuActual, $maximo, $skuActual, session('user_fkTienda'), // Escenario 2
-            $skuActual, $maximo, $skuActual
-        ]);
-
-        $cacheTotalesRecursivo[$llaveUsadoRAM] = $totalUsado->total_usado_calculado ?? 0;
-    }
-    $usado = $cacheTotalesRecursivo[$llaveUsadoRAM];
-
-
-
-        $variables = [
-            'minimo' => $minimo ?? 0,
-            'maximo' => $maximo ?? 0,
-            'valor'  => $valor ?? 0,
-            'usado'  => $usado ?? 0,
-            'total'  => $nivel ?? 0,
-            'valant' => $val ?? 0,
-        ];
-
-        if($clave == "25542286_02.15_34033641_02.1534033641UNIDAD_requiere"){
-            $a = "25188580_34028673_34028677_102113334028679";
-        }
-
-        $resultado = 0;
-        $resultado = $this->evaluarFormulaexp($formula, $variables);
-
-        $resultadoMostrar = $resultado;
-        $resultado = $resultado == 20000 ? 0 : $resultado;
-
-        if($resultado > 0 || $resultado < 0) {
-            if ($tipoRelacion == 'requiere' || $tipoRelacion == 'incompatible') {
-                $padrerel = DB::selectOne("
-                    SELECT distinct e.SKU FROM ETA e
-                    inner join material_relaciones mr on e.SKU=mr.SKU where e.Orden=? and e.SKU=? and mr.fkTienda=? ;
-                ", [$orden, $skuActual, session('user_fkTienda')]);
-
-                if($resultado <> 0){
-                    $nodo = (object)[
-                        'Orden'         => $orden,
-                        'SKU_Origen'    => $skuActual,
-                        'SKU_Destino'   => $skuOrigen,
-                        'msj'           => $mensaj,
-                        'ValorEntrada'  => $valor,
-                        'Resultado'     => $resultado == 10000 ? $val : $resultado,
-                        'TipoRelacion'  => $resultado < 0 ? $tipoRelacion . " - Exceso" : $tipoRelacion,
-                        'formula'       => $formula,
-                        'Nivel'         => $nivel,
-                        'children'      => [],
-                        'skuOrigenraiz' => $skufinal,
-                        'CENTRO'        => $Centro,
-                        'claveunica'     => $clave,
-                        'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
-                    ];
-                    $procesados[$clave] = $nodo;
-                }
-                elseif($padrerel){
-                    $nodo = (object)[
-                        'Orden'         => $orden,
-                        'SKU_Origen'    => $skuActual,
-                        'SKU_Destino'   => $skuOrigen,
-                        'msj'           => $mensaj,
-                        'ValorEntrada'  => $valor,
-                        'Resultado'     => $resultado == 10000 ? $val : $resultado,
-                        'TipoRelacion'  => $resultado < 0 ? $tipoRelacion . " - Exceso" : $tipoRelacion,
-                        'formula'       => $formula,
-                        'Nivel'         => $nivel,
-                        'children'      => [],
-                        'skuOrigenraiz' => $skufinal,
-                        'CENTRO'        => $Centro,
-                        'claveunica'     => $clave,
-                        'NOMBRE_Destino' => $padre->nombre ?? "SKU materia analizado ".$tipoRelacion." ".$skuActual,
-                    ];
-                    $procesados[$clave] = $nodo;
-                }
-            }
-        }
-
-        // 🚀 CACHÉ RECURSIVA: Relaciones de fin de nodo para anular subconsultas redundantes a la BD
-        $llaveNodoFinal = "nodo_" . $skufinal;
-        if (!isset($cacheRelacionesNodo[$llaveNodoFinal])) {
-            $cacheRelacionesNodo[$llaveNodoFinal] = (object)[
-                'relaciones' => Material_relaciones::where('skufinal', $skufinal)->orderBy('id', 'ASC')->get(),
-                'conteo'     => Material_relaciones::where('skufinal', $skufinal)->count()
-            ];
-        }
-
-        $relaciones = $cacheRelacionesNodo[$llaveNodoFinal]->relaciones;
-        $conteo     = $cacheRelacionesNodo[$llaveNodoFinal]->conteo;
-
-        // 🧠 CACHÉ DE INSTANCIA LOCAL: Mapea los SKUs reales reportados en esta orden para búsqueda O(1)
-        // Evita hacer consultas SQL dentro del foreach de relaciones
-        $llaveOrdenItems = "items_orden_" . $orden;
-        if (!isset($cacheItemsReportadosOrden[$llaveOrdenItems])) {
-            $cacheItemsReportadosOrden[$llaveOrdenItems] = DB::table('ETA')
-                ->where('Orden', $orden)
-                ->where('fkTienda', session('user_fkTienda'))
-                ->pluck('SKU')
-                ->map(function($item) { return trim($item); })
-                ->flip() // Convierte los valores en llaves para usar isset() a velocidad luz
-                ->toArray();
-        }
-        $itemsReportados = $cacheItemsReportadosOrden[$llaveOrdenItems];
-
-        $iteracionActual = 0; // Contador para identificar el último nodo obligatorio
-
-        foreach ($relaciones as $relacion) {
-
-        
-            $iteracionActual++;
-            $esUltimoNodo = ($iteracionActual === (int)$conteo);
-
-                        // ------------------------------------------------------------------------
-            // 🎯 NUEVO MOTOR DE FILTRADO Y VALIDACIÓN DE PADRES E HIJOS
-            // ------------------------------------------------------------------------
-            if (!$esUltimoNodo) {
-                $skuMatchEncontrado = false;
-                $dependeSkuMatchEncontrado = false;
-
-                // --- EVALUACIÓN DE CAMPO: SKU ---
-                $skuAEvaluar = trim($relacion->SKU);
-                if (isset($relacion->maximo) && (int)$relacion->maximo === 10000) {
-                    // Obliga a buscar por el nodo Padre si es Hijo (contiene punto)
-                    if (strpos($skuAEvaluar, '.') !== false) {
-                        $partesSku = explode('.', $skuAEvaluar);
-                        $padrePrefix = $partesSku[0]; // Extrae la raíz antes del punto
-                        
-                        // Buscamos si existe algún ítem reportado que empiece con la raíz del padre
-                        foreach (array_keys($itemsReportados) as $itemReportadoReal) {
-                            if (strpos($itemReportadoReal, $padrePrefix) === 0) {
-                                $skuMatchEncontrado = true;
-                                break;
-                            }
-                        }
-                    } else {
-                        // Si no tiene punto se evalúa de forma directa en el mapa O(1)
-                        $skuMatchEncontrado = isset($itemsReportados[$skuAEvaluar]);
-                    }
-                } else {
-                    // Comportamiento normal sin bandera de fuerza
-                    $skuMatchEncontrado = isset($itemsReportados[$skuAEvaluar]);
-                }
-
-                // --- EVALUACIÓN DE CAMPO: depende_SKU ---
-                $dependeSkuAEvaluar = trim($relacion->depende_SKU);
-                if (!empty($dependeSkuAEvaluar)) {
-                    if (isset($relacion->minimo) && (int)$relacion->minimo === 10000) {
-                        // Obliga a buscar por el nodo Padre si depende_SKU contiene un punto
-                        if (strpos($dependeSkuAEvaluar, '.') !== false) {
-                            $partesDepende = explode('.', $dependeSkuAEvaluar);
-                            $padreDependePrefix = $partesDepende[0];
-                            
-                            foreach (array_keys($itemsReportados) as $itemReportadoReal) {
-                                if (strpos($itemReportadoReal, $padreDependePrefix) === 0) {
-                                    $dependeSkuMatchEncontrado = true;
-                                    break;
-                                }
-                            }
-                        } else {
-                            $dependeSkuMatchEncontrado = isset($itemsReportados[$dependeSkuAEvaluar]);
-                        }
-                    } else {
-                        $dependeSkuMatchEncontrado = isset($itemsReportados[$dependeSkuAEvaluar]);
-                    }
-                } else {
-                    // Si depende_SKU viene vacío de base de datos, no interfiere negativamente
-                    $dependeSkuMatchEncontrado = false;
-                }
-
-                // 🚫 REGLA DE SALTO (NODO NO REPORTADO): 
-                // Si ninguno de los dos SKUs hace match con la orden, nos saltamos este nodo
-                if (!$skuMatchEncontrado && !$dependeSkuMatchEncontrado) {
-                    continue; 
-                }
-            }
-            // ------------------------------------------------------------------------
-
-            $claveHijo = $orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion;
-            
-            if($orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'.$relacion->skufinal.'_'.$relacion->tipo_relacion == "25658138_34028704_34028710_40144661001856_calculo"){
-                $a = $orden.''.$relacion->SKU.''.$relacion->depende_SKU.''.$relacion->skufinal.''.$relacion->tipo_relacion;
-            }
-            
-            // 🚀 BÚSQUEDA INSTANTÁNEA: Validación contra el rastro asociativo global intacto por LLAVE
-            if (isset($rastro[$claveHijo])) {
-                continue;
-            }
-            
-            $aSKUFILTRO = $clave;
-            $tipoRelacion = $relacion->tipo_relacion;
-            if($aSKUFILTRO == $orden.''.$relacion->SKU.''.$relacion->depende_SKU.''.$relacion->skufinal.''.$relacion->tipo_relacion){
-                $a = "25188580_34028673_34028677_102113334028679";
-                $claveHijoFalso = $orden.''.$relacion->SKU.''.$relacion->depende_SKU.'_'.$relacion->skufinal;
-                $rastro[$claveHijoFalso] = true;
-                continue; // 🚫 Evitar procesar el mismo nodo en esta rama
-            }
-            
-            $SKUSSS = $relacion->SKU;
-            if($tipoRelacion == "calculo"){
-                $llaveCalculoPadre = "calc_{$orden}_{$relacion->SKU}";
-                if (!isset($cachePadresCalculo[$llaveCalculoPadre])) {
-                    $cachePadresCalculo[$llaveCalculoPadre] = DB::selectOne("
-                        SELECT distinct e.SKU FROM ETA e
-                        inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=? and mr.fkTienda=?;
-                    ", [$orden, $relacion->SKU, session('user_fkTienda')]);
-                }
-
-                $padreCalculo = $cachePadresCalculo[$llaveCalculoPadre];
-                if (!$padreCalculo) {
-                    $cantidad = substr_count($relacion->depende_SKU, ".");
-                    if($cantidad == 0){
-                        $cantidad = substr_count($relacion->SKU, ".");
-                        if($cantidad == 0){
-                            continue;
-                        }
-                    }
-                }
-            }
-
-
-
-            // 1️⃣ Obtener SKU padre (Optimizado en Caché Estática por SKU)
-            $llavePadreCat = $relacion->SKU;
-            if (!isset($cachePadresCategoria[$llavePadreCat])) {
-                $cachePadresCategoria[$llavePadreCat] = DB::selectOne("
-                    SELECT tmc.SKU, tmc.nombre, tmc.minimo, tmc.limite, tmc.tipo, tmc.valor
-                    FROM treematerialescategoria tm
-                    INNER JOIN treematerialescategoria tmc ON tm.padre_id = tmc.id
-                    WHERE tm.SKU = ? AND tmc.fkTienda = ? LIMIT 1
-                ", [$relacion->SKU, session('user_fkTienda')]);
-            }
-            $padreObjeto = $cachePadresCategoria[$llavePadreCat];
-            
-            // 🛑 CASO BASE 2
-            if (!$padreObjeto) {
-                continue;
-            }
-            
-            if($aSKUFILTRO == "25298449_34025712_4018238_401823834028673_calculo"){
-                $a = "25188580_34028673_34028677_102113334028679";
-            }
-            
-            // 🔁 LLAMADA RECURSIVA INTEGRAL NATIVA
-            $this->AutomataRecursivo(
-                $relacion->SKU,
-                $orden,
-                $conteo,
-                $resultadoMostrar = is_null($resultadoMostrar) ? 0 : (($resultadoMostrar == 20000) ? $val : $resultadoMostrar),
-                $relacion->maximo   ?? 0,
-                $relacion->minimo   ?? 0,
-                $relacion->formula,
-                $procesados,
-                $relacion->tipo_relacion,
-                $resultadoMostrar = is_null($resultadoMostrar) ? 0 : (($resultadoMostrar == 20000) ? $val : $resultadoMostrar),
-                $rastro, // Pasado acumulativo intacto
-                $relacion->depende_SKU,
-                $skuOrigenraiz,
-                $nivel + 1,
-                $relacion->skufinal,
-                $padreObjeto,
-                $Centro,
-                $relacion->nombre
-            );
-        }
-
-} catch (\Exception $e) {
-Log::error('Error crítico en AutomataRecursivo: ' . $e->getMessage());
-}
-}
 
 public function AutomataRecursivoRR(
     string $skuActual,
@@ -1776,26 +1688,6 @@ public function AutomataRecursivoRR(
             continue; // 🚫 Evitar procesar el mismo nodo en esta rama
             }
             $SKUSSS = $relacion->SKU;
-                if($tipoRelacion == "calculo"){
-                $llaveCalculoPadre = "calc_{$orden}_{$relacion->SKU}";
-                        if (!isset($cachePadresCalculo[$llaveCalculoPadre])) {
-                        $cachePadresCalculo[$llaveCalculoPadre] = DB::selectOne("
-                        SELECT distinct e.SKU FROM ETA e
-                        inner join material_relaciones mr on e.SKU=mr.depende_SKU where e.Orden=? and mr.depende_SKU=? and mr.fkTienda=?;
-                        ", [$orden, $relacion->SKU, session('user_fkTienda')]);
-                        }
-
-                $padreCalculo = $cachePadresCalculo[$llaveCalculoPadre];
-                        if (!$padreCalculo) {
-                        $cantidad = substr_count($relacion->depende_SKU, ".");
-                            if($cantidad == 0){
-                                $cantidad = substr_count($relacion->SKU, ".");
-                                if($cantidad == 0){
-                                continue;
-                                }
-                            }
-                        }
-                }
             // 1️⃣ Obtener SKU padre (Optimizado en Caché Estática por SKU)
             $llavePadreCat = $relacion->SKU;
             if (!isset($cachePadresCategoria[$llavePadreCat])) {
@@ -1959,34 +1851,29 @@ if (!empty($alertasDetectadas)) {
         return response()->json(['error' => 'Error en la validación: ' . $e->getMessage()], 500);
     }
 }
+
+
 public function AutomataValidarMamo(Request $request)
 {
     if(!Auth::check()) return redirect()->route('login');
 
-    // Blindaje básico para micro-lotes
-    ini_set('max_execution_time', 300);
-    ini_set('memory_limit', '512M');
+    // Blindaje para procesar el lote
+    ini_set('max_execution_time', 300); 
+    ini_set('memory_limit', '1024M');
     DB::connection()->disableQueryLog();
 
     $ordenesAExcluir = [];
 
-    // 1. CARGA INICIAL: Configuración de exclusiones y reseteo de acumuladores
+    // 1. CARGA INICIAL: Configuración de exclusiones
     if ($request->input('obtener_total') == 1) {
-        // Limpiamos el historial de órdenes analizadas de ejecuciones anteriores
-        session()->forget('mamo_ordenes_analizadas_acumulado');
-
         if ($request->hasFile('csv_excluidas') && $request->file('csv_excluidas')->isValid()) {
             $path = $request->file('csv_excluidas')->getRealPath();
             if (($handle = fopen($path, 'r')) !== false) {
                 $primeraLinea = fgets($handle);
-                $delimitador = ","; // Por defecto
-                
+                $delimitador = ",";
                 if ($primeraLinea !== false) {
-                    $conteoComas = substr_count($primeraLinea, ',');
-                    $conteoPuntosComas = substr_count($primeraLinea, ';');
-                    if ($conteoPuntosComas > $conteoComas) $delimitador = ";";
+                    if (substr_count($primeraLinea, ';') > substr_count($primeraLinea, ',')) $delimitador = ";";
                 }
-                
                 rewind($handle);
                 while (($data = fgetcsv($handle, 0, $delimitador)) !== false) {
                     if (isset($data[0])) {
@@ -2024,71 +1911,207 @@ public function AutomataValidarMamo(Request $request)
         ]);
     }
 
-    // 3. CONTROL DE PAGINACIÓN ASÍNCRONA (Peticiones de JavaScript)
-    $offset = (int) $request->input('offset', 0);
-    $limiteLote = 2; 
+    // 3. OBTENER TODAS LAS ÓRDENES
+    $mamoorden = $queryOrdenes->get();
+    $totalOrdenes = $mamoorden->count();
 
-    $mamoorden = $queryOrdenes->skip($offset)->take($limiteLote)->get();
-
-    // 🚨 REGRESO FINAL MAESTRO: Si ya no hay más órdenes en la cola, devolvemos el acumulado completo
     if ($mamoorden->isEmpty()) {
-        $totalAnalizadas = session('mamo_ordenes_analizadas_acumulado', []);
-        
-        // Limpiamos las sesiones para dejar el servidor impecable
-        session()->forget(['mamo_ordenes_excluidas_historico', 'mamo_ordenes_analizadas_acumulado']);
-
         return response()->json([
             'status' => 'completado',
-            'ordenes_analizadas_totales' => $totalAnalizadas // 🚀 Aquí viaja tu lista gigante con todo lo analizado
+            'total' => 0
         ]);
     }
 
+    // 🆕 INICIALIZAR ARCHIVO DE PROGRESO FÍSICO (Para el polling del frontend)
+    $progressFile = storage_path('app/mamo_progress.json');
+    file_put_contents($progressFile, json_encode([
+        'procesadas' => 0, 
+        'total' => $totalOrdenes,
+        'estado' => 'procesando'
+    ]));
+
+    // 4. PREPARACIÓN DE ARCHIVOS TEMPORALES Y VARIABLES
     $procesados = []; 
     $rastro = []; 
-    $ordenesProcesadasEnEsteLote = [];
-    
-    // Recuperamos lo que llevamos analizado en los turnos anteriores desde la sesión
-    $acumuladoAnalizadas = session('mamo_ordenes_analizadas_acumulado', []);
+    $ordenesProcesadas = [];
+    $tiempoInicio = microtime(true);
+    $limiteSeguridad = 285; 
+    $procesadasCount = 0;
 
-    // 4. PROCESAMIENTO DEL BLOQUE ACTUAL
+    $tempDir = storage_path('app/temp_mamo_' . uniqid());
+    if (!file_exists($tempDir)) mkdir($tempDir, 0777, true);
+
+    $fileVal = $tempDir . '/validaciones_parcial.csv';
+    $handleVal = fopen($fileVal, 'w');
+    fprintf($handleVal, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($handleVal, ['Orden', 'SKU_Origen', 'SKU_Destino', 'msj', 'ValorEntrada', 'Resultado', 'TipoRelacion', 'formula', 'Nivel', 'skuOrigenraiz', 'CENTRO', 'claveunica', 'NOMBRE_Destino']);
+
+    $fileAnalizadas = $tempDir . '/ordenes_analizadas_totales_parcial.csv';
+    $handleAnalizadas = fopen($fileAnalizadas, 'w');
+    fprintf($handleAnalizadas, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($handleAnalizadas, ['Orden']);
+
+    $fileProcesadas = $tempDir . '/ordenes_procesadas_totales_parcial.csv';
+    $handleProcesadas = fopen($fileProcesadas, 'w');
+    fprintf($handleProcesadas, chr(0xEF).chr(0xBB).chr(0xBF));
+    fputcsv($handleProcesadas, ['Orden']);
+
+    // 5. BUCLE DE PROCESAMIENTO
     foreach($mamoorden as $ordenitem) {
         
-        // 🔄 CAPTURA INMEDIATA: Se registra como ANALIZADA (Sin importar si arroja datos o no)
-        $acumuladoAnalizadas[] = ['Orden' => $ordenitem->Orden];
-        
-        // También la guardamos de momento en el lote para control del Front-end
-        $ordenesProcesadasEnEsteLote[] = ['Orden' => $ordenitem->Orden];
-
-        // Limpieza de cachés estáticas internas
-        $itemFalso = new \stdClass();
-        $itemFalso->CENTRO = ''; $itemFalso->SKU = ''; $itemFalso->TIPO_DE_SERVICIO = '';
-        $this->ejecutarLogicaInterna('RESET_CACHE', $itemFalso, $procesados, $rastro, true);
-        $this->AutomataRecursivo('RESET_CACHE', 0, 0, 0, 0, 0, '', $procesados, '', 0, $rastro, '', '', 0, '', $padre, '');
-
-        // Consulta de ítems
-        $items = DB::table('ETA')
-            ->select('TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
-            ->where('fkTienda', session('user_fkTienda'))
-            ->where('Orden', $ordenitem->Orden)
-            ->groupBy('TIPO_DE_SERVICIO', 'SKU', 'CENTRO')
-            ->get();
-
-        foreach ($items as $item) {
-            $this->ejecutarLogicaInterna($ordenitem->Orden, $item, $procesados, $rastro);
+        if ((microtime(true) - $tiempoInicio) >= $limiteSeguridad) {
+            break; // Si se agota el tiempo, cortamos el bucle
         }
 
-        unset($items);
+        $ordenesProcesadas[] = ['Orden' => $ordenitem->Orden];
+        fputcsv($handleAnalizadas, [$ordenitem->Orden]);
+
+        // Precarga de contexto
+        $ctx = $this->precargarContextoOrden($ordenitem->Orden, session('user_fkTienda'));
+
+        // Limpiar cachés estáticas
+        $rastroVacio = [];
+        $this->ejecutarLogicaInterna($ordenitem->Orden, null, $procesados, $rastroVacio, [], true);
+
+        // Obtener skufinales relevantes
+        $skufinalesRelevantes = [];
+        foreach ($ctx['itemsEta'] as $item) {
+            $sku = trim((string)$item->SKU);
+            foreach ($ctx['relPorSku'][$sku] ?? [] as $r) {
+                $skufinalesRelevantes[trim((string)$r->skufinal)] = true;
+            }
+        }
+
+        foreach (array_keys($skufinalesRelevantes) as $skf) {
+            
+            // Filtro anti-genéricos
+            if (!str_contains($skf, 'G888') && !str_contains($skf, "'G8")) {
+                if (isset($skufinalesRelevantes["'G888" . $skf]) || isset($skufinalesRelevantes["G888" . $skf])) {
+                    continue;
+                }
+            }
+
+            $reglas = array_values($ctx['relacionesPorSkufinalSinFiltro'][$skf] ?? []);
+            $totalReglas = count($reglas);
+
+            for ($i = 0; $i < $totalReglas; $i++) {
+                $regla = $reglas[$i];
+                
+                $skuRegla = trim((string)$regla->SKU);
+                $depRegla = trim((string)$regla->depende_SKU);
+                $minimoRegla = (float)($regla->minimo ?? 0);
+                $tipoRelacion = (string)$regla->tipo_relacion;
+
+                // 🆕 LÓGICA DE DISPARO ESTRICTA
+                // SOLO el nodo con minimo == 1 dispara la regla.
+                if ($minimoRegla != 1.0) {
+                    continue; 
+                }
+
+                // Validar que el depende_SKU esté reportado en la orden
+                if (!$this->relacionActivaPorDependeSku($regla, $ctx)) {
+                    continue;
+                }
+
+                $claveRegla = $ordenitem->Orden . '_' . $skuRegla . '_' . $depRegla . '_' . $skf . '_' . $tipoRelacion;
+                if (isset($procesados[$claveRegla])) {
+                    continue;
+                }
+
+                $maximoRegla = (float)($regla->maximo ?? 0);
+                $valorEntrada = $this->calcularValorNivelCero($depRegla, $maximoRegla, $ctx);
+                if ($valorEntrada <= 0) {
+                    $valorEntrada = $this->calcularValorNivelCero($skuRegla, $maximoRegla, $ctx);
+                }
+                if ($valorEntrada <= 0) {
+                    continue;
+                }
+
+                $itemReal = $ctx['itemsEta']->firstWhere('SKU', $skuRegla);
+                $centro = $itemReal->CENTRO ?? "'G845";
+                
+                $padreObj = $ctx['padreCategoriaPorSku'][$skuRegla] ?? null;
+                $conteo   = (int)($ctx['conteoSinFiltroPorSkufinal'][$skf] ?? 0);
+
+                $rastroLocal = [];
+                
+                // Disparar el motor recursivo
+                $this->AutomataRecursivo(
+                    $skuRegla, (int)$ordenitem->Orden, $conteo, (float)$valorEntrada,
+                    $maximoRegla, $minimoRegla, (string)($regla->formula ?? ''),
+                    $procesados, $tipoRelacion, 0, $rastroLocal, $depRegla, $skuRegla,
+                    0, $skf, $padreObj, $centro, (string)($regla->nombre ?? ''), $ctx
+                );
+            }
+        }
+        
+        // Escribir validaciones del lote
+        $validacionesOrden = $this->quitarDuplicadosPorOrdenYSKU($procesados);
+        foreach ($validacionesOrden as $val) {
+            if ($val->Orden == $ordenitem->Orden) {
+                fputcsv($handleVal, [
+                    $val->Orden, $val->SKU_Origen, $val->SKU_Destino, $val->msj,
+                    $val->ValorEntrada, $val->Resultado, $val->TipoRelacion,
+                    $val->formula, $val->Nivel, $val->skuOrigenraiz, $val->CENTRO,
+                    $val->claveunica, $val->NOMBRE_Destino
+                ]);
+            }
+        }
+        fputcsv($handleProcesadas, [$ordenitem->Orden]);
+        $procesados = []; 
+
+        // 🆕 ACTUALIZAR PROGRESO Y FORZAR MICRO-PAUSA
+        $procesadasCount++;
+        file_put_contents($progressFile, json_encode([
+            'procesadas' => $procesadasCount,
+            'total' => $totalOrdenes,
+            'estado' => 'procesando'
+        ]));
+        usleep(10000); // 10ms de pausa para que el frontend pinte la barra
     }
 
-    // Guardamos la lista de analizadas actualizada en la sesión para el siguiente bloque
-    session(['mamo_ordenes_analizadas_acumulado' => $acumuladoAnalizadas]);
+    // 6. CERRAR ARCHIVOS
+    fclose($handleVal);
+    fclose($handleAnalizadas);
+    fclose($handleProcesadas);
 
-    // Devolvemos el avance del lote a JavaScript
-    return response()->json([
-        'status' => 'progreso',
-        'datos_lote' => $this->quitarDuplicadosPorOrdenYSKU($procesados),
-        'ordenes_lote' => $ordenesProcesadasEnEsteLote
-    ]);
+    // 7. CREAR EL ZIP
+    $zipName = 'resultados_mamo_' . date('Ymd_His') . '.zip';
+    $zipPath = storage_path('app/' . $zipName);
+    
+    $zip = new \ZipArchive();
+    if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true) {
+        $zip->addFile($fileVal, 'validaciones_parcial.csv');
+        $zip->addFile($fileAnalizadas, 'ordenes_analizadas_totales_parcial.csv');
+        $zip->addFile($fileProcesadas, 'ordenes_procesadas_totales_parcial.csv');
+        $zip->close();
+    }
+
+    // Limpiar temporales
+    array_map('unlink', glob("$tempDir/*.*"));
+    rmdir($tempDir);
+
+    // 8. MARCAR COMPLETADO
+    file_put_contents($progressFile, json_encode([
+        'procesadas' => $totalOrdenes,
+        'total' => $totalOrdenes,
+        'estado' => 'completado'
+    ]));
+
+    // 9. DESCARGAR ZIP
+    return response()->download($zipPath)->deleteFileAfterSend(true);
+}
+
+/**
+ * Endpoint para consultar el progreso desde el frontend.
+ */
+public function consultarProgresoMamo()
+{
+    $path = storage_path('app/mamo_progress.json');
+    if (file_exists($path)) {
+        return response()->json(json_decode(file_get_contents($path), true));
+    }
+    return response()->json(['procesadas' => 0, 'total' => 0]);
 }
 
 public function AutomataValidarMamogg(Request $request)
@@ -2362,35 +2385,780 @@ public function AutomataValidarMamoSS(Request $request)
 
 public function AutomataValidarMamoOrden(Request $request)
 {
-    if(!Auth::check()) return response()->json(['error' => 'No autorizado'], 401);
-    $procesados = []; $rastro = [];
-    $orden = $request->input('Orden');
+    if (!Auth::check()) return response()->json(['error' => 'No autorizado'], 401);
+    
+    ini_set('max_execution_time', 300);
+    ini_set('memory_limit', '256M');
+    DB::connection()->disableQueryLog();
 
-    // 📦 DEFINICIÓN DE LOTES (500 órdenes por petición)
-    $tamanoLote = 10;
-    $paginaActual = (int) $request->input('lote', 1); // Lee el número de lote actual (1, 2, 3...)
-    $offset = ($paginaActual - 1) * $tamanoLote;
+    $orden  = (string)$request->input('Orden');
+    $lote   = (int)$request->input('lote', 1);
+    $tamano = 10;
+    $offset = ($lote - 1) * $tamano;
+    $fkTienda = session('user_fkTienda');
 
+    if (!$orden) return response()->json(['error' => 'Orden requerida'], 400);
 
-    $items = DB::table('ETA')->select('TIPO_DE_SERVICIO', 'CENTRO', 'SKU', DB::raw('SUM(cantidad) as Cantidad'))
-             ->where('Orden', $orden)
-             ->where('fkTienda', session('user_fkTienda'))
-             ->groupBy('SKU', 'CENTRO','TIPO_DE_SERVICIO')->get();
-    $this->ejecutarLogicaInterna(null, null, $procesados, $rastro, true);
+    $t0 = microtime(true);
 
-    foreach ($items as $item) {
-        
-        $this->ejecutarLogicaInterna($orden, $item, $procesados, $rastro);
+    $procesados = [];
+    $ctx = $this->precargarContextoOrden($orden, $fkTienda);
+
+    // Limpiar cachés
+    $rastroVacio = [];
+    $this->ejecutarLogicaInterna($orden, null, $procesados, $rastroVacio, [], true);
+
+    // 1. Obtener todos los skufinales relevantes
+    $skufinalesRelevantes = [];
+    foreach ($ctx['itemsEta'] as $item) {
+        $sku = trim((string)$item->SKU);
+        foreach ($ctx['relPorSku'][$sku] ?? [] as $r) {
+            $skufinalesRelevantes[trim((string)$r->skufinal)] = true;
+        }
     }
 
+    // 2. Iterar sobre cada skufinal respetando el orden de la BD
+    foreach (array_keys($skufinalesRelevantes) as $skf) {
+        
+        // Filtro anti-genéricos
+        if (!str_contains($skf, 'G888') && !str_contains($skf, "'G8")) {
+            if (isset($skufinalesRelevantes["'G888" . $skf]) || isset($skufinalesRelevantes["G888" . $skf])) {
+                continue;
+            }
+        }
+
+        $reglas = array_values($ctx['relacionesPorSkufinalSinFiltro'][$skf] ?? []);
+        $totalReglas = count($reglas);
+
+        // 3. Iterar por las reglas del árbol EN EL ORDEN EXACTO DE LA BD
+
+for ($i = 0; $i < $totalReglas; $i++) {
+    $regla = $reglas[$i];
+    
+    $skuRegla = trim((string)$regla->SKU);
+    $depRegla = trim((string)$regla->depende_SKU);
+    $minimoRegla = (float)($regla->minimo ?? 0);
+    $tipoRelacion = (string)$regla->tipo_relacion;
+
+    // 🆕 LÓGICA DE DISPARO: 
+    // 1. Si es minimo=1, es disparador por excelencia.
+    // 2. Si es de tipo 'calculo' y su SKU está en ETA, también es disparador.
+    // 3. Si no es ninguno, se ignora en el orquestador (lo hará la recursión).
+    
+$esDisparador = ($minimoRegla == 1.0);
+
+$esCalculoConSkuEnEta = ($tipoRelacion === 'calculo' && isset($ctx['itemsReportados'][$skuRegla]));
+
+
+if ($tipoRelacion === 'calculo' && isset($ctx['itemsReportados'][$skuRegla])) {
+    // 🆕 Verificar si esta regla tiene un padre en el árbol
+    $tienePadreEnArbol = false;
+    foreach ($reglas as $r) {
+        if (trim((string)$r->depende_SKU) === $skuRegla) {
+            $tienePadreEnArbol = true;
+            break;
+        }
+    }
+    
+    // Si NO tiene padre, es la raíz y se dispara. Si tiene padre, lo hará la recursión.
+    if (!$tienePadreEnArbol) {
+        $esCalculoConSkuEnEta = true;
+    }
+}
+
+if (!$esDisparador && !$esCalculoConSkuEnEta) {
+    continue;
+}
+
+// 🚀 REGLA DE ORO: 
+// Si es un cálculo con SKU en ETA, IGNORAMOS la validación de relaciónActivaPorDependeSku.
+// Se ejecutará tal cual.
+if (!$esCalculoConSkuEnEta) {
+    // Solo para los disparadores validamos la activación
+    if (!$this->relacionActivaPorDependeSku($regla, $ctx)) {
+        continue;
+    }
+}
+    // Evitar duplicados
+    $claveRegla = $orden . '_' . $skuRegla . '_' . $depRegla . '_' . $skf . '_' . $tipoRelacion;
+    if (isset($procesados[$claveRegla])) {
+        continue;
+    }
+
+    // Calcular valor inicial para Nivel 0
+    $maximoRegla = (float)($regla->maximo ?? 0);
+    $valorEntrada = $this->calcularValorNivelCero($depRegla, $maximoRegla, $ctx);
+    if ($valorEntrada <= 0) {
+        $valorEntrada = $this->calcularValorNivelCero($skuRegla, $maximoRegla, $ctx);
+    }
+    if ($valorEntrada <= 0) {
+        continue;
+    }
+
+    // Buscar el ítem real o crear virtual
+    $itemReal = $ctx['itemsEta']->firstWhere('SKU', $skuRegla);
+    $centro = $itemReal->CENTRO ?? "'G845";
+    
+    $padreObj = $ctx['padreCategoriaPorSku'][$skuRegla] ?? null;
+    $conteo   = (int)($ctx['conteoSinFiltroPorSkufinal'][$skf] ?? 0);
+
+    $rastroLocal = [];
+    
+    // Disparar (Nivel 0)
+    $this->AutomataRecursivo(
+        $skuRegla,
+        (int)$orden,
+        $conteo,
+        (float)$valorEntrada,
+        $maximoRegla,
+        $minimoRegla,
+        (string)($regla->formula ?? ''),
+        $procesados,
+        $tipoRelacion,
+        0,
+        $rastroLocal,
+        $depRegla,
+        $skuRegla,
+        0, // Nivel 0
+        $skf,
+        $padreObj,
+        $centro,
+        (string)($regla->nombre ?? ''),
+        $ctx
+    );
+}
+    }
+
+    // Ordenar por Nivel antes de devolver
     $validaciones = $this->quitarDuplicadosPorOrdenYSKU($procesados);
-        // 💾 Nombre dinámico del archivo para identificar qué lote se está descargando
-    
-        $nombreArchivo = 'validaciones_lote_' . $paginaActual . '_ordenes_' . ($offset + 1) . '.csv';
+    usort($validaciones, function($a, $b) {
+        return ($a->Nivel ?? 0) <=> ($b->Nivel ?? 0);
+    });
 
-    
+    Log::info(sprintf(
+        'Orden %s procesada en %.2fs (%d items, %d nodos)',
+        $orden, microtime(true) - $t0,
+        count($ctx['itemsEta']), count($validaciones)
+    ));
 
-    return response()->json(['validaciones' => $validaciones], 200, [], JSON_PRETTY_PRINT);
+    $nombreArchivo = 'validaciones_lote_'.$lote.'_ordenes_'.($offset + 1).'.csv';
+
+    return response()->json([
+        'validaciones' => $validaciones,
+        'meta' => [
+            'orden'   => $orden,
+            'items'   => count($ctx['itemsEta']),
+            'nodos'   => count($validaciones),
+            'ms'      => round((microtime(true) - $t0) * 1000, 1),
+            'archivo' => $nombreArchivo,
+        ],
+    ], 200, [], JSON_PRETTY_PRINT);
+}
+
+private function calcularValorEntrada(string $sku, float $minimo, float $maximo, array $ctx): float
+{
+    // Si el SKU está en ETA, su cantidad directa es el valor
+    if (isset($ctx['etaPorSku'][$sku])) {
+        $total = 0.0;
+        foreach ($ctx['etaPorSku'][$sku] as $row) {
+            $total += (float)$row->Cantidad;
+        }
+        return $total;
+    }
+
+    // Si no está en ETA pero la regla exige analizar hermanos (minimo/maximo == 10000)
+    if ($minimo == 10000.0 || $maximo == 10000.0) {
+        $nodo = $ctx['mapaNodo'][$sku] ?? null;
+        if ($nodo && $nodo->padre_id !== null) {
+            $hermanos = $ctx['mapaHermanos'][$nodo->padre_id] ?? [];
+            $total = 0.0;
+            foreach ($hermanos as $h) {
+                if (isset($ctx['etaPorSku'][trim((string)$h)])) {
+                    foreach ($ctx['etaPorSku'][trim((string)$h)] as $row) {
+                        $total += (float)$row->Cantidad;
+                    }
+                }
+            }
+            return $total;
+        }
+    }
+
+    return 0.0;
+}
+    // =========================================================================
+// 2) EJECUTAR LÓGICA INTERNA — debe aceptar $ctx
+// =========================================================================
+private function ejecutarLogicaInterna(
+    string $orden,
+    $item,
+    array &$procesados,
+    array &$rastro,
+    array $ctx,
+    bool $limpiarCache = false
+): void {
+    // Variables estáticas para caché (se mantienen)
+    static $cacheNormales = [];
+    static $cacheEspeciales = [];
+    static $cachePadres = [];
+    static $cacheExpansionSkus = [];
+
+    // Interceptor de reseteo
+    if ($limpiarCache === true || $orden === 'RESET_CACHE' || $item === null) {
+        $cacheNormales = [];
+        $cacheEspeciales = [];
+        $cachePadres = [];
+        $cacheExpansionSkus = [];
+        return;
+    }
+
+    $fkTienda = session('user_fkTienda');
+    $sku = trim((string)$item->SKU);
+    $centro = (string)($item->CENTRO ?? '');
+    $tipoServicio = (string)($item->TIPO_DE_SERVICIO ?? '');
+
+    // 1. Detección de centro especial
+    $centroLimpio = "'" . $tipoServicio . substr($centro, 1, 4);
+    $esEspecial = str_contains($centro, 'G888') || str_contains($centroLimpio, 'G8');
+    $centrosEspeciales = ["'G845", "'G830", "'G840", "'MJG845", "'MJG830", "'MJG840", "'M7G845", "'M7G830", "'M7G840"];
+
+    // 2. Expansión de hermanos (solo para saber qué skus están activos)
+    $llaveExpansion = "tree_" . $sku;
+    if (!isset($cacheExpansionSkus[$llaveExpansion])) {
+        $nodoActual = $ctx['mapaNodo'][$sku] ?? null;
+        if ($nodoActual && $nodoActual->padre_id !== null) {
+            $cacheExpansionSkus[$llaveExpansion] = $ctx['mapaHermanos'][$nodoActual->padre_id] ?? [$sku];
+        } else {
+            $cacheExpansionSkus[$llaveExpansion] = [$sku];
+        }
+    }
+    $listaSkusActivos = $cacheExpansionSkus[$llaveExpansion];
+
+    // 3. Obtener las relaciones desde el contexto
+    $llave = ($esEspecial ? 'esp_' : 'norm_') . $sku . '_' . $centro;
+    if (!isset($cacheNormales[$llave])) {
+        // Usamos la función de filtrado que ya tienes (filtrarRelacionesDesdeContexto)
+        $cacheNormales[$llave] = $this->filtrarRelacionesDesdeContexto(
+            $ctx, $sku, $listaSkusActivos, $esEspecial, $centro, $tipoServicio, $centrosEspeciales
+        );
+    }
+    $resultadoFinal = $cacheNormales[$llave];
+
+    if ($resultadoFinal->isEmpty()) {
+        return;
+    }
+
+    // 4. Iterar sobre las relaciones encontradas
+    foreach ($resultadoFinal as $relacion) {
+        // Validar activación (SKU o depende_SKU reportado)
+        if (!$this->relacionActivaPorDependeSku($relacion, $ctx)) {
+            continue;
+        }
+
+        $skuDestino = trim((string)$relacion->SKU);
+        $maximoRegla = (float)($relacion->maximo ?? 0);
+        $minimoRegla = (float)($relacion->minimo ?? 0);
+
+        // Obtener el padre categoría (ya precalculado en $ctx)
+        $padreObj = $ctx['padreCategoriaPorSku'][$skuDestino] ?? null;
+        if (!$padreObj) {
+            continue;
+        }
+
+        // Conteo (desde el contexto)
+        $conteo = $ctx['conteoSinFiltroPorSkufinal'][trim((string)$relacion->skufinal)] ?? 0;
+
+        // Llamada inicial a AutomataRecursivo
+        // (Aquí usamos el $item actual como valor de entrada)
+        $this->AutomataRecursivo(
+            $skuDestino,                    // skuActual (SKU de la regla)
+            (int)$orden,
+            (int)$conteo,
+            (float)$item->Cantidad,         // valor inicial (cantidad del ítem de ETA)
+            $maximoRegla,
+            $minimoRegla,
+            (string)($relacion->formula ?? ''),
+            $procesados,
+            (string)$relacion->tipo_relacion,
+            0,                              // val (valant) inicial
+            $rastro,
+            (string)$relacion->depende_SKU, // skuOrigen = depende_SKU de la regla
+            $skuDestino,                    // skuOrigenraiz = SKU de la regla
+            0,                              // nivel inicial
+            (string)$relacion->skufinal,
+            $padreObj,
+            $centro,                        // Centro del ítem
+            (string)($relacion->nombre ?? ''),
+            $ctx                            // Pasar el contexto completo
+        );
+    }
+}
+
+/**
+ * Sustituye las 3 queries (específica + general + generalTOTAL) por un filtro en PHP
+ * sobre $ctx ya precargado. Mantiene la misma matriz de prioridades 1/2/3.
+ */
+private function filtrarRelacionesDesdeContexto(
+    array $ctx, string $sku, array $listaSkusActivos,
+    bool $esEspecial, string $centro, string $tipoServicio,
+    array $centrosEspeciales
+): \Illuminate\Support\Collection {
+    
+    $resultado = collect();
+    $vistos = [];
+
+    // 1. Buscar skufinales del SKU
+    $skufinalesDelSku = [];
+    foreach ($ctx['relPorSku'][$sku] ?? [] as $r) {
+        $skufinalesDelSku[] = trim((string)$r->skufinal);
+    }
+    $skufinalesDelSku = array_unique($skufinalesDelSku);
+
+    // 🆕 FILTRO POR TIPO DE SKUFINAL
+    // Si es especial, solo usar skufinales que contengan 'G888' o el centro
+    // Si no, solo usar skufinales que NO tengan 'G888'
+    $skufinalesFiltrados = [];
+    foreach ($skufinalesDelSku as $skf) {
+        $tieneCentro = str_contains($skf, 'G888') || str_contains($skf, $centro);
+        
+        if ($esEspecial && $tieneCentro) {
+            $skufinalesFiltrados[] = $skf;
+        } elseif (!$esEspecial && !$tieneCentro) {
+            $skufinalesFiltrados[] = $skf;
+        }
+    }
+    
+    // Fallback: si no hay ninguno del tipo esperado, usar todos
+    // (por si acaso no hay reglas especiales para este SKU)
+    $skufinalesDelSku = !empty($skufinalesFiltrados) 
+        ? $skufinalesFiltrados 
+        : $skufinalesDelSku;
+
+    // 2. Traer reglas de los skufinales filtrados
+    foreach ($skufinalesDelSku as $skf) {
+        foreach ($ctx['relacionesPorSkufinalSinFiltro'][$skf] ?? [] as $regla) {
+            if (!isset($vistos[$regla->id])) {
+                $vistos[$regla->id] = true;
+                $resultado->push($regla);
+            }
+        }
+    }
+
+    return $resultado->sortBy('id')->values();
+}
+
+private function relacionActivaPorDependeSku(object $relacion, array $ctx): bool
+{
+    $skuRel = trim((string)($relacion->SKU ?? ''));
+    $depRel = trim((string)($relacion->depende_SKU ?? ''));
+    $minimo = (float)($relacion->minimo ?? 0);
+    $maximo = (float)($relacion->maximo ?? 0);
+
+    // 🎯 LÓGICA ESTRICTA PARA NIVEL 0 (DISPARADOR PRINCIPAL: minimo = 1)
+    if ($minimo == 1.0) {
+        // 1. ¿El depende_SKU está exacto en ETA?
+        if (isset($ctx['itemsReportados'][$depRel])) {
+            return true;
+        }
+
+        // 2. Si maximo=10000, buscar en los hermanos REPORTADOS EN ETA
+        if ($maximo == 10000.0) {
+            $nodo = $ctx['mapaNodo'][$depRel] ?? null;
+            if ($nodo && $nodo->padre_id !== null) {
+                foreach ($ctx['mapaHermanos'][$nodo->padre_id] ?? [] as $h) {
+                    if (isset($ctx['itemsReportados'][trim((string)$h)])) {
+                        return true; // ✅ Encontró un hermano en ETA (sin filtros)
+                    }
+                }
+            }
+        }
+        
+        return false; // No encontró ni el específico ni un hermano válido
+    }
+
+    // 🎯 LÓGICA PARA NIVEL > 0 (minimo != 1)
+    // Verificar SKU específico o sus hermanos
+    $skuReportado = isset($ctx['itemsReportados'][$skuRel]);
+    if (!$skuReportado && $minimo == 10000.0) {
+        $nodo = $ctx['mapaNodo'][$skuRel] ?? null;
+        if ($nodo && $nodo->padre_id !== null) {
+            foreach ($ctx['mapaHermanos'][$nodo->padre_id] ?? [] as $h) {
+                if (isset($ctx['itemsReportados'][trim((string)$h)])) {
+                    $skuReportado = true; break;
+                }
+            }
+        }
+    }
+
+    // Verificar depende_SKU específico o sus hermanos
+    $depReportado = isset($ctx['itemsReportados'][$depRel]);
+    if (!$depReportado && $maximo == 10000.0) {
+        $nodo = $ctx['mapaNodo'][$depRel] ?? null;
+        if ($nodo && $nodo->padre_id !== null) {
+            foreach ($ctx['mapaHermanos'][$nodo->padre_id] ?? [] as $h) {
+                if (isset($ctx['itemsReportados'][trim((string)$h)])) {
+                    $depReportado = true; break;
+                }
+            }
+        }
+    }
+
+    return ($skuReportado || $depReportado);
+}
+
+// =========================================================================
+// 3) AUTÓMATA RECURSIVO — firma con $ctx al final
+// =========================================================================
+public function AutomataRecursivo(
+    string $skuActual,
+    int $orden,
+    int $recuento,
+    float $valor,
+    float $maximo,
+    float $minimo,
+    string $formula,
+    array &$procesados,
+    string $tipoRelacion,
+    float $val,
+    array &$rastro,
+    string $skuOrigen,
+    string $skuOrigenraiz,
+    int $nivel = 0,
+    string $skufinal = '',
+    ?object &$padre = null,
+    string $Centro = '',
+    string $mensaj = '',
+    array $ctx = []
+): void {
+    static $cacheTotalesRecursivo = [];
+    static $cachePadresCalculo    = [];
+    static $cachePadresCategoria  = [];
+    static $cacheRelacionesNodo   = [];
+    static $nodosEvaluados = [];
+
+    if ($skuActual === 'RESET_CACHE' || $orden === 0) {
+        $cacheTotalesRecursivo = [];
+        $cachePadresCalculo    = [];
+        $cachePadresCategoria  = [];
+        $cacheRelacionesNodo   = [];
+        $nodosEvaluados = [];
+        return;
+    }
+    if($skufinal==="'G8884018238"){
+        $ver="";
+    }
+
+    $llaveNodoUnico = $orden . '_' . $skuActual . '_' . $skufinal . '_' . $tipoRelacion;
+        if (isset($nodosEvaluados[$llaveNodoUnico])) {
+            return; // 🚫 Ya se evaluó este nodo exacto en este árbol. No repetir.
+        }
+        $nodosEvaluados[$llaveNodoUnico] = true;
+    
+    $esNivelCero = ($nivel === 0);
+
+    if ($valor <= 0 && $nivel == 0) return;
+
+    $clave = $orden.'_'.$skuActual.'_'.$skuOrigen.'_'.$skufinal.'_'.$tipoRelacion;
+
+    if (isset($procesados[$clave])) return;
+    if (isset($rastro[$clave]))     return;
+    $rastro[$clave] = true;
+
+
+    //if ($nivel > ($recuento + 1) && $tipoRelacion === 'calculo') return;
+
+$llaveValorRAM = "valor_{$orden}_{$skuActual}_{$skuOrigen}_{$maximo}_{$minimo}_{$nivel}";
+if (!isset($cacheTotalesRecursivo[$llaveValorRAM])) {
+    if ($esNivelCero) {
+        // Nivel 0: expande si maximo == 10000
+        $cacheTotalesRecursivo[$llaveValorRAM] = $this->calcularValorNivelCero($skuOrigen, $maximo, $ctx);
+    } else {
+        // Nivel > 0: expande si maximo == 10000
+        $cacheTotalesRecursivo[$llaveValorRAM] = $this->calcularValorEnRam($skuOrigen, $minimo, $maximo, $ctx);
+    }
+}
+$valor = $cacheTotalesRecursivo[$llaveValorRAM];
+
+
+// 2. USADO (Pivote: SKU)
+$llaveUsadoRAM = "usado_{$orden}_{$skuActual}_{$maximo}_{$minimo}_{$nivel}";
+if (!isset($cacheTotalesRecursivo[$llaveUsadoRAM])) {
+    if ($esNivelCero) {
+        // Nivel 0: expande si maximo == 10000
+        $cacheTotalesRecursivo[$llaveUsadoRAM] = $this->calcularUsadoNivelCero($skuActual, $maximo, $ctx);
+    } else {
+        // Nivel > 0: expande si minimo == 10000
+        $cacheTotalesRecursivo[$llaveUsadoRAM] = $this->calcularUsadoEnRam($skuActual, $minimo, $maximo, $ctx);
+    }
+}
+$usado = $cacheTotalesRecursivo[$llaveUsadoRAM];
+
+    $variables = [
+        'minimo' => $minimo ?? 0, 'maximo' => $maximo ?? 0,
+        'valor'  => $valor  ?? 0, 'usado'  => $usado  ?? 0,
+        'total'  => $nivel  ?? 0, 'valant' => $val    ?? 0,
+    ];
+
+    $resultado = $this->evaluarFormulaexp($formula, $variables);
+    if ($resultado === 20000 && $nivel === 0) $val = $valor;
+
+    $resultadoMostrar = $resultado;
+    $resultado = $resultado == 20000 ? 0 : $resultado;
+
+
+
+    $valParaHijo = ($resultadoMostrar == 20000) ? $val : $resultadoMostrar;
+
+            $cambiarvalant=$this->contarDecimales($resultado);
+
+    Log::info('EJECUTANDO_CALCULO', [
+        'sku' => $skuActual,
+        'formula' => $formula,
+        'valant_entrada' => $val,
+        'resultado' => $resultado,
+        'valant_salida' => $valParaHijo,
+        'regla'=>$skufinal
+    ]);
+
+if ($cambiarvalant === 6) {
+    $resultadoMostrar = $resultado * 1000000;
+    $valor=$resultadoMostrar;
+    $val=$resultadoMostrar;
+} 
+
+
+    if (env('APP_DEBUG_MAMO', false)) {
+        Log::debug('MAMO', [
+            'clave' => $clave, 'SKU' => $skuActual, 'depende' => $skuOrigen,
+            'minimo' => $minimo, 'maximo' => $maximo,
+            'valor' => $valor, 'usado' => $usado, 'formula' => $formula,
+            'resultado' => $resultado, 'nivel' => $nivel,
+        ]);
+    }
+
+   
+    // ---- Registro de nodo (if/elseif EXACTO) ----
+    if ($resultado > 0 || $resultado < 0) {
+        if ($tipoRelacion === 'requiere' || $tipoRelacion === 'incompatible') {
+            $padrerel = isset($ctx['etaPorSku'][trim($skuActual)]);
+
+            if ($resultado <> 0) {
+                $procesados[$clave] = (object)[
+                    'Orden' => $orden, 'SKU_Origen' => $skuActual,
+                    'SKU_Destino' => $skuOrigen, 'msj' => $mensaj,
+                    'ValorEntrada' => $valor,
+                    'Resultado' => $resultado == 10000 ? $val : $resultado,
+                    'TipoRelacion' => $resultado < 0 ? $tipoRelacion.' - Exceso' : $tipoRelacion,
+                    'formula' => $formula, 'Nivel' => $nivel, 'children' => [],
+                    'skuOrigenraiz' => $skufinal, 'CENTRO' => $Centro,
+                    'claveunica' => $clave,
+                    'NOMBRE_Destino' => $padre->nombre ?? 'SKU materia analizado '.$tipoRelacion.' '.$skuActual,
+                ];
+            } elseif ($padrerel) {
+                $procesados[$clave] = (object)[
+                    'Orden' => $orden, 'SKU_Origen' => $skuActual,
+                    'SKU_Destino' => $skuOrigen, 'msj' => $mensaj,
+                    'ValorEntrada' => $valor,
+                    'Resultado' => $resultado == 10000 ? $val : $resultado,
+                    'TipoRelacion' => $resultado < 0 ? $tipoRelacion.' - Exceso' : $tipoRelacion,
+                    'formula' => $formula, 'Nivel' => $nivel, 'children' => [],
+                    'skuOrigenraiz' => $skufinal, 'CENTRO' => $Centro,
+                    'claveunica' => $clave,
+                    'NOMBRE_Destino' => $padre->nombre ?? 'SKU materia analizado '.$tipoRelacion.' '.$skuActual,
+                ];
+            }
+        }
+    }
+
+    // ---- Relaciones del nodo final ----
+    $llaveNodoFinal = 'nodo_'.$skufinal;
+    if (!isset($cacheRelacionesNodo[$llaveNodoFinal])) {
+        $cacheRelacionesNodo[$llaveNodoFinal] = [
+            'relaciones' => $ctx['relacionesPorSkufinalSinFiltro'][$skufinal] ?? [],
+            'conteo'     => $ctx['conteoSinFiltroPorSkufinal'][$skufinal]   ?? 0,
+        ];
+    }
+    $relaciones = $cacheRelacionesNodo[$llaveNodoFinal]['relaciones'];
+    $conteo     = $cacheRelacionesNodo[$llaveNodoFinal]['conteo'];
+    if ($conteo === 0) return;
+
+    $itemsReportados = $ctx['itemsReportados'] ?? [];
+    $iteracionActual = 0;
+
+foreach ($relaciones as $relacion) {
+    $iteracionActual++;
+    $esUltimoNodo = ($iteracionActual === (int)$conteo);
+    $tipoRelHijo = (string)$relacion->tipo_relacion;
+
+    $skuHijo = trim((string)$relacion->SKU);
+    $depHijo = trim((string)$relacion->depende_SKU);
+
+        if (trim((string)$relacion->skufinal) !== trim((string)$skufinal)) {
+        Log::warning('RELACION_FUERA_DE_ARBOL', [
+            'skufinal_actual' => $skufinal,
+            'relacion_skufinal' => $relacion->skufinal,
+            'relacion_sku' => $relacion->SKU,
+        ]);
+        continue; // Saltar si la relación no es del árbol actual
+    }
+
+    // 🚀 REGLA DE ORO PARA CÁLCULO
+    if ($tipoRelHijo === 'calculo') {
+        // 1. Verificar si el SKU o sus hermanos están en ETA
+        $skuHijoEnEta = isset($itemsReportados[$skuHijo]);
+        
+        // Si no está el específico, buscar en sus hermanos
+        if (!$skuHijoEnEta) {
+            $nodoSkuHijo = $ctx['mapaNodo'][$skuHijo] ?? null;
+            if ($nodoSkuHijo && $nodoSkuHijo->padre_id !== null) {
+                foreach ($ctx['mapaHermanos'][$nodoSkuHijo->padre_id] ?? [] as $h) {
+                    if (isset($itemsReportados[trim((string)$h)])) {
+                        $skuHijoEnEta = true; break;
+                    }
+                }
+            }
+        }
+
+        // Si el SKU y sus hermanos NO están en ETA, y además su depende_SKU tampoco, se salta
+        if (!$skuHijoEnEta && !isset($itemsReportados[$depHijo])) {
+            continue;
+        }
+
+        // Si llegó aquí, el nodo de cálculo SE DEBE EVALUAR SÍ O SÍ
+        $padreObj = $ctx['padreCategoriaPorSku'][$skuHijo] ?? null;
+        
+        $this->AutomataRecursivo(
+            $relacion->SKU,
+            $orden,
+            $conteo,
+            $valParaHijo,
+            $relacion->maximo ?? 0,
+            $relacion->minimo ?? 0,
+            $relacion->formula,
+            $procesados,
+            $relacion->tipo_relacion,
+            $valParaHijo,
+            $rastro,
+            $relacion->depende_SKU,
+            $skuOrigenraiz,
+            $nivel + 1,
+            $relacion->skufinal,
+            $padreObj, // Puede ser null, no importa para calculo
+            $Centro,
+            $relacion->nombre,
+            $ctx
+        );
+        
+        continue; // Saltamos el resto de validaciones para este hijo
+    }
+
+    // =========================================================================
+    // A PARTIR DE AQUÍ ES LA LÓGICA PARA 'requiere' E 'incompatible'
+    // =========================================================================
+    
+    // Filtro nodo no reportado
+    if (!$esUltimoNodo) {
+        $skuMatch = false; $depMatch = false;
+
+        $skuEval = trim((string)$relacion->SKU);
+        if (isset($relacion->maximo) && (int)$relacion->maximo === 10000 && str_contains($skuEval, '.')) {
+            $prefix = explode('.', $skuEval)[0];
+            foreach ($itemsReportados as $real => $_) {
+                if (str_starts_with((string)$real, $prefix)) { $skuMatch = true; break; }
+            }
+        } else {
+            $skuMatch = isset($itemsReportados[$skuEval]);
+        }
+
+        $depEval = trim((string)($relacion->depende_SKU ?? ''));
+        if ($depEval !== '') {
+            if (isset($relacion->minimo) && (int)$relacion->minimo === 10000 && str_contains($depEval, '.')) {
+                $prefix = explode('.', $depEval)[0];
+                foreach ($itemsReportados as $real => $_) {
+                    if (str_starts_with((string)$real, $prefix)) { $depMatch = true; break; }
+                }
+            } else {
+                $depMatch = isset($itemsReportados[$depEval]);
+            }
+        }
+
+        if (!$skuMatch && !$depMatch) continue;
+    }
+
+    // Clave hijo + ciclos
+    $claveHijo = $orden.'_'.$relacion->SKU.'_'.$relacion->depende_SKU.'_'
+               .$relacion->skufinal.'_'.$relacion->tipo_relacion;
+    if (isset($rastro[$claveHijo])) continue;
+
+    // Padre categoría (solo si es requiere/incompatible)
+    $llavePadreCat = (string)$relacion->SKU;
+    if (!isset($cachePadresCategoria[$llavePadreCat])) {
+        $cachePadresCategoria[$llavePadreCat] =
+            $ctx['padreCategoriaPorSku'][trim((string)$relacion->SKU)] ?? null;
+    }
+    $padreObj = $cachePadresCategoria[$llavePadreCat];
+    if (!$padreObj) continue;
+
+    // Recursión para requiere/incompatible
+    $this->AutomataRecursivo(
+        $relacion->SKU,
+        $orden,
+        $conteo,
+        $valParaHijo,
+        $relacion->maximo ?? 0,
+        $relacion->minimo ?? 0,
+        $relacion->formula,
+        $procesados,
+        $relacion->tipo_relacion,
+        $valParaHijo,
+        $rastro,
+        $relacion->depende_SKU,
+        $skuOrigenraiz,
+        $nivel + 1,
+        $relacion->skufinal,
+        $padreObj,
+        $Centro,
+        $relacion->nombre,
+        $ctx
+    );
+}
+}
+
+private function calcularValorNivelCero(string $depSku, float $maximo, array $ctx): float
+{
+    $sku = trim($depSku);
+    $sumar = fn(array $skus): float => $this->sumarCantidades($skus, $ctx);
+
+    // En Nivel 0, expande a hermanos SOLO si maximo == 10000
+    if ($maximo == 10000.0) {
+        $nodo = $ctx['mapaNodo'][$sku] ?? null;
+        if (!$nodo || $nodo->padre_id === null) return $sumar([$sku]);
+        
+        $hermanos = $ctx['mapaHermanos'][$nodo->padre_id] ?? [$sku];
+        if (!in_array($sku, $hermanos, true)) $hermanos[] = $sku;
+        return $sumar($hermanos);
+    }
+
+    // Si maximo != 10000, solo el específico
+    return $sumar([$sku]);
+}
+
+private function calcularUsadoNivelCero(string $skuPivote, float $maximo, array $ctx): float
+{
+    $sku = trim($skuPivote);
+    $sumar = fn(array $skus): float => $this->sumarCantidades($skus, $ctx);
+
+    // En Nivel 0, expande a hermanos SOLO si maximo == 10000
+    if ($maximo == 10000.0) {
+        $nodo = $ctx['mapaNodo'][$sku] ?? null;
+        if (!$nodo || $nodo->padre_id === null) return $sumar([$sku]);
+        
+        $hermanos = $ctx['mapaHermanos'][$nodo->padre_id] ?? [$sku];
+        if (!in_array($sku, $hermanos, true)) $hermanos[] = $sku;
+        return $sumar($hermanos);
+    }
+
+    // Si maximo != 10000, solo el específico
+    return $sumar([$sku]);
 }
 
 public function AutomataValidarMamoOrdenExcel(Request $request)
@@ -2421,6 +3189,10 @@ public function AutomataValidarMamoOrdenExcel(Request $request)
              ->groupBy('SKU', 'CENTRO','TIPO_DE_SERVICIO')
              ->get();
     $this->ejecutarLogicaInterna(null, null, $procesados, $rastro, true);
+
+    if($items->SKU ==="4018238"){
+        $V="";
+    }
     
     // Procesamos la jerarquía del autómata recursivo
     foreach ($items as $item) {
@@ -2531,31 +3303,30 @@ private function descargarCSV($validaciones, $nombreArchivo)
     ]);
 }
 
-
-private function quitarDuplicadosPorOrdenYSKU(array $items): array
+private function quitarDuplicadosPorOrdenYSKU(array $procesados): array
 {
     $unicos = [];
-
-    foreach ($items as $item) {
-        // Creamos la clave combinando el Nombre y la Orden como solicitaste
-        $clave = $item->NOMBRE_Destino . '_' . $item->Orden. '_' . $item->msj;
-
-        // Si la clave no existe, guardamos el item actual
+    
+    foreach ($procesados as $clave => $item) {
         if (!isset($unicos[$clave])) {
             $unicos[$clave] = $item;
-        } else {
-            // LÓGICA DE PRIORIDAD:
-            // Si el que ya tenemos guardado NO cumple (Resultado <= 0)
-            // pero el nuevo SI cumple (Resultado > 0), lo reemplazamos
-            $actualCumple = $unicos[$clave]->Resultado > 0;
-            $nuevoCumple = $item->Resultado > 0;
-
-            if (!$actualCumple && $nuevoCumple) {
-                $unicos[$clave] = $item;
-            }
+            continue;
+        }
+        
+        $actualCumple = ($unicos[$clave]->Resultado ?? 0) > 0;
+        $nuevoCumple  = ($item->Resultado ?? 0) > 0;
+        
+        if (!$actualCumple && $nuevoCumple) {
+            $unicos[$clave] = $item;
         }
     }
-
+    
+    // 🆕 Ordenar por Nivel ascendente (Nivel 0 primero, luego 1, 2...)
+    // Si empatan en nivel, mantener el orden de inserción original.
+    usort($unicos, function($a, $b) {
+        return ($a->Nivel ?? 0) <=> ($b->Nivel ?? 0);
+    });
+    
     return array_values($unicos);
 }
 
@@ -3015,6 +3786,31 @@ $exp->register(
     'ceil',
     fn ($value) => sprintf('ceil(%s)', $value),
     fn ($variables, $value) => ceil((float)$value)
+);
+
+// paso: Devuelve 1 si el número tiene 6 o más decimales, 0 si no.
+$exp->register(
+    'paso',
+    fn ($value) => sprintf('paso(%s)', $value),
+    function ($variables, $value) {
+        // Si es exactamente 0, no tiene decimales
+        if ($value == 0) return 0;
+
+        // Convertimos a string con 14 decimales para inspeccionar
+        $numStr = sprintf('%14f', (float)$value);
+        
+        // Quitamos los ceros sobrantes a la derecha
+        $numStr = rtrim($numStr, '0');
+        
+        // Contamos los decimales
+        $decimales = 0;
+        if (strpos($numStr, '.') !== false) {
+            $decimales = strlen(explode('.', $numStr)[1]);
+        }
+
+        // Si tiene 6 o más decimales (o exactamente 6, ajusta según tu regla)
+        return ($decimales >= 6) ? 1 : 0;
+    }
 );
 
 // abs

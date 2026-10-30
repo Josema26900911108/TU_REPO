@@ -98,79 +98,209 @@ class materialmanoobraController extends Controller
 public function importarMAMO(Request $request)
 {
     DB::connection()->disableQueryLog();
+
     if (!Auth::check()) {
         return redirect()->route('login');
     }
 
-    $fkTienda = session('user_fkTienda');
+    // Validación robusta: por extensión, no por MIME (el MIME varía según SO/navegador)
     $request->validate([
-        'archivo' => 'required|file|mimes:csv,txt',
+        'archivo' => 'required|file|max:20480', // 20 MB
     ]);
 
-    // 1. Leer el archivo binario completo de forma segura
-    $realPath = $request->file('archivo')->getRealPath();
-    $fileData = file_get_contents($realPath);
+    $archivo = $request->file('archivo');
+    $ext = strtolower($archivo->getClientOriginalExtension());
+    if (!in_array($ext, ['csv', 'txt'])) {
+        return back()->with('error', 'El archivo debe ser .csv o .txt (recibido: .' . $ext . ')');
+    }
 
-    // 2. DETECCIÓN Y CONVERSIÓN DE CODIFICACIÓN GLOBAL (Evita rotura de caracteres y llaves)
+    $fkTienda = session('user_fkTienda');
+
+    // 1. Leer contenido completo
+    $realPath = $archivo->getRealPath();
+    $fileData = file_get_contents($realPath);
+    if ($fileData === false || $fileData === '') {
+        return back()->with('error', 'El archivo está vacío o no se pudo leer.');
+    }
+
+    // 2. Quitar BOM UTF-8 si existe
+    $fileData = preg_replace('/^\xEF\xBB\xBF/', '', $fileData);
+
+    // 3. Detectar y convertir codificación a UTF-8
     $encoding = mb_detect_encoding($fileData, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
-    if ($encoding !== 'UTF-8') {
+    if ($encoding && $encoding !== 'UTF-8') {
         $fileData = mb_convert_encoding($fileData, 'UTF-8', $encoding);
     }
 
-    // 3. Crear un stream de memoria temporal con los datos ya normalizados en UTF-8
+    // 4. Detectar delimitador automáticamente (coma, punto y coma o tab)
+    $primeraLinea = strtok($fileData, "\r\n");
+    $delim = ',';
+    $candidatos = [',' => 0, ';' => 0, "\t" => 0];
+    foreach ($candidatos as $d => $_) {
+        $candidatos[$d] = substr_count($primeraLinea, $d);
+    }
+    arsort($candidatos);
+    $delim = array_key_first($candidatos);
+    if ($candidatos[$delim] === 0) {
+        $delim = ','; // fallback
+    }
+
+    // 5. Stream en memoria con datos normalizados
     $file = fopen('php://temp', 'r+');
     fwrite($file, $fileData);
     rewind($file);
 
-    // 4. Leer el encabezado limpio (Ya en UTF-8)
-    $encabezado = fgetcsv($file); 
-    
-    // Quitar espacios residuales o caracteres extraños ocultos en las llaves del encabezado
-    $encabezado = array_map(function($val) {
-        return trim(preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $val));
-    }, $encabezado);
+    // 6. Leer encabezado y normalizarlo
+    $encabezadoRaw = fgetcsv($file, 0, $delim);
+    if (!$encabezadoRaw || count($encabezadoRaw) < 2) {
+        fclose($file);
+        return back()->with('error', 'No se pudo leer el encabezado del CSV (delimitador detectado: "' . $delim . '"). Verifica el archivo.');
+    }
+
+    // Normalizar encabezados: trim, quitar caracteres de control, quitar BOM residual, mapear a canónico
+    $mapaCanonico = [
+        'descripcion'          => 'Descripcion',
+        'sku'                  => 'SKU',
+        'unidadmedida'         => 'unidadmedida',
+        'unidad de medida'     => 'unidadmedida',
+        'categoria'            => 'CATEGORIA',
+        'costopago'            => 'COSTOPAGO',
+        'costo pago'           => 'COSTOPAGO',
+        'categoriacobro'       => 'CATEGORIACOBRO',
+        'categoria cobro'      => 'CATEGORIACOBRO',
+        'tipo'                 => 'TIPO',
+        'centrocostoespecifico'=> 'centrocostoespecifico',
+        'centro costo especifico' => 'centrocostoespecifico',
+    ];
+
+    $encabezado = [];
+    foreach ($encabezadoRaw as $col) {
+        $col = preg_replace('/^\xEF\xBB\xBF/', '', $col);          // BOM residual
+        $col = trim(preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $col)); // control chars
+        $clave = mb_strtolower($col, 'UTF-8');
+        $clave = preg_replace('/\s+/', ' ', $clave);               // espacios múltiples
+        $encabezado[] = $mapaCanonico[$clave] ?? $col;
+    }
+
+    // Validar que estén las columnas obligatorias
+    $requeridas = ['Descripcion', 'SKU', 'unidadmedida', 'CATEGORIA', 'COSTOPAGO', 'CATEGORIACOBRO'];
+    $faltantes = array_diff($requeridas, $encabezado);
+    if (!empty($faltantes)) {
+        fclose($file);
+        return back()->with('error', 'Faltan columnas en el CSV: ' . implode(', ', $faltantes)
+            . '. Columnas encontradas: ' . implode(', ', $encabezado));
+    }
 
     DB::beginTransaction();
+    $insertados = 0;
+    $saltados   = 0;
 
     try {
-        while (($linea = fgetcsv($file)) !== false) {
-            // Unir columnas con llaves de encabezado
-            $data = array_combine($encabezado, $linea);
-
-            // Validar campos mínimos obligatorios
-            if (!isset($data['Descripcion']) || !isset($data['SKU']) || !isset($data['unidadmedida']) || 
-                !isset($data['CATEGORIA']) || !isset($data['COSTOPAGO']) || !isset($data['CATEGORIACOBRO'])) {
-                continue; 
+        while (($linea = fgetcsv($file, 0, $delim)) !== false) {
+            // Saltar líneas vacías
+            if ($linea === [null] || (count($linea) === 1 && trim((string)$linea[0]) === '')) {
+                continue;
             }
 
-            // Insertar o actualizar de forma atómica en tu tabla MySQL
+            // Tolerar filas con menos/más columnas que el encabezado
+            $n = count($encabezado);
+            if (count($linea) < $n) {
+                $linea = array_pad($linea, $n, '');
+            } elseif (count($linea) > $n) {
+                $linea = array_slice($linea, 0, $n);
+            }
+
+            $data = array_combine($encabezado, $linea);
+            if ($data === false) {
+                $saltados++;
+                continue;
+            }
+
+            // Obtener valores con fallback tolerante
+            $get = function($key) use ($data) {
+                return isset($data[$key]) ? trim((string)$data[$key]) : '';
+            };
+
+            $sku = $get('SKU');
+            $descripcion = $get('Descripcion');
+            if ($sku === '' || $descripcion === '') {
+                $saltados++;
+                continue;
+            }
+
+            $centro = $get('centrocostoespecifico');
+
             Materialmanoobra::updateOrCreate(
                 [
-                    'SKU' => trim($data['SKU']),
-                    'centrocostoespecifico' => !empty($data['centrocostoespecifico']) ? trim($data['centrocostoespecifico']) : null,
-                    'fkTienda' => $fkTienda ?? 0,
-                    'TIPO'           => trim($data['TIPO'] ?? '')
+                    'SKU'                    => $sku,
+                    'centrocostoespecifico'  => $centro !== '' ? $centro : null,
+                    'fkTienda'               => $fkTienda ?? 0,
+                    'TIPO'                   => $get('TIPO'),
                 ],
                 [
-                    'SKU'            => trim($data['SKU']),
-                    'Descripcion'    => trim($data['Descripcion']),
-                    'unidadmedida'   => trim($data['unidadmedida'] ?? ''),
-                    'CATEGORIA'      => trim($data['CATEGORIA'] ?? ''),
-                    'COSTOPAGO'      => (float) ($data['COSTOPAGO'] ?? 0),
-                    'CATEGORIACOBRO' => (float) ($data['CATEGORIACOBRO'] ?? 0)
+                    'SKU'            => $sku,
+                    'Descripcion'    => $descripcion,
+                    'unidadmedida'   => $get('unidadmedida'),
+                    'CATEGORIA'      => $get('CATEGORIA'),
+                    'COSTOPAGO'      => $this->parseDecimal($get('COSTOPAGO')),
+                    'CATEGORIACOBRO' => $this->parseDecimal($get('CATEGORIACOBRO')),
                 ]
             );
+            $insertados++;
         }
 
         DB::commit();
         fclose($file);
-        return back()->with('success', 'Mano de Obra o Materiales importados correctamente.');
 
-    } catch (\Exception $e) {
+        $msg = "Importación completada: {$insertados} registros procesados";
+        if ($saltados > 0) {
+            $msg .= ", {$saltados} filas omitidas (sin SKU o Descripción)";
+        }
+        return back()->with('success', $msg . '.');
+
+    } catch (\Throwable $e) {
         DB::rollBack();
-        fclose($file);
+        if (is_resource($file)) fclose($file);
+        \Log::error('Error importarMAMO: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
         return back()->with('error', 'Error al importar registros: ' . $e->getMessage());
     }
+}
+
+/**
+ * Convierte un valor decimal tolerando coma o punto decimal
+ * y separadores de miles. Ej: "1.234,56" -> 1234.56
+ */
+private function parseDecimal($valor)
+{
+    $valor = trim((string)$valor);
+    if ($valor === '') return 0.0;
+
+    // Quitar símbolos de moneda y espacios
+    $valor = preg_replace('/[^\d,.\-]/', '', $valor);
+
+    $tieneComa = strpos($valor, ',') !== false;
+    $tienePunto = strpos($valor, '.') !== false;
+
+    if ($tieneComa && $tienePunto) {
+        // Formato europeo: 1.234,56 -> quitar puntos, coma a punto
+        if (strrpos($valor, ',') > strrpos($valor, '.')) {
+            $valor = str_replace('.', '', $valor);
+            $valor = str_replace(',', '.', $valor);
+        } else {
+            // Formato US: 1,234.56 -> quitar comas
+            $valor = str_replace(',', '', $valor);
+        }
+    } elseif ($tieneComa) {
+        // Solo coma: puede ser decimal (1,56) o miles (1,234)
+        // Si hay exactamente 2 dígitos tras la última coma -> decimal
+        if (preg_match('/,\d{2}$/', $valor)) {
+            $valor = str_replace(',', '.', $valor);
+        } else {
+            $valor = str_replace(',', '', $valor);
+        }
+    }
+
+    return (float) $valor;
 }
 
 public function descargarFormatoEditar()

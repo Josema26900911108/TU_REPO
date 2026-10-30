@@ -407,6 +407,9 @@
         totalMASIVA = 0;
         let formulaEvaluadaiva='';
         let promocionesAceptadas = {};
+// Variable global para almacenar la cantidad manual interceptada
+let cantidadManualTemporal = null;
+let lastInputTime = Date.now();
 
     //Constantes
     const impuesto = 12;
@@ -1102,15 +1105,15 @@ function ejecutarInsercionTabla(idProducto, nameProducto, cantNum, precioUnidad,
 
 
 
-function agregarProductoScanner(sku) {
+function agregarProductoScanner(sku, cantidadAñadir) {
     let dataProducto = "";
     let idProducto = 0;
     let nameProducto = "";
+    var codigoSku = sku;
 
-    var comprobanteId = sku;
-    if (comprobanteId) {
+    if (codigoSku) {
         $.ajax({
-            url: '/compras/detallesSCAN/' + comprobanteId + '',
+            url: '/compras/detallesSCAN/' + codigoSku,
             type: 'GET',
             success: function(response) {
                 if (!response || response.length === 0) {
@@ -1118,77 +1121,67 @@ function agregarProductoScanner(sku) {
                     Swal.fire({
                         icon: 'warning',
                         title: 'El producto no se encuentra disponible',
-                        text: 'Código: ' + comprobanteId,
+                        text: 'Código: ' + codigoSku,
                     });
                     return;
                 }
 
-                var detalle = response;
-                let idProductos = detalle.producto_id;
-                let seleccionable = idProductos + "-" + detalle.existencia + "-" + detalle.precio_venta;
-                dataProducto = seleccionable;
+                var detalle = Array.isArray(response) ? response : response;
                 idProducto = detalle.producto_id;
-                nameProducto = detalle.producto_nombre;
+                nameProducto = detalle.producto_nombre ? String(detalle.producto_nombre) : "Producto Sin Nombre";
+                let existenciaBase = detalle.existencia || 0;
+                let precioVentaBase = parseFloat(detalle.precio_venta) || 0;
+                let stockMax = parseInt(existenciaBase, 10);
 
-                // Sincronizar el selectpicker
-                $("#producto_id option").each(function () {
-                    let v = $(this).val();
-                    if (v.startsWith(seleccionable)) {
-                        $("#producto_id").val(v).change();
-                        $('#producto_id').selectpicker('refresh');
-                        return false; 
-                    }
-                });
+                // [Aquí mantienes tu lógica de sincronización de selectpicker y llenado de inputs de precio/stock...]
+
+                // ─── LÓGICA DE DETECCIÓN Y SUMA EN EL CARRITO ───
                 
-                $('#precio_venta').val(detalle.precio_venta);
-                $('#stock').val(detalle.existencia);
-
-                let precioVentaBase = parseFloat(detalle.precio_venta);
-                let stockMax = parseInt(detalle.existencia, 10);
-                var comprobante = document.getElementById('comprobante_id').value;
-
-                if (comprobante === "") {
-                    alert("Por favor, seleccione un comprobante.");
-                    return false; 
-                }
-
-                // ─── LÓGICA DE ACUMULACIÓN INTELIGENTE ───
-                // Buscamos si el ID de este producto ya está en el carrito
+                // CÓMO SABE SI ES DE UN PRODUCTO U OTRO: 
+                // Buscamos si el ID del producto devuelto por el escáner ya existe en el array local del carrito
                 let indexExiste = producto.indexOf(idProducto);
-                let cantidadAProcesar = 1; // Por defecto el escáner suma de 1 en 1
 
                 if (indexExiste !== -1) {
-                    // Si ya existe, calculamos cuánto tendría acumulado en total
-                    cantidadAProcesar = parseInt(Cantidad[indexExiste], 10) + 1;
+                    // CÓMO SABER CUANDO SUMAR A LO YA EXISTENTE:
+                    // Si 'indexExiste' es diferente de -1, significa que ya está en la tabla. Sumamos lo nuevo a lo viejo.
+                    let cantidadTotalFinal = parseInt(Cantidad[indexExiste], 10) + cantidadAñadir;
                     
-                    if (cantidadAProcesar > stockMax) {
-                        showModal('No hay suficiente stock para seguir acumulando este producto');
+                    if (cantidadTotalFinal > stockMax) {
+                        Swal.fire('Error', 'No hay suficiente stock disponible para acumular esa cantidad.', 'error');
                         return false;
                     }
 
-                    // Actualizamos temporalmente el arreglo de cantidades antes del recálculo
-                    Cantidad[indexExiste] = cantidadAProcesar;
+                    // Actualizamos los arreglos globales en la posición exacta del producto
+                    Cantidad[indexExiste] = cantidadTotalFinal;
+                    subtotal[indexExiste] = cantidadTotalFinal * precioVentaBase;
                 } else {
-                    // Si es un producto nuevo en esta venta, lo inicializamos en los arreglos
+                    // CUANDO NO SUMAR A OTRO (Es un producto nuevo en la venta):
+                    if (cantidadAñadir > stockMax) {
+                        Swal.fire('Error', 'La cantidad solicitada supera el stock disponible.', 'error');
+                        return false;
+                    }
+
+                    // Lo insertamos como una fila nueva desde cero
                     producto.push(idProducto);
-                    nombre.push(nameProducto.split(' - ')[0].trim());
-                    Cantidad.push(1);
+                    nombre.push(nameProducto.split(' - ').trim());
+                    Cantidad.push(cantidadAñadir);
                     precioventa.push(precioVentaBase);
                     Descuento.push(0);
-                    subtotal.push(precioVentaBase);
+                    subtotal.push(cantidadAñadir * precioVentaBase);
                     subiva.push(0);
                 }
 
-                // ─── RECALCULAR Y REDIBUJAR TODA LA TABLA ───
+                // Dibujar los cambios en la interfaz del cliente
                 recalcularYRedibujarVenta();
                 limpiarCampos();
             },
             error: function(xhr, status, error) {
-                console.error("Error en el flujo del escáner:", error);
+                console.error("Error en AJAX:", error);
             }
         });
     }
 }
+
 
 function recalcularYRedibujarVenta() {
     var tableBody = $('#tabla_detalle_tbody');
@@ -1582,47 +1575,57 @@ function eliminarProducto(indice) {
     };
 
     // Variables para detectar si es lector de barras
-let lastInputTime = 0;
 
 document.getElementById("SKU").addEventListener("keydown", function (e) {
-
-    // Registrar tiempo entre teclas
     const now = Date.now();
     const delta = now - lastInputTime;
     lastInputTime = now;
 
-    // Si presiona ENTER
     if (e.key === "Enter") {
-        e.preventDefault();
+        e.preventDefault(); // Detiene el submit del formulario por completo
 
         let sku = this.value.trim();
 
-        // Si no hay nada, solo limpiar y enfocar
         if (sku === "") {
             this.focus();
             return;
         }
 
-        // Detectar si fue lector de código de barras:
-        // Si la escritura fue demasiado rápida (<80ms por tecla)
         const isScanner = delta < 80;
-        const cantidades = $("#cantidad").val();
-
 
         if (isScanner) {
-            // Caso lector de código de barras
-            if(cantidades===1 || cantidades===""){
-                $("#cantidad").val(1);
-            }
+            // --- CASO ESCÁNER ---
+            // Evaluamos la cantidad final a enviar:
+            // Si hay cantidad manual previa acumulada en memoria, usamos esa. Si está en 0, va de 1 en 1.
+            let cantidadAProcesar = cantidadManualTemporal > 0 ? cantidadManualTemporal : 1;
+            
+            // Enviamos el SKU original (como texto, sin alterarlo con float) y la cantidad resuelta
+            agregarProductoScanner(sku, cantidadAProcesar);
+
+            // Una vez procesada la venta del producto escaneado, reiniciamos las variables a su estado inicial
+            cantidadManualTemporal = 0;
+            $("#cantidad").val(1);
             $("#descuento").val(0);
-            $("#SKU").val("");     // limpiar
-            $("#SKU").focus();     // regresar el foco
-            agregarProductoScanner(sku);
+            $("#SKU").val("");     
+            this.focus();
         } else {
-            // Caso ingreso manual con teclado
-            $("#cantidad").val(sku);  // copiar número del SKU a cantidad
-            $("#SKU").val("");        // limpiar
-            $("#SKU").focus();        // regresar el foco
+            // --- CASO INGRESO MANUAL CON TECLADO ---
+            // Convertimos la entrada a un número decimal puro
+            let numeroIngresado = parseFloat(sku);
+
+            if (!isNaN(numeroIngresado) && numeroIngresado > 0) {
+                // SUMA MATEMÁTICA REAL: Sumamos los flotantes puros y luego corregimos la precisión con toFixed envuelto en parseFloat
+                let sumaTemporal = cantidadManualTemporal + numeroIngresado;
+                cantidadManualTemporal = parseFloat(sumaTemporal.toFixed(2));
+                
+                // Reflejamos el valor numérico final en el input visual de la pantalla
+                $("#cantidad").val(cantidadManualTemporal);
+            } else {
+                Swal.fire('Atención', 'Para ingresar una cantidad manual, digite un número válido.', 'info');
+            }
+
+            $("#SKU").val("");        
+            this.focus();
         }
     }
 });

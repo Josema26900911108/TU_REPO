@@ -1227,17 +1227,25 @@ async function descargarOrdenIndividual() {
 <script>
 // Variable de control global para manejar la detención
 let detenerProceso = false;
+let intervalProgreso = null;
+let abortController = null; 
 
 // Evento para el botón de cancelar
 document.getElementById('btnCancelar').addEventListener('click', function() {
     detenerProceso = true;
-    this.disabled = true; // Evitar múltiples clics al cancelar
-    document.getElementById('textoProgreso').innerText = "Cancelando proceso... Esperando a que termine el bloque actual.";
+    this.disabled = true;
+    document.getElementById('textoProgreso').innerText = "Cancelando proceso... Esperando al servidor.";
+
+    // Abortar la petición HTTP al servidor
+    if (abortController) {
+        abortController.abort();
+    }
 });
+
 document.getElementById('formLotesRealTime').addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    detenerProceso = false; // Inicializar estado de detención
+    detenerProceso = false;
 
     const btn = document.getElementById('btnSubmit');
     const btnCancelar = document.getElementById('btnCancelar'); 
@@ -1245,201 +1253,123 @@ document.getElementById('formLotesRealTime').addEventListener('submit', async fu
     const barraProgreso = document.getElementById('barraProgreso');
     const textoProgreso = document.getElementById('textoProgreso');
     
+    // Estado inicial de la UI
     btn.disabled = true;
-    if (btnCancelar) btnCancelar.classList.remove('d-none'); 
+    if (btnCancelar) {
+        btnCancelar.classList.remove('d-none'); 
+        btnCancelar.disabled = false;
+    }
     contenedorProgreso.classList.remove('d-none');
     
-    let offset = 0;
-    const tamanoLote = 2;
-    let totalOrdenes = 0;
-    
-    let todasLasValidaciones = [];
-    let todasLasOrdenesProcesadas = [];
-    let ordenesAnalizadasTotales = []; // Acumulador del total grande
+    // Reiniciar barra
+    barraProgreso.style.width = '0%';
+    barraProgreso.innerText = '0%';
+    textoProgreso.innerText = 'Iniciando validación...';
+
+    abortController = new AbortController();
+
+    // 1. INICIAR POLLING DE PROGRESO (cada 500ms)
+    intervalProgreso = setInterval(async () => {
+        try {
+            const res = await fetch('/mamo/progreso?t=' + Date.now(), { 
+                method: 'GET',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await res.json();
+            
+            if (data.total > 0) {
+                let porcentaje = Math.min(Math.round((data.procesadas / data.total) * 100), 100);
+                barraProgreso.style.width = porcentaje + '%';
+                barraProgreso.innerText = porcentaje + '%';
+                textoProgreso.innerText = `Procesando: ${data.procesadas} de ${data.total} órdenes...`;
+            }
+        } catch (e) {
+            // Silencioso para no interrumpir
+        }
+    }, 500);
 
     try {
-        // 1. OBTENER EL TOTAL
-        const baseFormData = new FormData(this);
-        baseFormData.append('obtener_total', '1');
+        // 2. PREPARAR DATOS DEL FORMULARIO
+        const formData = new FormData(this);
         
-        const resInicio = await fetch(this.action, { 
+        // 3. LLAMADA PRINCIPAL (Procesará todo y devolverá el ZIP)
+        textoProgreso.innerText = "Procesando todas las órdenes, por favor espera...";
+        
+        const response = await fetch(this.action, { 
             method: 'POST', 
-            body: baseFormData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            signal: abortController.signal 
         });
+
+        if (!response.ok) throw new Error('Error en el servidor al procesar el lote.');
+
+        // 4. DETENER EL POLLING
+        clearInterval(intervalProgreso);
         
-        if (!resInicio.ok) throw new Error('Error al inicializar el autómata.');
-        const dataInicio = await resInicio.json();
-        totalOrdenes = dataInicio.total_ordenes;
+        // 5. ACTUALIZAR UI ANTES DE LA DESCARGA
+        if (btnCancelar) btnCancelar.classList.add('d-none');
+        barraProgreso.style.width = '100%';
+        barraProgreso.innerText = '100%';
+        textoProgreso.innerText = '¡Análisis completado! Preparando descarga del archivo ZIP...';
 
-        if (totalOrdenes === 0) {
-            alert('No se encontraron órdenes para procesar (o todas fueron excluidas).');
-            btn.disabled = false;
-            if (btnCancelar) btnCancelar.classList.add('d-none');
-            contenedorProgreso.classList.add('d-none');
-            return;
-        }
-
-        // 2. BUCLE ITERATIVO (De 2 en 2)
-        while (offset < totalOrdenes) {
-            
-            // Si el usuario presionó detener, rompemos el bucle pero NO matamos la función
-            if (detenerProceso) {
-                console.log(`Procesamiento detenido por el usuario en el índice ${offset}.`);
-                break; 
-            }
-
-            const loteFormData = new FormData();
-            loteFormData.append('_token', document.querySelector('input[name="_token"]').value);
-            loteFormData.append('fechaincio', document.getElementById('fechaincio').value);
-            loteFormData.append('fechafin', document.getElementById('fechafin').value);
-            loteFormData.append('offset', offset.toString());
-
-            textoProgreso.innerText = `Procesando órdenes del índice ${offset} al ${offset + tamanoLote} de un total de ${totalOrdenes}...`;
-
-            const response = await fetch(this.action, { 
-                method: 'POST', 
-                body: loteFormData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            
-            if (!response.ok) throw new Error(`Fallo en el bloque del índice ${offset}`);
-            const resultado = await response.json();
-
-            if (resultado.status === 'completado') break;
-
-            // EXPORTACIÓN INMEDIATA EN TIEMPO REAL (Parciales)
-            if (resultado.datos_lote && resultado.datos_lote.length > 0) {
-                const numLoteActual = offset + resultado.ordenes_lote.length;
-                descargarDesdeCliente(resultado.datos_lote, `parcial_lote_${numLoteActual}_ordenes.csv`);
-                todasLasValidaciones = todasLasValidaciones.concat(resultado.datos_lote);
-            }
-            
-            // ACUMULAR Y LIMPIAR ÓRDENES PROCESADAS
-            if (resultado.ordenes_lote && resultado.ordenes_lote.length > 0) {
-                let loteLimpio = [];
-                resultado.ordenes_lote.forEach(elemento => {
-                    let numeroOrden = elemento;
+        const blob = await response.blob();
+        
+        // 6. DESCARGA ASÍNCRONA (Evita que la pantalla se congele)
+        setTimeout(() => {
+            try {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'resultados_mamo.zip';
+                document.body.appendChild(a);
+                a.click();
+                
+                // 7. LIMPIEZA Y RESTAURACIÓN DE LA UI
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
                     
-                    // Extraer solo el número limpio si viene envuelto como JSON string
-                    if (typeof elemento === 'string' && elemento.startsWith('{')) {
-                        try { numeroOrden = JSON.parse(elemento).Orden || elemento; } catch (e) {}
-                    } else if (typeof elemento === 'object' && elemento !== null) {
-                        numeroOrden = elemento.Orden || Object.values(elemento);
-                    }
-                    
-                    loteLimpio.push({ "Orden": numeroOrden });
-                });
-
-                todasLasOrdenesProcesadas = todasLasOrdenesProcesadas.concat(loteLimpio);
-                ordenesAnalizadasTotales = ordenesAnalizadasTotales.concat(loteLimpio);
+                    // Reactivar botones
+                    btn.disabled = false;
+                    if (btnCancelar) btnCancelar.classList.add('d-none');
+                    contenedorProgreso.classList.add('d-none');
+                    textoProgreso.innerText = "Proceso finalizado correctamente.";
+                }, 500);
+            } catch (error) {
+                console.error("Error al descargar el archivo:", error);
+                alert("Error al procesar la descarga del archivo.");
+                btn.disabled = false;
+                contenedorProgreso.classList.add('d-none');
             }
-
-            offset += tamanoLote;
-            const porcentaje = Math.min(Math.round((offset / totalOrdenes) * 100), 100);
-            barraProgreso.style.width = `${porcentaje}%`;
-            barraProgreso.innerText = `${porcentaje}%`;
-        }
-        // 3. LLAMADA DE CIERRE (Solo si NO se presionó detener)
-        let resultadoFinal = null;
-        if (!detenerProceso) {
-            textoProgreso.innerText = "Finalizando procesamiento y recolectando auditoría global...";
-            
-            const finalFormData = new FormData();
-            finalFormData.append('_token', document.querySelector('input[name="_token"]').value);
-            finalFormData.append('fechaincio', document.getElementById('fechaincio').value);
-            finalFormData.append('fechafin', document.getElementById('fechafin').value);
-            finalFormData.append('offset', offset.toString());
-
-            const resFinal = await fetch(this.action, { 
-                method: 'POST', 
-                body: finalFormData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            
-            resultadoFinal = await resFinal.json();
-            
-            if (resultadoFinal.status === 'completado' && resultadoFinal.ordenes_analizadas_totales && resultadoFinal.ordenes_analizadas_totales.length > 0) {
-                ordenesAnalizadasTotales = resultadoFinal.ordenes_analizadas_totales.map(el => {
-                    if (typeof el === 'string' && el.startsWith('{')) {
-                        try { return { "Orden": JSON.parse(el).Orden }; } catch(e){}
-                    }
-                    return typeof el === 'object' ? { "Orden": el.Orden } : { "Orden": el };
-                });
-            }
-        }
-
-        // 4. DESCARGAS MAESTRAS FINALES (Ocurre al terminar o al dar Detener)
-        textoProgreso.innerText = detenerProceso 
-            ? "Descargando reportes acumulados hasta la detención..." 
-            : "¡Universo completado! Descargando reportes maestros finales...";
-        
-        const sufijo = detenerProceso ? '_parcial.csv' : '_universo_completo.csv';
-
-        if (todasLasValidaciones.length > 0) {
-            descargarDesdeCliente(todasLasValidaciones, `validaciones${sufijo}`);
-        }
-        
-        if (todasLasOrdenesProcesadas.length > 0) {
-            descargarDesdeCliente(todasLasOrdenesProcesadas, `ordenes_procesadas_totales${sufijo}`);
-        }
-        
-        // ¡Aquí se descarga el total grande acumulado!
-        if (ordenesAnalizadasTotales.length > 0) {
-            descargarDesdeCliente(ordenesAnalizadasTotales, `ordenes_analizadas_totales${sufijo}`);
-        }
-        
-        if (detenerProceso) {
-            alert('El proceso ha sido detenido por el usuario. Se exportó el total de órdenes analizadas hasta el momento.');
-        } else {
-            alert('El proceso ha finalizado correctamente.');
-        }
+        }, 100); // Pequeño retardo para liberar el hilo principal
 
     } catch (error) {
-        console.error(error);
-        textoProgreso.innerText = "Se detectó un error en el procesamiento.";
-        alert('Ocurrió un error en la comunicación con el servidor.');
-    } finally {
-        btn.disabled = false;
-        if (btnCancelar) {
-            btnCancelar.classList.add('d-none');
-            btnCancelar.disabled = false; 
+        if (error.name === 'AbortError') {
+            console.log('Proceso cancelado por el usuario.');
+            textoProgreso.innerText = "Proceso cancelado por el usuario. El servidor puede tardar unos segundos en liberar la conexión.";
+        } else {
+            console.error(error);
+            textoProgreso.innerText = "Se detectó un error en el procesamiento.";
+            alert('Ocurrió un error en la comunicación con el servidor.');
         }
-        contenedorProgreso.classList.add('d-none');
+    } finally {
+        // 8. RESTAURAR BOTONES (Solo si no fue un flujo exitoso que ya los restauró)
+        if (intervalProgreso) clearInterval(intervalProgreso);
+        
+        // Verificamos si el proceso fue exitoso (el botón sigue deshabilitado)
+        // para evitar reactivarlo dos veces.
+        if (btn.disabled) {
+            btn.disabled = false;
+            if (btnCancelar) {
+                btnCancelar.classList.add('d-none');
+                btnCancelar.disabled = false; 
+            }
+            contenedorProgreso.classList.add('d-none');
+        }
+        abortController = null;
     }
 });
-function descargarDesdeCliente(dataJson, nombreArchivo) {
-    if (!dataJson || dataJson.length === 0) return;
-
-    // CORRECCIÓN CLAVE: Leer el índice 0 para construir las columnas reales en base a la propiedad ("Orden")
-    const cabeceras = Object.keys(dataJson[0]);
-    const filasCsv = [cabeceras.join(',')];
-
-    for (const fila of dataJson) {
-        const valores = cabeceras.map(cabecera => {
-            let valor = fila[cabecera];
-            if (valor === null || valor === undefined) return '""';
-            if (typeof valor === 'object') valor = JSON.stringify(valor);
-            const valorLimpio = typeof valor === 'string' ? valor.replace(/"/g, '""') : valor;
-            return `"${valorLimpio}"`;
-        });
-        filasCsv.push(valores.join(','));
-    }
-
-    const contenidoCsv = '\uFEFF' + filasCsv.join('\n');
-    const blob = new Blob([contenidoCsv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    
-    if (link.download !== undefined) {
-        link.setAttribute("href", URL.createObjectURL(blob));
-        link.setAttribute("download", nombreArchivo);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
-}
-
 </script>
-
 @endpush
