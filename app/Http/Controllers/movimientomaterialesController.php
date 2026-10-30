@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller; // Asegúrate de que esta línea esté presente
 
-use App\Models\MaterialManoObra;
+use App\Models\Materialmanoobra;
 use Illuminate\Http\Request;
 use App\Http\Requests\StorePersonaRequest;
 use App\Http\Requests\UpdateClienteRequest;
@@ -1009,7 +1009,7 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
                     if ($productoExistente) {
                         $cacheProductos[$sku] = $productoExistente;
                     } else {
-                        $materialExiste = \App\Models\MaterialManoObra::where('SKU', $sku)
+                        $materialExiste = \App\Models\Materialmanoobra::where('SKU', $sku)
                             ->where('fkTienda', $fkTienda)
                             ->select('Descripcion', 'id')
                             ->first();
@@ -1043,7 +1043,7 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
 
                 // --- Costo con caché (mismo `latest()` original) ---
                 if (!array_key_exists($sku, $cacheCostos)) {
-                    $cacheCostos[$sku] = \App\Models\MaterialManoObra::where('SKU', $sku)
+                    $cacheCostos[$sku] = \App\Models\Materialmanoobra::where('SKU', $sku)
                         ->where('fkTienda', $fkTienda)
                         ->select('COSTOPAGO', 'TIPO', 'unidadmedida', 'CATEGORIACOBRO')
                         ->latest() // IGUAL al original
@@ -2747,7 +2747,7 @@ private function evaluarFormula
             if ($productoExistente) {
                 $nombreProducto = $productoExistente->nombre;
             } else {
-                $materialExiste = \App\Models\MaterialManoObra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('Descripcion')->first();
+                $materialExiste = \App\Models\Materialmanoobra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('Descripcion')->first();
                 if ($materialExiste) {
                     $nombreProducto = $materialExiste->text ?? $materialExiste->Descripcion;
                 } else {
@@ -2772,7 +2772,7 @@ private function evaluarFormula
                 ]
             );
 
-            $costoUnidad = \App\Models\MaterialManoObra::where('SKU', $sku)
+            $costoUnidad = \App\Models\Materialmanoobra::where('SKU', $sku)
                 ->where('fkTienda', $fkTienda)
                 ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida')
                 ->latest()->first();
