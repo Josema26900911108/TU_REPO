@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller; // Asegúrate de que esta línea esté presente
 
-use App\Models\Materialmanoobra;
+use App\Models\MaterialManoObra;
 use Illuminate\Http\Request;
 use App\Http\Requests\StorePersonaRequest;
 use App\Http\Requests\UpdateClienteRequest;
@@ -57,12 +57,12 @@ public function index()
 
     // 2. Aplicamos el filtro de seguridad según el Estatus del usuario
     if ($Estatus == 'ER') {
-        $materialmanoobra = $query->get();
+        $MaterialManoObra = $query->get();
     } else {
-        $materialmanoobra = $query->where('movimientomateriales.fkTienda', $fkTienda)->get();
+        $MaterialManoObra = $query->where('movimientomateriales.fkTienda', $fkTienda)->get();
     }
 
-    return view('materialmovorganizaciones.index', compact('materialmanoobra'));
+    return view('materialmovorganizaciones.index', compact('MaterialManoObra'));
 }
 
 public function exportarKardexMateriales(Request $request)
@@ -82,7 +82,7 @@ public function exportarKardexMateriales(Request $request)
     $query = DB::table('movimientomateriales as mm')
         // 1. Cruce para obtener el número de orden de la tabla expedientetecnico
         ->leftJoin('expedientetecnico as et', 'et.id', '=', 'mm.fkExpediente')
-        // 2. Cruce para obtener la descripción / nombre del material desde materialmanoobra
+        // 2. Cruce para obtener la descripción / nombre del material desde MaterialManoObra
         ->leftJoin('MaterialManoObra as mmo', function($join) use ($fkTienda) {
             $join->on('mmo.SKU', '=', 'mm.SKU')
                  ->where('mmo.fkTienda', '=', $fkTienda);
@@ -91,7 +91,7 @@ public function exportarKardexMateriales(Request $request)
         ->select([
             'mm.id',
             'mm.SKU',
-            'mmo.Descripcion as nombre_material', // Descripcion obtenida de materialmanoobra
+            'mmo.Descripcion as nombre_material', // Descripcion obtenida de MaterialManoObra
             'et.orden as numero_orden',          // Campo orden obtenido de expedientetecnico
             'mm.CENTRO',
             'mm.almacen',
@@ -410,13 +410,13 @@ public function importarmamo(Request $request)
 
     // =========================================================================
 // PRECARGA DE SKUs VÁLIDOS POR TABLA (3 queries totales, no N+1)
-// Se valida el SKU en: arbolmanoobra, treematerialescategoria, materialmanoobra.
+// Se valida el SKU en: arbolmanoobra, treematerialescategoria, MaterialManoObra.
 // arbolmaterial se OMITE a propósito (no se valida).
 // =========================================================================
 $skusValidosPorTabla = [
     'arbolmanoobra'           => [],
     'treematerialescategoria' => [],
-    'materialmanoobra'        => [],
+    'MaterialManoObra'        => [],
 ];
 
 foreach (['arbolmanoobra', 'treematerialescategoria'] as $tabla) {
@@ -430,8 +430,8 @@ foreach (['arbolmanoobra', 'treematerialescategoria'] as $tabla) {
         ->all();
 }
 
-// materialmanoobra: solo SKUs con Descripcion no vacía (requisito de negocio)
-$skusValidosPorTabla['materialmanoobra'] = DB::table('materialmanoobra')
+// MaterialManoObra: solo SKUs con Descripcion no vacía (requisito de negocio)
+$skusValidosPorTabla['MaterialManoObra'] = DB::table('MaterialManoObra')
     ->where('fkTienda', $fkTienda)
     ->whereNotNull('Descripcion')
     ->where('Descripcion', '<>', '')
@@ -553,7 +553,7 @@ $skusValidosPorTabla['materialmanoobra'] = DB::table('materialmanoobra')
 // REGLA 0: VALIDACIÓN DE CATÁLOGO EN LAS 3 TABLAS REQUERIDAS
 //   - arbolmanoobra
 //   - treematerialescategoria
-//   - materialmanoobra (con Descripcion no vacía)
+//   - MaterialManoObra (con Descripcion no vacía)
 // (arbolmaterial se omite a propósito)
 // Si falta en alguna(s), se rechaza indicando exactamente cuáles faltan.
 // =========================================================================
@@ -573,7 +573,7 @@ if (!empty($tablasFaltantes)) {
         'cantidad' => $cantidad,
         'motivo'   => "El SKU '{$sku}' no está registrado en las siguientes tablas: {$listaFaltantes}. "
                     . "Debe insertarse en el árbol de materiales (arbolmanoobra, treematerialescategoria) "
-                    . "y en materialmanoobra antes de poder importarlo."
+                    . "y en MaterialManoObra antes de poder importarlo."
     ];
     continue;
 }
@@ -1009,7 +1009,7 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
                     if ($productoExistente) {
                         $cacheProductos[$sku] = $productoExistente;
                     } else {
-                        $materialExiste = \App\Models\Materialmanoobra::where('SKU', $sku)
+                        $materialExiste = \App\Models\MaterialManoObra::where('SKU', $sku)
                             ->where('fkTienda', $fkTienda)
                             ->select('Descripcion', 'id')
                             ->first();
@@ -1043,7 +1043,7 @@ private function procesarBloqueTransaccional($bloque, $fkTienda, $nombreUsuario,
 
                 // --- Costo con caché (mismo `latest()` original) ---
                 if (!array_key_exists($sku, $cacheCostos)) {
-                    $cacheCostos[$sku] = \App\Models\Materialmanoobra::where('SKU', $sku)
+                    $cacheCostos[$sku] = \App\Models\MaterialManoObra::where('SKU', $sku)
                         ->where('fkTienda', $fkTienda)
                         ->select('COSTOPAGO', 'TIPO', 'unidadmedida', 'CATEGORIACOBRO')
                         ->latest() // IGUAL al original
@@ -1626,8 +1626,8 @@ function traslados(){
             return redirect()->route('login');
         }
 
-        $materialmanoobra = Materialmanoobra::all();
-        return view('materialmanoobra.create', compact('materialmanoobra'));
+        $MaterialManoObra = MaterialManoObra::all();
+        return view('MaterialManoObra.create', compact('MaterialManoObra'));
     }
 
     public function storeTraslado(Request $request)
@@ -2747,7 +2747,7 @@ private function evaluarFormula
             if ($productoExistente) {
                 $nombreProducto = $productoExistente->nombre;
             } else {
-                $materialExiste = \App\Models\Materialmanoobra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('Descripcion')->first();
+                $materialExiste = \App\Models\MaterialManoObra::where('SKU', $sku)->where('fkTienda', $fkTienda)->select('Descripcion')->first();
                 if ($materialExiste) {
                     $nombreProducto = $materialExiste->text ?? $materialExiste->Descripcion;
                 } else {
@@ -2772,7 +2772,7 @@ private function evaluarFormula
                 ]
             );
 
-            $costoUnidad = \App\Models\Materialmanoobra::where('SKU', $sku)
+            $costoUnidad = \App\Models\MaterialManoObra::where('SKU', $sku)
                 ->where('fkTienda', $fkTienda)
                 ->select('CATEGORIACOBRO', 'COSTOPAGO', 'Descripcion', 'TIPO', 'unidadmedida')
                 ->latest()->first();
