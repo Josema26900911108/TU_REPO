@@ -194,8 +194,8 @@
     <p style="margin-bottom: 5px;">Atentamente:</p>
     
     @if(!empty($firma_representante))
-        <!-- 🌟 SOLUCIÓN: Agregamos un margen superior de 40px para empujarla hacia abajo y un margen inferior negativo agresivo de -35px para absorber todo el espacio transparente y pegarla a la línea -->
-        <img src="{{ $firma_representante }}" class="img-firma" style="display: block; margin: 30px auto -40px auto; padding: 0;" alt="Firma Representante">
+        <!-- Usa dimensiones fijas o porcentajes, DomPDF a veces ignora max-width -->
+        <img src="{{ $firma_representante }}" style="width: 150px;" alt="Firma Representante">
     @else
         <div style="height: 50px;"></div> 
     @endif

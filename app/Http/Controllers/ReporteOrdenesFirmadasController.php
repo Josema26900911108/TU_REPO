@@ -1094,30 +1094,50 @@ class ReporteOrdenesFirmadasController extends Controller
         return array_values(array_unique($ordenesRaw));
     }
 
-    private function prepararLogoBase64(?string $base64Puro): ?string
-    {
-        if (empty($base64Puro)) {
-            return null;
-        }
-
-        try {
-            $binary = base64_decode(trim($base64Puro), true);
-            if ($binary === false) {
-                return null;
-            }
-
-            $img = Image::make($binary)
-                ->resize($this->anchoMaxLogo, null, function ($c) {
-                    $c->aspectRatio();
-                    $c->upsize();
-                })
-                ->encode('png', 80);
-
-            return 'data:image/png;base64,' . base64_encode((string) $img);
-        } catch (\Throwable $e) {
-            return null;
-        }
+private function prepararLogoBase64(?string $base64Puro): ?string
+{
+    if (empty($base64Puro)) {
+        return null;
     }
+
+    // Limpiamos saltos de línea o espacios que puedan venir de la BD
+    $base64Limpio = preg_replace('/\s+/', '', $base64Puro);
+    
+    // Si ya trae el prefijo data:image, lo quitamos para procesar solo el binario
+    $base64Limpio = str_replace('data:image/png;base64,', '', $base64Limpio);
+    $base64Limpio = str_replace('data:image/jpeg;base64,', '', $base64Limpio);
+
+    // 1. PRIMERO: Intentamos redimensionar para ahorrar peso en el PDF
+    try {
+        $binary = base64_decode($base64Limpio, true);
+        if ($binary === false) {
+            throw new \Exception("Base64 inválido");
+        }
+
+        $img = Image::make($binary)
+            ->resize($this->anchoMaxLogo, null, function ($c) {
+                $c->aspectRatio();
+                $c->upsize();
+            })
+            ->encode('png', 80);
+
+        return 'data:image/png;base64,' . base64_encode((string) $img);
+
+    } catch (\Throwable $e) {
+        // 🔴 SI FALLA INTERVENTION (por formato, falta de GD, etc.):
+        // Hacemos un "Fallback" y devolvemos la imagen original sin tocar, 
+        // asegurándonos de que tenga el prefijo correcto para que DomPDF la lea.
+        Log::warning("Intervention falló al procesar la imagen, usando original: " . $e->getMessage());
+        
+        // Verificamos si la BD ya tenía el prefijo (por seguridad)
+        if (str_starts_with(trim($base64Puro), 'data:image')) {
+            return trim($base64Puro);
+        }
+
+        // Si no tenía prefijo, asumimos que es PNG puro
+        return 'data:image/png;base64,' . $base64Limpio;
+    }
+}
 
     /**
      * Firma del cliente con cache local + resize.
