@@ -1032,6 +1032,20 @@ public function generarMemoriaFotografica(Request $request)
             't_ord.tecnologia_real'
         ]);
 
+            // 🆕 CÁLCULO DEL RANGO REAL DE FECHAS DE LAS ÓRDENES
+    $rangoFechas = DB::table('expedientetecnico')
+        ->where('fkTienda', $tiendaId)
+        ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenes)
+        ->selectRaw('MIN(FECHAINSTALACION) as fecha_min, MAX(FECHAINSTALACION) as fecha_max')
+        ->first();
+
+    $fechaInicioReal = $rangoFechas && $rangoFechas->fecha_min 
+        ? Carbon::parse($rangoFechas->fecha_min)->format('d/m/Y') 
+        : 'No especificada';
+        
+    $fechaFinReal = $rangoFechas && $rangoFechas->fecha_max 
+        ? Carbon::parse($rangoFechas->fecha_max)->format('d/m/Y') 
+        : 'No especificada';
 
     /* ===================================================================== */
     /* 🚀 PASO D: UNION ALL COMPILACIÓN FINAl                                */
@@ -1267,7 +1281,7 @@ public function generarMemoriaFotografica(Request $request)
         
         $sheetResumen->setCellValue('B2', 'CUADRO DE COSTOS INSTALACIONES SERVICIOS ' . strtoupper($nombreTecnologiaLimpio));
         $sheetResumen->setCellValue('B3', 'REGION: OCCIDENTE');
-        $sheetResumen->setCellValue('B4', 'PERIODO DEL ' . (request('fecha_inicio') ? Carbon::parse(request('fecha_inicio'))->format('d/m/Y') : '01/05/2026') . ' AL ' . (request('fecha_fin') ? Carbon::parse(request('fecha_fin'))->format('d/m/Y') : '31/05/2026'));
+        $sheetResumen->setCellValue('B4', 'PERIODO DEL ' . $fechaInicioReal . ' AL ' . $fechaFinReal);
         $sheetResumen->getStyle('B2:B4')->getFont()->setBold(true);
         
         $sheetResumen->mergeCells('B6:G6');
