@@ -1032,17 +1032,19 @@ public function generarMemoriaFotografica(Request $request)
             't_ord.tecnologia_real'
         ]);
 
-      // 🆕 CÁLCULO DEFINITIVO CON COALESCE Y REGEXP
+    // 🆕 CÁLCULO DEFINITIVO CON LA MISMA LÓGICA DE TU SQL
     $rangoFechas = DB::table('expedientetecnico')
         ->where('fkTienda', $tiendaId)
-        // Filtramos limpiando los caracteres extraños de las órdenes encontradas
-        ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenesEncontradas)
+        // Usamos $ordenes (que son las que vienen del Excel limpias)
+        // Si tu Excel trae las órdenes con letras, el REGEXP las limpia igual que en tu SQL
+        ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenes)
         ->selectRaw('
             DATE(MIN(COALESCE(FECHAINSTALACION, created_at))) as fecha_min, 
             DATE(MAX(COALESCE(FECHAINSTALACION, created_at))) as fecha_max
         ')
         ->first();
 
+    // Si la consulta devuelve resultados, los formateamos
     $fechaInicioReal = $rangoFechas && $rangoFechas->fecha_min 
         ? Carbon::parse($rangoFechas->fecha_min)->format('d/m/Y') 
         : 'No especificada';
@@ -1050,7 +1052,6 @@ public function generarMemoriaFotografica(Request $request)
     $fechaFinReal = $rangoFechas && $rangoFechas->fecha_max 
         ? Carbon::parse($rangoFechas->fecha_max)->format('d/m/Y') 
         : 'No especificada';
-
     /* ===================================================================== */
     /* 🚀 PASO D: UNION ALL COMPILACIÓN FINAl                                */
     /* ===================================================================== */
