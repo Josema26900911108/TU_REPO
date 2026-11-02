@@ -1032,30 +1032,23 @@ public function generarMemoriaFotografica(Request $request)
             't_ord.tecnologia_real'
         ]);
 
-    // 🆕 CÁLCULO DEFINITIVO BASADO EN LAS ÓRDENES DEL EXCEL
-    // Buscamos en expedientetecnico solo las fechas válidas de las órdenes que están en el Excel
-    $fechasRaw = DB::table('expedientetecnico')
+      // 🆕 CÁLCULO DEFINITIVO CON COALESCE Y REGEXP
+    $rangoFechas = DB::table('expedientetecnico')
         ->where('fkTienda', $tiendaId)
-        // Usamos $ordenesEncontradas en lugar de $ordenes (para que solo sean las del Excel actual)
+        // Filtramos limpiando los caracteres extraños de las órdenes encontradas
         ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenesEncontradas)
-        ->whereNotNull('FECHAINSTALACION')
-        ->where('FECHAINSTALACION', '>=', '2026-01-01') // Filtro de seguridad para años anteriores
-        ->pluck('FECHAINSTALACION')
-        ->map(function($fecha) {
-            return Carbon::parse($fecha)->format('Y-m-d');
-        })
-        ->filter()
-        ->unique()
-        ->sort()
-        ->values();
+        ->selectRaw('
+            DATE(MIN(COALESCE(FECHAINSTALACION, created_at))) as fecha_min, 
+            DATE(MAX(COALESCE(FECHAINSTALACION, created_at))) as fecha_max
+        ')
+        ->first();
 
-    // Tomamos la primera (más antigua) y la última (más reciente)
-    $fechaInicioReal = $fechasRaw->isNotEmpty() 
-        ? Carbon::parse($fechasRaw->first())->format('d/m/Y') 
+    $fechaInicioReal = $rangoFechas && $rangoFechas->fecha_min 
+        ? Carbon::parse($rangoFechas->fecha_min)->format('d/m/Y') 
         : 'No especificada';
         
-    $fechaFinReal = $fechasRaw->isNotEmpty() 
-        ? Carbon::parse($fechasRaw->last())->format('d/m/Y') 
+    $fechaFinReal = $rangoFechas && $rangoFechas->fecha_max 
+        ? Carbon::parse($rangoFechas->fecha_max)->format('d/m/Y') 
         : 'No especificada';
 
     /* ===================================================================== */
