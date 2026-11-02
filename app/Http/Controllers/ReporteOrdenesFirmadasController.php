@@ -1124,36 +1124,51 @@ class ReporteOrdenesFirmadasController extends Controller
      * @param string|null $urlFirma URL pública o path GCS
      * @param string|int  $cacheKey id del expediente
      */
-    private function obtenerFirmaBase64(?string $urlFirma, $cacheKey): ?string
-    {
-        if (empty($urlFirma)) {
-            return null;
-        }
-
-        $cachePath = "firmas_cache/{$cacheKey}.bin";
-
-        try {
-            if (Storage::disk('local')->exists($cachePath)) {
-                $binaryFirma = Storage::disk('local')->get($cachePath);
-            } else {
-                $pathBucket  = $this->extraerPathBucket($urlFirma);
-                $binaryFirma = Storage::disk('gcs_images')->get($pathBucket);
-                Storage::disk('local')->put($cachePath, $binaryFirma);
-            }
-
-            $img = Image::make($binaryFirma)
-                ->resize($this->anchoMaxFirma, null, function ($c) {
-                    $c->aspectRatio();
-                    $c->upsize();
-                })
-                ->encode('png', 80);
-
-            return 'data:image/png;base64,' . base64_encode((string) $img);
-        } catch (\Throwable $e) {
-            return null; // firma inaccesible → se omite sin romper el reporte
-        }
+private function obtenerFirmaBase64(?string $urlFirma, $cacheKey): ?string
+{
+    if (empty($urlFirma)) {
+        return null;
     }
 
+    $cachePath = "firmas_cache/{$cacheKey}.bin";
+
+    try {
+        // 1. Cache local
+        if (Storage::disk('local')->exists($cachePath)) {
+            $binaryFirma = Storage::disk('local')->get($cachePath);
+        } else {
+            // 2. Descargar de GCS (replicando la lógica original que funcionaba)
+            $pathBucketFirma = $urlFirma;
+
+            if (str_contains($urlFirma, $this->nombreBucket)) {
+                $posBucket = strpos($urlFirma, $this->nombreBucket);
+                $pathBucketFirma = ltrim(substr($urlFirma, $posBucket + strlen($this->nombreBucket)), '/');
+            } else {
+                $pathBucketFirma = ltrim(parse_url($urlFirma, PHP_URL_PATH), '/');
+            }
+
+            if (!Storage::disk('gcs_images')->exists($pathBucketFirma)) {
+                Log::warning("Firma no existe en GCS [{$cacheKey}]: {$pathBucketFirma}");
+                return null;
+            }
+
+            $binaryFirma = Storage::disk('gcs_images')->get($pathBucketFirma);
+
+            // Crear directorio y guardar en cache
+            Storage::disk('local')->makeDirectory('firmas_cache');
+            Storage::disk('local')->put($cachePath, $binaryFirma);
+        }
+
+        // 3. Detectar tipo real por extensión
+        $type = pathinfo($this->extraerPathBucket($urlFirma), PATHINFO_EXTENSION) ?: 'png';
+
+        return 'data:image/' . $type . ';base64,' . base64_encode($binaryFirma);
+
+    } catch (\Throwable $e) {
+        Log::error("Firma falló [{$cacheKey}]: " . $e->getMessage());
+        return null;
+    }
+}
     private function extraerPathBucket(string $urlFirma): string
     {
         if (str_contains($urlFirma, $this->nombreBucket)) {
