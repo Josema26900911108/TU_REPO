@@ -1032,30 +1032,22 @@ public function generarMemoriaFotografica(Request $request)
             't_ord.tecnologia_real'
         ]);
 
-    // 🆕 CÁLCULO DEFINITIVO DEL RANGO REAL DE FECHAS
-    // Buscamos las fechas en expedientetecnico, pero si FECHAINSTALACION es nula, usamos created_at
-    $fechasRaw = DB::table('expedientetecnico')
+    // 🆕 CÁLCULO DEL RANGO DE FECHAS BASADO EXCLUSIVAMENTE EN EL EXCEL SUBIDO
+    // Usamos $ordenesEncontradas (que son las órdenes que sí existen en la BD) 
+    // y las cruzamos con la tabla ETA para obtener la fecha real de creación.
+    
+    $fechasRaw = DB::table('ETA')
         ->where('fkTienda', $tiendaId)
-        ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenes)
-        ->selectRaw('COALESCE(FECHAINSTALACION, created_at) as fecha_real')
-        ->get()
-        ->map(function($item) {
-            if (!$item->fecha_real) return null;
-            // Parseamos a Carbon y formateamos a 'Y-m-d' para que la comparación sea exacta
-            return Carbon::parse($item->fecha_real)->format('Y-m-d');
-        })
-        ->filter() // Eliminamos nulos
-        ->unique()
-        ->sort()
-        ->values();
+        ->whereIn('Orden', $ordenesEncontradas) // 👈 Usamos las órdenes reales del Excel
+        ->selectRaw('MIN(created_at) as fecha_min, MAX(created_at) as fecha_max')
+        ->first();
 
-    // Si la colección está vacía (por alguna razón no se encontraron órdenes), usamos 'No especificada'
-    $fechaInicioReal = $fechasRaw->isNotEmpty() 
-        ? Carbon::parse($fechasRaw->first())->format('d/m/Y') 
+    $fechaInicioReal = $fechasRaw && $fechasRaw->fecha_min 
+        ? Carbon::parse($fechasRaw->fecha_min)->format('d/m/Y') 
         : 'No especificada';
         
-    $fechaFinReal = $fechasRaw->isNotEmpty() 
-        ? Carbon::parse($fechasRaw->last())->format('d/m/Y') 
+    $fechaFinReal = $fechasRaw && $fechasRaw->fecha_max 
+        ? Carbon::parse($fechasRaw->fecha_max)->format('d/m/Y') 
         : 'No especificada';
 
     /* ===================================================================== */
