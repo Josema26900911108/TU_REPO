@@ -1032,34 +1032,30 @@ public function generarMemoriaFotografica(Request $request)
             't_ord.tecnologia_real'
         ]);
 
-    // 🆕 CÁLCULO DEL RANGO REAL IGNORANDO FECHAS CORRUPTAS
-    $rangoFechas = DB::table('expedientetecnico')
+    // 🆕 CÁLCULO DEFINITIVO DEL RANGO REAL DE FECHAS
+    // Buscamos las fechas en expedientetecnico, pero si FECHAINSTALACION es nula, usamos created_at
+    $fechasRaw = DB::table('expedientetecnico')
         ->where('fkTienda', $tiendaId)
         ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenes)
-        ->where(function($query) {
-            // Solo tomamos fechas mayores al 2020 y menores al año que viene
-            $query->where(function($q) {
-                $q->where('FECHAINSTALACION', '>=', '2020-01-01')
-                  ->where('FECHAINSTALACION', '<=', Carbon::now()->addMonths(2)->format('Y-m-d'));
-            })
-            // O que tengan un created_at válido
-            ->orWhere(function($q) {
-                $q->whereNull('FECHAINSTALACION')
-                  ->where('created_at', '>=', '2020-01-01');
-            });
+        ->selectRaw('COALESCE(FECHAINSTALACION, created_at) as fecha_real')
+        ->get()
+        ->map(function($item) {
+            if (!$item->fecha_real) return null;
+            // Parseamos a Carbon y formateamos a 'Y-m-d' para que la comparación sea exacta
+            return Carbon::parse($item->fecha_real)->format('Y-m-d');
         })
-        ->selectRaw('
-            MIN(COALESCE(FECHAINSTALACION, created_at)) as fecha_min, 
-            MAX(COALESCE(FECHAINSTALACION, created_at)) as fecha_max
-        ')
-        ->first();
+        ->filter() // Eliminamos nulos
+        ->unique()
+        ->sort()
+        ->values();
 
-    $fechaInicioReal = $rangoFechas && $rangoFechas->fecha_min 
-        ? Carbon::parse($rangoFechas->fecha_min)->format('d/m/Y') 
+    // Si la colección está vacía (por alguna razón no se encontraron órdenes), usamos 'No especificada'
+    $fechaInicioReal = $fechasRaw->isNotEmpty() 
+        ? Carbon::parse($fechasRaw->first())->format('d/m/Y') 
         : 'No especificada';
         
-    $fechaFinReal = $rangoFechas && $rangoFechas->fecha_max 
-        ? Carbon::parse($rangoFechas->fecha_max)->format('d/m/Y') 
+    $fechaFinReal = $fechasRaw->isNotEmpty() 
+        ? Carbon::parse($fechasRaw->last())->format('d/m/Y') 
         : 'No especificada';
 
     /* ===================================================================== */
