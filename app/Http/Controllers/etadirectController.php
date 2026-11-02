@@ -2106,7 +2106,7 @@ private function auditarExistenciaEnArboles(array $skusOrden, $fkTienda)
         ->toArray();
 
     // 3. Buscar los datos base en la tabla maestra de materiales
-    $materiales = DB::table('materialmanoobra')
+    $materiales = DB::table('MaterialManoObra')
         ->where('fkTienda', $fkTienda)
         ->whereIn('SKU', $skusOrden)
         ->get()
