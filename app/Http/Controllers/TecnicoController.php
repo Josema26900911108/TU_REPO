@@ -1098,7 +1098,7 @@ public function generarMemoriaFotografica(Request $request)
         
         if (str_contains(mb_strtoupper($nombreTecnologiaLimpia), 'DTH')) {
             $nombreTecnologiaLimpia = 'DTH';
-        } elseif (str_contains(mb_strtoupper($nombreTecnologiaLimpia), 'WTTX')) {
+        } elseif (str_contains(mb_strtoupper($nombreTecnologiaLimpia), 'WTT')) {
             $nombreTecnologiaLimpia = 'WTTx';
         }
 
