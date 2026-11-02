@@ -1032,11 +1032,26 @@ public function generarMemoriaFotografica(Request $request)
             't_ord.tecnologia_real'
         ]);
 
-            // 🆕 CÁLCULO DEL RANGO REAL DE FECHAS DE LAS ÓRDENES
+    // 🆕 CÁLCULO DEL RANGO REAL IGNORANDO FECHAS CORRUPTAS
     $rangoFechas = DB::table('expedientetecnico')
         ->where('fkTienda', $tiendaId)
         ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenes)
-        ->selectRaw('MIN(FECHAINSTALACION) as fecha_min, MAX(FECHAINSTALACION) as fecha_max')
+        ->where(function($query) {
+            // Solo tomamos fechas mayores al 2020 y menores al año que viene
+            $query->where(function($q) {
+                $q->where('FECHAINSTALACION', '>=', '2020-01-01')
+                  ->where('FECHAINSTALACION', '<=', Carbon::now()->addMonths(2)->format('Y-m-d'));
+            })
+            // O que tengan un created_at válido
+            ->orWhere(function($q) {
+                $q->whereNull('FECHAINSTALACION')
+                  ->where('created_at', '>=', '2020-01-01');
+            });
+        })
+        ->selectRaw('
+            MIN(COALESCE(FECHAINSTALACION, created_at)) as fecha_min, 
+            MAX(COALESCE(FECHAINSTALACION, created_at)) as fecha_max
+        ')
         ->first();
 
     $fechaInicioReal = $rangoFechas && $rangoFechas->fecha_min 
