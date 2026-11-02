@@ -1150,11 +1150,9 @@ async function descargarOrdenIndividual() {
     const btn = document.getElementById('btnIndividual');
     if (!btn) return;
 
-    // 1. Estado visual de carga inmediato
     btn.disabled = true;
     btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Procesando Orden...';
 
-    // 2. Extraemos el valor del input del formulario
     const ordenInput = document.getElementById('OrdenIndividual');
     const orden = ordenInput ? ordenInput.value : '';
     
@@ -1169,58 +1167,58 @@ async function descargarOrdenIndividual() {
     const url = `${urlBase}?Orden=${encodeURIComponent(orden.trim())}`;
     
     try {
-        console.log("Enviando petición a la URL:", url);
-        
-        // 🚀 PETICIÓN SEGURA: Añadimos cabeceras para que Laravel no pida token CSRF en solicitudes GET
         const respuesta = await fetch(url, { 
             method: 'GET',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json, text/csv'
+                'Accept': 'text/csv' // Solo CSV para no confundir a Laravel
             }
         });
         
+        // Si el servidor responde con error (500, 404, etc)
         if (!respuesta.ok) {
-            throw new Error(`Error en el servidor local: Código HTTP ${respuesta.status}`);
-        }
-
-        const tipoContenido = respuesta.headers.get('content-type') || '';
-
-        // Caso A: Si el servidor falló por credenciales u otra excepción y devuelve JSON
-        if (tipoContenido.includes('application/json')) {
-            const data = await respuesta.json();
-            if (data.error || data.mensaje) {
-                alert(`Atención: ${data.error || data.mensaje}`);
-                btn.disabled = false;
-                btn.innerHTML = 'Revisar orden';
-                return;
+            // Intentamos leer si Laravel devolvió un JSON con el error
+            try {
+                const errorJson = await respuesta.json();
+                alert("Error del servidor: " + (errorJson.error || errorJson.message || "Desconocido"));
+            } catch (e) {
+                alert("Error en el servidor (Código HTTP " + respuesta.status + "). Revisa los logs de Laravel.");
             }
+            
+            btn.disabled = false;
+            btn.innerHTML = 'Revisar orden';
+            return;
         }
 
-        // Caso B: El autómata recursivo entró con éxito y procesó la orden única
+        // Si todo está OK, descargamos el archivo
         const datosArchivo = await respuesta.blob();
-        const urlDescarga = window.URL.createObjectURL(datosArchivo);
         
-        // Forzamos la descarga instantánea en el navegador desde el Blob
+        // Si el archivo pesa 0 bytes o es un JSON de error disfrazado, lo detectamos
+        if (datosArchivo.size === 0) {
+            alert("El servidor devolvió un archivo vacío. Revisa la consola y los logs.");
+            btn.disabled = false;
+            btn.innerHTML = 'Revisar orden';
+            return;
+        }
+
+        const urlDescarga = window.URL.createObjectURL(datosArchivo);
         const link = document.createElement('a');
         link.href = urlDescarga;
         link.setAttribute('download', `validaciones_orden_${orden.trim()}.csv`);
         document.body.appendChild(link);
         link.click();
         
-        // Purgamos hilos de memoria
         document.body.removeChild(link);
         window.URL.revokeObjectURL(urlDescarga);
-        console.log(`¡Descarga completada con éxito para la orden ${orden}!`);
 
     } catch (error) {
-        console.error("Error crítico de comunicación:", error);
-        alert("No se pudo conectar con el controlador. Verifica en tu terminal de comandos si el proceso de 'php artisan serve' sigue encendido.");
+        console.error("Error de red o comunicación:", error);
+        alert("No se pudo conectar con el controlador. Verifica que 'php artisan serve' esté corriendo y revisa la consola de Laravel.");
+    } finally {
+        // El bloque finally se ejecuta SIEMPRE, restaurando el botón pase lo que pase
+        btn.disabled = false;
+        btn.innerHTML = 'Revisar orden';
     }
-
-    // Restauramos el botón a su estado original
-    btn.disabled = false;
-    btn.innerHTML = 'Revisar orden';
 }
 
 </script>
