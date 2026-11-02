@@ -1032,22 +1032,30 @@ public function generarMemoriaFotografica(Request $request)
             't_ord.tecnologia_real'
         ]);
 
-    // 🆕 CÁLCULO DEL RANGO DE FECHAS BASADO EXCLUSIVAMENTE EN EL EXCEL SUBIDO
-    // Usamos $ordenesEncontradas (que son las órdenes que sí existen en la BD) 
-    // y las cruzamos con la tabla ETA para obtener la fecha real de creación.
-    
-    $fechasRaw = DB::table('ETA')
+    // 🆕 CÁLCULO DEFINITIVO BASADO EN LAS ÓRDENES DEL EXCEL
+    // Buscamos en expedientetecnico solo las fechas válidas de las órdenes que están en el Excel
+    $fechasRaw = DB::table('expedientetecnico')
         ->where('fkTienda', $tiendaId)
-        ->whereIn('Orden', $ordenesEncontradas) // 👈 Usamos las órdenes reales del Excel
-        ->selectRaw('MIN(created_at) as fecha_min, MAX(created_at) as fecha_max')
-        ->first();
+        // Usamos $ordenesEncontradas en lugar de $ordenes (para que solo sean las del Excel actual)
+        ->whereIn(DB::raw("SUBSTRING(REGEXP_REPLACE(Orden, '[^0-9]', ''), 1, 8)"), $ordenesEncontradas)
+        ->whereNotNull('FECHAINSTALACION')
+        ->where('FECHAINSTALACION', '>=', '2026-01-01') // Filtro de seguridad para años anteriores
+        ->pluck('FECHAINSTALACION')
+        ->map(function($fecha) {
+            return Carbon::parse($fecha)->format('Y-m-d');
+        })
+        ->filter()
+        ->unique()
+        ->sort()
+        ->values();
 
-    $fechaInicioReal = $fechasRaw && $fechasRaw->fecha_min 
-        ? Carbon::parse($fechasRaw->fecha_min)->format('d/m/Y') 
+    // Tomamos la primera (más antigua) y la última (más reciente)
+    $fechaInicioReal = $fechasRaw->isNotEmpty() 
+        ? Carbon::parse($fechasRaw->first())->format('d/m/Y') 
         : 'No especificada';
         
-    $fechaFinReal = $fechasRaw && $fechasRaw->fecha_max 
-        ? Carbon::parse($fechasRaw->fecha_max)->format('d/m/Y') 
+    $fechaFinReal = $fechasRaw->isNotEmpty() 
+        ? Carbon::parse($fechasRaw->last())->format('d/m/Y') 
         : 'No especificada';
 
     /* ===================================================================== */
