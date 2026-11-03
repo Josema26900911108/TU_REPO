@@ -323,7 +323,7 @@ foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
 
 $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
     ->setPaper('letter', 'portrait')
-    ->setOptions(['isRemoteEnabled' => true, 'isHtml5ParserEnabled' => true]); // <-- Cambia a true
+    ->setOptions(['isRemoteEnabled' => false, 'isHtml5ParserEnabled' => true]);
 
     $pdf->save(storage_path('app/public/reportes/' . $nombreParcial));
 
@@ -497,11 +497,6 @@ private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket,
 {
     if (empty($urlFirma)) return null;
     
-    // Si es una URL de Google Cloud, intentamos usar la URL directa
-    if (str_contains($urlFirma, 'storage.googleapis.com')) {
-        return $urlFirma; // Retornamos la URL directa en lugar de Base64
-    }
-
     $cachePath = "firmas_cache/{$cacheKey}.bin";
     try {
         if (Storage::disk('local')->exists($cachePath)) {
@@ -520,16 +515,19 @@ private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket,
             Storage::disk('local')->put($cachePath, $binaryFirma);
         }
 
-        $img = Image::make($binaryFirma)
+        // Forzamos el uso del driver GD y lo convertimos a JPEG
+        $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+        $img = $manager->read($binaryFirma)
             ->resize(200, null, function ($c) { $c->aspectRatio(); $c->upsize(); })
-            ->encode('jpg', 70);
+            ->encode(new \Intervention\Image\Encoders\JpegEncoder(70));
 
         return 'data:image/jpeg;base64,' . base64_encode((string) $img);
     } catch (\Throwable $e) { 
         Log::error("Error procesando firma {$cacheKey}: " . $e->getMessage());
-        return $urlFirma; // Si falla la conversión, devolvemos la URL original
+        return null; 
     }
 }
+
     private function calcularPeriodo(Collection $expedientesRaw): string
     {
         $fechas = $expedientesRaw->pluck('FECHAINSTALACION')->filter()->map(fn($f) => Carbon::parse($f));
