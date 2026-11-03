@@ -324,11 +324,12 @@ foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
 $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
     ->setPaper('letter', 'portrait')
     ->setOptions([
-        'isRemoteEnabled' => true,  // Permite descargar URLs
+        'isRemoteEnabled' => true,
         'isHtml5ParserEnabled' => true,
-        'chroot' => storage_path(), // Permite leer archivos locales si es necesario
+        'chroot' => storage_path(), // Permite leer archivos
+        'enable_remote' => true,    // Permite imágenes remotas
     ]);
-
+    
     $pdf->save(storage_path('app/public/reportes/' . $nombreParcial));
 
     $tTec = round(microtime(true) - $tIniTec, 2);
@@ -535,7 +536,7 @@ private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket,
         // 3. Redimensionar a 200px
         $anchoOriginal = imagesx($imagen);
         $altoOriginal = imagesy($imagen);
-        $nuevoAncho = min(200, $anchoOriginal);
+        $nuevoAncho = min(150, $anchoOriginal); 
         $nuevoAlto = floor($altoOriginal * ($nuevoAncho / $anchoOriginal));
         
         $imagenRedimensionada = imagecreatetruecolor($nuevoAncho, $nuevoAlto);
@@ -547,7 +548,7 @@ private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket,
 
         // 4. Convertir a Base64 (JPEG)
         ob_start();
-        imagejpeg($imagenRedimensionada, null, 70);
+        imagejpeg($imagenRedimensionada, null, 50); // Calidad 50 (antes 70)
         $jpegData = ob_get_clean();
         imagedestroy($imagenRedimensionada);
 

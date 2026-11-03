@@ -349,7 +349,7 @@
                             <!-- COLUMNA TÉCNICO -->
                             <td style="width: 45%; vertical-align: bottom; padding: 10px; border-bottom: 1px solid #000000; height: 110px;">
                                 @if(!empty($exp['firma_tecnico_user']))
-                                    <img src="{{ $exp['firma_tecnico_user'] }}" style="max-height: 90px; width: auto;" alt="Firma Técnico">
+                                    <img src="{!! $exp['firma_tecnico_user'] !!}" style="max-height: 90px;">
                                 @else
                                     <div style="padding-bottom: 10px; color: #888888; font-size: 11px; font-style: italic;">Firma Digitalizada</div>
                                 @endif
