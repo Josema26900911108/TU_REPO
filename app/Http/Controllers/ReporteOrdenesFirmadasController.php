@@ -760,6 +760,17 @@ public function generarExpedientePdf(Request $request)
     }
 }
 
+public function descargar($archivo)
+{
+    $path = storage_path('app/public/reportes/' . $archivo);
+    
+    if (!file_exists($path)) {
+        abort(404, 'Archivo no encontrado');
+    }
+    
+    return response()->download($path);
+}
+
     private function leerOrdenesDesdeExcel(string $path): array
     {
         $spreadsheet = IOFactory::load($path);

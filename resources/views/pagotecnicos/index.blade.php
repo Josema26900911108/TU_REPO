@@ -723,19 +723,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                 textoProgreso.classList.replace('text-primary', 'text-success');
                                 
                                 setTimeout(() => {
-                                    let link = document.createElement('a');
-                                    link.href = '/reportes/descargar/' + status.archivo;
-                                    link.setAttribute('download', status.archivo); 
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
+                                    // 👇 REEMPLAZA ESTAS 6 LÍNEAS...
+                                    // let link = document.createElement('a');
+                                    // link.href = '/reportes/descargar/' + status.archivo;
+                                    // link.setAttribute('download', status.archivo); 
+                                    // document.body.appendChild(link);
+                                    // link.click();
+                                    // document.body.removeChild(link);
+                                    
+                                    // 👇 ...POR ESTA ÚNICA LÍNEA:
+                                    window.location.href = '/reportes/descargar/' + encodeURIComponent(status.archivo);
 
                                     let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
                                     if(modal) modal.hide();
 
-                                    Swal.fire({ icon: 'success', title: 'Reporte Listo!', text: 'La descarga ha comenzado.', timer: 3000, showConfirmButton: false });
+                                    Swal.fire({ icon: 'success', title: '¡Reporte Listo!', text: 'La descarga ha comenzado.', timer: 3000, showConfirmButton: false });
                                     restaurarBoton();
-                                }, 1000); 
+                                }, 1500);
                             }  else if (status.estado === 'error') {
                                 clearInterval(intervaloServer);
                                 clearInterval(intervaloBarra);
