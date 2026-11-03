@@ -323,7 +323,11 @@ foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
 
 $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
     ->setPaper('letter', 'portrait')
-    ->setOptions(['isRemoteEnabled' => false, 'isHtml5ParserEnabled' => true]);
+    ->setOptions([
+        'isRemoteEnabled' => true,  // Permite descargar URLs
+        'isHtml5ParserEnabled' => true,
+        'chroot' => storage_path(), // Permite leer archivos locales si es necesario
+    ]);
 
     $pdf->save(storage_path('app/public/reportes/' . $nombreParcial));
 
@@ -478,7 +482,7 @@ private function calcularMesesProminentes(Collection $expedientes): string
 }
 
     // --- HELPERS ---
-    private function prepararImagenBase64(?string $base64Puro, $maxAncho): ?string
+    private function prepararImagenBase64ss(?string $base64Puro, $maxAncho): ?string
     {
         if (empty($base64Puro)) return null;
         try {
@@ -493,7 +497,69 @@ private function calcularMesesProminentes(Collection $expedientes): string
         } catch (\Throwable $e) { return null; }
     }
 
+    private function prepararImagenBase64(?string $base64Puro, $maxAncho): ?string
+{
+    if (empty($base64Puro)) return null;
+    // Si ya viene con el prefijo, lo devolvemos tal cual.
+    // DomPDF lo renderizará sin problemas.
+    return str_starts_with($base64Puro, 'data:image') ? $base64Puro : 'data:image/webp;base64,' . $base64Puro;
+}
+
 private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket, $maxAncho): ?string
+{
+    if (empty($urlFirma)) return null;
+    
+    try {
+        // 1. Descargar directamente por HTTP (sin credenciales)
+        $context = stream_context_create([
+            "http" => [
+                "header" => "User-Agent: Mozilla/5.0\r\n",
+                "timeout" => 15
+            ]
+        ]);
+        
+        $binaryFirma = @file_get_contents($urlFirma, false, $context);
+        
+        if ($binaryFirma === false) {
+            Log::error("DIAGNOSTICO: Error al descargar por HTTP la firma: {$urlFirma}");
+            return null;
+        }
+
+        // 2. Convertir la imagen nativamente
+        $imagen = @imagecreatefromstring($binaryFirma);
+        if ($imagen === false) {
+            Log::error("DIAGNOSTICO: No se pudo crear la imagen desde la URL: {$urlFirma}");
+            return null;
+        }
+
+        // 3. Redimensionar a 200px
+        $anchoOriginal = imagesx($imagen);
+        $altoOriginal = imagesy($imagen);
+        $nuevoAncho = min(200, $anchoOriginal);
+        $nuevoAlto = floor($altoOriginal * ($nuevoAncho / $anchoOriginal));
+        
+        $imagenRedimensionada = imagecreatetruecolor($nuevoAncho, $nuevoAlto);
+        $blanco = imagecolorallocate($imagenRedimensionada, 255, 255, 255);
+        imagefill($imagenRedimensionada, 0, 0, $blanco);
+        
+        imagecopyresampled($imagenRedimensionada, $imagen, 0, 0, 0, 0, $nuevoAncho, $nuevoAlto, $anchoOriginal, $altoOriginal);
+        imagedestroy($imagen);
+
+        // 4. Convertir a Base64 (JPEG)
+        ob_start();
+        imagejpeg($imagenRedimensionada, null, 70);
+        $jpegData = ob_get_clean();
+        imagedestroy($imagenRedimensionada);
+
+        return 'data:image/jpeg;base64,' . base64_encode($jpegData);
+
+    } catch (\Throwable $e) { 
+        Log::error("DIAGNOSTICO: Error procesando firma {$cacheKey}: " . $e->getMessage());
+        return null; 
+    }
+}
+
+private function obtenerFirmaBase64ss(?string $urlFirma, $cacheKey, $nombreBucket, $maxAncho): ?string
 {
     if (empty($urlFirma)) return null;
     
