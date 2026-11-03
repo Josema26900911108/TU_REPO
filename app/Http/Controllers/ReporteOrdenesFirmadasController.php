@@ -706,26 +706,21 @@ public function verificarEstadoReporte()
 
     return response()->json(['estado' => 'procesando']);
 }
+
 public function generarExpedientePdf(Request $request)
 {
-    // 1. Validar archivo
     if (!$request->hasFile('excel_ordenes')) {
         return response()->json(['error' => 'No se recibió archivo'], 400);
     }
 
-    // 2. Guardar archivo (Esto es rapidísimo)
     $path = $request->file('excel_ordenes')->store('temp_excels', 'local');
     $tiendaId = session('user_fkTienda');
     $userId = auth()->id();
 
-    // 3. Despachar el Job (Se va a la cola, no se procesa aquí)
     \App\Jobs\GenerarExpedientePdfJob::dispatch($path, $tiendaId, $userId);
 
-    // 4. RETORNAR EL JSON INMEDIATAMENTE
-    return response()->json([
-        'ok' => true, 
-        'mensaje' => 'Reporte en proceso'
-    ]);
+    // ESTO ES LO QUE RESPONDE AL NAVEGADOR EN 0.1 SEGUNDOS
+    return response()->json(['ok' => true, 'mensaje' => 'Reporte en proceso']);
 }
 
 public function descargar($archivo)

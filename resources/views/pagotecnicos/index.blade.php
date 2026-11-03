@@ -673,103 +673,98 @@ fetch(this.action, {
     body: formData,
     headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }
 })
-.then(async response => {
+.then(response => {
     if (!response.ok) {
-        // Si el servidor falla, capturamos el texto del error
-        const errorText = await response.text();
-        throw new Error('Error ' + response.status + ': ' + errorText.substring(0, 100));
+        // Si es un error de Laravel (500, 419, 413), lo mostramos
+        return response.text().then(text => {
+            throw new Error('Error ' + response.status + ': ' + text);
+        });
     }
     return response.json();
 })
-            .then(data => {
-                btnSubmit.innerHTML = 'Procesando...';
-                textoProgreso.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i> Procesando firmas y PDF...';
-                
-                let progresoActual = 0;
-                let intervaloBarra = setInterval(() => {
-                    if (progresoActual < 50) progresoActual += 1;
-                    else if (progresoActual < 95) progresoActual += 0.2; 
-                    if (progresoActual > 95) progresoActual = 95; 
+.then(data => {
+    if (!data.ok) {
+        throw new Error(data.mensaje || 'Error al iniciar el proceso');
+    }
+
+    // El servidor ya recibió el archivo y respondió con éxito.
+    // Ahora empezamos el polling (la barra de progreso).
+    btnSubmit.innerHTML = 'Procesando...';
+    textoProgreso.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i> Procesando firmas y PDF...';
+    
+    let progresoActual = 0;
+    let intervaloBarra = setInterval(() => {
+        if (progresoActual < 50) progresoActual += 1;
+        else if (progresoActual < 95) progresoActual += 0.2; 
+        if (progresoActual > 95) progresoActual = 95; 
+        
+        barraProgreso.style.width = progresoActual + '%';
+        porcentajeProgreso.innerText = Math.floor(progresoActual) + '%';
+
+        if (progresoActual < 30) textoProgreso.innerHTML = '<i class="fas fa-database fa-spin me-1"></i> Consultando materiales...';
+        else if (progresoActual < 60) textoProgreso.innerHTML = '<i class="fas fa-image fa-spin me-1"></i> Descargando firmas...';
+        else textoProgreso.innerHTML = '<i class="fas fa-file-pdf fa-spin me-1"></i> Ensamblando el PDF...';
+    }, 1000);
+
+    let intentos = 0; 
+    let intervaloServer = setInterval(() => {
+        intentos++; 
+        
+        if (intentos > 100) { 
+            clearInterval(intervaloServer);
+            clearInterval(intervaloBarra); 
+            restaurarBoton();
+            Swal.fire('Tiempo agotado', 'El servidor tardó más de 5 minutos.', 'warning');
+            return;
+        }
+
+        fetch('{{ route("reportes.verificar-estado") }}')
+            .then(res => res.json())
+            .then(status => {
+                if (status.estado === 'completado') {
+                    clearInterval(intervaloServer);
+                    clearInterval(intervaloBarra); 
                     
-                    barraProgreso.style.width = progresoActual + '%';
-                    porcentajeProgreso.innerText = Math.floor(progresoActual) + '%';
+                    // Lógica de descarga...
+                    let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
+                    if(modal) modal.hide();
 
-                    if (progresoActual < 30) textoProgreso.innerHTML = '<i class="fas fa-database fa-spin me-1"></i> Consultando materiales...';
-                    else if (progresoActual < 60) textoProgreso.innerHTML = '<i class="fas fa-image fa-spin me-1"></i> Descargando firmas...';
-                    else textoProgreso.innerHTML = '<i class="fas fa-file-pdf fa-spin me-1"></i> Ensamblando el PDF...';
-                }, 1000);
+                    Swal.fire({ 
+                        icon: 'success', 
+                        title: '¡Reporte Listo!', 
+                        text: 'La descarga ha comenzado.', 
+                        timer: 4000, 
+                        showConfirmButton: true 
+                    });
 
-                let intentos = 0; 
-                let intervaloServer = setInterval(() => {
-                    intentos++; 
-                    
-                    if (intentos > 100) { 
-                        clearInterval(intervaloServer);
-                        clearInterval(intervaloBarra); 
-                        restaurarBoton();
-                        Swal.fire('Tiempo agotado', 'El servidor tardo mas de 5 minutos.', 'warning');
-                        return;
-                    }
+                    let urlDescarga = '/reportes/descargar/' + encodeURIComponent(status.archivo);
+                    let iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.src = urlDescarga;
+                    document.body.appendChild(iframe);
 
-                    fetch('{{ route("reportes.verificar-estado") }}')
-                        .then(res => res.json())
-                        .then(status => {
-                            if (status.estado === 'completado') {
-                                clearInterval(intervaloServer);
-                                clearInterval(intervaloBarra); 
-                                
-                                barraProgreso.style.width = '100%';
-                                barraProgreso.classList.remove('bg-primary', 'progress-bar-animated');
-                                barraProgreso.classList.add('bg-success');
-                                porcentajeProgreso.innerText = '100%';
-                                porcentajeProgreso.classList.replace('text-primary', 'text-success');
-                                textoProgreso.innerHTML = '<i class="fas fa-check-circle me-1"></i> Completado!';
-                                textoProgreso.classList.replace('text-primary', 'text-success');
-                                
+                    restaurarBoton();
 
+                    setTimeout(() => {
+                        if (iframe.parentNode) document.body.removeChild(iframe);
+                    }, 10000);
 
-// En lugar del setTimeout, hacemos la descarga inmediata:
-let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
-if(modal) modal.hide();
-
-// 1. Mostramos la alerta de éxito
-Swal.fire({ 
-    icon: 'success', 
-    title: '¡Reporte Listo!', 
-    text: 'La descarga ha comenzado. Revisa tu carpeta de Descargas.', 
-    timer: 4000, 
-    showConfirmButton: true 
-});
-
-// 2. Forzamos la descarga usando un iframe oculto (El método más seguro)
-// Esto evita que el navegador bloquee la descarga o te saque de la página actual.
-let urlDescarga = '/reportes/descargar/' + encodeURIComponent(status.archivo);
-let iframe = document.createElement('iframe');
-iframe.style.display = 'none';
-iframe.src = urlDescarga;
-document.body.appendChild(iframe);
-
-// 3. Limpiamos la interfaz y restauramos el botón
-restaurarBoton();
-
-// (Opcional) Eliminamos el iframe después de un tiempo para no dejar basura en el HTML
-setTimeout(() => {
-    document.body.removeChild(iframe);
-}, 10000);
-                            }  else if (status.estado === 'error') {
-                                clearInterval(intervaloServer);
-                                clearInterval(intervaloBarra);
-                                restaurarBoton();
-                                Swal.fire('No se pudo generar', status.mensaje, 'error');
-                            }
-                        })
-                        .catch(err => console.log("Reintentando conexion..."));
-                }, 3000); 
+                } else if (status.estado === 'error') {
+                    clearInterval(intervaloServer);
+                    clearInterval(intervaloBarra);
+                    restaurarBoton();
+                    Swal.fire('No se pudo generar', status.mensaje, 'error');
+                }
             })
-            .catch(error => {
-                restaurarBoton();
-                Swal.fire('Error al procesar', error.message, 'error');
-            });
+            .catch(err => console.log("Reintentando conexión...")); // Si falla una vez, no pasa nada, sigue intentando
+    }, 3000); 
+})
+.catch(error => {
+    // Si el fetch inicial falla (Failed to fetch), mostramos el error real.
+    restaurarBoton();
+    Swal.fire('Error de conexión', 'No se pudo comunicar con el servidor. Intenta de nuevo.', 'error');
+    console.error('Error:', error);
+});
 
             function restaurarBoton() {
                 btnSubmit.disabled = false;
