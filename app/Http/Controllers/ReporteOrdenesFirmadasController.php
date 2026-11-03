@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -16,7 +17,7 @@ use Carbon\Carbon;
 use ZipArchive;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Intervention\Image\ImageManagerStatic as Image;
-
+use App\Jobs\GenerarExpedientePdfJob;
 
 class ReporteOrdenesFirmadasController extends Controller
 {
@@ -677,398 +678,87 @@ class ReporteOrdenesFirmadasController extends Controller
         }
     }
 
+public function verificarEstadoReporte()
+{
+    $userId = auth()->id();
+    $status = Cache::get('reporte_status_' . $userId);
 
-    public function generarExpedientePdf(Request $request)
-    {
-        // ─────────────────────────────────────────────────────────────
-        // 1. Validar y leer archivo de órdenes
-        // ─────────────────────────────────────────────────────────────
-        if (!$request->hasFile('excel_ordenes')) {
-            return back()->with('error', 'No se recibió ningún archivo de órdenes.');
+    if ($status) {
+        if (in_array($status['estado'], ['completado', 'error'])) {
+            Cache::forget('reporte_status_' . $userId);
         }
-
-        $file = $request->file('excel_ordenes');
-        $path = $file->getRealPath();
-
-        try {
-            $ordenes = $this->leerOrdenesDesdeExcel($path);
-        } catch (\Throwable $e) {
-            return back()->with('error', 'Error al leer el archivo de órdenes: ' . $e->getMessage());
-        }
-
-        if (empty($ordenes)) {
-            return back()->with('error', 'El archivo Excel no contiene órdenes legibles.');
-        }
-
-        $tiendaId = session('user_fkTienda');
-
-        // ─────────────────────────────────────────────────────────────
-        // 2. Logo y datos de tienda
-        // ─────────────────────────────────────────────────────────────
-        $tienda     = DB::table('tienda')->where('idTienda', $tiendaId)->first();
-        $logoBase64 = $this->prepararLogoBase64($tienda->logo ?? null);
-        $firmaRep   = $this->prepararLogoBase64($tienda->firma_representante ?? null);
-
-        // ─────────────────────────────────────────────────────────────
-        // 3. Expedientes (una sola consulta)
-        // ─────────────────────────────────────────────────────────────
-        $expedientesRaw = DB::table('expedientetecnico as ex')
-            ->leftJoin('tecnico as t', 'ex.fkTecnico', '=', 't.id')
-            ->leftJoin('users as u', 't.nombre', '=', 'u.name')
-            ->whereIn(DB::raw('SUBSTRING(ex.Orden, 1, 8)'), $ordenes)
-            ->where('ex.fkTienda', $tiendaId)
-            ->select([
-                'ex.id',
-                DB::raw('SUBSTRING(ex.Orden, 1, 8) as Orden'),
-                'ex.virtual', 'ex.Tipo_orden', 'ex.Tipo_servicio',
-                'ex.NOMBRECLIENTE', 'ex.DIRECCION', 'ex.FECHAINSTALACION', 'ex.OBS',
-                'ex.firma_cliente', 'ex.SIGLASCENTRAL', 'ex.AREA',
-                't.nombre as tecnico_nombre', 't.codigo as tecnico_codigo',
-                'u.firma as firma_usuario',
-            ])
-            ->distinct()
-            ->get();
-
-        if ($expedientesRaw->isEmpty()) {
-            return back()->with('error', 'No se encontraron expedientes válidos.');
-        }
-
-        // Pre-indexado para lookups O(1) dentro de bucles
-        $expedientesPorId    = $expedientesRaw->keyBy('id');
-        $expedientesPorOrden = $expedientesRaw->groupBy('Orden'); // varias filas pueden compartir Orden
-
-        // ─────────────────────────────────────────────────────────────
-        // 4. Fuente primaria: movimientomateriales (físicos)
-        //    Sin JOIN a subquery exp_firma. La sustitución de
-        //    fkExpediente por el "expediente firmado" se hace en PHP.
-        // ─────────────────────────────────────────────────────────────
-        $materialesMovimientos = DB::table('movimientomateriales as mm')
-            ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
-            ->join('expedientetecnico as et_mov', 'mm.fkExpediente', '=', 'et_mov.id')
-            ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
-            ->where('mamo.CATEGORIA', '!=', 'MANO DE OBRA')
-            ->whereIn(DB::raw('SUBSTRING(et_mov.Orden, 1, 8)'), $ordenes)
-            ->where('mm.fkTienda', $tiendaId)
-            ->select([
-                'mm.fkExpediente as expediente_movimiento',
-                'mm.SKU',
-                'mm.cantidad',
-                'mm.serie',
-                'mamo.Descripcion',
-                'mamo.TIPO',
-                'mamo.CATEGORIA',
-                'mamo.unidadmedida',
-                'abmamo.nombre as TecnologiaCatalogo',
-                DB::raw('SUBSTRING(et_mov.Orden, 1, 8) as codigo_orden'),
-                DB::raw('CAST(mamo.CATEGORIACOBRO AS DECIMAL(10,2)) as precio_unitario'),
-            ])
-            ->get();
-
-        // Elegir "expediente líder" por orden: el que tenga firma_cliente, si no el primero
-        $expedienteLiderPorOrden = $expedientesPorOrden->map(function (Collection $grupo) {
-            return $grupo->firstWhere(fn($e) => !empty($e->firma_cliente)) ?? $grupo->first();
-        });
-
-        // Sustituir fkExpediente y consolidar duplicados (mismo exp+SKU+serie)
-        $materialesMovimientos = $materialesMovimientos
-            ->map(function ($item) use ($expedienteLiderPorOrden) {
-                $lider = $expedienteLiderPorOrden->get($item->codigo_orden);
-                if (!$lider) {
-                    return null;
-                }
-                $item->fkExpediente = $lider->id;
-                return $item;
-            })
-            ->filter()
-            ->groupBy(fn($i) => $i->fkExpediente . '|' . $i->SKU . '|' . ($i->serie ?? ''))
-            ->map(function (Collection $grupo) {
-                $base = clone $grupo->first();
-                $base->cantidad = (float) $grupo->sum('cantidad');
-                return $base;
-            })
-            ->values();
-
-        // Mapa SKU → Tecnología (fallback)
-        $mapaSkuTecnologia = $materialesMovimientos
-            ->whereNotNull('TecnologiaCatalogo')
-            ->groupBy('SKU')
-            ->map(fn(Collection $g) => $g->first()->TecnologiaCatalogo)
-            ->toArray();
-
-        // Tecnologías físicas por orden (para desambiguar mano de obra)
-        $tecnologiasPorOrden = $materialesMovimientos
-            ->whereNotNull('TecnologiaCatalogo')
-            ->groupBy('codigo_orden')
-            ->map(fn(Collection $g) => $g->pluck('TecnologiaCatalogo')->unique()->values());
-
-        // ─────────────────────────────────────────────────────────────
-        // 5. Fuente secundaria: pagotecnico (mano de obra)
-        // ─────────────────────────────────────────────────────────────
-        $materialesPagoTecnicoRaw = DB::table('pagotecnico as pt')
-            ->join('MaterialManoObra as mamo', 'pt.SKU', '=', 'mamo.SKU')
-            ->join('expedientetecnico as et', 'et.Orden', '=', 'pt.Orden')
-            ->join('movimientomateriales as mm', 'et.id', '=', 'mm.fkExpediente')
-            ->join('tecnico as t', 'et.fkTecnico', '=', 't.id')
-            ->leftJoin('arbolmaterial as abmamo', 'mm.fkTecnologiaarbol', '=', 'abmamo.id')
-            ->where('et.ESTATUS', 'C')
-            ->where('mamo.categoria', 'MANO DE OBRA')
-            ->whereIn(DB::raw('SUBSTRING(pt.Orden, 1, 8)'), $ordenes)
-            ->where('pt.fkTienda', $tiendaId)
-            ->select([
-                'mm.fkExpediente as expediente_movimiento',
-                't.nombre',
-                't.codigo as CENTRO_CODIGO',
-                'pt.Orden',
-                'pt.SKU',
-                'mamo.Descripcion',
-                'pt.cantidad',
-                'mamo.CATEGORIACOBRO as COSTO',
-                DB::raw('(pt.cantidad * mamo.CATEGORIACOBRO) as Subtotal'),
-                'mamo.TIPO',
-                'abmamo.nombre as TecnologiaCatalogo',
-                'mamo.CATEGORIA',
-                'mamo.unidadmedida',
-                DB::raw('SUBSTRING(pt.Orden, 1, 8) as OrdenSub'),
-                DB::raw('NULL as serie'),
-                DB::raw('CAST(mamo.CATEGORIACOBRO AS DECIMAL(10,2)) as precio_unitario'),
-            ])
-            ->distinct()
-            ->get();
-
-        // Asignar fkExpediente + TecnologiaCatalogo a la mano de obra
-        $materialesPagoTecnico = collect();
-
-        foreach ($materialesPagoTecnicoRaw as $pago) {
-            // Tomar el expediente líder de esa orden
-            $lider = $expedienteLiderPorOrden->get($pago->OrdenSub);
-            if (!$lider) {
-                continue;
-            }
-            $pago->fkExpediente = $lider->id;
-
-            // 1. Por palabra clave en descripción
-            $desc = mb_strtoupper($pago->Descripcion);
-
-            if (str_contains($desc, 'DTH')) {
-                $pago->TecnologiaCatalogo = 'DTH';
-            } elseif (str_contains($desc, 'WTTX')) {
-                $pago->TecnologiaCatalogo = 'WTTx';
-            } elseif (str_contains($desc, 'GPON') || str_contains($desc, 'FIBRA')) {
-                $pago->TecnologiaCatalogo = 'GPON';
-            } elseif (str_contains($desc, 'HFC') || str_contains($desc, 'COAXIAL')) {
-                $pago->TecnologiaCatalogo = 'HFC';
-            } else {
-                // 2. Por tecnologías físicas de esa orden
-                $tecnologiasDeLaOrden = $tecnologiasPorOrden->get($pago->OrdenSub, collect());
-
-                if ($tecnologiasDeLaOrden->count() === 1) {
-                    $pago->TecnologiaCatalogo = $tecnologiasDeLaOrden->first();
-                } elseif ($tecnologiasDeLaOrden->count() > 1) {
-                    foreach ($tecnologiasDeLaOrden as $tec) {
-                        $clon = clone $pago;
-                        $clon->TecnologiaCatalogo = $tec;
-                        $materialesPagoTecnico->push($clon);
-                    }
-                    continue;
-                } else {
-                    $pago->TecnologiaCatalogo = $mapaSkuTecnologia[$pago->SKU] ?? 'OTRAS_TECNOLOGIAS';
-                }
-            }
-
-            $materialesPagoTecnico->push($pago);
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // 6. Consolidar fuentes: físicos manda, pagos solo si no existe dupla exp+SKU
-        //    Usamos un Set para lookup O(1) en lugar de contains() O(n).
-        // ─────────────────────────────────────────────────────────────
-        $todosMateriales = collect();
-
-        // Índice de duplas existentes en movimientos
-        $duplasExistentes = [];
-        foreach ($materialesMovimientos as $item) {
-            $duplasExistentes[$item->fkExpediente . '|' . $item->SKU] = true;
-            $todosMateriales->push($item);
-        }
-
-        foreach ($materialesPagoTecnico as $itemPago) {
-            $llave = $itemPago->fkExpediente . '|' . $itemPago->SKU;
-            if (!isset($duplasExistentes[$llave])) {
-                $duplasExistentes[$llave] = true;
-                $todosMateriales->push($itemPago);
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // 7. Agrupar por tecnología
-        // ─────────────────────────────────────────────────────────────
-        $tecnologiasAgrupadas = [];
-
-        $materialesPorTecnologia = $todosMateriales->groupBy(
-            fn($item) => empty($item->TecnologiaCatalogo)
-                ? 'OTRAS_TECNOLOGIAS'
-                : $item->TecnologiaCatalogo
-        );
-
-        foreach ($materialesPorTecnologia as $nombreTecnologia => $materialesTec) {
-
-            // Órdenes que participan en esta tecnología
-            $ordenesDeEstaTecnologia = $materialesTec
-                ->pluck('codigo_orden')
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-
-            if (empty($ordenesDeEstaTecnologia)) {
-                continue;
-            }
-
-            // Expedientes pertenecientes a esta tecnología (lookup por Orden)
-            $listaExpedientes = $expedientesRaw
-                ->whereIn('Orden', $ordenesDeEstaTecnologia)
-                ->values();
-
-            if ($listaExpedientes->isEmpty()) {
-                continue;
-            }
-
-            // Separar físicos vs mano de obra
-            $materialesFisicosTec = $materialesTec->where('CATEGORIA', '!=', 'MANO DE OBRA');
-            $manoObraTec          = $materialesTec->where('CATEGORIA', '==', 'MANO DE OBRA');
-
-            // ── Cuadro financiero de Mano de Obra ──
-            $resumenMO = [];
-            $totalMO   = 0.0;
-
-            foreach ($manoObraTec->groupBy('Descripcion') as $desc => $itemsMO) {
-                $cantTotal = (float) $itemsMO->sum('cantidad');
-                $precio    = (float) ($itemsMO->first()->precio_unitario ?? 0);
-                $subtotal  = $cantTotal * $precio;
-                $totalMO  += $subtotal;
-
-                $resumenMO[] = [
-                    'descripcion' => $desc,
-                    'unidad'      => empty($itemsMO->first()->unidadmedida) ? 'UNIDAD' : $itemsMO->first()->unidadmedida,
-                    'cantidad'    => $cantTotal,
-                    'precio'      => $precio,
-                    'total'       => $subtotal,
-                ];
-            }
-
-            $iva         = $totalMO * 0.12;
-            $totalConIva = $totalMO + $iva;
-
-            // ── Consolidado global de materiales físicos ──
-            $materialesGlobales = [];
-            foreach ($materialesFisicosTec->groupBy('SKU') as $sku => $itemsMat) {
-                $materialesGlobales[] = [
-                    'sku'         => $sku,
-                    'descripcion' => $itemsMat->first()->Descripcion,
-                    'cantidad'    => $itemsMat->sum('cantidad'),
-                ];
-            }
-
-            // Pre-indexar físicos por expediente (evita where en bucle)
-            $materialesPorExpediente = $materialesFisicosTec->groupBy('fkExpediente');
-
-            // ── Expedientes de esta tecnología con firmas ──
-            $expedientesProcesados = [];
-
-            foreach ($listaExpedientes as $exp) {
-                $materialesDelExpediente = $materialesPorExpediente->get($exp->id, collect());
-
-                // Regla de negocio: si no tiene materiales físicos, se omite
-                if ($materialesDelExpediente->isEmpty()) {
-                    continue;
-                }
-
-                // Firma del cliente (cache + resize)
-                $firmaBase64 = $this->obtenerFirmaBase64($exp->firma_cliente ?? null, $exp->id);
-
-                // Firma del técnico/user (Base64 ya viene embebida en BD)
-                $firmaTecnicoUserBase64 = null;
-                if (!empty($exp->firma_usuario)) {
-                    $firmaLimpia = trim($exp->firma_usuario);
-                    $firmaTecnicoUserBase64 = str_starts_with($firmaLimpia, 'data:image')
-                        ? $firmaLimpia
-                        : 'data:image/png;base64,' . $firmaLimpia;
-                }
-
-                $expedientesProcesados[] = [
-                    'id'                 => $exp->id,
-                    'Orden'              => $exp->Orden,
-                    'virtual'            => $exp->virtual,
-                    'Tipo_orden'         => $exp->Tipo_orden,
-                    'Tipo_servicio'      => $exp->Tipo_servicio,
-                    'NOMBRECLIENTE'      => $exp->NOMBRECLIENTE,
-                    'DIRECCION'          => $exp->DIRECCION,
-                    'FECHAINSTALACION'   => $exp->FECHAINSTALACION
-                        ? Carbon::parse($exp->FECHAINSTALACION)->format('d/m/Y H:i')
-                        : 'N/A',
-                    'tecnico_nombre'     => $exp->tecnico_nombre,
-                    'tecnico_codigo'     => $exp->tecnico_codigo,
-                    'firma_base64'       => $firmaBase64,
-                    'firma_tecnico_user' => $firmaTecnicoUserBase64,
-                    'materiales'         => $materialesDelExpediente,
-                ];
-            }
-
-            if (empty($expedientesProcesados)) {
-                continue;
-            }
-
-            $tecnologiasAgrupadas[$nombreTecnologia] = [
-                'nombre'             => $nombreTecnologia,
-                'resumenManoObra'    => $resumenMO,
-                'totalManoObra'      => $totalMO,
-                'iva'                => $iva,
-                'totalConIva'        => $totalConIva,
-                'materialesGlobales' => $materialesGlobales,
-                'expedientes'        => $expedientesProcesados,
-            ];
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // 8. Período dinámico
-        // ─────────────────────────────────────────────────────────────
-        $periodoDinamico = $this->calcularPeriodo($expedientesRaw);
-
-        // ─────────────────────────────────────────────────────────────
-        // 9. Generar PDF
-        // ─────────────────────────────────────────────────────────────
-        $dataReporte = [
-            'fecha_reporte'       => Carbon::now()->format('d/m/Y'),
-            'representante'       => $tienda->representante ?? 'Distribuidor Autorizado',
-            'periodo_mes'         => $periodoDinamico,
-            'logo_tienda'         => $logoBase64,
-            'firma_representante' => $firmaRep,
-            'nombre_tienda'       => $tienda->Nombre ?? 'Distribuidor Autorizado',
-            'tecnologias'         => $tecnologiasAgrupadas,
-        ];
-
-        try {
-            $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
-                ->setPaper('letter', 'portrait')
-                ->setOptions([
-                    'isRemoteEnabled'     => true,
-                    'isHtml5ParserEnabled'=> true,
-                ]);
-
-            return $pdf->download('Expediente_Masivo_Tecnologias_' . date('Ymd_His') . '.pdf');
-
-        } catch (\Throwable $e) {
-            Log::error('Fallo controlado al compilar binario masivo DomPDF: ' . $e->getMessage(), [
-                'linea' => $e->getLine(),
-            ]);
-
-            return back()->with('error', 'El reporte se procesó con éxito pero falló la descarga del PDF: ' . $e->getMessage());
-        }
+        return response()->json($status);
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // HELPERS PRIVADOS
-    // ═══════════════════════════════════════════════════════════════
+    // Sin caché: si no hay jobs pendientes en la cola, algo murió sin escribir estado
+    try {
+        $jobsPendientes = DB::table('jobs')->count();
+    } catch (\Throwable $e) {
+        $jobsPendientes = 0;
+    }
+
+    if ($jobsPendientes === 0) {
+        return response()->json([
+            'estado'  => 'error',
+            'mensaje' => 'El proceso no generó resultado. Revisa los logs del worker (storage/logs/laravel.log).',
+        ]);
+    }
+
+    return response()->json(['estado' => 'procesando']);
+}
+public function generarExpedientePdf(Request $request)
+{
+    Log::info('🚀 [REPORTE] Request recibido', [
+        'user_id'    => auth()->id(),
+        'tiene_archivo' => $request->hasFile('excel_ordenes'),
+    ]);
+
+    if (!$request->hasFile('excel_ordenes')) {
+        Log::warning('⚠️ [REPORTE] Sin archivo');
+        return response()->json(['ok' => false, 'error' => 'No se recibió archivo'], 400);
+    }
+
+    try {
+        $path     = $request->file('excel_ordenes')->store('temp_excels', 'local');
+        $tiendaId = session('user_fkTienda');
+        $userId   = auth()->id();
+
+        Log::info('📁 [REPORTE] Excel guardado', [
+            'path'     => $path,
+            'user_id'  => $userId,
+            'tienda_id' => $tiendaId,
+        ]);
+
+        // Resetear estado ANTES de despachar
+        Cache::put('reporte_status_' . $userId, [
+            'estado'     => 'procesando',
+            'porcentaje' => 0,
+            'mensaje'    => 'Job en cola...',
+        ], now()->addMinutes(10));
+        Cache::forget('reporte_poll_count_' . $userId);
+
+        GenerarExpedientePdfJob::dispatch($path, $tiendaId, $userId);
+
+        Log::info('📤 [REPORTE] Job despachado', ['user_id' => $userId]);
+
+        // 🔴 ESTO ES LO QUE FALTABA: devolver JSON
+        return response()->json([
+            'ok'      => true,
+            'mensaje' => 'Reporte en proceso',
+        ]);
+
+    } catch (\Throwable $e) {
+        Log::error('❌ [REPORTE] Error al despachar', [
+            'error' => $e->getMessage(),
+            'linea' => $e->getLine(),
+            'file'  => $e->getFile(),
+        ]);
+        return response()->json([
+            'ok'    => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+}
 
     private function leerOrdenesDesdeExcel(string $path): array
     {

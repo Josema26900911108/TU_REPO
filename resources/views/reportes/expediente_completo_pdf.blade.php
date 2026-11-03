@@ -98,39 +98,6 @@
             padding: 4px 6px;
             border: none;
         }
-
-        /* Bloques de Firmas Inferiores */
-        .signature-table {
-            width: 100%;
-            margin-top: 40px;
-            border-collapse: collapse;
-        }
-        .signature-table td {
-            border: none;
-            text-align: center;
-            vertical-align: bottom;
-            width: 45%;
-        }
-        .signature-line {
-            border-top: 1px solid #333333;
-            margin-top: 45px;
-            padding-top: 4px;
-            font-weight: bold;
-            font-size: 10px;
-        }
-
-        .img-firma {
-    max-height: 190px;
-    max-width: 290px;
-    /* 🌟 Cambiamos a block para eliminar el espacio de línea base que deja el inline-block */
-    display: block; 
-    /* 🌟 Centra la firma horizontalmente */
-    margin: 0 auto; 
-    /* 🌟 Margen negativo para jalar la firma visualmente hacia abajo (ajusta el número si es necesario) */
-    margin-bottom: -5px; 
-}
-
-
     </style>
 </head>
 <body>
@@ -190,21 +157,20 @@
             trámites de facturación correspondientes.
         </p>
 
-<div style="margin-top: 50px; width: 260px; text-align: center; page-break-inside: avoid;">
-    <p style="margin-bottom: 5px;">Atentamente:</p>
-    
-    @if(!empty($firma_representante))
-        <!-- Usa dimensiones fijas o porcentajes, DomPDF a veces ignora max-width -->
-        <img src="{{ $firma_representante }}" style="width: 150px;" alt="Firma Representante">
-    @else
-        <div style="height: 50px;"></div> 
-    @endif
+        <div style="margin-top: 50px; width: 260px; text-align: center; page-break-inside: avoid;">
+            <p style="margin-bottom: 5px;">Atentamente:</p>
+            
+            @if(!empty($firma_representante))
+                <img src="{{ $firma_representante }}" style="width: 150px;" alt="Firma Representante">
+            @else
+                <div style="height: 50px;"></div> 
+            @endif
 
-    <div style="border-top: 1px solid #333; padding-top: 5px; font-weight: bold; line-height: 1.3;">
-        {{ $representante }}<br>
-        <span style="font-weight: normal; color:#666; font-size: 10px;">Representante Legal<br>{{ $nombre_tienda }}</span>
-    </div>
-</div>
+            <div style="border-top: 1px solid #333; padding-top: 5px; font-weight: bold; line-height: 1.3;">
+                {{ $representante }}<br>
+                <span style="font-weight: normal; color:#666; font-size: 10px;">Representante Legal<br>{{ $nombre_tienda }}</span>
+            </div>
+        </div>
 
 
         <div class="page-break"></div>
@@ -212,7 +178,7 @@
         <!-- SECCIÓN: REPORTE GENERAL DE MATERIALES (POR TECNOLOGÍA)           -->
         <!-- ================================================================= -->
         <div class="title-section">Uso Consolidado de Materiales - Tecnología: {{ $tec['nombre'] }}</div>
-        <p style="text-align: center; margin-top: -10px; color: #555;">REGIÓN: OCCIDENTE | PERIODO: {{ $periodo_mes }}</p>
+        <p style="text-align: center; margin-top: -10px; color: #555;">REGIÓN: OCCIDENTE | PERIODO: {{ $periodo_mes }}</p>
 
         <table class="data-table">
             <thead>
@@ -244,7 +210,7 @@
         <!-- SECCIÓN: CUADRO DE COSTOS FINANCIERO (POR TECNOLOGÍA)             -->
         <!-- ================================================================= -->
         <div class="title-section" style="color: #cc0000;">Cuadro de Costos de Instalación - {{ $tec['nombre'] }}</div>
-        <p style="text-align: center; margin-top: -10px; color: #555;">REGIÓN: OCCIDENTE | LIQUIDACIÓN DE MANO DE OBRA</p>
+        <p style="text-align: center; margin-top: -10px; color: #555;">REGIÓN: OCCIDENTE | LIQUIDACIÓN DE MANO DE OBRA</p>
 
         <table class="data-table">
             <thead>
@@ -293,59 +259,60 @@
         <!-- SECCIÓN: ORDENES DE SERVICIO INDIVIDUALES LIQUIDADAS              -->
         <!-- ================================================================= -->
         @foreach($tec['expedientes'] as $exp)
-            <table class="header-table" style="margin-bottom: 5px; width: 100%;">
-                <tr>
-                    <td style="width: 40%; vertical-align: middle; border: none;">
-                        @if(!empty($logo_tienda))
-                            <img src="{{ $logo_tienda }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
-                        @else
-                            <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
-                        @endif
-                    </td>
-                    <td style="text-align: right; font-weight: bold; font-size: 11px; color: #444; width: 60%; vertical-align: middle; border: none;">
-                        ORDEN DE SERVICIO INDIVIDUAL ({{ strtoupper($tec['nombre']) }})
-                    </td>
-                </tr>
-            </table>
-
-            <table class="info-box">
-                <tr>
-                    <td style="width: 15%;"><strong>NÚMERO ORDEN:</strong></td>
-                    <td style="width: 35%; font-weight: bold; color: #000;">{{ $exp['Orden'] }}</td>
-                    <td style="width: 15%;"><strong>CLIENTE:</strong></td>
-                    <td style="width: 35%;">{{ $exp['NOMBRECLIENTE'] }}</td>
-                </tr>
-                <tr>
-                    <td><strong>VIRTUAL:</strong></td>
-                    <td>{{ $exp['virtual'] }}</td>
-                    <td><strong>DIRECCIÓN:</strong></td>
-                    <td>{{ $exp['DIRECCION'] }}</td>
-                </tr>
-                <tr>
-                    <td><strong>TIPO ORDEN:</strong></td>
-                    <td>{{ $exp['Tipo_orden'] ?? 'DA' }} ({{ $exp['Tipo_servicio'] }})</td>
-                    <td><strong>FECHA INST:</strong></td>
-                    <td>{{ $exp['FECHAINSTALACION'] }}</td>
-                </tr>
-                <tr>
-                    <td><strong>CENTRAL / ÁREA:</strong></td>
-                    <td>{{ $exp['SIGLASCENTRAL'] ?? 'N/A' }} / {{ $exp['AREA'] ?? 'N/A' }}</td>
-                    <td><strong>TÉCNICO:</strong></td>
-                    <td>[{{ $exp['tecnico_codigo'] }}] {{ $exp['tecnico_nombre'] }}</td>
-                </tr>
-            </table>
-
-            <span style="font-weight: bold; text-transform: uppercase; font-size: 9px; color: #666; display: block; margin-top: 10px;">Materiales Utilizados en la Operación:</span>
-            
-            <table class="data-table" style="margin-bottom: 15px;">
-                <thead>
+            <div style="page-break-inside: avoid;">
+                <table class="header-table" style="margin-bottom: 5px; width: 100%;">
                     <tr>
-                        <th style="width: 15%;">CÓDIGO SKU</th>
-                        <th style="width: 50%;">DESCRIPCIÓN DEL MATERIAL</th>
-                        <th style="width: 10%; text-align: center;">CANTIDAD</th>
-                        <th style="width: 25%;">NÚMERO DE SERIE / CORRELATIVO</th>
+                        <td style="width: 40%; vertical-align: middle; border: none;">
+                            @if(!empty($logo_tienda))
+                                <img src="{{ $logo_tienda }}" style="height: 60px; width: auto; display: block;" alt="Logo Corporativo">
+                            @else
+                                <span style="font-weight: bold; color: #0d47a1; font-size: 14px;">{{ $nombre_tienda }}</span>
+                            @endif
+                        </td>
+                        <td style="text-align: right; font-weight: bold; font-size: 11px; color: #444; width: 60%; vertical-align: middle; border: none;">
+                            ORDEN DE SERVICIO INDIVIDUAL ({{ strtoupper($tec['nombre']) }})
+                        </td>
                     </tr>
-                </thead>
+                </table>
+
+                <table class="info-box">
+                    <tr>
+                        <td style="width: 15%;"><strong>NÚMERO ORDEN:</strong></td>
+                        <td style="width: 35%; font-weight: bold; color: #000;">{{ $exp['Orden'] }}</td>
+                        <td style="width: 15%;"><strong>CLIENTE:</strong></td>
+                        <td style="width: 35%;">{{ $exp['NOMBRECLIENTE'] }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>VIRTUAL:</strong></td>
+                        <td>{{ $exp['virtual'] }}</td>
+                        <td><strong>DIRECCIÓN:</strong></td>
+                        <td>{{ $exp['DIRECCION'] }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TIPO ORDEN:</strong></td>
+                        <td>{{ $exp['Tipo_orden'] ?? 'DA' }} ({{ $exp['Tipo_servicio'] }})</td>
+                        <td><strong>FECHA INST:</strong></td>
+                        <td>{{ $exp['FECHAINSTALACION'] }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>CENTRAL / ÁREA:</strong></td>
+                        <td>{{ $exp['SIGLASCENTRAL'] ?? 'N/A' }} / {{ $exp['AREA'] ?? 'N/A' }}</td>
+                        <td><strong>TÉCNICO:</strong></td>
+                        <td>[{{ $exp['tecnico_codigo'] }}] {{ $exp['tecnico_nombre'] }}</td>
+                    </tr>
+                </table>
+
+                <span style="font-weight: bold; text-transform: uppercase; font-size: 9px; color: #666; display: block; margin-top: 10px;">Materiales Utilizados en la Operación:</span>
+                
+                <table class="data-table" style="margin-bottom: 15px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 15%;">CÓDIGO SKU</th>
+                            <th style="width: 50%;">DESCRIPCIÓN DEL MATERIAL</th>
+                            <th style="width: 10%; text-align: center;">CANTIDAD</th>
+                            <th style="width: 25%;">NÚMERO DE SERIE / CORRELATIVO</th>
+                        </tr>
+                    </thead>
                 <tbody>
                     @forelse($exp['materiales'] as $insumo)
                         <tr>
@@ -361,73 +328,58 @@
                             </td>
                         </tr>
                     @empty
+                        <!-- 🚀 ESTO ES LO QUE SE MOSTRARÁ SI SOLO HAY MANO DE OBRA -->
                         <tr>
-                            <td colspan="4" style="text-align: center; color: #888; padding: 10px;">No se registraron consumos físicos en este expediente.</td>
+                            <td colspan="4" style="text-align: center; color: #888; padding: 10px; font-style: italic;">
+                                Esta orden no requirió consumo de materiales físicos, solo liquidación de mano de obra.
+                            </td>
                         </tr>
                     @endforelse
                 </tbody>
-            </table>
+                </table>
 
-            <p style="font-size: 8.5px; text-align: justify; font-style: italic; color: #555; line-height: 1.3;">
-                NOTA: HAGO CONSTAR QUE EL DÍA DE HOY SE INSTALÓ EN MI DOMICILIO EL SERVICIO ESPECIFICADO DE MANERA CORRECTA, QUEDANDO TOTALMENTE SATISFECHO CON LOS MATERIALES Y EL TRABAJO REALIZADO POR EL PERSONAL TÉCNICO AUTORIZADO.
-            </p>
+                <p style="font-size: 8.5px; text-align: justify; font-style: italic; color: #555; line-height: 1.3;">
+                    NOTA: HAGO CONSTAR QUE EL DÍA DE HOY SE INSTALÓ EN MI DOMICILIO EL SERVICIO ESPECIFICADO DE MANERA CORRECTA, QUEDANDO TOTALMENTE SATISFECHO CON LOS MATERIALES Y EL TRABAJO REALIZADO POR EL PERSONAL TÉCNICO AUTORIZADO.
+                </p>
 
-<!-- Bloque de firmas protegido contra divisiones -->
-<div style="page-break-inside: avoid; margin-top: 30px; width: 100%;">
-    <table style="width: 100%; border-collapse: collapse; text-align: center;">
-        <tr>
-            <!-- COLUMNA TÉCNICO Sincronizada con $exp -->
-<td style="width: 45%; vertical-align: bottom; padding: 10px;">
-    <!-- 🌟 Añadimos flexbox para empujar todo el contenido hacia abajo de forma estricta -->
-    <div style="height: 110px; width: 100%; border-bottom: 1px solid #000000; display: flex; align-items: flex-end; justify-content: center;">
-        @if(!empty($exp['firma_tecnico_user']))
-            <img class="img-firma" src="{{ $exp['firma_tecnico_user'] }}" alt="Firma Técnico">
-        @else
-            <div style="padding-bottom: 10px; color: #888888; font-size: 11px; font-style: italic; width: 100%; text-align: center;">
-                Firma Digitalizada
+                <!-- BLOQUE DE FIRMAS OPTIMIZADO (SIN FLEXBOX, SOLO TABLAS) -->
+                <div style="page-break-inside: avoid; margin-top: 30px; width: 100%;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: center;">
+                        <tr>
+                            <!-- COLUMNA TÉCNICO -->
+                            <td style="width: 45%; vertical-align: bottom; padding: 10px; border-bottom: 1px solid #000000; height: 110px;">
+                                @if(!empty($exp['firma_tecnico_user']))
+                                    <img src="{{ $exp['firma_tecnico_user'] }}" style="max-height: 90px; width: auto;" alt="Firma Técnico">
+                                @else
+                                    <div style="padding-bottom: 10px; color: #888888; font-size: 11px; font-style: italic;">Firma Digitalizada</div>
+                                @endif
+                            </td>
+                            <!-- COLUMNA CLIENTE -->
+                            <td style="width: 45%; vertical-align: bottom; padding: 10px; border-bottom: 1px solid #000000; height: 180px;">
+                                @if(!empty($exp['firma_base64']))
+                                    <img src="{{ $exp['firma_base64'] }}" style="max-height: 160px; width: auto;" alt="Firma Cliente">
+                                @else
+                                    <div style="padding-bottom: 10px; color: #aaaaaa; font-size: 11px; font-style: italic;">Sin firma registrada</div>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <!-- TEXTOS INFERIORES TÉCNICO -->
+                            <td style="width: 45%; padding: 10px; vertical-align: top;">
+                                <div style="font-size: 11px; font-weight: bold; text-transform: uppercase;">
+                                    {{ $exp['tecnico_nombre'] ?? 'TÉCNICO ASIGNADO' }}
+                                </div>
+                                <div style="font-size: 10px; color: #555555;">Código: {{ $exp['tecnico_codigo'] ?? 'N/A' }}</div>
+                            </td>
+                            <!-- TEXTOS INFERIORES CLIENTE -->
+                            <td style="width: 45%; padding: 10px; vertical-align: top;">
+                                <div style="font-size: 11px; font-weight: bold; text-transform: uppercase;">{{ $exp['NOMBRECLIENTE'] ?? 'FIRMA DEL CLIENTE' }}</div>
+                                <div style="font-size: 10px; color: #555555;">Cliente / Receptor</div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
             </div>
-        @endif
-    </div>
-    <div style="margin-top: 8px; font-size: 11px; font-weight: bold; text-transform: uppercase;">
-        {{ $exp['tecnico_nombre'] ?? 'TÉCNICO ASIGNADO' }}
-    </div>
-    <div style="font-size: 10px; color: #555555;">
-        Código: {{ $exp['tecnico_codigo'] ?? 'N/A' }}
-    </div>
-</td>
-
-
- 
-<td style="width: 45%; vertical-align: bottom; padding: 10px;">
-    
-    <!-- 1. CONTENEDOR DE LA FIRMA (Aquí se define la altura y la línea inferior) -->
-    <!-- 🌟 Quitamos los estilos de tabla simulada y dejamos un contenedor alto que empuja su contenido al fondo -->
-    <div style="height: 180px; width: 100%; border-bottom: 1px solid #000000; text-align: center; line-height: 0; font-size: 0;">
-        @if(!empty($exp['firma_base64']))
-            <!-- 🌟 display: inline-block y vertical-align: bottom aseguran que se pegue a la línea de abajo sin romper dompdf -->
-            <img class="img-firma" src="{{ $exp['firma_base64'] }}" alt="Firma Cliente" style="display: inline-block; vertical-align: bottom; max-height: 170px; max-width: 100%; margin: 0 auto; padding: 0;">
-        @else
-            <!-- 🌟 Si no hay firma, el texto se muestra con line-height normal para que sea legible -->
-            <div style="line-height: normal; font-size: 11px; color: #aaaaaa; font-style: italic; padding-top: 140px;">
-                Sin firma registrada
-            </div>
-        @endif
-    </div>                
-
-    <!-- 2. BLOQUE DE TEXTO (Queda perfectamente fuera de la línea negra, justo abajo) -->
-    <div style="margin-top: 8px; text-align: center; font-size: 11px; line-height: 1.3;">
-        <div style="font-weight: bold; text-transform: uppercase;">
-            {{ $exp['NOMBRECLIENTE'] ?? 'FIRMA DEL CLIENTE' }}
-        </div>
-        <div style="font-size: 10px; color: #555555;">Cliente / Receptor</div>
-    </div>
-
-</td>
-
-
-        </tr>
-    </table>
-</div>
 
             @if(!$loop->last || !$loop->parent->last)
                 <div class="page-break"></div>

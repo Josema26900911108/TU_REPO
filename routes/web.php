@@ -464,6 +464,16 @@ Route::any('/etadirect-AutomataValidarMamoOrden', [etadirectController::class, '
      // 📦 3. Ruta para el Formulario B (Validación Express de una sola Orden)
 Route::any('/etadirect-ExcelAutomataValidarMamoOrden', [etadirectController::class, 'AutomataValidarMamoOrdenExcel'])
      ->name('etadirect.AutomataValidarMamoOrdenExcel');
+
+    Route::get('/reportes/verificar-estado', [ReporteOrdenesFirmadasController::class, 'verificarEstadoReporte'])->name('reportes.verificar-estado');
+
+Route::get('/reportes/descargar/{archivo}', function ($archivo) {
+    $path = storage_path('app/public/reportes/' . $archivo);
+    if (file_exists($path)) {
+        return response()->download($path); // Quitamos el deleteFileAfterSend para que no se borre y puedas probar
+    }
+    abort(404);
+})->name('reportes.descargar');
      
 Route::post('/etadirect/importar',[etadirectController::class,'importarMAMO'])->name('etadirect.importar');
 Route::post('/exportar-etadirect', [etadirectController::class, 'exportar'])->name('etadirect.exportar');

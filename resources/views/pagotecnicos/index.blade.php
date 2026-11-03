@@ -223,15 +223,15 @@
         <button type="button" class="btn btn-dark btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalExtraccionMasiva">
             <i class="fas fa-file-archive me-1.5"></i> Exportar Expedientes Masivos (ZIP)
         </button>
-                <button type="button" class="btn btn-dark btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalMemoriaFotografica">
+        <button type="button" class="btn btn-dark btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalMemoriaFotografica">
             <i class="fas fa-file-archive me-1.5"></i> Memoria Fotográfica (ZIP)
         </button>
         <button type="button" class="btn btn-primary btn-sm px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalLiquidacionFirmas">
-    <i class="fas fa-file-signature me-1.5"></i> Exportar Liquidaciones Firmadas (ZIP)
-</button>
+            <i class="fas fa-file-signature me-1.5"></i> Exportar Liquidaciones Firmadas (ZIP)
+        </button>
     </div>
 
-    <!-- Ventana Modal para el Reporte de Firmas Digitales -->
+<!-- Ventana Modal para el Reporte de Firmas Digitales -->
 <div class="modal fade" id="modalLiquidacionFirmas" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -239,23 +239,43 @@
                 <h5 class="modal-title fw-bold text-dark fs-14">
                     <i class="fas fa-pen-fancy text-primary me-2"></i> Reporte de Liquidaciones con Firmas
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <!-- Botón de cerrar oculto mientras procesa -->
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btn-cerrar-modal"></button>
             </div>
-            <!-- Apunta a la ruta del nuevo controlador de firmas que creamos -->
+            
             <form action="{{ route('reportes.exportarFirmas') }}" method="POST" enctype="multipart/form-data" id="form-liquidacion-firmas">
                 @csrf
                 <div class="modal-body p-4 fs-13">
-                    <div class="alert alert-primary border-0 shadow-sm mb-3 fs-12" style="background-color: #e3f2fd; color: #0d47a1;">
-                        <i class="fas fa-info-circle me-1"></i> Suba el archivo Excel con el listado de órdenes en la <b>primera columna (Columna A)</b>. El sistema descargará e incrustará las firmas de conformidad de GCS.
+                    <!-- Alerta informativa (se oculta al procesar) -->
+                    <div id="alerta-informativa" class="alert alert-primary border-0 shadow-sm mb-3 fs-12" style="background-color: #e3f2fd; color: #0d47a1;">
+                        <i class="fas fa-info-circle me-1"></i> Suba el archivo Excel con el listado de órdenes en la <b>primera columna (Columna A)</b>. El sistema procesará las firmas en segundo plano.
                     </div>
-                    <div class="mb-3">
+                    
+                    <!-- Selector de archivo (se bloquea al procesar) -->
+                    <div class="mb-3" id="contenedor-input">
                         <label class="form-label fw-semibold text-dark">Seleccionar Excel de Órdenes (.xlsx, .xls, .csv)</label>
-                        <!-- Se expande el 'accept' para admitir formatos nativos de Excel además de CSV -->
-                        <input type="file" name="excel_ordenes" class="form-control form-control-sm" accept=".xlsx, .xls, .csv" required>
+                        <input type="file" name="excel_ordenes" id="input-excel-ordenes" class="form-control form-control-sm" accept=".xlsx, .xls, .csv" required>
+                    </div>
+
+                    <!-- BARRA DE PROGRESO (Oculta por defecto) -->
+                    <div id="contenedor-progreso" class="mt-4 p-3 bg-light rounded border d-none">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="fs-12 fw-bold text-primary" id="texto-progreso">
+                                <i class="fas fa-cogs fa-spin me-1"></i> Iniciando proceso...
+                            </span>
+                            <span class="fs-12 fw-bold text-primary" id="porcentaje-progreso">0%</span>
+                        </div>
+                        <div class="progress" style="height: 12px; border-radius: 10px;">
+                            <div id="barra-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%; border-radius: 10px;"></div>
+                        </div>
+                        <div class="text-muted fs-11 mt-2 text-center">
+                            No cierre esta ventana. La descarga comenzará automáticamente.
+                        </div>
                     </div>
                 </div>
+                
                 <div class="modal-footer bg-light border-0 py-2">
-                    <button type="button" class="btn btn-light btn-sm border" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-light btn-sm border" data-bs-dismiss="modal" id="btn-cancelar-firmas">Cancelar</button>
                     <button type="submit" class="btn btn-primary btn-sm px-3" id="btn-submit-firmas">
                         <i class="fas fa-spinner fa-spin me-1 d-none" id="loader-firmas"></i> Generar Hojas Firmadas
                     </button>
@@ -264,6 +284,7 @@
         </div>
     </div>
 </div>
+
 
 <div class="modal fade" id="modalExtraccionMasiva" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -604,20 +625,164 @@ function exportarFotos() {
     });
 }
 
-document.getElementById('form-liquidacion-firmas').addEventListener('submit', function() {
-    // Deshabilitar botón para evitar envíos dobles
-    const btn = document.getElementById('btn-submit-firmas');
-    const loader = document.getElementById('loader-firmas');
-    
-    btn.disabled = true;
-    loader.classList.remove('d-none');
-    
-    // Reactivar el botón de forma preventiva tras 10 segundos en caso de descargas largas
-    setTimeout(() => {
-        btn.disabled = false;
-        loader.classList.add('d-none');
-    }, 10000);
-});
+</script> 
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const formFirmas = document.getElementById('form-liquidacion-firmas');
+    
+    if (formFirmas) {
+        formFirmas.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Elementos del DOM
+            let btnSubmit = document.getElementById('btn-submit-firmas');
+            let btnCancelar = document.getElementById('btn-cancelar-firmas');
+            let btnCerrarModal = document.getElementById('btn-cerrar-modal');
+            let loader = document.getElementById('loader-firmas');
+            let inputExcel = document.getElementById('input-excel-ordenes');
+            let alertaInformativa = document.getElementById('alerta-informativa');
+            let contenedorInput = document.getElementById('contenedor-input');
+            
+            // Elementos de Progreso
+            let contenedorProgreso = document.getElementById('contenedor-progreso');
+            let barraProgreso = document.getElementById('barra-progreso');
+            let textoProgreso = document.getElementById('texto-progreso');
+            let porcentajeProgreso = document.getElementById('porcentaje-progreso');
+
+            if (inputExcel.files.length === 0) {
+                Swal.fire('Atención', 'Por favor, selecciona un archivo Excel.', 'warning');
+                return;
+            }
+
+            let formData = new FormData(this);
+            let token = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
+
+            // 1. Preparar la interfaz
+            btnSubmit.disabled = true;
+            btnCancelar.disabled = true;
+            btnCerrarModal.style.display = 'none';
+            inputExcel.disabled = true;
+            loader.classList.remove('d-none');
+            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Subiendo...';
+            
+            alertaInformativa.classList.add('d-none');
+            contenedorInput.classList.add('d-none');
+            contenedorProgreso.classList.remove('d-none');
+            textoProgreso.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Subiendo archivo al servidor...';
+
+            fetch(this.action, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Error al subir el archivo');
+                return response.json();
+            })
+            .then(data => {
+                btnSubmit.innerHTML = 'Procesando...';
+                textoProgreso.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i> Procesando firmas y PDF...';
+                
+                let progresoActual = 0;
+                let intervaloBarra = setInterval(() => {
+                    // Hacemos que avance más lento para que no llegue al 90% tan rápido
+                    if (progresoActual < 50) progresoActual += 1;
+                    else if (progresoActual < 95) progresoActual += 0.2; 
+                    
+                    if (progresoActual > 95) progresoActual = 95; // Se detiene en 95%
+                    
+                    barraProgreso.style.width = progresoActual + '%';
+                    porcentajeProgreso.innerText = Math.floor(progresoActual) + '%';
+
+                    if (progresoActual < 30) textoProgreso.innerHTML = '<i class="fas fa-database fa-spin me-1"></i> Consultando materiales...';
+                    else if (progresoActual < 60) textoProgreso.innerHTML = '<i class="fas fa-image fa-spin me-1"></i> Descargando firmas...';
+                    else textoProgreso.innerHTML = '<i class="fas fa-file-pdf fa-spin me-1"></i> Ensamblando el PDF...';
+                }, 1000);
+
+                let intentos = 0; 
+                let intervaloServer = setInterval(() => {
+                    intentos++; 
+                    
+                    // 🕒 100 intentos x 3 seg = 5 MINUTOS DE ESPERA
+                    if (intentos > 100) { 
+                        clearInterval(intervaloServer);
+                        clearInterval(intervaloBarra); // Detiene la barra
+                        restaurarBoton();
+                        Swal.fire('Tiempo agotado', 'El servidor tardó más de 5 minutos. Revisa la consola negra.', 'warning');
+                        return;
+                    }
+
+                    fetch('{{ route("reportes.verificar-estado") }}')
+                        .then(res => res.json())
+                        .then(status => {
+                            if (status.estado === 'completado') {
+                                clearInterval(intervaloServer);
+                                clearInterval(intervaloBarra); // Detiene la barra
+                                
+                                barraProgreso.style.width = '100%';
+                                barraProgreso.classList.remove('bg-primary', 'progress-bar-animated');
+                                barraProgreso.classList.add('bg-success');
+                                porcentajeProgreso.innerText = '100%';
+                                porcentajeProgreso.classList.replace('text-primary', 'text-success');
+                                textoProgreso.innerHTML = '<i class="fas fa-check-circle me-1"></i> ¡Completado!';
+                                textoProgreso.classList.replace('text-primary', 'text-success');
+                                
+                                setTimeout(() => {
+                                    let link = document.createElement('a');
+                                    link.href = '/reportes/descargar/' + status.archivo;
+                                    link.setAttribute('download', status.archivo); 
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+
+                                    let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
+                                    if(modal) modal.hide();
+
+                                    Swal.fire({ icon: 'success', title: '¡Reporte Listo!', text: 'La descarga ha comenzado.', timer: 3000, showConfirmButton: false });
+                                    restaurarBoton();
+                                }, 1000); 
+                            }  else if (status.estado === 'error') {
+                                clearInterval(intervaloServer);
+                                clearInterval(intervaloBarra);
+                                restaurarBoton();
+                                Swal.fire('No se pudo generar', status.mensaje, 'error');
+                            }
+                        })
+                        .catch(err => console.log("Reintentando conexión..."));
+                }, 3000); 
+            })
+            .catch(error => {
+                restaurarBoton();
+                Swal.fire('Error al procesar', error.message, 'error');
+            });
+
+            function restaurarBoton() {
+                btnSubmit.disabled = false;
+                btnCancelar.disabled = false;
+                btnCerrarModal.style.display = 'block';
+                inputExcel.disabled = false;
+                inputExcel.value = ''; 
+                loader.classList.add('d-none');
+                btnSubmit.innerHTML = 'Generar Hojas Firmadas';
+                
+                alertaInformativa.classList.remove('d-none');
+                contenedorInput.classList.remove('d-none');
+                contenedorProgreso.classList.add('d-none');
+                
+                // 🛠️ REINICIO TOTAL DE LA BARRA (Para que no se quede pegada en 90%)
+                setTimeout(() => {
+                    barraProgreso.style.width = '0%';
+                    barraProgreso.classList.add('bg-primary', 'progress-bar-animated');
+                    barraProgreso.classList.remove('bg-success');
+                    porcentajeProgreso.innerText = '0%';
+                    porcentajeProgreso.classList.replace('text-success', 'text-primary');
+                    textoProgreso.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i> Iniciando proceso...';
+                    textoProgreso.classList.replace('text-success', 'text-primary');
+                }, 500);
+            }
+        });
+    }
+});
 </script>
 @endpush

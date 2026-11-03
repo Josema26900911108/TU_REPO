@@ -13,6 +13,7 @@ use App\Models\Cliente;
 use App\Models\User;
 use App\Models\Documento;
 use App\Models\Persona;
+use App\Jobs\GenerarExpedientePdfJob;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
