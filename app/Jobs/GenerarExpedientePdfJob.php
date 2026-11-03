@@ -515,11 +515,10 @@ private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket,
             Storage::disk('local')->put($cachePath, $binaryFirma);
         }
 
-        // Forzamos el uso del driver GD y lo convertimos a JPEG
-        $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-        $img = $manager->read($binaryFirma)
+        // Usamos la clase Image que ya tienes importada
+        $img = Image::make($binaryFirma)
             ->resize(200, null, function ($c) { $c->aspectRatio(); $c->upsize(); })
-            ->encode(new \Intervention\Image\Encoders\JpegEncoder(70));
+            ->encode('jpg', 70);
 
         return 'data:image/jpeg;base64,' . base64_encode((string) $img);
     } catch (\Throwable $e) { 
