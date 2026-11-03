@@ -249,6 +249,9 @@ class GenerarExpedientePdfJob implements ShouldQueue
                     }
 
                     $firmaBase64 = $this->obtenerFirmaBase64($exp->firma_cliente ?? null, $exp->id, $nombreBucket, $anchoMaxFirma);
+
+                    Log::info("Firma del expediente {$exp->Orden}: " . ($firmaBase64 ? "SI tiene imagen" : "NO se encontró"));
+
                     $firmaTecnicoUserBase64 = null;
                     if (!empty($exp->firma_usuario)) {
                         $firmaLimpia = trim($exp->firma_usuario);
@@ -256,11 +259,20 @@ class GenerarExpedientePdfJob implements ShouldQueue
                     }
 
                     $expedientesProcesados[] = [
-                        'id' => $exp->id, 'Orden' => $exp->Orden, 'virtual' => $exp->virtual, 'Tipo_orden' => $exp->Tipo_orden,
-                        'Tipo_servicio' => $exp->Tipo_servicio, 'NOMBRECLIENTE' => $exp->NOMBRECLIENTE, 'DIRECCION' => $exp->DIRECCION,
+                        'id' => $exp->id, 
+                        'Orden' => $exp->Orden, 
+                        'virtual' => $exp->virtual, 
+                        'Tipo_orden' => $exp->Tipo_orden,
+                        'Tipo_servicio' => $exp->Tipo_servicio, 
+                        'NOMBRECLIENTE' => $exp->NOMBRECLIENTE, 
+                        'DIRECCION' => $exp->DIRECCION,
                         'FECHAINSTALACION' => $exp->FECHAINSTALACION ? Carbon::parse($exp->FECHAINSTALACION)->format('d/m/Y H:i') : 'N/A',
-                        'tecnico_nombre' => $exp->tecnico_nombre, 'tecnico_codigo' => $exp->tecnico_codigo,
-                        'firma_base64' => $firmaBase64, 'firma_tecnico_user' => $firmaTecnicoUserBase64,
+                        'SIGLASCENTRAL' => $exp->SIGLASCENTRAL, // <-- AGREGA ESTO
+                        'AREA' => $exp->AREA,                   // <-- AGREGA ESTO
+                        'tecnico_nombre' => $exp->tecnico_nombre, 
+                        'tecnico_codigo' => $exp->tecnico_codigo,
+                        'firma_base64' => $firmaBase64, 
+                        'firma_tecnico_user' => $firmaTecnicoUserBase64,
                         'materiales' => $materialesDelExpediente,
                     ];
                 }
