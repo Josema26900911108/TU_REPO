@@ -708,56 +708,24 @@ public function verificarEstadoReporte()
 }
 public function generarExpedientePdf(Request $request)
 {
-    Log::info('🚀 [REPORTE] Request recibido', [
-        'user_id'    => auth()->id(),
-        'tiene_archivo' => $request->hasFile('excel_ordenes'),
-    ]);
-
+    // 1. Validar archivo
     if (!$request->hasFile('excel_ordenes')) {
-        Log::warning('⚠️ [REPORTE] Sin archivo');
-        return response()->json(['ok' => false, 'error' => 'No se recibió archivo'], 400);
+        return response()->json(['error' => 'No se recibió archivo'], 400);
     }
 
-    try {
-        $path     = $request->file('excel_ordenes')->store('temp_excels', 'local');
-        $tiendaId = session('user_fkTienda');
-        $userId   = auth()->id();
+    // 2. Guardar archivo (Esto es rapidísimo)
+    $path = $request->file('excel_ordenes')->store('temp_excels', 'local');
+    $tiendaId = session('user_fkTienda');
+    $userId = auth()->id();
 
-        Log::info('📁 [REPORTE] Excel guardado', [
-            'path'     => $path,
-            'user_id'  => $userId,
-            'tienda_id' => $tiendaId,
-        ]);
+    // 3. Despachar el Job (Se va a la cola, no se procesa aquí)
+    \App\Jobs\GenerarExpedientePdfJob::dispatch($path, $tiendaId, $userId);
 
-        // Resetear estado ANTES de despachar
-        Cache::put('reporte_status_' . $userId, [
-            'estado'     => 'procesando',
-            'porcentaje' => 0,
-            'mensaje'    => 'Job en cola...',
-        ], now()->addMinutes(10));
-        Cache::forget('reporte_poll_count_' . $userId);
-
-        GenerarExpedientePdfJob::dispatch($path, $tiendaId, $userId);
-
-        Log::info('📤 [REPORTE] Job despachado', ['user_id' => $userId]);
-
-        // 🔴 ESTO ES LO QUE FALTABA: devolver JSON
-        return response()->json([
-            'ok'      => true,
-            'mensaje' => 'Reporte en proceso',
-        ]);
-
-    } catch (\Throwable $e) {
-        Log::error('❌ [REPORTE] Error al despachar', [
-            'error' => $e->getMessage(),
-            'linea' => $e->getLine(),
-            'file'  => $e->getFile(),
-        ]);
-        return response()->json([
-            'ok'    => false,
-            'error' => $e->getMessage(),
-        ], 500);
-    }
+    // 4. RETORNAR EL JSON INMEDIATAMENTE
+    return response()->json([
+        'ok' => true, 
+        'mensaje' => 'Reporte en proceso'
+    ]);
 }
 
 public function descargar($archivo)
