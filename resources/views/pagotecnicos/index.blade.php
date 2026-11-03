@@ -668,15 +668,19 @@ document.addEventListener('DOMContentLoaded', function() {
             contenedorProgreso.classList.remove('d-none');
             textoProgreso.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Subiendo archivo al servidor...';
 
-            fetch(this.action, {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }
-            })
-            .then(response => {
-                if (!response.ok) throw new Error('Error al subir el archivo');
-                return response.json();
-            })
+fetch(this.action, {
+    method: 'POST',
+    body: formData,
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }
+})
+.then(async response => {
+    if (!response.ok) {
+        // Si el servidor falla, capturamos el texto del error
+        const errorText = await response.text();
+        throw new Error('Error ' + response.status + ': ' + errorText.substring(0, 100));
+    }
+    return response.json();
+})
             .then(data => {
                 btnSubmit.innerHTML = 'Procesando...';
                 textoProgreso.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i> Procesando firmas y PDF...';
