@@ -720,7 +720,10 @@ public function generarExpedientePdf(Request $request)
     \App\Jobs\GenerarExpedientePdfJob::dispatch($path, $tiendaId, $userId);
 
     // ESTO ES LO QUE RESPONDE AL NAVEGADOR EN 0.1 SEGUNDOS
-    return response()->json(['ok' => true, 'mensaje' => 'Reporte en proceso']);
+    return response()->json([
+        'ok' => true, 
+        'mensaje' => 'Reporte en proceso'
+    ]);
 }
 
 public function descargar($archivo)

@@ -673,12 +673,12 @@ fetch(this.action, {
     body: formData,
     headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }
 })
-.then(response => {
+.then(async response => {
+    // Si el servidor devuelve un error 500, 419, 413, etc., lo capturamos aquí
     if (!response.ok) {
-        // Si es un error de Laravel (500, 419, 413), lo mostramos
-        return response.text().then(text => {
-            throw new Error('Error ' + response.status + ': ' + text);
-        });
+        const text = await response.text();
+        console.error("Error del Servidor:", text); // Esto saldrá en la consola F12
+        throw new Error('Error ' + response.status + ': ' + text.substring(0, 100));
     }
     return response.json();
 })
