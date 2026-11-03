@@ -762,6 +762,7 @@ public function generarExpedientePdf(Request $request)
 
 public function descargar($archivo)
 {
+    // Asegúrate de que diga exactamente "app/public/reportes/"
     $path = storage_path('app/public/reportes/' . $archivo);
     
     if (!file_exists($path)) {
@@ -770,7 +771,6 @@ public function descargar($archivo)
     
     return response()->download($path);
 }
-
     private function leerOrdenesDesdeExcel(string $path): array
     {
         $spreadsheet = IOFactory::load($path);

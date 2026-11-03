@@ -722,24 +722,36 @@ document.addEventListener('DOMContentLoaded', function() {
                                 textoProgreso.innerHTML = '<i class="fas fa-check-circle me-1"></i> Completado!';
                                 textoProgreso.classList.replace('text-primary', 'text-success');
                                 
-                                setTimeout(() => {
-                                    // 👇 REEMPLAZA ESTAS 6 LÍNEAS...
-                                    // let link = document.createElement('a');
-                                    // link.href = '/reportes/descargar/' + status.archivo;
-                                    // link.setAttribute('download', status.archivo); 
-                                    // document.body.appendChild(link);
-                                    // link.click();
-                                    // document.body.removeChild(link);
-                                    
-                                    // 👇 ...POR ESTA ÚNICA LÍNEA:
-                                    window.location.href = '/reportes/descargar/' + encodeURIComponent(status.archivo);
 
-                                    let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
-                                    if(modal) modal.hide();
 
-                                    Swal.fire({ icon: 'success', title: '¡Reporte Listo!', text: 'La descarga ha comenzado.', timer: 3000, showConfirmButton: false });
-                                    restaurarBoton();
-                                }, 1500);
+// En lugar del setTimeout, hacemos la descarga inmediata:
+let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
+if(modal) modal.hide();
+
+// 1. Mostramos la alerta de éxito
+Swal.fire({ 
+    icon: 'success', 
+    title: '¡Reporte Listo!', 
+    text: 'La descarga ha comenzado. Revisa tu carpeta de Descargas.', 
+    timer: 4000, 
+    showConfirmButton: true 
+});
+
+// 2. Forzamos la descarga usando un iframe oculto (El método más seguro)
+// Esto evita que el navegador bloquee la descarga o te saque de la página actual.
+let urlDescarga = '/reportes/descargar/' + encodeURIComponent(status.archivo);
+let iframe = document.createElement('iframe');
+iframe.style.display = 'none';
+iframe.src = urlDescarga;
+document.body.appendChild(iframe);
+
+// 3. Limpiamos la interfaz y restauramos el botón
+restaurarBoton();
+
+// (Opcional) Eliminamos el iframe después de un tiempo para no dejar basura en el HTML
+setTimeout(() => {
+    document.body.removeChild(iframe);
+}, 10000);
                             }  else if (status.estado === 'error') {
                                 clearInterval(intervaloServer);
                                 clearInterval(intervaloBarra);
