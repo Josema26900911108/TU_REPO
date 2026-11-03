@@ -41,7 +41,7 @@ class GenerarExpedientePdfJob implements ShouldQueue
 
     public function handle()
     {
-        ini_set('memory_limit', '1024M');
+        ini_set('memory_limit', '2048M'); // Subimos a 2GB por si acaso
         ini_set('max_execution_time', '0');
 
         $tiempoInicioTotal = microtime(true);
@@ -286,47 +286,39 @@ class GenerarExpedientePdfJob implements ShouldQueue
                 Storage::disk('public')->makeDirectory('reportes');
             }
 
-            $archivosGenerados = [];
-            $loteTamano        = 30; // órdenes por PDF parcial
+$archivosGenerados = [];
 
-            foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
-                $lotes = array_chunk($tec['expedientes'], $loteTamano);
+foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
+    // Generamos el PDF con TODOS los expedientes de esta tecnología de un solo golpe
+    $dataReporte = [
+        'fecha_reporte'       => Carbon::now()->format('d/m/Y'),
+        'representante'       => $tienda->representante ?? 'Distribuidor Autorizado',
+        'periodo_mes'         => $periodoDinamico,
+        'logo_tienda'         => $logoBase64,
+        'firma_representante' => $firmaRep,
+        'nombre_tienda'       => $tienda->Nombre ?? 'Distribuidor Autorizado',
+        'tecnologias'         => [$nombreTec => $tec], // Aquí va la tecnología completa
+    ];
 
-                foreach ($lotes as $idxLote => $loteExp) {
-                    $tecParcial = $tec;
-                    $tecParcial['expedientes'] = $loteExp;
+    $nombreParcial = 'Expediente_' . $this->userId . '_'
+        . Str::slug($nombreTec) . '_' . date('Ymd_His') . '_' . Str::random(6) . '.pdf';
 
-                    $dataReporte = [
-                        'fecha_reporte'       => Carbon::now()->format('d/m/Y'),
-                        'representante'       => $tienda->representante ?? 'Distribuidor Autorizado',
-                        'periodo_mes'         => $periodoDinamico,
-                        'logo_tienda'         => $logoBase64,
-                        'firma_representante' => $firmaRep,
-                        'nombre_tienda'       => $tienda->Nombre ?? 'Distribuidor Autorizado',
-                        'tecnologias'         => [$nombreTec => $tecParcial],
-                    ];
+    $tIniTec = microtime(true);
 
-                    $sufijo = count($lotes) > 1 ? '_lote' . ($idxLote + 1) : '';
-                    $nombreParcial = 'Expediente_' . $this->userId . '_'
-                        . Str::slug($nombreTec) . $sufijo . '_' . date('Ymd_His') . '_' . Str::random(6) . '.pdf';
+    $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
+        ->setPaper('letter', 'portrait')
+        ->setOptions(['isRemoteEnabled' => false, 'isHtml5ParserEnabled' => true]);
 
-                    $tIniTec = microtime(true);
+    $pdf->save(storage_path('app/public/reportes/' . $nombreParcial));
 
-                    $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
-                        ->setPaper('letter', 'portrait')
-                        ->setOptions(['isRemoteEnabled' => false, 'isHtml5ParserEnabled' => true]);
+    $tTec = round(microtime(true) - $tIniTec, 2);
+    Log::info("⏱️ [REPORTE] PDF {$nombreTec} ({$tTec}s) → {$nombreParcial}");
 
-                    $pdf->save(storage_path('app/public/reportes/' . $nombreParcial));
+    $archivosGenerados[] = $nombreParcial;
 
-                    $tTec = round(microtime(true) - $tIniTec, 2);
-                    Log::info("⏱️ [REPORTE] PDF {$nombreTec}{$sufijo} ({$tTec}s) → {$nombreParcial}");
-
-                    $archivosGenerados[] = $nombreParcial;
-
-                    unset($pdf, $dataReporte, $tecParcial);
-                    gc_collect_cycles();
-                }
-            }
+    unset($pdf, $dataReporte);
+    gc_collect_cycles();
+}
 
             if (empty($archivosGenerados)) {
                 throw new \RuntimeException('No se generó ningún PDF (sin expedientes válidos por tecnología).');
