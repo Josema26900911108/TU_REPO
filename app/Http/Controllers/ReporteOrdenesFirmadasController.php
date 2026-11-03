@@ -268,7 +268,7 @@ class ReporteOrdenesFirmadasController extends Controller
         return back()->with('error', 'No se pudieron generar las hojas de liquidación firmadas.');
     }
 
-        public function generarExpedientePdf1(Request $request)
+        public function ExpedienteGenPdf1(Request $request)
     {
         // 1. Validar archivo de entrada con órdenes
         if (!$request->hasFile('excel_ordenes')) {
@@ -445,7 +445,7 @@ class ReporteOrdenesFirmadasController extends Controller
         return $pdf->download('Expediente_Consolidado_Firmado_' . date('Ymd_His') . '.pdf');
     }
 
-    public function generarExpedientePdf2(Request $request)
+    public function ExpedientePdf2Generar(Request $request)
     {
         // 1. Validar archivo de entrada con órdenes
         if (!$request->hasFile('excel_ordenes')) {
