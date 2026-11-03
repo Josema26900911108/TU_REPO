@@ -635,7 +635,6 @@ document.addEventListener('DOMContentLoaded', function() {
         formFirmas.addEventListener('submit', function(e) {
             e.preventDefault();
 
-            // Elementos del DOM
             let btnSubmit = document.getElementById('btn-submit-firmas');
             let btnCancelar = document.getElementById('btn-cancelar-firmas');
             let btnCerrarModal = document.getElementById('btn-cerrar-modal');
@@ -644,21 +643,19 @@ document.addEventListener('DOMContentLoaded', function() {
             let alertaInformativa = document.getElementById('alerta-informativa');
             let contenedorInput = document.getElementById('contenedor-input');
             
-            // Elementos de Progreso
             let contenedorProgreso = document.getElementById('contenedor-progreso');
             let barraProgreso = document.getElementById('barra-progreso');
             let textoProgreso = document.getElementById('texto-progreso');
             let porcentajeProgreso = document.getElementById('porcentaje-progreso');
 
             if (inputExcel.files.length === 0) {
-                Swal.fire('Atención', 'Por favor, selecciona un archivo Excel.', 'warning');
+                Swal.fire('Atencion', 'Por favor, selecciona un archivo Excel.', 'warning');
                 return;
             }
 
             let formData = new FormData(this);
             let token = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
 
-            // 1. Preparar la interfaz
             btnSubmit.disabled = true;
             btnCancelar.disabled = true;
             btnCerrarModal.style.display = 'none';
@@ -686,11 +683,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 let progresoActual = 0;
                 let intervaloBarra = setInterval(() => {
-                    // Hacemos que avance más lento para que no llegue al 90% tan rápido
                     if (progresoActual < 50) progresoActual += 1;
                     else if (progresoActual < 95) progresoActual += 0.2; 
-                    
-                    if (progresoActual > 95) progresoActual = 95; // Se detiene en 95%
+                    if (progresoActual > 95) progresoActual = 95; 
                     
                     barraProgreso.style.width = progresoActual + '%';
                     porcentajeProgreso.innerText = Math.floor(progresoActual) + '%';
@@ -704,12 +699,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 let intervaloServer = setInterval(() => {
                     intentos++; 
                     
-                    // 🕒 100 intentos x 3 seg = 5 MINUTOS DE ESPERA
                     if (intentos > 100) { 
                         clearInterval(intervaloServer);
-                        clearInterval(intervaloBarra); // Detiene la barra
+                        clearInterval(intervaloBarra); 
                         restaurarBoton();
-                        Swal.fire('Tiempo agotado', 'El servidor tardó más de 5 minutos. Revisa la consola negra.', 'warning');
+                        Swal.fire('Tiempo agotado', 'El servidor tardo mas de 5 minutos.', 'warning');
                         return;
                     }
 
@@ -718,14 +712,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         .then(status => {
                             if (status.estado === 'completado') {
                                 clearInterval(intervaloServer);
-                                clearInterval(intervaloBarra); // Detiene la barra
+                                clearInterval(intervaloBarra); 
                                 
                                 barraProgreso.style.width = '100%';
                                 barraProgreso.classList.remove('bg-primary', 'progress-bar-animated');
                                 barraProgreso.classList.add('bg-success');
                                 porcentajeProgreso.innerText = '100%';
                                 porcentajeProgreso.classList.replace('text-primary', 'text-success');
-                                textoProgreso.innerHTML = '<i class="fas fa-check-circle me-1"></i> ¡Completado!';
+                                textoProgreso.innerHTML = '<i class="fas fa-check-circle me-1"></i> Completado!';
                                 textoProgreso.classList.replace('text-primary', 'text-success');
                                 
                                 setTimeout(() => {
@@ -739,7 +733,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
                                     if(modal) modal.hide();
 
-                                    Swal.fire({ icon: 'success', title: '¡Reporte Listo!', text: 'La descarga ha comenzado.', timer: 3000, showConfirmButton: false });
+                                    Swal.fire({ icon: 'success', title: 'Reporte Listo!', text: 'La descarga ha comenzado.', timer: 3000, showConfirmButton: false });
                                     restaurarBoton();
                                 }, 1000); 
                             }  else if (status.estado === 'error') {
@@ -749,7 +743,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 Swal.fire('No se pudo generar', status.mensaje, 'error');
                             }
                         })
-                        .catch(err => console.log("Reintentando conexión..."));
+                        .catch(err => console.log("Reintentando conexion..."));
                 }, 3000); 
             })
             .catch(error => {
@@ -770,7 +764,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 contenedorInput.classList.remove('d-none');
                 contenedorProgreso.classList.add('d-none');
                 
-                // 🛠️ REINICIO TOTAL DE LA BARRA (Para que no se quede pegada en 90%)
                 setTimeout(() => {
                     barraProgreso.style.width = '0%';
                     barraProgreso.classList.add('bg-primary', 'progress-bar-animated');

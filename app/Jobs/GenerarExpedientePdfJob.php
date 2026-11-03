@@ -46,6 +46,11 @@ class GenerarExpedientePdfJob implements ShouldQueue
 
         $tiempoInicioTotal = microtime(true);
 
+        $tienda = DB::table('tienda')->where('idTienda', $this->tiendaId)->first();
+        $nombreTienda = $tienda->Nombre ?? 'Tienda'; 
+        $nombreTiendaLimpio = Str::slug($nombreTienda); // Ej: "Tienda_Central"
+        $fechaActual = Carbon::now()->format('d-m-Y'); // Ej: "03-11-2026"
+
         try {
             $nombreBucket  = 'sistema-pv-imagenes-tienda';
             $anchoMaxFirma = 300;
@@ -287,7 +292,7 @@ class GenerarExpedientePdfJob implements ShouldQueue
             }
 
 $archivosGenerados = [];
-
+$periodoNombre = $this->calcularMesesProminentes($expedientesRaw);
 foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
     // Generamos el PDF con TODOS los expedientes de esta tecnología de un solo golpe
     $dataReporte = [
@@ -300,8 +305,7 @@ foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
         'tecnologias'         => [$nombreTec => $tec], // Aquí va la tecnología completa
     ];
 
-    $nombreParcial = 'Expediente_' . $this->userId . '_'
-        . Str::slug($nombreTec) . '_' . date('Ymd_His') . '_' . Str::random(6) . '.pdf';
+        $nombreParcial = 'Liquidacion_' . $nombreTiendaLimpio . '_' . Str::slug($nombreTec) . '_' . $periodoNombre . '.pdf';
 
     $tIniTec = microtime(true);
 
@@ -328,7 +332,7 @@ foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
             if (count($archivosGenerados) === 1) {
                 $archivoFinal = $archivosGenerados[0];
             } else {
-                $zipNombre = 'Expedientes_' . $this->userId . '_' . date('Ymd_His') . '_' . Str::random(6) . '.zip';
+                $zipNombre = 'Liquidaciones_' . $nombreTiendaLimpio . '_' . $periodoNombre . '.zip';
                 $zipPath   = storage_path('app/public/reportes/' . $zipNombre);
                 $zip = new \ZipArchive();
                 if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
@@ -393,6 +397,72 @@ private function marcarErrorEnSesion($mensaje)
     if (Storage::disk('local')->exists($this->excelPath)) {
         Storage::disk('local')->delete($this->excelPath);
     }
+}
+
+private function calcularMesesProminentes(Collection $expedientes): string
+{
+    $fechas = $expedientes->pluck('FECHAINSTALACION')->filter()->map(fn($f) => Carbon::parse($f));
+    
+    if ($fechas->isEmpty()) {
+        return 'SIN_FECHA';
+    }
+
+    $total = $fechas->count();
+
+    // 1. Agrupar y contar por mes/año
+    $mesesContados = $fechas->groupBy(fn($f) => $f->format('m-Y'))->map->count();
+    
+    // Ordenar de mayor a menor cantidad
+    $mesesOrdenados = $mesesContados->sortDesc();
+
+    $mesesSeleccionados = [];
+    $porcentajeAcumulado = 0;
+
+    // 2. Seleccionar los meses según su porcentaje
+    foreach ($mesesOrdenados as $mesAnio => $cantidad) {
+        $porcentaje = ($cantidad / $total) * 100;
+
+        if ($porcentaje >= 50 && empty($mesesSeleccionados)) {
+            $mesesSeleccionados = [$mesAnio];
+            break; 
+        }
+
+        if ($porcentaje >= 20) {
+            $mesesSeleccionados[] = $mesAnio;
+            $porcentajeAcumulado += $porcentaje;
+        }
+
+        if ($porcentajeAcumulado >= 80) {
+            break;
+        }
+    }
+
+    if (empty($mesesSeleccionados)) {
+        $mesesSeleccionados = $mesesOrdenados->take(2)->keys()->toArray();
+    }
+
+    // 3. Ordenar cronológicamente
+    usort($mesesSeleccionados, function($a, $b) {
+        return Carbon::createFromFormat('m-Y', $a)->timestamp <=> Carbon::createFromFormat('m-Y', $b)->timestamp;
+    });
+
+    // 4. Formatear los nombres
+    $nombresMeses = [
+        '01' => 'ENERO', '02' => 'FEBRERO', '03' => 'MARZO', '04' => 'ABRIL',
+        '05' => 'MAYO', '06' => 'JUNIO', '07' => 'JULIO', '08' => 'AGOSTO',
+        '09' => 'SEPTIEMBRE', '10' => 'OCTUBRE', '11' => 'NOVIEMBRE', '12' => 'DICIEMBRE'
+    ];
+
+    $textosMeses = [];
+    foreach ($mesesSeleccionados as $mesAnio) {
+        [$mes, $anio] = explode('-', $mesAnio);
+        $textosMeses[] = $nombresMeses[$mes] . '_' . $anio;
+    }
+
+    // Unir los meses y devolver todo en MAYÚSCULAS
+    $resultado = implode('_Y_', $textosMeses);
+    
+    return mb_strtoupper($resultado); 
 }
 
     // --- HELPERS ---
