@@ -321,9 +321,9 @@ foreach ($tecnologiasAgrupadas as $nombreTec => $tec) {
 
     $tIniTec = microtime(true);
 
-    $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
-        ->setPaper('letter', 'portrait')
-        ->setOptions(['isRemoteEnabled' => false, 'isHtml5ParserEnabled' => true]);
+$pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
+    ->setPaper('letter', 'portrait')
+    ->setOptions(['isRemoteEnabled' => true, 'isHtml5ParserEnabled' => true]); // <-- Cambia a true
 
     $pdf->save(storage_path('app/public/reportes/' . $nombreParcial));
 
@@ -493,35 +493,43 @@ private function calcularMesesProminentes(Collection $expedientes): string
         } catch (\Throwable $e) { return null; }
     }
 
-    private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket, $maxAncho): ?string
-    {
-        if (empty($urlFirma)) return null;
-        $cachePath = "firmas_cache/{$cacheKey}.bin";
-        try {
-            if (Storage::disk('local')->exists($cachePath)) {
-                $binaryFirma = Storage::disk('local')->get($cachePath);
-            } else {
-                $pathBucket = $urlFirma;
-                if (str_contains($urlFirma, $nombreBucket)) {
-                    $pos = strpos($urlFirma, $nombreBucket);
-                    $pathBucket = ltrim(substr($urlFirma, $pos + strlen($nombreBucket)), '/');
-                } else {
-                    $pathBucket = ltrim(parse_url($urlFirma, PHP_URL_PATH) ?? '', '/');
-                }
-                if (!Storage::disk('gcs_images')->exists($pathBucket)) return null;
-                $binaryFirma = Storage::disk('gcs_images')->get($pathBucket);
-                Storage::disk('local')->makeDirectory('firmas_cache');
-                Storage::disk('local')->put($cachePath, $binaryFirma);
-            }
-
-            $img = Image::make($binaryFirma)
-                ->resize(200, null, function ($c) { $c->aspectRatio(); $c->upsize(); })
-                ->encode('jpg', 70);
-
-            return 'data:image/jpeg;base64,' . base64_encode((string) $img);
-        } catch (\Throwable $e) { return null; }
+private function obtenerFirmaBase64(?string $urlFirma, $cacheKey, $nombreBucket, $maxAncho): ?string
+{
+    if (empty($urlFirma)) return null;
+    
+    // Si es una URL de Google Cloud, intentamos usar la URL directa
+    if (str_contains($urlFirma, 'storage.googleapis.com')) {
+        return $urlFirma; // Retornamos la URL directa en lugar de Base64
     }
 
+    $cachePath = "firmas_cache/{$cacheKey}.bin";
+    try {
+        if (Storage::disk('local')->exists($cachePath)) {
+            $binaryFirma = Storage::disk('local')->get($cachePath);
+        } else {
+            $pathBucket = $urlFirma;
+            if (str_contains($urlFirma, $nombreBucket)) {
+                $pos = strpos($urlFirma, $nombreBucket);
+                $pathBucket = ltrim(substr($urlFirma, $pos + strlen($nombreBucket)), '/');
+            } else {
+                $pathBucket = ltrim(parse_url($urlFirma, PHP_URL_PATH) ?? '', '/');
+            }
+            if (!Storage::disk('gcs_images')->exists($pathBucket)) return null;
+            $binaryFirma = Storage::disk('gcs_images')->get($pathBucket);
+            Storage::disk('local')->makeDirectory('firmas_cache');
+            Storage::disk('local')->put($cachePath, $binaryFirma);
+        }
+
+        $img = Image::make($binaryFirma)
+            ->resize(200, null, function ($c) { $c->aspectRatio(); $c->upsize(); })
+            ->encode('jpg', 70);
+
+        return 'data:image/jpeg;base64,' . base64_encode((string) $img);
+    } catch (\Throwable $e) { 
+        Log::error("Error procesando firma {$cacheKey}: " . $e->getMessage());
+        return $urlFirma; // Si falla la conversión, devolvemos la URL original
+    }
+}
     private function calcularPeriodo(Collection $expedientesRaw): string
     {
         $fechas = $expedientesRaw->pluck('FECHAINSTALACION')->filter()->map(fn($f) => Carbon::parse($f));
