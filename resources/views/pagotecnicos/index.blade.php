@@ -626,171 +626,157 @@ function exportarFotos() {
 }
 
 </script> 
-
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const formFirmas = document.getElementById('form-liquidacion-firmas');
+(function() {
+    'use strict';
     
-    if (formFirmas) {
+    // Esperar a que el DOM esté listo
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', iniciarFormulario);
+    } else {
+        iniciarFormulario();
+    }
+
+    function iniciarFormulario() {
+        var formFirmas = document.getElementById('form-liquidacion-firmas');
+        if (!formFirmas) return;
+
         formFirmas.addEventListener('submit', function(e) {
             e.preventDefault();
-
-            let btnSubmit = document.getElementById('btn-submit-firmas');
-            let btnCancelar = document.getElementById('btn-cancelar-firmas');
-            let btnCerrarModal = document.getElementById('btn-cerrar-modal');
-            let loader = document.getElementById('loader-firmas');
-            let inputExcel = document.getElementById('input-excel-ordenes');
-            let alertaInformativa = document.getElementById('alerta-informativa');
-            let contenedorInput = document.getElementById('contenedor-input');
             
-            let contenedorProgreso = document.getElementById('contenedor-progreso');
-            let barraProgreso = document.getElementById('barra-progreso');
-            let textoProgreso = document.getElementById('texto-progreso');
-            let porcentajeProgreso = document.getElementById('porcentaje-progreso');
+            // Referencias a elementos
+            var btnSubmit = document.getElementById('btn-submit-firmas');
+            var btnCancelar = document.getElementById('btn-cancelar-firmas');
+            var btnCerrarModal = document.getElementById('btn-cerrar-modal');
+            var loader = document.getElementById('loader-firmas');
+            var inputExcel = document.getElementById('input-excel-ordenes');
+            var alertaInformativa = document.getElementById('alerta-informativa');
+            var contenedorInput = document.getElementById('contenedor-input');
+            var contenedorProgreso = document.getElementById('contenedor-progreso');
+            var barraProgreso = document.getElementById('barra-progreso');
+            var textoProgreso = document.getElementById('texto-progreso');
+            var porcentajeProgreso = document.getElementById('porcentaje-progreso');
 
-            if (inputExcel.files.length === 0) {
-                Swal.fire('Atencion', 'Por favor, selecciona un archivo Excel.', 'warning');
+            if (!inputExcel.files.length) {
+                if (typeof Swal !== 'undefined') Swal.fire('Atención', 'Por favor, selecciona un archivo Excel.', 'warning');
                 return;
             }
 
-            let formData = new FormData(this);
-            let token = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
+            var formData = new FormData(this);
+            var token = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
 
+            // Bloquear UI
             btnSubmit.disabled = true;
             btnCancelar.disabled = true;
             btnCerrarModal.style.display = 'none';
             inputExcel.disabled = true;
             loader.classList.remove('d-none');
-            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Subiendo...';
-            
+            btnSubmit.innerHTML = 'Subiendo...';
             alertaInformativa.classList.add('d-none');
             contenedorInput.classList.add('d-none');
             contenedorProgreso.classList.remove('d-none');
-            textoProgreso.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Subiendo archivo al servidor...';
+            textoProgreso.innerText = 'Subiendo archivo al servidor...';
 
-fetch(this.action, {
-    method: 'POST',
-    body: formData,
-    headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }
-})
-.then(async response => {
-    // Si el servidor devuelve un error 500, 419, 413, etc., lo capturamos aquí
-    if (!response.ok) {
-        const text = await response.text();
-        console.error("Error del Servidor:", text); // Esto saldrá en la consola F12
-        throw new Error('Error ' + response.status + ': ' + text.substring(0, 100));
-    }
-    return response.json();
-})
-.then(data => {
-    if (!data.ok) {
-        throw new Error(data.mensaje || 'Error al iniciar el proceso');
-    }
-
-    // El servidor ya recibió el archivo y respondió con éxito.
-    // Ahora empezamos el polling (la barra de progreso).
-    btnSubmit.innerHTML = 'Procesando...';
-    textoProgreso.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i> Procesando firmas y PDF...';
-    
-    let progresoActual = 0;
-    let intervaloBarra = setInterval(() => {
-        if (progresoActual < 50) progresoActual += 1;
-        else if (progresoActual < 95) progresoActual += 0.2; 
-        if (progresoActual > 95) progresoActual = 95; 
-        
-        barraProgreso.style.width = progresoActual + '%';
-        porcentajeProgreso.innerText = Math.floor(progresoActual) + '%';
-
-        if (progresoActual < 30) textoProgreso.innerHTML = '<i class="fas fa-database fa-spin me-1"></i> Consultando materiales...';
-        else if (progresoActual < 60) textoProgreso.innerHTML = '<i class="fas fa-image fa-spin me-1"></i> Descargando firmas...';
-        else textoProgreso.innerHTML = '<i class="fas fa-file-pdf fa-spin me-1"></i> Ensamblando el PDF...';
-    }, 1000);
-
-    let intentos = 0; 
-    let intervaloServer = setInterval(() => {
-        intentos++; 
-        
-        if (intentos > 100) { 
-            clearInterval(intervaloServer);
-            clearInterval(intervaloBarra); 
-            restaurarBoton();
-            Swal.fire('Tiempo agotado', 'El servidor tardó más de 5 minutos.', 'warning');
-            return;
-        }
-
-        fetch('{{ route("reportes.verificar-estado") }}')
-            .then(res => res.json())
-            .then(status => {
-                if (status.estado === 'completado') {
-                    clearInterval(intervaloServer);
-                    clearInterval(intervaloBarra); 
-                    
-                    // Lógica de descarga...
-                    let modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
-                    if(modal) modal.hide();
-
-                    Swal.fire({ 
-                        icon: 'success', 
-                        title: '¡Reporte Listo!', 
-                        text: 'La descarga ha comenzado.', 
-                        timer: 4000, 
-                        showConfirmButton: true 
-                    });
-
-                    let urlDescarga = '/reportes/descargar/' + encodeURIComponent(status.archivo);
-                    let iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    iframe.src = urlDescarga;
-                    document.body.appendChild(iframe);
-
-                    restaurarBoton();
-
-                    setTimeout(() => {
-                        if (iframe.parentNode) document.body.removeChild(iframe);
-                    }, 10000);
-
-                } else if (status.estado === 'error') {
-                    clearInterval(intervaloServer);
-                    clearInterval(intervaloBarra);
-                    restaurarBoton();
-                    Swal.fire('No se pudo generar', status.mensaje, 'error');
-                }
-            })
-            .catch(err => console.log("Reintentando conexión...")); // Si falla una vez, no pasa nada, sigue intentando
-    }, 3000); 
-})
-.catch(error => {
-    // Si el fetch inicial falla (Failed to fetch), mostramos el error real.
-    restaurarBoton();
-    Swal.fire('Error de conexión', 'No se pudo comunicar con el servidor. Intenta de nuevo.', 'error');
-    console.error('Error:', error);
-});
-
+            // Función para restaurar
             function restaurarBoton() {
                 btnSubmit.disabled = false;
                 btnCancelar.disabled = false;
                 btnCerrarModal.style.display = 'block';
                 inputExcel.disabled = false;
-                inputExcel.value = ''; 
+                inputExcel.value = '';
                 loader.classList.add('d-none');
                 btnSubmit.innerHTML = 'Generar Hojas Firmadas';
-                
                 alertaInformativa.classList.remove('d-none');
                 contenedorInput.classList.remove('d-none');
                 contenedorProgreso.classList.add('d-none');
-                
-                setTimeout(() => {
+                setTimeout(function() {
                     barraProgreso.style.width = '0%';
-                    barraProgreso.classList.add('bg-primary', 'progress-bar-animated');
-                    barraProgreso.classList.remove('bg-success');
                     porcentajeProgreso.innerText = '0%';
-                    porcentajeProgreso.classList.replace('text-success', 'text-primary');
-                    textoProgreso.innerHTML = '<i class="fas fa-cogs fa-spin me-1"></i> Iniciando proceso...';
-                    textoProgreso.classList.replace('text-success', 'text-primary');
+                    textoProgreso.innerText = 'Iniciando proceso...';
                 }, 500);
             }
+
+            // Fetch principal
+            fetch(this.action, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    return response.text().then(function(text) {
+                        throw new Error('Error ' + response.status + ': ' + text);
+                    });
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                if (!data.ok) throw new Error(data.mensaje || 'Error al procesar');
+                
+                btnSubmit.innerHTML = 'Procesando...';
+                textoProgreso.innerText = 'Procesando firmas y PDF...';
+                
+                var progresoActual = 0;
+                var intervaloBarra = setInterval(function() {
+                    if (progresoActual < 50) progresoActual += 1;
+                    else if (progresoActual < 95) progresoActual += 0.2;
+                    if (progresoActual > 95) progresoActual = 95;
+                    barraProgreso.style.width = progresoActual + '%';
+                    porcentajeProgreso.innerText = Math.floor(progresoActual) + '%';
+                }, 1000);
+
+                var intentos = 0;
+                var intervaloServer = setInterval(function() {
+                    intentos++;
+                    if (intentos > 100) {
+                        clearInterval(intervaloServer);
+                        clearInterval(intervaloBarra);
+                        restaurarBoton();
+                        if (typeof Swal !== 'undefined') Swal.fire('Tiempo agotado', 'El servidor tardó más de 5 minutos.', 'warning');
+                        return;
+                    }
+
+                    fetch('{{ route("reportes.verificar-estado") }}')
+                        .then(function(res) { return res.json(); })
+                        .then(function(status) {
+                            if (status.estado === 'completado') {
+                                clearInterval(intervaloServer);
+                                clearInterval(intervaloBarra);
+                                
+                                barraProgreso.style.width = '100%';
+                                porcentajeProgreso.innerText = '100%';
+                                textoProgreso.innerText = '¡Completado!';
+                                
+                                var modal = bootstrap.Modal.getInstance(document.getElementById('modalLiquidacionFirmas'));
+                                if (modal) modal.hide();
+                                
+                                if (typeof Swal !== 'undefined') Swal.fire({ icon: 'success', title: '¡Reporte Listo!', text: 'La descarga ha comenzado.', timer: 4000, showConfirmButton: true });
+                                
+                                var urlDescarga = '/reportes/descargar/' + encodeURIComponent(status.archivo);
+                                var iframe = document.createElement('iframe');
+                                iframe.style.display = 'none';
+                                iframe.src = urlDescarga;
+                                document.body.appendChild(iframe);
+                                
+                                restaurarBoton();
+                                setTimeout(function() { if (iframe.parentNode) document.body.removeChild(iframe); }, 10000);
+                            } else if (status.estado === 'error') {
+                                clearInterval(intervaloServer);
+                                clearInterval(intervaloBarra);
+                                restaurarBoton();
+                                if (typeof Swal !== 'undefined') Swal.fire('No se pudo generar', status.mensaje, 'error');
+                            }
+                        })
+                        .catch(function(err) { console.log("Reintentando conexión..."); });
+                }, 3000);
+            })
+            .catch(function(error) {
+                restaurarBoton();
+                if (typeof Swal !== 'undefined') Swal.fire('Error al procesar', error.message, 'error');
+                console.error(error);
+            });
         });
     }
-});
+})();
 </script>
 @endpush

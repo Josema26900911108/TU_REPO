@@ -17,6 +17,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Intervention\Image\ImageManagerStatic as Image;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class GenerarExpedientePdfJob implements ShouldQueue
 {
@@ -163,6 +165,10 @@ class GenerarExpedientePdfJob implements ShouldQueue
                 ])->distinct()->get();
 
             $materialesPagoTecnico = collect();
+
+            // Generar el Excel de omitidas (si hay)
+            $archivoOmitidas = $this->generarExcelOmitidas($ordenes, $expedientesRaw, $materialesPagoTecnicoRaw);
+
             foreach ($materialesPagoTecnicoRaw as $pago) {
                 $lider = $expedienteLiderPorOrden->get($pago->OrdenSub);
                 if (!$lider) continue;
@@ -358,6 +364,9 @@ $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
                 foreach ($archivosGenerados as $f) {
                     $zip->addFile(storage_path('app/public/reportes/' . $f), $f);
                 }
+
+                $zip->addFile(storage_path('app/public/reportes/' . $archivoOmitidas), $archivoOmitidas);
+                
                 $zip->close();
 
                 foreach ($archivosGenerados as $f) {
@@ -366,7 +375,11 @@ $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
                 $archivoFinal = $zipNombre;
             }
 
+
             $this->nombreArchivo = $archivoFinal;
+
+            
+
 
             $tiempoPDF = round(microtime(true) - $tiempoInicioPDF, 2);
             Log::info("⏱️ [REPORTE] Generación total PDFs: {$tiempoPDF} segundos ({$archivoFinal})");
@@ -592,6 +605,61 @@ private function obtenerFirmaBase64ss(?string $urlFirma, $cacheKey, $nombreBucke
         Log::error("Error procesando firma {$cacheKey}: " . $e->getMessage());
         return null; 
     }
+}
+
+private function generarExcelOmitidas(array $ordenesExcel, $expedientesRaw, $pagosEncontrados): string
+{
+    // 1. Obtener las órdenes que sí se procesaron (las que están en expedientes)
+    $ordenesEncontradas = $expedientesRaw->pluck('Orden')->map(fn($o) => trim($o))->unique()->toArray();
+    
+    // 2. Identificar las faltantes
+    $ordenesFaltantes = array_diff($ordenesExcel, $ordenesEncontradas);
+    
+    // 3. Crear el Excel
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Ordenes Omitidas');
+    
+    // Cabeceras
+    $sheet->setCellValue('A1', 'ORDEN ENVIADA');
+    $sheet->setCellValue('B1', 'OBSERVACIÓN / MOTIVO DE OMISIÓN');
+    $sheet->getStyle('A1:B1')->getFont()->setBold(true);
+    $sheet->getStyle('A1:B1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
+    
+    $fila = 2;
+    foreach ($ordenesFaltantes as $ordenFaltante) {
+        $observacion = "No se encontró en la base de datos para esta tienda.";
+        
+        // Verificamos si la orden existe en pagotecnico (para dar un mensaje más exacto)
+        $pagoExistente = $pagosEncontrados->first(function($pago) use ($ordenFaltante) {
+            return str_contains(trim($pago->Orden), trim($ordenFaltante));
+        });
+        
+        if ($pagoExistente) {
+            if ($pagoExistente->Status === 'S') {
+                $observacion = "Existe en pagos, pero tiene Estatus S (Pendiente de Pago).";
+            } elseif ($pagoExistente->Status === 'B') {
+                $observacion = "Existe en pagos, pero tiene Estatus B (Anulado).";
+            } else {
+                $observacion = "Existe en pagos, pero no tiene materiales o expediente asociado.";
+            }
+        }
+        
+        $sheet->setCellValue('A' . $fila, $ordenFaltante);
+        $sheet->setCellValue('B' . $fila, $observacion);
+        $fila++;
+    }
+    
+    $sheet->getColumnDimension('A')->setWidth(25);
+    $sheet->getColumnDimension('B')->setWidth(60);
+    
+    $nombreArchivo = 'Ordenes_Omitidas_' . $this->userId . '_' . date('Ymd_His') . '.xlsx';
+    $rutaArchivo = storage_path('app/public/reportes/' . $nombreArchivo);
+    
+    $writer = new Xlsx($spreadsheet);
+    $writer->save($rutaArchivo);
+    
+    return $nombreArchivo;
 }
 
     private function calcularPeriodo(Collection $expedientesRaw): string
