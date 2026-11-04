@@ -1199,7 +1199,7 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
         $zip->addFile($rutaOmitidas, 'Ordenes_Omitidas.xlsx');
     }
 
-    $zip->close();
+    
 
        if ($rutaOmitidas && file_exists($rutaOmitidas)) {
         @unlink($rutaOmitidas);
