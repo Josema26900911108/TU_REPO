@@ -1531,7 +1531,22 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     // Generar Excel de omitidas y agregarlo al ZIP
     
 
-    return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+        // Guardar el archivo en la carpeta pública para evitar el bloqueo de Nginx
+    $rutaDestino = public_path('reportes_temporales');
+    if (!file_exists($rutaDestino)) {
+        mkdir($rutaDestino, 0777, true);
+    }
+    $rutaFinalZip = $rutaDestino . '/' . $zipFileName;
+
+    if (file_exists($zipPath)) {
+        rename($zipPath, $rutaFinalZip); // Movemos el ZIP de temp a public
+    }
+
+    // Devolvemos un JSON con la URL del archivo
+    return response()->json([
+        'ok' => true,
+        'url' => asset('reportes_temporales/' . $zipFileName)
+    ]);
 }
 
 
