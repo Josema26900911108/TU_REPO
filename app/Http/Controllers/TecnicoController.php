@@ -790,114 +790,67 @@ public function generarMemoriaFotografica(Request $request)
     // Enviar el archivo binario comprimido al navegador y purgarlo de XAMPP tras finalizar la transferencia
     return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
 }
-private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw, $pagosEncontrados, string $tiendaId): ?string
+private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw, $pagosEncontrados, string $zipPath)
 {
-    // 1. Órdenes que sí tienen expediente
+    // 1. Limpiamos las órdenes encontradas para comparar de forma limpia
     $ordenesEncontradas = $expedientesRaw->pluck('Orden')->map(fn($o) => trim((string)$o))->unique()->toArray();
     
-    // 2. Órdenes que faltan
+    // 2. Buscamos las faltantes
     $ordenesFaltantes = array_diff(array_map('trim', $ordenesExcel), $ordenesEncontradas);
     
     if (empty($ordenesFaltantes)) {
-        return null; 
+        return; // Si no hay omitidas, no hace nada y no crea el Excel
     }
 
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('Ordenes Omitidas');
     
-    // Cabeceras
-    $sheet->setCellValue('A1', 'ORDEN');
-    $sheet->setCellValue('B1', 'FUENTE / ORIGEN');
-    $sheet->setCellValue('C1', 'DESCRIPCIÓN DEL ÍTEM');
-    $sheet->setCellValue('D1', 'CANTIDAD');
-    $sheet->setCellValue('E1', 'COSTO UNITARIO');
-    $sheet->setCellValue('F1', 'SUBTOTAL');
-    $sheet->setCellValue('G1', 'OBSERVACIÓN');
-    
-    $sheet->getStyle('A1:G1')->getFont()->setBold(true);
-    $sheet->getStyle('A1:G1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
-    $sheet->getStyle('A1:G1')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+    $sheet->setCellValue('A1', 'ORDEN ENVIADA');
+    $sheet->setCellValue('B1', 'OBSERVACIÓN / MOTIVO');
+    $sheet->getStyle('A1:B1')->getFont()->setBold(true);
+    $sheet->getStyle('A1:B1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
     
     $fila = 2;
-    
     foreach ($ordenesFaltantes as $ordenFaltante) {
-        $encontroAlgo = false;
+        $observacion = "No se encontró en expedientetecnico para esta tienda.";
         
-        // --- 1. BUSCAR EN MANO DE OBRA (pagotecnico) ---
-        // Buscamos coincidencias parciales por si la orden tiene letras
-        $manoObraEncontrada = DB::table('pagotecnico as pt')
-            ->join('MaterialManoObra as mamo', 'pt.SKU', '=', 'mamo.SKU')
-            ->where('pt.fkTienda', $tiendaId)
-            ->where('pt.Orden', 'LIKE', "%{$ordenFaltante}%")
-            ->select('pt.Orden', 'mamo.Descripcion', 'pt.Cantidad', 'mamo.CATEGORIACOBRO as COSTO', 'pt.Status')
-            ->get();
-            
-        if ($manoObraEncontrada->isNotEmpty()) {
-            $encontroAlgo = true;
-            foreach ($manoObraEncontrada as $mo) {
-                $sheet->setCellValue('A' . $fila, $mo->Orden);
-                $sheet->setCellValue('B' . $fila, 'Pago Técnico');
-                $sheet->setCellValue('C' . $fila, $mo->Descripcion);
-                $sheet->setCellValue('D' . $fila, $mo->Cantidad);
-                $sheet->setCellValue('E' . $fila, $mo->COSTO);
-                $sheet->setCellValue('F' . $fila, $mo->Cantidad * $mo->COSTO);
-                $sheet->setCellValue('G' . $fila, 'Encontrado en Mano de Obra (Estatus: ' . $mo->Status . '). Falta en Expediente.');
-                $fila++;
-            }
-        }
-
-        // --- 2. BUSCAR EN MATERIALES (movimientomateriales) ---
-        $materialesEncontrados = DB::table('movimientomateriales as mm')
-            ->join('MaterialManoObra as mamo', 'mm.SKU', '=', 'mamo.SKU')
-            ->where('mm.fkTienda', $tiendaId)
-            ->where('mm.Orden', 'LIKE', "%{$ordenFaltante}%") // Asumiendo que mm tiene columna Orden, si no, se busca por expediente
-            ->select('mm.Orden', 'mamo.Descripcion', 'mm.Cantidad', 'mamo.CATEGORIACOBRO as COSTO')
-            ->get();
-            
-        // Nota: Si movimientomateriales no tiene la columna Orden directa, 
-        // habría que hacer un join con expedientetecnico, pero como buscamos huérfanos, 
-        // asumimos que mm.Orden existe o que se buscan por descripción.
+        // Buscar si existe en pagotecnico para dar una razón más exacta
+        $pagoExistente = $pagosEncontrados->first(function($pago) use ($ordenFaltante) {
+            return str_contains(trim((string)$pago->Orden), trim((string)$ordenFaltante));
+        });
         
-        if ($materialesEncontrados->isNotEmpty()) {
-            $encontroAlgo = true;
-            foreach ($materialesEncontrados as $mat) {
-                $sheet->setCellValue('A' . $fila, $mat->Orden ?? $ordenFaltante);
-                $sheet->setCellValue('B' . $fila, 'Material');
-                $sheet->setCellValue('C' . $fila, $mat->Descripcion);
-                $sheet->setCellValue('D' . $fila, $mat->Cantidad);
-                $sheet->setCellValue('E' . $fila, $mat->COSTO);
-                $sheet->setCellValue('F' . $fila, $mat->Cantidad * $mat->COSTO);
-                $sheet->setCellValue('G' . $fila, 'Encontrado en Materiales. Falta en Expediente.');
-                $fila++;
-            }
+        if ($pagoExistente) {
+            if ($pagoExistente->Status === 'S') $observacion = "Existe en Pagos, pero está Pendiente (S).";
+            elseif ($pagoExistente->Status === 'B') $observacion = "Existe en Pagos, pero está Anulado (B).";
+            else $observacion = "Existe en Pagos, pero no tiene expediente o materiales.";
         }
-
-        // --- 3. SI NO SE ENCONTRÓ EN NINGUNA TABLA ---
-        if (!$encontroAlgo) {
-            $sheet->setCellValue('A' . $fila, $ordenFaltante);
-            $sheet->setCellValue('B' . $fila, 'Ninguna');
-            $sheet->setCellValue('C' . $fila, 'No registrado');
-            $sheet->setCellValue('D' . $fila, 0);
-            $sheet->setCellValue('E' . $fila, 0);
-            $sheet->setCellValue('F' . $fila, 0);
-            $sheet->setCellValue('G' . $fila, 'La orden NO existe en ninguna tabla (Pagos ni Materiales).');
-            $fila++;
-        }
+        
+        $sheet->setCellValue('A' . $fila, $ordenFaltante);
+        $sheet->setCellValue('B' . $fila, $observacion);
+        $fila++;
     }
     
-    // Formato de moneda para columnas E y F
-    $sheet->getStyle('E2:F' . ($fila - 1))->getNumberFormat()->setFormatCode('"Q"#,##0.00');
-    
-    foreach (range('A', 'G') as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
-    }
+    $sheet->getColumnDimension('A')->setWidth(25);
+    $sheet->getColumnDimension('B')->setWidth(60);
     
     $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Ordenes_Omitidas_' . time() . '.xlsx';
     $writer = new Xlsx($spreadsheet);
     $writer->save($excelTemporalPath);
     
-    return $excelTemporalPath;
+    // Agregar el Excel al ZIP (Asegurando que el ZIP esté abierto)
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath) === true) {
+        $zip->addFile($excelTemporalPath, 'Ordenes_Omitidas.xlsx');
+        $zip->close();
+    } else {
+        \Log::error("No se pudo abrir el ZIP para agregar el Excel de omitidas.");
+    }
+    
+    // Borrar el archivo temporal
+    if (file_exists($excelTemporalPath)) {
+        @unlink($excelTemporalPath);
+    }
 }
 
     public function extraccionMasiva(Request $request)
@@ -1152,10 +1105,6 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
         ')
         ->first();
 
-        
-        
-
-
     // Si la consulta devuelve resultados, los formateamos
     $fechaInicioReal = $rangoFechas && $rangoFechas->fecha_min 
         ? Carbon::parse($rangoFechas->fecha_min)->format('d/m/Y') 
@@ -1193,17 +1142,6 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
         'No', 'Orden', 'virtual', 'Status', 'Tipo_servicio', 'Tipo_orden', 
         'NOMBRECLIENTE', 'DIRECCION', 'OBS', 'SIGLASCENTRAL', 'AREA', 'FECHAINSTALACION', 'TECNICO'
     ];
-        $rutaOmitidas = $this->generarExcelOmitidasMasiva($ordenes, $expedientesRaw, $registrosPagos, $tiendaId);
-     
-        if ($rutaOmitidas && file_exists($rutaOmitidas)) {
-        $zip->addFile($rutaOmitidas, 'Ordenes_Omitidas.xlsx');
-    }
-
-    
-
-       if ($rutaOmitidas && file_exists($rutaOmitidas)) {
-        @unlink($rutaOmitidas);
-    }
 
     foreach ($movimientosPorTecnologia as $nombreTecnologia => $registrosTecnologia) {
         
