@@ -792,11 +792,14 @@ public function generarMemoriaFotografica(Request $request)
 }
 private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw, $pagosEncontrados, string $zipPath)
 {
-    $ordenesEncontradas = $expedientesRaw->pluck('Orden')->map(fn($o) => trim($o))->unique()->toArray();
-    $ordenesFaltantes = array_diff($ordenesExcel, $ordenesEncontradas);
+    // 1. Limpiamos las órdenes encontradas para comparar de forma limpia
+    $ordenesEncontradas = $expedientesRaw->pluck('Orden')->map(fn($o) => trim((string)$o))->unique()->toArray();
+    
+    // 2. Buscamos las faltantes
+    $ordenesFaltantes = array_diff(array_map('trim', $ordenesExcel), $ordenesEncontradas);
     
     if (empty($ordenesFaltantes)) {
-        return; // No hay omitidas, no hacemos nada
+        return; // Si no hay omitidas, no hace nada y no crea el Excel
     }
 
     $spreadsheet = new Spreadsheet();
@@ -804,22 +807,23 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     $sheet->setTitle('Ordenes Omitidas');
     
     $sheet->setCellValue('A1', 'ORDEN ENVIADA');
-    $sheet->setCellValue('B1', 'OBSERVACIÓN / MOTIVO DE OMISIÓN');
+    $sheet->setCellValue('B1', 'OBSERVACIÓN / MOTIVO');
     $sheet->getStyle('A1:B1')->getFont()->setBold(true);
     $sheet->getStyle('A1:B1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
     
     $fila = 2;
     foreach ($ordenesFaltantes as $ordenFaltante) {
-        $observacion = "No se encontró en expedientes de esta tienda.";
+        $observacion = "No se encontró en expedientetecnico para esta tienda.";
         
+        // Buscar si existe en pagotecnico para dar una razón más exacta
         $pagoExistente = $pagosEncontrados->first(function($pago) use ($ordenFaltante) {
-            return str_contains(trim($pago->Orden), trim($ordenFaltante));
+            return str_contains(trim((string)$pago->Orden), trim((string)$ordenFaltante));
         });
         
         if ($pagoExistente) {
-            if ($pagoExistente->Status === 'S') $observacion = "Tiene Estatus S (Pendiente).";
-            elseif ($pagoExistente->Status === 'B') $observacion = "Tiene Estatus B (Anulado).";
-            else $observacion = "Encontrado en pagos, pero sin expediente o materiales.";
+            if ($pagoExistente->Status === 'S') $observacion = "Existe en Pagos, pero está Pendiente (S).";
+            elseif ($pagoExistente->Status === 'B') $observacion = "Existe en Pagos, pero está Anulado (B).";
+            else $observacion = "Existe en Pagos, pero no tiene expediente o materiales.";
         }
         
         $sheet->setCellValue('A' . $fila, $ordenFaltante);
@@ -830,19 +834,24 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     $sheet->getColumnDimension('A')->setWidth(25);
     $sheet->getColumnDimension('B')->setWidth(60);
     
-    $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Ordenes_Omitidas_' . date('Ymd_His') . '.xlsx';
+    $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Ordenes_Omitidas_' . time() . '.xlsx';
     $writer = new Xlsx($spreadsheet);
     $writer->save($excelTemporalPath);
     
-    // Lo agregamos al ZIP
+    // Agregar el Excel al ZIP (Asegurando que el ZIP esté abierto)
     $zip = new ZipArchive();
     if ($zip->open($zipPath) === true) {
         $zip->addFile($excelTemporalPath, 'Ordenes_Omitidas.xlsx');
         $zip->close();
+    } else {
+        \Log::error("No se pudo abrir el ZIP para agregar el Excel de omitidas.");
     }
-    @unlink($excelTemporalPath);
+    
+    // Borrar el archivo temporal
+    if (file_exists($excelTemporalPath)) {
+        @unlink($excelTemporalPath);
+    }
 }
-
 
     public function extraccionMasiva(Request $request)
 {
@@ -1450,6 +1459,7 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
             $fotosContador++;
         }
     }
+    $this->generarExcelOmitidasMasiva($ordenes, $expedientesRaw, $registrosPagos, $zipPath);
 
     $zip->close();
 
@@ -1474,7 +1484,7 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     ]);
 
     // Generar Excel de omitidas y agregarlo al ZIP
-    $this->generarExcelOmitidasMasiva($ordenes, $expedientesRaw, $registrosPagos, $zipPath);
+    
 
     return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
 }

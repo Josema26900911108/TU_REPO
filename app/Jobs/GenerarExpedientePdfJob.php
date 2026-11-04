@@ -366,7 +366,7 @@ $pdf = Pdf::loadView('reportes.expediente_completo_pdf', $dataReporte)
                 }
 
                 $zip->addFile(storage_path('app/public/reportes/' . $archivoOmitidas), $archivoOmitidas);
-                
+
                 $zip->close();
 
                 foreach ($archivosGenerados as $f) {
@@ -628,7 +628,7 @@ private function generarExcelOmitidas(array $ordenesExcel, $expedientesRaw, $pag
     
     $fila = 2;
     foreach ($ordenesFaltantes as $ordenFaltante) {
-        $observacion = "No se encontró en la base de datos para esta tienda.";
+        $observacion = "No se encontró en la base de datos para esta organización, adicional, favor de revisar revisar en mano de obra pago tecnico, o si existe la orden en el bucket.";
         
         // Verificamos si la orden existe en pagotecnico (para dar un mensaje más exacto)
         $pagoExistente = $pagosEncontrados->first(function($pago) use ($ordenFaltante) {
