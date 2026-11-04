@@ -790,67 +790,79 @@ public function generarMemoriaFotografica(Request $request)
     // Enviar el archivo binario comprimido al navegador y purgarlo de XAMPP tras finalizar la transferencia
     return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
 }
-private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw, $pagosEncontrados, string $zipPath)
+private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw, $pagosEncontrados, string $tiendaId): ?string
 {
-    // 1. Limpiamos las órdenes encontradas para comparar de forma limpia
     $ordenesEncontradas = $expedientesRaw->pluck('Orden')->map(fn($o) => trim((string)$o))->unique()->toArray();
-    
-    // 2. Buscamos las faltantes
     $ordenesFaltantes = array_diff(array_map('trim', $ordenesExcel), $ordenesEncontradas);
     
     if (empty($ordenesFaltantes)) {
-        return; // Si no hay omitidas, no hace nada y no crea el Excel
+        return null; 
     }
 
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('Ordenes Omitidas');
     
-    $sheet->setCellValue('A1', 'ORDEN ENVIADA');
-    $sheet->setCellValue('B1', 'OBSERVACIÓN / MOTIVO');
-    $sheet->getStyle('A1:B1')->getFont()->setBold(true);
-    $sheet->getStyle('A1:B1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
+    $sheet->setCellValue('A1', 'ORDEN');
+    $sheet->setCellValue('B1', 'FUENTE / ORIGEN');
+    $sheet->setCellValue('C1', 'DESCRIPCIÓN DEL ÍTEM');
+    $sheet->setCellValue('D1', 'CANTIDAD');
+    $sheet->setCellValue('E1', 'COSTO UNITARIO');
+    $sheet->setCellValue('F1', 'SUBTOTAL');
+    $sheet->setCellValue('G1', 'OBSERVACIÓN');
+    
+    $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+    $sheet->getStyle('A1:G1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
     
     $fila = 2;
     foreach ($ordenesFaltantes as $ordenFaltante) {
-        $observacion = "No se encontró en expedientetecnico para esta tienda.";
+        $encontroAlgo = false;
         
-        // Buscar si existe en pagotecnico para dar una razón más exacta
-        $pagoExistente = $pagosEncontrados->first(function($pago) use ($ordenFaltante) {
-            return str_contains(trim((string)$pago->Orden), trim((string)$ordenFaltante));
-        });
-        
-        if ($pagoExistente) {
-            if ($pagoExistente->Status === 'S') $observacion = "Existe en Pagos, pero está Pendiente (S).";
-            elseif ($pagoExistente->Status === 'B') $observacion = "Existe en Pagos, pero está Anulado (B).";
-            else $observacion = "Existe en Pagos, pero no tiene expediente o materiales.";
+        // Buscar en Mano de Obra
+        $manoObraEncontrada = DB::table('pagotecnico as pt')
+            ->join('MaterialManoObra as mamo', 'pt.SKU', '=', 'mamo.SKU')
+            ->where('pt.fkTienda', $tiendaId)
+            ->where('pt.Orden', 'LIKE', "%{$ordenFaltante}%")
+            ->select('pt.Orden', 'mamo.Descripcion', 'pt.Cantidad', 'mamo.CATEGORIACOBRO as COSTO', 'pt.Status')
+            ->get();
+            
+        if ($manoObraEncontrada->isNotEmpty()) {
+            $encontroAlgo = true;
+            foreach ($manoObraEncontrada as $mo) {
+                $sheet->setCellValue('A' . $fila, $mo->Orden);
+                $sheet->setCellValue('B' . $fila, 'Pago Técnico');
+                $sheet->setCellValue('C' . $fila, $mo->Descripcion);
+                $sheet->setCellValue('D' . $fila, $mo->Cantidad);
+                $sheet->setCellValue('E' . $fila, $mo->COSTO);
+                $sheet->setCellValue('F' . $fila, $mo->Cantidad * $mo->COSTO);
+                $sheet->setCellValue('G' . $fila, 'Encontrado en Mano de Obra (Estatus: ' . $mo->Status . '). Falta en Expediente.');
+                $fila++;
+            }
         }
-        
-        $sheet->setCellValue('A' . $fila, $ordenFaltante);
-        $sheet->setCellValue('B' . $fila, $observacion);
-        $fila++;
+
+        // Si no encontró nada
+        if (!$encontroAlgo) {
+            $sheet->setCellValue('A' . $fila, $ordenFaltante);
+            $sheet->setCellValue('B' . $fila, 'Ninguna');
+            $sheet->setCellValue('C' . $fila, 'No registrado');
+            $sheet->setCellValue('D' . $fila, 0);
+            $sheet->setCellValue('E' . $fila, 0);
+            $sheet->setCellValue('F' . $fila, 0);
+            $sheet->setCellValue('G' . $fila, 'La orden NO existe en ninguna tabla (Pagos ni Materiales).');
+            $fila++;
+        }
     }
     
-    $sheet->getColumnDimension('A')->setWidth(25);
-    $sheet->getColumnDimension('B')->setWidth(60);
+    $sheet->getStyle('E2:F' . ($fila - 1))->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+    foreach (range('A', 'G') as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
     
     $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Ordenes_Omitidas_' . time() . '.xlsx';
     $writer = new Xlsx($spreadsheet);
     $writer->save($excelTemporalPath);
     
-    // Agregar el Excel al ZIP (Asegurando que el ZIP esté abierto)
-    $zip = new ZipArchive();
-    if ($zip->open($zipPath) === true) {
-        $zip->addFile($excelTemporalPath, 'Ordenes_Omitidas.xlsx');
-        $zip->close();
-    } else {
-        \Log::error("No se pudo abrir el ZIP para agregar el Excel de omitidas.");
-    }
-    
-    // Borrar el archivo temporal
-    if (file_exists($excelTemporalPath)) {
-        @unlink($excelTemporalPath);
-    }
+    return $excelTemporalPath; // 👈 SOLO DEVUELVE LA RUTA
 }
 
     public function extraccionMasiva(Request $request)
@@ -1459,9 +1471,18 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
             $fotosContador++;
         }
     }
-    $this->generarExcelOmitidasMasiva($ordenes, $expedientesRaw, $registrosPagos, $zipPath);
+    $rutaOmitidas = $this->generarExcelOmitidasMasiva($ordenes, $expedientesRaw, $registrosPagos, $tiendaId);
+
+        if ($rutaOmitidas && file_exists($rutaOmitidas)) {
+        $zip->addFile($rutaOmitidas, 'Ordenes_Omitidas.xlsx');
+    }
 
     $zip->close();
+
+        if ($rutaOmitidas && file_exists($rutaOmitidas)) {
+        @unlink($rutaOmitidas);
+    }
+    
 
     foreach ($movimientosPorTecnologia as $nombreTecnologia => $registrosTecnologia) {
         $nombreTecnologiaLimpio = empty($nombreTecnologia) ? 'OTRAS_TECNOLOGIAS' : str_replace(['/', '\\', '?', '*', ':', '[', ']'], '_', $nombreTecnologia);
