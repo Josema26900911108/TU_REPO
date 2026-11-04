@@ -792,7 +792,10 @@ public function generarMemoriaFotografica(Request $request)
 }
 private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw, $pagosEncontrados, string $tiendaId): ?string
 {
+    // 1. Obtenemos las órdenes que SÍ tienen expediente (para saber cuáles omitir)
     $ordenesEncontradas = $expedientesRaw->pluck('Orden')->map(fn($o) => trim((string)$o))->unique()->toArray();
+    
+    // 2. Calculamos las órdenes que faltan
     $ordenesFaltantes = array_diff(array_map('trim', $ordenesExcel), $ordenesEncontradas);
     
     if (empty($ordenesFaltantes)) {
@@ -803,9 +806,10 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('Ordenes Omitidas');
     
-    $sheet->setCellValue('A1', 'ORDEN');
-    $sheet->setCellValue('B1', 'FUENTE / ORIGEN');
-    $sheet->setCellValue('C1', 'DESCRIPCIÓN DEL ÍTEM');
+    // Cabeceras del Excel
+    $sheet->setCellValue('A1', 'ORDEN ENVIADA');
+    $sheet->setCellValue('B1', 'ESTATUS');
+    $sheet->setCellValue('C1', 'DESCRIPCIÓN DEL ÍTEM (PAGOTECNICO)');
     $sheet->setCellValue('D1', 'CANTIDAD');
     $sheet->setCellValue('E1', 'COSTO UNITARIO');
     $sheet->setCellValue('F1', 'SUBTOTAL');
@@ -815,45 +819,48 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     $sheet->getStyle('A1:G1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
     
     $fila = 2;
+    
     foreach ($ordenesFaltantes as $ordenFaltante) {
-        $encontroAlgo = false;
+        $encontroEnPagoTecnico = false;
         
-        // Buscar en Mano de Obra
-        $manoObraEncontrada = DB::table('pagotecnico as pt')
-            ->join('MaterialManoObra as mamo', 'pt.SKU', '=', 'mamo.SKU')
-            ->where('pt.fkTienda', $tiendaId)
-            ->where('pt.Orden', 'LIKE', "%{$ordenFaltante}%")
-            ->select('pt.Orden', 'mamo.Descripcion', 'pt.Cantidad', 'mamo.CATEGORIACOBRO as COSTO', 'pt.Status')
-            ->get();
+        // Buscar los ítems de esta orden en pagotecnico
+        // Usamos LIKE por si la orden viene con letras o ceros a la izquierda
+        $itemsPago = $pagosEncontrados->filter(function($pago) use ($ordenFaltante) {
+            return str_contains(trim((string)$pago->Orden), trim((string)$ordenFaltante));
+        });
+
+        if ($itemsPago->isNotEmpty()) {
+            $encontroEnPagoTecnico = true;
             
-        if ($manoObraEncontrada->isNotEmpty()) {
-            $encontroAlgo = true;
-            foreach ($manoObraEncontrada as $mo) {
-                $sheet->setCellValue('A' . $fila, $mo->Orden);
-                $sheet->setCellValue('B' . $fila, 'Pago Técnico');
-                $sheet->setCellValue('C' . $fila, $mo->Descripcion);
-                $sheet->setCellValue('D' . $fila, $mo->Cantidad);
-                $sheet->setCellValue('E' . $fila, $mo->COSTO);
-                $sheet->setCellValue('F' . $fila, $mo->Cantidad * $mo->COSTO);
-                $sheet->setCellValue('G' . $fila, 'Encontrado en Mano de Obra (Estatus: ' . $mo->Status . '). Falta en Expediente.');
+            // Si la encontramos en pagotecnico, listamos TODOS sus ítems
+            foreach ($itemsPago as $item) {
+                $sheet->setCellValue('A' . $fila, $item->Orden);
+                $sheet->setCellValue('B' . $fila, $item->Status);
+                $sheet->setCellValue('C' . $fila, $item->Descripcion ?? 'Sin descripción');
+                $sheet->setCellValue('D' . $fila, $item->Cantidad);
+                $sheet->setCellValue('E' . $fila, $item->COSTO); // O el campo que uses de costo en pagotecnico
+                $sheet->setCellValue('F' . $fila, $item->Cantidad * $item->COSTO);
+                $sheet->setCellValue('G' . $fila, 'Existe en Pagos, pero NO se encontró en el Expediente/Materiales.');
                 $fila++;
             }
-        }
-
-        // Si no encontró nada
-        if (!$encontroAlgo) {
+        } else {
+            // Si no está en pagotecnico, solo dejamos la orden con el mensaje de que no existe
             $sheet->setCellValue('A' . $fila, $ordenFaltante);
-            $sheet->setCellValue('B' . $fila, 'Ninguna');
-            $sheet->setCellValue('C' . $fila, 'No registrado');
+            $sheet->setCellValue('B' . $fila, 'N/A');
+            $sheet->setCellValue('C' . $fila, 'No registrada');
             $sheet->setCellValue('D' . $fila, 0);
             $sheet->setCellValue('E' . $fila, 0);
             $sheet->setCellValue('F' . $fila, 0);
-            $sheet->setCellValue('G' . $fila, 'La orden NO existe en ninguna tabla (Pagos ni Materiales).');
+            $sheet->setCellValue('G' . $fila, 'La orden no existe en la tabla pagotecnico de esta tienda.');
             $fila++;
         }
     }
     
-    $sheet->getStyle('E2:F' . ($fila - 1))->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+    // Dar formato de moneda a las columnas de costos
+    if ($fila > 2) {
+        $sheet->getStyle('E2:F' . ($fila - 1))->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+    }
+    
     foreach (range('A', 'G') as $col) {
         $sheet->getColumnDimension($col)->setAutoSize(true);
     }
@@ -862,9 +869,8 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     $writer = new Xlsx($spreadsheet);
     $writer->save($excelTemporalPath);
     
-    return $excelTemporalPath; // 👈 SOLO DEVUELVE LA RUTA
+    return $excelTemporalPath; // Retorna solo la ruta, sin tocar el ZIP
 }
-
     public function extraccionMasiva(Request $request)
 {
     // 1. Validar la existencia del archivo cargado
@@ -1482,7 +1488,7 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
         if ($rutaOmitidas && file_exists($rutaOmitidas)) {
         @unlink($rutaOmitidas);
     }
-    
+
 
     foreach ($movimientosPorTecnologia as $nombreTecnologia => $registrosTecnologia) {
         $nombreTecnologiaLimpio = empty($nombreTecnologia) ? 'OTRAS_TECNOLOGIAS' : str_replace(['/', '\\', '?', '*', ':', '[', ']'], '_', $nombreTecnologia);
