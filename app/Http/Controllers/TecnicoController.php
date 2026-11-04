@@ -792,10 +792,10 @@ public function generarMemoriaFotografica(Request $request)
 }
 private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw, $pagosEncontrados, string $tiendaId): ?string
 {
-    // 1. Obtenemos las órdenes que SÍ tienen expediente (para saber cuáles omitir)
+    // 1. Órdenes que sí se encontraron en el expediente
     $ordenesEncontradas = $expedientesRaw->pluck('Orden')->map(fn($o) => trim((string)$o))->unique()->toArray();
     
-    // 2. Calculamos las órdenes que faltan
+    // 2. Órdenes faltantes
     $ordenesFaltantes = array_diff(array_map('trim', $ordenesExcel), $ordenesEncontradas);
     
     if (empty($ordenesFaltantes)) {
@@ -803,28 +803,41 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
     }
 
     $spreadsheet = new Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
-    $sheet->setTitle('Ordenes Omitidas');
     
-    // Cabeceras del Excel
-    $sheet->setCellValue('A1', 'ORDEN ENVIADA');
-    $sheet->setCellValue('B1', 'ESTATUS');
-    $sheet->setCellValue('C1', 'DESCRIPCIÓN DEL ÍTEM (PAGOTECNICO)');
-    $sheet->setCellValue('D1', 'CANTIDAD');
-    $sheet->setCellValue('E1', 'COSTO UNITARIO');
-    $sheet->setCellValue('F1', 'SUBTOTAL');
-    $sheet->setCellValue('G1', 'OBSERVACIÓN');
+    // =====================================================================
+    // HOJA 1: ÓRDENES ENCONTRADAS EN PAGOTECNICO (PERO OMITIDAS)
+    // =====================================================================
+    $sheetPagos = $spreadsheet->getActiveSheet();
+    $sheetPagos->setTitle('En Pagos (Omitidas)');
     
-    $sheet->getStyle('A1:G1')->getFont()->setBold(true);
-    $sheet->getStyle('A1:G1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
+    $sheetPagos->setCellValue('A1', 'ORDEN');
+    $sheetPagos->setCellValue('B1', 'ESTATUS');
+    $sheetPagos->setCellValue('C1', 'DESCRIPCIÓN DEL ÍTEM');
+    $sheetPagos->setCellValue('D1', 'CANTIDAD');
+    $sheetPagos->setCellValue('E1', 'COSTO UNITARIO');
+    $sheetPagos->setCellValue('F1', 'SUBTOTAL');
+    $sheetPagos->setCellValue('G1', 'OBSERVACIÓN');
     
-    $fila = 2;
+    $sheetPagos->getStyle('A1:G1')->getFont()->setBold(true);
+    $sheetPagos->getStyle('A1:G1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFC000');
+
+    $filaPagos = 2;
+    $filaNoReportadas = 2;
+
+    // Creamos la hoja 2 de una vez
+    $sheetNoReportadas = $spreadsheet->createSheet();
+    $sheetNoReportadas->setTitle('No Reportadas (Materiales)');
     
+    $sheetNoReportadas->setCellValue('A1', 'ORDEN');
+    $sheetNoReportadas->setCellValue('B1', 'OBSERVACIÓN');
+    
+    $sheetNoReportadas->getStyle('A1:B1')->getFont()->setBold(true);
+    $sheetNoReportadas->getStyle('A1:B1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FF9999');
+
     foreach ($ordenesFaltantes as $ordenFaltante) {
         $encontroEnPagoTecnico = false;
         
-        // Buscar los ítems de esta orden en pagotecnico
-        // Usamos LIKE por si la orden viene con letras o ceros a la izquierda
+        // --- BUSCAR EN PAGOTECNICO ---
         $itemsPago = $pagosEncontrados->filter(function($pago) use ($ordenFaltante) {
             return str_contains(trim((string)$pago->Orden), trim((string)$ordenFaltante));
         });
@@ -832,44 +845,49 @@ private function generarExcelOmitidasMasiva(array $ordenesExcel, $expedientesRaw
         if ($itemsPago->isNotEmpty()) {
             $encontroEnPagoTecnico = true;
             
-            // Si la encontramos en pagotecnico, listamos TODOS sus ítems
             foreach ($itemsPago as $item) {
-                $sheet->setCellValue('A' . $fila, $item->Orden);
-                $sheet->setCellValue('B' . $fila, $item->Status);
-                $sheet->setCellValue('C' . $fila, $item->Descripcion ?? 'Sin descripción');
-                $sheet->setCellValue('D' . $fila, $item->Cantidad);
-                $sheet->setCellValue('E' . $fila, $item->COSTO); // O el campo que uses de costo en pagotecnico
-                $sheet->setCellValue('F' . $fila, $item->Cantidad * $item->COSTO);
-                $sheet->setCellValue('G' . $fila, 'Existe en Pagos, pero NO se encontró en el Expediente/Materiales.');
-                $fila++;
+                $sheetPagos->setCellValue('A' . $filaPagos, $item->Orden);
+                $sheetPagos->setCellValue('B' . $filaPagos, $item->Status ?? 'N/A');
+                $sheetPagos->setCellValue('C' . $filaPagos, $item->Descripcion ?? 'Sin descripción');
+                $sheetPagos->setCellValue('D' . $filaPagos, $item->Cantidad ?? 0);
+                $sheetPagos->setCellValue('E' . $filaPagos, $item->COSTOPAGO ?? 0); 
+                $sheetPagos->setCellValue('F' . $filaPagos, ($item->Cantidad ?? 0) * ($item->COSTOPAGO ?? 0));
+                $sheetPagos->setCellValue('G' . $filaPagos, 'Existe en Pagos, pero no cruzó con el Expediente.');
+                $filaPagos++;
             }
-        } else {
-            // Si no está en pagotecnico, solo dejamos la orden con el mensaje de que no existe
-            $sheet->setCellValue('A' . $fila, $ordenFaltante);
-            $sheet->setCellValue('B' . $fila, 'N/A');
-            $sheet->setCellValue('C' . $fila, 'No registrada');
-            $sheet->setCellValue('D' . $fila, 0);
-            $sheet->setCellValue('E' . $fila, 0);
-            $sheet->setCellValue('F' . $fila, 0);
-            $sheet->setCellValue('G' . $fila, 'La orden no existe en la tabla pagotecnico de esta tienda.');
-            $fila++;
+        }
+
+        // --- BUSCAR EN MOVIMIENTOMATERIALES ---
+        $materialesEncontrados = DB::table('movimientomateriales')
+            ->where('fkTienda', $tiendaId)
+            ->where('fkExpediente', 'LIKE', "%{$ordenFaltante}%") // Ajusta según tu BD, a veces se busca por Orden o por Expediente
+            ->count();
+
+        // Si no se encontró en pagotecnico NI en materiales, va a la hoja de No Reportadas
+        if (!$encontroEnPagoTecnico && $materialesEncontrados == 0) {
+            $sheetNoReportadas->setCellValue('A' . $filaNoReportadas, $ordenFaltante);
+            $sheetNoReportadas->setCellValue('B' . $filaNoReportadas, 'No reportada en pagos ni en materiales.');
+            $filaNoReportadas++;
         }
     }
     
-    // Dar formato de moneda a las columnas de costos
-    if ($fila > 2) {
-        $sheet->getStyle('E2:F' . ($fila - 1))->getNumberFormat()->setFormatCode('"Q"#,##0.00');
+    // Formato de moneda para la hoja 1
+    if ($filaPagos > 2) {
+        $sheetPagos->getStyle('E2:F' . ($filaPagos - 1))->getNumberFormat()->setFormatCode('"Q"#,##0.00');
     }
     
+    // Auto-ajustar columnas de ambas hojas
     foreach (range('A', 'G') as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
+        $sheetPagos->getColumnDimension($col)->setAutoSize(true);
     }
+    $sheetNoReportadas->getColumnDimension('A')->setAutoSize(true);
+    $sheetNoReportadas->getColumnDimension('B')->setAutoSize(true);
     
     $excelTemporalPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'Ordenes_Omitidas_' . time() . '.xlsx';
     $writer = new Xlsx($spreadsheet);
     $writer->save($excelTemporalPath);
     
-    return $excelTemporalPath; // Retorna solo la ruta, sin tocar el ZIP
+    return $excelTemporalPath;
 }
     public function extraccionMasiva(Request $request)
 {
