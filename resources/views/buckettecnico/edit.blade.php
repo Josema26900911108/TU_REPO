@@ -3280,6 +3280,108 @@ $("#itemmanoobra").off('change').on('change', function () {
 }
 });
 
+$('#inputCamaraNativa').on('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    Swal.fire({
+        title: 'Procesando fotografía...',
+        text: 'Estampando datos técnicos y ubicación',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        // 1. Cargar la foto tomada en un objeto Image
+        const imgFoto = await cargarImagen(URL.createObjectURL(file));
+
+        // 2. Crear un canvas del tamaño real de la foto (o redimensionado a max 1600px para no saturar memoria)
+        const maxAncho = 1600;
+        const escala = imgFoto.width > maxAncho ? (maxAncho / imgFoto.width) : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = imgFoto.width * escala;
+        canvas.height = imgFoto.height * escala;
+        const ctx = canvas.getContext('2d');
+
+        // Dibujar la foto original
+        ctx.drawImage(imgFoto, 0, 0, canvas.width, canvas.height);
+
+        // 3. Dibujar el Logo de la Tienda (arriba a la izquierda)
+        const logoSrc = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
+        try {
+            const imgLogo = await cargarImagen(logoSrc);
+            const logoAncho = canvas.width * 0.15; // 15% del ancho de la foto
+            const logoAlto = (imgLogo.height / imgLogo.width) * logoAncho;
+            ctx.drawImage(imgLogo, 20, 20, logoAncho, logoAlto);
+        } catch (errLogo) {
+            console.warn('No se pudo dibujar el logo:', errLogo);
+        }
+
+        // 4. Preparar las líneas de texto con la información adicional
+        const ahora = new Date();
+        const fechaHora = `${ahora.toLocaleDateString('es-GT')} ${ahora.toLocaleTimeString('es-GT')}`;
+        const datos = window.datosCapturaActual || {};
+        const gpsTexto = (datos.lat && datos.lng) 
+            ? `GPS: ${datos.lat.toFixed(6)}, ${datos.lng.toFixed(6)}` 
+            : 'GPS: No disponible';
+
+        const lineas = [
+            `CATEGORÍA: ${datos.categoriaTexto || 'N/A'}`,
+            `TECNOLOGÍA: ${datos.tecnologiaTexto || 'N/A'}`,
+            `FECHA/HORA: ${fechaHora}`,
+            gpsTexto
+        ];
+
+        // 5. Dibujar caja semitransparente abajo a la izquierda con los datos
+        const fontSize = Math.max(18, Math.round(canvas.width * 0.022));
+        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+        const lineHeight = fontSize * 1.35;
+        const padding = 16;
+        const boxHeight = (lineas.length * lineHeight) + (padding * 2);
+        const boxWidth = canvas.width * 0.65; // Ocupa el 65% del ancho inferior
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(20, canvas.height - boxHeight - 20, boxWidth, boxHeight);
+
+        // Escribir el texto en blanco
+        ctx.fillStyle = '#FFFFFF';
+        lineas.forEach((linea, index) => {
+            const yPos = (canvas.height - boxHeight - 20) + padding + ((index + 1) * lineHeight) - (fontSize * 0.25);
+            ctx.fillText(linea, 20 + padding, yPos);
+        });
+
+        // 6. Convertir el canvas a Base64 / Blob listo para guardar o previsualizar
+        const imagenFinalBase64 = canvas.toDataURL('image/jpeg', 0.88);
+        
+        // Mostrar en el contenedor #preview
+        $('#preview').html(`
+            <img src="${imagenFinalBase64}" class="img-fluid rounded shadow mt-2" style="max-height: 300px;">
+        `);
+
+        // Guardar el archivo procesado en una variable global para enviarlo al guardar el formulario
+        canvas.toBlob(blob => {
+            window.fotoProcesadaBlob = blob;
+        }, 'image/jpeg', 0.88);
+
+        Swal.close();
+
+    } catch (error) {
+        Swal.fire('Error', 'No se pudo procesar la fotografía: ' + error.message, 'error');
+    }
+});
+
+// Función auxiliar para cargar imágenes de forma asíncrona
+function cargarImagen(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+    });
+}
+
+
 // =========================================================================
 // 📸 CONTROLADOR DE CÁMARA MÓVIL BLINDADO Y CORREGIDO (100% INVICTO)
 // =========================================================================
@@ -3366,9 +3468,36 @@ $('#btnAbrirCamaraNativa').click(function(e) {
         return false;
     }
 
-    // 🌟 CONTROL PASADO: Si ambos campos están perfectamente llenos, disparar la cámara nativa
-    console.log("📸 [Cámara] Validación correcta. Activando obturador del dispositivo móvil...");
-    $('#inputCamaraNativa').click();
+// 🌟 CONTROL PASADO: Si ambos campos están perfectamente llenos, disparar la cámara nativa
+console.log("📸 [Cámara] Validación correcta. Activando obturador del dispositivo móvil...");
+
+// Guardamos los datos adicionales seleccionados para estamparlos en la foto
+window.datosCapturaActual = {
+    categoriaVal: selectCategoria.val(),
+    categoriaTexto: $('#categoriafoto option:selected').text().trim(),
+    tecnologiaVal: selectTecnologia.val(),
+    tecnologiaTexto: $('#itemtecnologia option:selected').text().trim(),
+    lat: null,
+    lng: null,
+    grados: null
+};
+
+// Pre-cargamos el GPS mientras el técnico toma la foto
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            window.datosCapturaActual.lat = pos.coords.latitude;
+            window.datosCapturaActual.lng = pos.coords.longitude;
+        },
+        err => console.warn('GPS no disponible al capturar:', err),
+        { enableHighAccuracy: true, timeout: 6000 }
+    );
+}
+
+$('#inputCamaraNativa').click();
+
+
+
 });
 
 // =========================================================================
