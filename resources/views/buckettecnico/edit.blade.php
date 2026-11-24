@@ -1151,6 +1151,8 @@
 <script src="{{ asset('js/bootstrap-treeview.js') }}"></script>
 <!-- jQuery UI -->
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<!-- Agrega esto en tu vista Blade antes de tu script -->
+<script src="https://cloudflare.com"></script>
 
 
 <script>
@@ -1166,7 +1168,7 @@ let gpsActual = { lat: null, lng: null };
 let horaActual = null;
 let overlaysActivos = [];   // { tipo, x, y, ... }
  window.LOGO_TIENDA = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
- 
+
 // ---------- ABRIR / CERRAR PANEL ----------
 function toggleGaleriaFotos() {
     $('#tab-fotos-galeria').toggleClass('open');
@@ -1481,57 +1483,82 @@ function actualizarArrayOverlays() {
 }
 
 // ---------- GUARDAR OVERLAY Y DATOS EN BASE DE DATOS ----------
-function guardarOverlayFoto() {
+async function guardarOverlayFoto() {
     if (!fotoActualEditor) return;
 
     const observaciones = $('#observacionesFoto').val();
 
     Swal.fire({
         title: 'Guardando...',
-        text: 'Aplicando configuración de overlays',
+        text: 'Procesando imagen y aplicando overlays...',
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
     });
 
-    // Enviamos la config JSON y los datos de GPS, hora y observaciones
-    $.ajax({
-        url: "{{ route('expediente.foto.actualizar_overlay') }}",
-        method: 'POST',
-        data: {
-            _token: "{{ csrf_token() }}",
-            id: fotoActualEditor.id,
-            overlay: overlaysActivos,
-            observaciones: observaciones,
-            latitud: gpsActual.lat,
-            longitud: gpsActual.lng,
-            fecha_hora: horaActual
-        },
-        success: function (resp) {
-            Swal.close();
-            $('#modalEditorFoto').modal('hide');
+    try {
+        // 1. Capturamos el contenedor con la foto base + todos los overlays encima
+        const wrapper = document.getElementById('canvasWrapper');
+        const canvas = await html2canvas(wrapper, {
+            useCORS: true,       // Necesario para cargar imágenes de Google Cloud Storage sin bloquear el canvas
+            allowTaint: false,
+            scale: 2             // Mantiene buena nitidez
+        });
 
-            // Actualizar el objeto local
-            if (resp.data && resp.data.meta_data) {
-                fotoActualEditor.meta_data = resp.data.meta_data;
+        // 2. Convertimos el canvas a un archivo Blob (JPEG)
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
+
+        // 3. Armamos el FormData para enviar tanto el archivo como los metadatos
+        const formData = new FormData();
+        formData.append('_token', "{{ csrf_token() }}");
+        formData.append('id', fotoActualEditor.id);
+        formData.append('imagen_fusionada', blob, 'overlay.jpg');
+        formData.append('overlay', JSON.stringify(overlaysActivos));
+        formData.append('observaciones', observaciones);
+        formData.append('latitud', gpsActual.lat || '');
+        formData.append('longitud', gpsActual.lng || '');
+        formData.append('fecha_hora', horaActual || '');
+
+        $.ajax({
+            url: "{{ route('expediente.foto.actualizar_overlay') }}",
+            method: 'POST',
+            data: formData,
+            processData: false, // Obligatorio para FormData
+            contentType: false, // Obligatorio para FormData
+            success: function (resp) {
+                Swal.close();
+                $('#modalEditorFoto').modal('hide');
+
+                if (resp.data && resp.data.meta_data) {
+                    fotoActualEditor.meta_data = resp.data.meta_data;
+                }
+
+                // 4. Forzamos al navegador a recargar la imagen sin caché (?v=timestamp)
+                if (resp.url_actualizada) {
+                    $(`#foto-card-${fotoActualEditor.id}`).attr('src', resp.url_actualizada + '?v=' + Date.now());
+                }
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Guardado',
+                    text: 'La imagen y los overlays se actualizaron en Google Cloud.',
+                    timer: 1800,
+                    showConfirmButton: false
+                });
+            },
+            error: function (xhr) {
+                Swal.fire(
+                    'Error',
+                    'No se pudo guardar: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText),
+                    'error'
+                );
             }
+        });
 
-            Swal.fire({
-                icon: 'success',
-                title: 'Guardado',
-                text: 'La configuración se ha guardado correctamente.',
-                timer: 1800,
-                showConfirmButton: false
-            });
-        },
-        error: function (xhr) {
-            Swal.fire(
-                'Error', 
-                'No se pudo guardar la configuración: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText), 
-                'error'
-            );
-        }
-    });
+    } catch (err) {
+        Swal.fire('Error al generar imagen', err.message, 'error');
+    }
 }
+
 
 // ---------- INICIALIZACIÓN ----------
 $(document).ready(function () {
