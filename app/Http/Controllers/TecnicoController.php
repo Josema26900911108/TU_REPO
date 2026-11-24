@@ -2209,7 +2209,6 @@ $materiales = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sk
     return response()->json(['validaciones' => array_values($procesados)]);
 }
 
-
 public function inventariotecnicoorden($tecbucket)
 {
     DB::connection()->disableQueryLog();
@@ -2229,6 +2228,10 @@ public function inventariotecnicoorden($tecbucket)
             })
             ->first();
 
+        if (!$orden) {
+            return response()->json(['error' => 'Orden no encontrada'], 404);
+        }
+
         $tecnico = Tecnico::where('id', $orden->fkTecnico)->first();
 
         // 🌟 CARGAR LAS FOTOGRAFÍAS REGISTRADAS EN LA ORDEN
@@ -2236,11 +2239,17 @@ public function inventariotecnicoorden($tecbucket)
             ->orderBy('created_at', 'desc')
             ->get();
 
+        // 🌟 OBTENER LA TIENDA PARA EL LOGO
+        // Busca por $orden->fkTienda (o usa el fkTienda de la primera foto si $orden no lo tiene)
+        $idTienda = $orden->fkTienda ?? optional($fotosRegistradas->first())->fkTienda;
+        $Tienda = Tienda::where('idTienda', $idTienda)->first();
+
         return view('buckettecnico.edit', compact(
             'tecbucket',
             'orden',
             'tecnico',
-            'fotosRegistradas'   // ← Nueva variable
+            'fotosRegistradas',
+            'Tienda' // ← Enviamos $Tienda a la vista
         ));
 
     } catch (Exception $e) {
@@ -2250,6 +2259,7 @@ public function inventariotecnicoorden($tecbucket)
         ], 400);
     }
 }
+
 
 public function actualizarOverlayFoto(Request $request)
 {

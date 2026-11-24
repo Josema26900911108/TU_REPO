@@ -1165,7 +1165,8 @@ let escuchandoBrujula = false;
 let gpsActual = { lat: null, lng: null };
 let horaActual = null;
 let overlaysActivos = [];   // { tipo, x, y, ... }
-
+ window.LOGO_TIENDA = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
+ 
 // ---------- ABRIR / CERRAR PANEL ----------
 function toggleGaleriaFotos() {
     $('#tab-fotos-galeria').toggleClass('open');
@@ -1277,18 +1278,19 @@ function abrirEditorFoto(foto) {
 function agregarOverlay(tipo) {
     let nuevo = null;
 
-    if (tipo === 'logo') {
-        // Obtenemos la URL del logo dinámico desde Laravel
-        const logoUrl = "{{ isset($tienda) && $tienda->logo ? route('tienda.logo', $tienda->idTienda) : asset('img/logo-empresa.png') }}";
+if (tipo === 'logo') {
+    // Usamos $Tienda (con T mayúscula) y el formato base64 igual que en tus otras vistas
+    const logoUrl = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
 
-        nuevo = {
-            tipo: 'logo',
-            src: logoUrl,
-            x: 10, y: 10,
-            w: 80,
-            uuid: 'ov-' + Date.now() + Math.random()
-        };
-    }
+    nuevo = {
+        tipo: 'logo',
+        src: logoUrl,
+        x: 10, y: 10,
+        w: 80,
+        uuid: 'ov-' + Date.now() + Math.random()
+    };
+}
+
     else if (tipo === 'gps') {
         nuevo = {
             tipo: 'texto',
@@ -1370,24 +1372,42 @@ function iniciarBrujula() {
     if (escuchandoBrujula) return;
     escuchandoBrujula = true;
 
-    window.addEventListener('deviceorientationabsolute', manejarOrientacion, true);
-    window.addEventListener('deviceorientation', manejarOrientacion, true);
+    // Priorizar orientación absoluta (Android/Chrome) sobre la relativa (iOS/Safari)
+    if ('ondeviceorientationabsolute' in window) {
+        window.addEventListener('deviceorientationabsolute', manejarOrientacion, true);
+    } else if ('ondeviceorientation' in window) {
+        window.addEventListener('deviceorientation', manejarOrientacion, true);
+    } else {
+        console.warn('Este dispositivo no soporta sensores de orientación.');
+    }
 }
 
 function manejarOrientacion(event) {
-    let grados = event.webkitCompassHeading || Math.abs(event.alpha - 360);
-    
-    if (grados !== undefined && grados !== null) {
-        // Seleccionamos la primera brújula para evitar rotar todas a la vez
-        const $brujulaDOM = $('.overlay-brujula').last(); 
-        if ($brujulaDOM.length > 0) {
-            $brujulaDOM.find('g').attr('transform', `rotate(${grados}, 50, 50)`);
-            
-            const uuid = $brujulaDOM.attr('data-uuid');
-            const ovRef = overlaysActivos.find(o => o.uuid === uuid);
-            if (ovRef) ovRef.grados = grados;
-        }
+    let grados = null;
+
+    // 1. iOS (Safari) entrega el rumbo magnético directo
+    if (event.webkitCompassHeading !== undefined) {
+        grados = event.webkitCompassHeading;
+    } 
+    // 2. Android (Chrome) entrega 'alpha' invertido (0 a 360 en sentido antihorario)
+    else if (event.alpha !== null) {
+        grados = 360 - event.alpha;
     }
+
+    if (grados === null) return;
+
+    // Compensar si el usuario gira la pantalla a modo horizontal (landscape)
+    const orientacionPantalla = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+    grados = (grados + orientacionPantalla) % 360;
+
+    // Actualizar el estado en tu arreglo overlaysActivos y rotar el SVG
+    overlaysActivos.forEach(ov => {
+        if (ov.tipo === 'brujula') {
+            ov.grados = Math.round(grados);
+            $(`#canvasWrapper .overlay-brujula[data-uuid="${ov.uuid}"] svg g`)
+                .attr('transform', `rotate(${ov.grados}, 50, 50)`);
+        }
+    });
 }
 // ---------- CREAR EL DOM DE UN OVERLAY ----------
 function crearOverlayDOM(ov) {
