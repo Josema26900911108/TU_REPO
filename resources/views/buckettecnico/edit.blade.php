@@ -3286,89 +3286,131 @@ $('#inputCamaraNativa').on('change', async function(e) {
 
     Swal.fire({
         title: 'Procesando fotografía...',
-        text: 'Estampando datos técnicos y ubicación',
+        text: 'Estampando logo, datos técnicos y ubicación',
         allowOutsideClick: false,
-        didOpen: () => Swal.showLoading()
+        didOpen: function() { Swal.showLoading(); }
     });
 
     try {
-        // 1. Cargar la foto tomada en un objeto Image
-        const imgFoto = await cargarImagen(URL.createObjectURL(file));
+        // 1. Cargar foto capturada
+        const objectUrl = URL.createObjectURL(file);
+        const imgFoto = await cargarImagenAsync(objectUrl);
 
-        // 2. Crear un canvas del tamaño real de la foto (o redimensionado a max 1600px para no saturar memoria)
+        // 2. Preparar Canvas (máx 1600px de ancho para optimizar subida y memoria)
         const maxAncho = 1600;
         const escala = imgFoto.width > maxAncho ? (maxAncho / imgFoto.width) : 1;
         const canvas = document.createElement('canvas');
-        canvas.width = imgFoto.width * escala;
-        canvas.height = imgFoto.height * escala;
+        canvas.width = Math.round(imgFoto.width * escala);
+        canvas.height = Math.round(imgFoto.height * escala);
         const ctx = canvas.getContext('2d');
 
-        // Dibujar la foto original
+        // Dibujar foto original
         ctx.drawImage(imgFoto, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(objectUrl);
 
-        // 3. Dibujar el Logo de la Tienda (arriba a la izquierda)
+        // 3. Dibujar Logo de la Tienda (esquina superior izquierda)
         const logoSrc = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
         try {
-            const imgLogo = await cargarImagen(logoSrc);
-            const logoAncho = canvas.width * 0.15; // 15% del ancho de la foto
-            const logoAlto = (imgLogo.height / imgLogo.width) * logoAncho;
-            ctx.drawImage(imgLogo, 20, 20, logoAncho, logoAlto);
+            const imgLogo = await cargarImagenAsync(logoSrc);
+            const logoAncho = Math.round(canvas.width * 0.16);
+            const logoAlto = Math.round((imgLogo.height / imgLogo.width) * logoAncho);
+            ctx.drawImage(imgLogo, 24, 24, logoAncho, logoAlto);
         } catch (errLogo) {
-            console.warn('No se pudo dibujar el logo:', errLogo);
+            console.warn('No se pudo cargar el logo en el canvas:', errLogo);
         }
 
-        // 4. Preparar las líneas de texto con la información adicional
+        // 4. Construir textos de metadatos
         const ahora = new Date();
-        const fechaHora = `${ahora.toLocaleDateString('es-GT')} ${ahora.toLocaleTimeString('es-GT')}`;
-        const datos = window.datosCapturaActual || {};
-        const gpsTexto = (datos.lat && datos.lng) 
-            ? `GPS: ${datos.lat.toFixed(6)}, ${datos.lng.toFixed(6)}` 
+        const fechaHora = ahora.toLocaleDateString('es-GT') + ' ' + ahora.toLocaleTimeString('es-GT');
+        const datos = window.datosCapturaActual || {
+            categoriaTexto: obtenerTextoSelectpicker('#categoriafoto'),
+            tecnologiaTexto: obtenerTextoSelectpicker('#itemtecnologia')
+        };
+
+        const gpsTexto = (datos.lat && datos.lng)
+            ? 'GPS: ' + datos.lat.toFixed(6) + ', ' + datos.lng.toFixed(6)
             : 'GPS: No disponible';
 
+        const brujulaTexto = (datos.grados !== null && datos.grados !== undefined)
+            ? ' | Rumbo: ' + datos.grados + '°'
+            : '';
+
         const lineas = [
-            `CATEGORÍA: ${datos.categoriaTexto || 'N/A'}`,
-            `TECNOLOGÍA: ${datos.tecnologiaTexto || 'N/A'}`,
-            `FECHA/HORA: ${fechaHora}`,
-            gpsTexto
+            'CATEGORÍA: ' + datos.categoriaTexto,
+            'TECNOLOGÍA: ' + datos.tecnologiaTexto,
+            'FECHA/HORA: ' + fechaHora,
+            gpsTexto + brujulaTexto
         ];
 
-        // 5. Dibujar caja semitransparente abajo a la izquierda con los datos
+        // 5. Dibujar caja de texto semitransparente (esquina inferior izquierda)
         const fontSize = Math.max(18, Math.round(canvas.width * 0.022));
-        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-        const lineHeight = fontSize * 1.35;
-        const padding = 16;
-        const boxHeight = (lineas.length * lineHeight) + (padding * 2);
-        const boxWidth = canvas.width * 0.65; // Ocupa el 65% del ancho inferior
+        ctx.font = 'bold ' + fontSize + 'px Arial, sans-serif';
+        const lineHeight = Math.round(fontSize * 1.38);
+        const padding = 18;
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(20, canvas.height - boxHeight - 20, boxWidth, boxHeight);
-
-        // Escribir el texto en blanco
-        ctx.fillStyle = '#FFFFFF';
-        lineas.forEach((linea, index) => {
-            const yPos = (canvas.height - boxHeight - 20) + padding + ((index + 1) * lineHeight) - (fontSize * 0.25);
-            ctx.fillText(linea, 20 + padding, yPos);
+        // Calcular ancho dinámico de la caja según la línea más larga
+        let maxTextWidth = 0;
+        lineas.forEach(function(l) {
+            const w = ctx.measureText(l).width;
+            if (w > maxTextWidth) maxTextWidth = w;
         });
 
-        // 6. Convertir el canvas a Base64 / Blob listo para guardar o previsualizar
-        const imagenFinalBase64 = canvas.toDataURL('image/jpeg', 0.88);
-        
-        // Mostrar en el contenedor #preview
-        $('#preview').html(`
-            <img src="${imagenFinalBase64}" class="img-fluid rounded shadow mt-2" style="max-height: 300px;">
-        `);
+        const boxWidth = Math.min(canvas.width - 48, maxTextWidth + (padding * 2));
+        const boxHeight = (lineas.length * lineHeight) + (padding * 2);
+        const boxX = 24;
+        const boxY = canvas.height - boxHeight - 24;
 
-        // Guardar el archivo procesado en una variable global para enviarlo al guardar el formulario
-        canvas.toBlob(blob => {
-            window.fotoProcesadaBlob = blob;
-        }, 'image/jpeg', 0.88);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+        // Escribir líneas en blanco
+        ctx.fillStyle = '#FFFFFF';
+        lineas.forEach(function(linea, idx) {
+            const yPos = boxY + padding + ((idx + 1) * lineHeight) - Math.round(fontSize * 0.25);
+            ctx.fillText(linea, boxX + padding, yPos);
+        });
+
+        // 6. Exportar resultado a Base64 y Blob
+        const imagenFinalBase64 = canvas.toDataURL('image/jpeg', 0.88);
+        window.fotoProcesadaBlob = await new Promise(function(resolve) {
+            canvas.toBlob(resolve, 'image/jpeg', 0.88);
+        });
+
+        // 7. Generar nombre de archivo limpio (sin "Seleccione un item obligatorio")
+        const limpiarSlug = function(str) {
+            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]/g, '_');
+        };
+        const nombreArchivoSugerido = limpiarSlug(datos.categoriaTexto) + '_' + limpiarSlug(datos.tecnologiaTexto) + '_' + Date.now() + '.jpg';
+        window.fotoProcesadaNombre = nombreArchivoSugerido;
+
+        // 8. Mostrar vista previa en #preview
+        if ($('#preview').length > 0) {
+            $('#preview').html(
+                '<div class="text-center mt-2">' +
+                    '<img src="' + imagenFinalBase64 + '" class="img-fluid rounded shadow border" style="max-height: 320px;">' +
+                    '<small class="d-block text-muted mt-1">' + nombreArchivoSugerido + '</small>' +
+                '</div>'
+            );
+        }
 
         Swal.close();
 
     } catch (error) {
+        console.error('Error procesando captura:', error);
         Swal.fire('Error', 'No se pudo procesar la fotografía: ' + error.message, 'error');
     }
 });
+
+// Ejemplo de cómo enviarlo en tu evento de guardado/subida:
+const formData = new FormData();
+formData.append('_token', "{{ csrf_token() }}");
+formData.append('Orden', "{{ $orden->Orden }}");
+formData.append('fkTienda', "{{ $Tienda->idTienda ?? '' }}");
+formData.append('fkTecnologia', window.datosCapturaActual.tecnologiaVal);
+formData.append('tecnologia_texto', window.datosCapturaActual.tecnologiaTexto);
+formData.append('categoria_texto', window.datosCapturaActual.categoriaTexto);
+formData.append('fotografia', window.fotoProcesadaBlob, window.fotoProcesadaNombre);
+
 
 // Función auxiliar para cargar imágenes de forma asíncrona
 function cargarImagen(src) {
@@ -3381,28 +3423,99 @@ function cargarImagen(src) {
     });
 }
 
+window.datosCapturaActual = null;
+window.fotoProcesadaBlob = null;
+let gradosBrujulaActual = null;
+let escuchandoBrujulaCaptura = false;
+
+// =========================================================================
+// FUNCIÓN AUXILIAR: LEER TEXTO REAL DE BOOTSTRAP-SELECT SIN PLACEHOLDERS
+// =========================================================================
+function obtenerTextoSelectpicker(selector) {
+    const $select = $(selector);
+    const val = $select.val();
+
+    // 1. Buscar la opción cuyo value coincida exactamente con el seleccionado
+    let texto = '';
+    if (val !== null && val !== '') {
+        texto = $select.find(`option[value="${val}"]`).first().text().trim();
+    }
+
+    // 2. Respaldo: leerlo directamente del botón visual de bootstrap-select
+    if (!texto || texto.includes('Seleccione')) {
+        texto = $select.closest('.bootstrap-select')
+            .find('.filter-option-inner-inner')
+            .text()
+            .trim();
+    }
+
+    return texto;
+}
+
+function cargarImagenAsync(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = (err) => reject(err);
+        img.src = src;
+    });
+}
+
+function activarSensorBrujulaCaptura() {
+    if (escuchandoBrujulaCaptura) return;
+
+    const manejarRumbo = (event) => {
+        let grados = null;
+        if (event.webkitCompassHeading !== undefined) {
+            grados = event.webkitCompassHeading;
+        } else if (event.alpha !== null) {
+            grados = 360 - event.alpha;
+        }
+
+        if (grados !== null) {
+            const orientacion = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+            gradosBrujulaActual = Math.round((grados + orientacion) % 360);
+            if (window.datosCapturaActual) {
+                window.datosCapturaActual.grados = gradosBrujulaActual;
+            }
+        }
+    };
+
+    const registrarEventos = () => {
+        escuchandoBrujulaCaptura = true;
+        if ('ondeviceorientationabsolute' in window) {
+            window.addEventListener('deviceorientationabsolute', manejarRumbo, true);
+        } else if ('ondeviceorientation' in window) {
+            window.addEventListener('deviceorientation', manejarRumbo, true);
+        }
+    };
+
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+            .then(state => { if (state === 'granted') registrarEventos(); })
+            .catch(console.warn);
+    } else {
+        registrarEventos();
+    }
+}
 
 // =========================================================================
 // 📸 CONTROLADOR DE CÁMARA MÓVIL BLINDADO Y CORREGIDO (100% INVICTO)
 // =========================================================================
-$('#btnAbrirCamaraNativa').click(function(e) {
+$('#btnAbrirCamaraNativa').on('click', function(e) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
 
-    var selectCategoria = $('#categoriafoto');
-    var selectTecnologia = $('#itemtecnologia');
+    const selectCategoria = $('#categoriafoto');
+    const selectTecnologia = $('#itemtecnologia');
 
-    // Limpiador preventivo ANTES (Causaba el colapso del treeview):
-    // $('.form-control, .bootstrap-select, .dropdown-toggle').removeClass('is-invalid');
-
-    // 🎯 AHORA (LMPLEMENTACIÓN QUIRÚRGICA: Solo limpia los dos combos de la cámara)
+    // Limpieza quirúrgica de errores previos
     $('#categoriafoto, #itemtecnologia').removeClass('is-invalid').css('border', '');
     $('#categoriafoto, #itemtecnologia').closest('.bootstrap-select').find('.dropdown-toggle').removeClass('is-invalid').css('border', '');
     $('#error-categoria, #error-itemtecnologia').addClass('d-none').text('');
 
-
-    // 🚀 FUNCIÓN INTERNA NATIVA: Alerta, pinta de rojo y desliza el celular hacia el elemento VISIBLE
-    function alertarYDesplazarMóvil(selectorInput, mensajeEspecifico, errorLabelId) {
-        // Mostrar el mensaje descriptivo en la etiqueta text-danger inferior si existe
+    // Función interna para alertar y centrar el campo vacío en el móvil
+    function alertarYDesplazarMovil(selectorInput, mensajeEspecifico, errorLabelId) {
         if ($(errorLabelId).length > 0) {
             $(errorLabelId).text(mensajeEspecifico).removeClass('d-none');
         }
@@ -3413,34 +3526,26 @@ $('#btnAbrirCamaraNativa').click(function(e) {
             text: mensajeEspecifico,
             confirmButtonText: 'Seleccionar ahora'
         }).then(() => {
-            let $selectNativo = $(selectorInput);
+            const $selectNativo = $(selectorInput);
             let elementoDestino = document.querySelector(selectorInput);
 
-            // 🚀 CLAVE: Interceptar el contenedor de Bootstrap Select clonado que SÍ es visible en la pantalla
             if ($selectNativo.closest('.bootstrap-select').length > 0) {
-                let $contenedorVisual = $selectNativo.closest('.bootstrap-select');
-                
-                // Pintar el borde rojo de error sobre el botón oficial del selectpicker
+                const $contenedorVisual = $selectNativo.closest('.bootstrap-select');
                 $contenedorVisual.find('.dropdown-toggle').addClass('is-invalid').css('border', '1px solid #dc3545');
-                
-                // Reemplazar el objetivo de desplazamiento por el div visual que sí tiene tamaño físico
-                elementoDestino = $contenedorVisual[0]; 
+                elementoDestino = $contenedorVisual[0];
             } else {
                 $selectNativo.addClass('is-invalid').css('border', '1px solid #dc3545');
             }
 
-            // 🎯 INSTRUCCIÓN NATIVA: Desliza el scroll del celular de forma automática e infalible
-            // block: 'center' obliga al teléfono a dejar el selector vacío perfectamente centrado en medio de la pantalla
             if (elementoDestino && typeof elementoDestino.scrollIntoView === 'function') {
-                elementoDestino.scrollIntoView({ 
-                    behavior: 'smooth', 
+                elementoDestino.scrollIntoView({
+                    behavior: 'smooth',
                     block: 'center',
                     inline: 'nearest'
                 });
             }
 
-            // Forzar el enfoque táctil en el selector tras el deslizamiento gráfico
-            setTimeout(function() {
+            setTimeout(() => {
                 if ($selectNativo.closest('.bootstrap-select').length > 0) {
                     $selectNativo.closest('.bootstrap-select').find('.dropdown-toggle').focus();
                 } else {
@@ -3448,57 +3553,55 @@ $('#btnAbrirCamaraNativa').click(function(e) {
                 }
             }, 450);
         });
-        
-        return false; // Detener la ejecución contable inmediatamente
-    }
 
-    // =========================================================================
-    // EVALUACIÓN CRONOLÓGICA PASO A PASO (REBOTE INDIVIDUAL SIN VARIABLES INDEFINIDAS)
-    // =========================================================================
-
-    // 🕵️‍♂️ PASO 1: Verificar de forma obligatoria la Categoría de la Foto
-    if (selectCategoria.val() === "" || selectCategoria.val() === null) {
-        alertarYDesplazarMóvil('#categoriafoto', 'Por favor, defina la Categoría de la fotografía antes de encender la cámara.', '#error-categoria');
         return false;
     }
 
-    // 🕵️‍♂️ PASO 2: Si la categoría está bien, verificar de forma obligatoria la Tecnología
-    if (selectTecnologia.val() === "" || selectTecnologia.val() === null) {
-        alertarYDesplazarMóvil('#itemtecnologia', 'Por favor, seleccione el tipo de Tecnología correspondiente en el listado.', '#error-itemtecnologia');
+    // PASO 1: Validar Categoría
+    if (!selectCategoria.val() || selectCategoria.val() === "") {
+        alertarYDesplazarMovil('#categoriafoto', 'Por favor, defina la Categoría de la fotografía antes de encender la cámara.', '#error-categoria');
         return false;
     }
 
-// 🌟 CONTROL PASADO: Si ambos campos están perfectamente llenos, disparar la cámara nativa
-console.log("📸 [Cámara] Validación correcta. Activando obturador del dispositivo móvil...");
+    // PASO 2: Validar Tecnología
+    if (!selectTecnologia.val() || selectTecnologia.val() === "") {
+        alertarYDesplazarMovil('#itemtecnologia', 'Por favor, seleccione el tipo de Tecnología correspondiente en el listado.', '#error-itemtecnologia');
+        return false;
+    }
 
-// Guardamos los datos adicionales seleccionados para estamparlos en la foto
-window.datosCapturaActual = {
-    categoriaVal: selectCategoria.val(),
-    categoriaTexto: $('#categoriafoto option:selected').text().trim(),
-    tecnologiaVal: selectTecnologia.val(),
-    tecnologiaTexto: $('#itemtecnologia option:selected').text().trim(),
-    lat: null,
-    lng: null,
-    grados: null
-};
+    // Extraer textos limpios reales (sin placeholders)
+    const textoCategoria = obtenerTextoSelectpicker('#categoriafoto');
+    const textoTecnologia = obtenerTextoSelectpicker('#itemtecnologia');
 
-// Pre-cargamos el GPS mientras el técnico toma la foto
-if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-        pos => {
-            window.datosCapturaActual.lat = pos.coords.latitude;
-            window.datosCapturaActual.lng = pos.coords.longitude;
-        },
-        err => console.warn('GPS no disponible al capturar:', err),
-        { enableHighAccuracy: true, timeout: 6000 }
-    );
-}
+    // Guardar en memoria global antes de abrir la cámara
+    window.datosCapturaActual = {
+        categoriaVal: selectCategoria.val(),
+        categoriaTexto: textoCategoria,
+        tecnologiaVal: selectTecnologia.val(),
+        tecnologiaTexto: textoTecnologia,
+        lat: null,
+        lng: null,
+        grados: gradosBrujulaActual
+    };
 
-$('#inputCamaraNativa').click();
+    // Activar GPS y Brújula mientras el usuario toma la foto
+    activarSensorBrujulaCaptura();
 
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                window.datosCapturaActual.lat = pos.coords.latitude;
+                window.datosCapturaActual.lng = pos.coords.longitude;
+            },
+            err => console.warn('GPS no disponible al capturar:', err),
+            { enableHighAccuracy: true, timeout: 6000 }
+        );
+    }
 
-
+    console.log("📸 [Cámara] Validación correcta. Datos preparados:", window.datosCapturaActual);
+    $('#inputCamaraNativa').click();
 });
+
 
 // =========================================================================
 // 🔄 LIMPIADORES EN CALIENTE AL SELECCIONAR CON EL DEDO (CHANGE BLINDADOS)
