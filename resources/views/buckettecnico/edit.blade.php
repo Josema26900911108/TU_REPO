@@ -1492,136 +1492,22 @@ async function guardarOverlayFoto() {
         title: 'Guardando...',
         text: 'Procesando imagen y aplicando overlays...',
         allowOutsideClick: false,
-        didOpen: function() { Swal.showLoading(); }
+        didOpen: () => Swal.showLoading()
     });
 
     try {
+        // 1. Capturamos el contenedor con la foto base + todos los overlays encima
         const wrapper = document.getElementById('canvasWrapper');
-        if (!wrapper) {
-            throw new Error('No se encontró el contenedor #canvasWrapper en el modal.');
-        }
-
-        // 1. Obtener la imagen base dentro de #canvasWrapper
-        const imgElement = wrapper.querySelector('img:not(.overlay-logo-box)');
-        if (!imgElement) {
-            throw new Error('No se encontró la fotografía base dentro de #canvasWrapper.');
-        }
-
-        // Cargar imagen limpia con soporte CORS
-        const imgBase = await new Promise(function(resolve, reject) {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = function() { resolve(img); };
-            img.onerror = function() { reject(new Error('No se pudo cargar la imagen base (revisa CORS en Google Cloud).')); };
-            img.src = imgElement.src + (imgElement.src.includes('?') ? '&' : '?') + 't=' + Date.now();
+        const canvas = await html2canvas(wrapper, {
+            useCORS: true,       // Necesario para cargar imágenes de Google Cloud Storage sin bloquear el canvas
+            allowTaint: false,
+            scale: 2             // Mantiene buena nitidez
         });
 
-        // 2. Crear canvas nativo proporcional al tamaño visual del wrapper
-        const rectWrapper = wrapper.getBoundingClientRect();
-        const escalaX = imgBase.naturalWidth / (rectWrapper.width || imgBase.naturalWidth);
-        const escalaY = imgBase.naturalHeight / (rectWrapper.height || imgBase.naturalHeight);
+        // 2. Convertimos el canvas a un archivo Blob (JPEG)
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
 
-        const canvas = document.createElement('canvas');
-        canvas.width = imgBase.naturalWidth;
-        canvas.height = imgBase.naturalHeight;
-        const ctx = canvas.getContext('2d');
-
-        // Dibujar foto de fondo
-        ctx.drawImage(imgBase, 0, 0, canvas.width, canvas.height);
-
-        // 3. Dibujar cada overlay de overlaysActivos en su posición exacta
-        for (let i = 0; i < overlaysActivos.length; i++) {
-            const ov = overlaysActivos[i];
-            const posX = (ov.x || 0) * escalaX;
-            const posY = (ov.y || 0) * escalaY;
-
-            if (ov.tipo === 'logo' && ov.src) {
-                try {
-                    const imgLogo = await new Promise(function(resolve, reject) {
-                        const l = new Image();
-                        l.crossOrigin = 'anonymous';
-                        l.onload = function() { resolve(l); };
-                        l.onerror = reject;
-                        l.src = ov.src;
-                    });
-                    const logoW = (ov.w || 80) * escalaX;
-                    const logoH = (imgLogo.height / imgLogo.width) * logoW;
-                    ctx.drawImage(imgLogo, posX, posY, logoW, logoH);
-                } catch (e) {
-                    console.warn('No se pudo dibujar el logo:', e);
-                }
-            } 
-            else if (ov.tipo === 'brujula') {
-                // Dibujar brújula vectorial directamente en el canvas
-                const radio = ((ov.w || 55) * escalaX) / 2;
-                const cx = posX + radio;
-                const cy = posY + radio;
-
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(cx, cy, radio, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-                ctx.fill();
-                ctx.lineWidth = Math.max(2, radio * 0.06);
-                ctx.strokeStyle = '#FFFFFF';
-                ctx.stroke();
-
-                // Letras N, S, E, W
-                ctx.fillStyle = '#ff3b30';
-                ctx.font = 'bold ' + Math.round(radio * 0.35) + 'px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('N', cx, cy - radio * 0.65);
-
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillText('S', cx, cy + radio * 0.65);
-                ctx.fillText('W', cx - radio * 0.65, cy);
-                ctx.fillText('E', cx + radio * 0.65, cy);
-
-                // Aguja rotada según ov.grados
-                ctx.translate(cx, cy);
-                ctx.rotate(((ov.grados || 0) * Math.PI) / 180);
-                ctx.beginPath();
-                ctx.moveTo(0, -radio * 0.55);
-                ctx.lineTo(radio * 0.14, 0);
-                ctx.lineTo(-radio * 0.14, 0);
-                ctx.closePath();
-                ctx.fillStyle = '#ff3b30';
-                ctx.fill();
-
-                ctx.beginPath();
-                ctx.moveTo(0, radio * 0.55);
-                ctx.lineTo(radio * 0.14, 0);
-                ctx.lineTo(-radio * 0.14, 0);
-                ctx.closePath();
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fill();
-                ctx.restore();
-            } 
-            else if (ov.contenido) {
-                // Dibujar cajas de texto (GPS, Hora, etc.)
-                const fontSize = Math.round((ov.fontSize || 14) * escalaX);
-                ctx.font = 'bold ' + fontSize + 'px Arial, sans-serif';
-                const padX = 8 * escalaX;
-                const padY = 6 * escalaY;
-                const textWidth = ctx.measureText(ov.contenido).width;
-                const boxH = fontSize + (padY * 2);
-
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                ctx.fillRect(posX, posY, textWidth + (padX * 2), boxH);
-
-                ctx.fillStyle = '#FFFFFF';
-                ctx.textBaseline = 'top';
-                ctx.fillText(ov.contenido, posX + padX, posY + padY);
-            }
-        }
-
-        // 4. Convertir canvas a Blob JPEG
-        const blob = await new Promise(function(resolve) {
-            canvas.toBlob(resolve, 'image/jpeg', 0.90);
-        });
-
-        // 5. Enviar al controlador Laravel
+        // 3. Armamos el FormData para enviar tanto el archivo como los metadatos
         const formData = new FormData();
         formData.append('_token', "{{ csrf_token() }}");
         formData.append('id', fotoActualEditor.id);
@@ -1636,8 +1522,8 @@ async function guardarOverlayFoto() {
             url: "{{ route('expediente.foto.actualizar_overlay') }}",
             method: 'POST',
             data: formData,
-            processData: false,
-            contentType: false,
+            processData: false, // Obligatorio para FormData
+            contentType: false, // Obligatorio para FormData
             success: function (resp) {
                 Swal.close();
                 $('#modalEditorFoto').modal('hide');
@@ -1646,6 +1532,7 @@ async function guardarOverlayFoto() {
                     fotoActualEditor.meta_data = resp.data.meta_data;
                 }
 
+                // 4. Forzamos al navegador a recargar la imagen sin caché (?v=timestamp)
                 if (resp.url_actualizada) {
                     $(`#foto-card-${fotoActualEditor.id}`).attr('src', resp.url_actualizada + '?v=' + Date.now());
                 }
@@ -1653,7 +1540,7 @@ async function guardarOverlayFoto() {
                 Swal.fire({
                     icon: 'success',
                     title: 'Guardado',
-                    text: 'La imagen y los overlays se actualizaron correctamente.',
+                    text: 'La imagen y los overlays se actualizaron en Google Cloud.',
                     timer: 1800,
                     showConfirmButton: false
                 });
