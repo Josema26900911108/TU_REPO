@@ -2259,37 +2259,25 @@ public function inventariotecnicoorden($tecbucket)
         ], 400);
     }
 }
+
+
 public function actualizarOverlayFoto(Request $request)
 {
     $request->validate([
-        'id'               => 'required|exists:expedientefotograficotecnico,id',
-        'imagen_fusionada' => 'required|image|mimes:jpeg,png,jpg|max:10240',
-        'overlay'          => 'required|string', // Ahora llega como JSON string por el FormData
-        'observaciones'    => 'nullable|string',
-        'latitud'          => 'nullable|string',
-        'longitud'         => 'nullable|string',
-        'fecha_hora'       => 'nullable|string',
+        'id'            => 'required|exists:expedientefotograficotecnico,id',
+        'overlay'       => 'required|array',
+        'observaciones' => 'nullable|string',
+        'latitud'       => 'nullable|string',
+        'longitud'      => 'nullable|string',
+        'fecha_hora'    => 'nullable|string',
     ]);
 
     try {
         $foto = Expedientefotograficotecnico::findOrFail($request->id);
 
-        // 1. Subir y sobrescribir la imagen en Google Cloud Storage
-        if ($request->hasFile('imagen_fusionada') && $foto->fotografia) {
-            $contenido = file_get_contents($request->file('imagen_fusionada')->getRealPath());
-
-            // Sobrescribimos la misma ruta en GCS y desactivamos caché para que se vea al instante
-            Storage::disk('gcs')->put($foto->fotografia, $contenido, [
-                'visibility' => 'public',
-                'metadata'   => [
-                    'cacheControl' => 'no-cache, no-store, must-revalidate',
-                ],
-            ]);
-        }
-
-        // 2. Guardar los metadatos JSON en la base de datos
+        // 1. Armamos el arreglo JSON con toda la información
         $metaData = [
-            'overlays'      => json_decode($request->overlay, true),
+            'overlays'      => $request->overlay,
             'observaciones' => $request->observaciones ?? '',
             'ubicacion'     => [
                 'lat' => $request->latitud,
@@ -2298,16 +2286,15 @@ public function actualizarOverlayFoto(Request $request)
             'fecha_hora'    => $request->fecha_hora ?? now()->toDateTimeString(),
         ];
 
+        // 2. Guardamos en la base de datos
         $foto->meta_data = $metaData;
         $foto->save();
 
         return response()->json([
-            'status'          => 'success',
-            'message'         => 'Imagen actualizada en Google Cloud correctamente.',
-            'data'            => $foto,
-            'url_actualizada' => Storage::disk('gcs')->url($foto->fotografia),
+            'status'  => 'success',
+            'message' => 'Datos de la fotografía guardados correctamente.',
+            'data'    => $foto,
         ]);
-
     } catch (\Exception $e) {
         return response()->json([
             'status'  => 'error',

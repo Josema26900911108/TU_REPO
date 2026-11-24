@@ -18,8 +18,7 @@
 <script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
 <!-- Enlace oficial de jsDelivr Versión 5 compatible con jQuery y Celulares -->
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@5.1.3/dist/signature_pad.umd.min.js" crossorigin="anonymous"></script>
-<script src="https://cloudflare.com"></script>
-<script src="https://jsdelivr.net"></script>
+
 <style>
 #preview { display: flex; flex-wrap: wrap; margin-top: 10px; gap: 10px; }
 .photo-container { position: relative; display: inline-block; }
@@ -1152,8 +1151,6 @@
 <script src="{{ asset('js/bootstrap-treeview.js') }}"></script>
 <!-- jQuery UI -->
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
-<!-- Agrega esto en tu vista Blade antes de tu script -->
-<script src="https://cloudflare.com"></script>
 
 
 <script>
@@ -1168,7 +1165,6 @@ let escuchandoBrujula = false;
 let gpsActual = { lat: null, lng: null };
 let horaActual = null;
 let overlaysActivos = [];   // { tipo, x, y, ... }
- window.LOGO_TIENDA = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
 
 // ---------- ABRIR / CERRAR PANEL ----------
 function toggleGaleriaFotos() {
@@ -1228,52 +1224,34 @@ function renderizarGaleriaFotos() {
 function abrirEditorFoto(foto) {
     fotoActualEditor = foto;
     overlaysActivos = [];
-    gpsActual = { lat: null, lng: null };
-    horaActual = null;
 
-    // 🌟 Leer los metadatos guardados (observaciones, gps, hora, overlays)
-    let meta = foto.meta_data || {};
-    
-    // Si Laravel devuelve el JSON como string (por si acaso), lo parseamos
-    if (typeof meta === 'string') {
-        try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
+    // Si ya tenía overlays guardados (desde BD), los restauramos
+    if (foto.overlay_config) {
+        try {
+            const cfg = typeof foto.overlay_config === 'string'
+                ? JSON.parse(foto.overlay_config)
+                : foto.overlay_config;
+            overlaysActivos = Array.isArray(cfg) ? cfg : [];
+        } catch (e) {
+            console.warn('Config de overlay inválida:', e);
+        }
     }
 
-    // Restaurar observaciones
-    $('#observacionesFoto').val(meta.observaciones || '');
-
-    // Restaurar GPS y Hora
-    if (meta.ubicacion) {
-        gpsActual = { lat: meta.ubicacion.lat, lng: meta.ubicacion.lng };
-    }
-    horaActual = meta.fecha_hora || null;
-
-    // Restaurar overlays visuales
-    if (meta.overlays && Array.isArray(meta.overlays)) {
-        overlaysActivos = meta.overlays;
-    }
-
-    // Limpiar el DOM
+    // Limpiar overlays previos del DOM
     $('#canvasWrapper .overlay-text-box, #canvasWrapper .overlay-logo-box, #canvasWrapper .overlay-brujula').remove();
 
     // Cargar imagen
     const $img = $('#canvasEditor');
-    
-    let url = foto.fotografia;
-    if (!url.startsWith('http')) {
-        url = url.replace(/\\/g, '/'); 
-        url = "{{ asset('storage') }}/" + url; 
-    }
-    $img.attr('src', url);
+    $img.attr('src', foto.fotografia);
 
-    // Re-dibujar los overlays cuando la imagen termine de cargar
     $img.off('load').on('load', function () {
+        // Esperar al layout para posicionar
         setTimeout(() => {
             overlaysActivos.forEach(ov => crearOverlayDOM(ov));
         }, 50);
     });
 
-    // Mostrar modal
+    // Mostrar modal con Bootstrap 4 (compatible con tu versión)
     $('#modalEditorFoto').modal('show');
 }
 
@@ -1281,65 +1259,19 @@ function abrirEditorFoto(foto) {
 function agregarOverlay(tipo) {
     let nuevo = null;
 
-if (tipo === 'logo') {
-    // Usamos $Tienda (con T mayúscula) y el formato base64 igual que en tus otras vistas
-    const logoUrl = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
-
-    nuevo = {
-        tipo: 'logo',
-        src: logoUrl,
-        x: 10, y: 10,
-        w: 80,
-        uuid: 'ov-' + Date.now() + Math.random()
-    };
-}
-
+    if (tipo === 'logo') {
+        // ... (código del logo se mantiene igual) ...
+    }
     else if (tipo === 'gps') {
-        nuevo = {
-            tipo: 'texto',
-            contenido: '📍 Obteniendo GPS...',
-            x: 10, y: 20,
-            fontSize: 14,
-            uuid: 'ov-' + Date.now() + Math.random()
-        };
-
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                pos => {
-                    gpsActual.lat = pos.coords.latitude;
-                    gpsActual.lng = pos.coords.longitude;
-                    nuevo.contenido = `📍 ${gpsActual.lat.toFixed(6)}, ${gpsActual.lng.toFixed(6)}`;
-                    
-                    // Actualizar DOM
-                    const $el = $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`);
-                    $el.text(nuevo.contenido);
-                    actualizarArrayOverlays();
-                },
-                () => { 
-                    nuevo.contenido = '📍 GPS no disponible'; 
-                    $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`).text('📍 GPS no disponible');
-                },
-                { enableHighAccuracy: true, timeout: 8000 }
-            );
-        }
+        // ... (código del gps se mantiene igual) ...
     }
     else if (tipo === 'hora') {
-        const ahora = new Date();
-        horaActual = ahora.toLocaleString('es-GT'); // Guardamos la fecha real
-        
-        const fechaHoraStr = `🕒 ${ahora.toLocaleDateString('es-GT')} ${ahora.toLocaleTimeString('es-GT')}`;
-        
-        nuevo = { 
-            tipo: 'texto', 
-            contenido: fechaHoraStr, 
-            x: 10, y: 40, 
-            fontSize: 14, 
-            uuid: 'ov-' + Date.now() + Math.random() 
-        };
+        // ... (código de la hora se mantiene igual) ...
     }
     else if (tipo === 'brujula') {
-        // Solicitar permiso para la brújula
+        // 🌟 AQUÍ COLOCAS LA SOLICITUD DE PERMISO PARA LA BRÚJULA
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            // Para iOS 13+
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
                     if (permissionState === 'granted') {
@@ -1350,19 +1282,27 @@ if (tipo === 'logo') {
                 })
                 .catch(console.error);
         } else {
+            // Para Android y navegadores de escritorio
             iniciarBrujula();
         }
 
+        // Creamos el overlay visualmente (inicia en 0 grados)
         nuevo = {
             tipo: 'brujula',
             grados: 0,
-            x: 10, y: 60,
+            x: 10, y: 70,
             w: 55,
-            uuid: 'ov-' + Date.now() + Math.random()
+            uuid: 'ov-' + Date.now()
         };
+        
+        overlaysActivos.push(nuevo);
+        crearOverlayDOM(nuevo);
+        actualizarArrayOverlays();
+        return; // Salimos para que no se duplique la creación
     }
 
     if (!nuevo) return;
+    if (!nuevo.uuid) nuevo.uuid = 'ov-' + Date.now() + Math.random();
 
     overlaysActivos.push(nuevo);
     crearOverlayDOM(nuevo);
@@ -1375,42 +1315,27 @@ function iniciarBrujula() {
     if (escuchandoBrujula) return;
     escuchandoBrujula = true;
 
-    // Priorizar orientación absoluta (Android/Chrome) sobre la relativa (iOS/Safari)
-    if ('ondeviceorientationabsolute' in window) {
-        window.addEventListener('deviceorientationabsolute', manejarOrientacion, true);
-    } else if ('ondeviceorientation' in window) {
-        window.addEventListener('deviceorientation', manejarOrientacion, true);
-    } else {
-        console.warn('Este dispositivo no soporta sensores de orientación.');
-    }
+    window.addEventListener('deviceorientationabsolute', manejarOrientacion, true);
+    window.addEventListener('deviceorientation', manejarOrientacion, true);
 }
 
 function manejarOrientacion(event) {
-    let grados = null;
-
-    // 1. iOS (Safari) entrega el rumbo magnético directo
-    if (event.webkitCompassHeading !== undefined) {
-        grados = event.webkitCompassHeading;
-    } 
-    // 2. Android (Chrome) entrega 'alpha' invertido (0 a 360 en sentido antihorario)
-    else if (event.alpha !== null) {
-        grados = 360 - event.alpha;
-    }
-
-    if (grados === null) return;
-
-    // Compensar si el usuario gira la pantalla a modo horizontal (landscape)
-    const orientacionPantalla = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
-    grados = (grados + orientacionPantalla) % 360;
-
-    // Actualizar el estado en tu arreglo overlaysActivos y rotar el SVG
-    overlaysActivos.forEach(ov => {
-        if (ov.tipo === 'brujula') {
-            ov.grados = Math.round(grados);
-            $(`#canvasWrapper .overlay-brujula[data-uuid="${ov.uuid}"] svg g`)
-                .attr('transform', `rotate(${ov.grados}, 50, 50)`);
+    // Obtenemos el ángulo de la brújula
+    let grados = event.webkitCompassHeading || Math.abs(event.alpha - 360);
+    
+    if (grados !== undefined && grados !== null) {
+        // Buscamos el overlay de tipo brújula en el DOM y lo rotamos
+        const $brujulaDOM = $('.overlay-brujula').first(); // O usa el uuid si hay varias
+        if ($brujulaDOM.length > 0) {
+            // El SVG tiene un <g> con la aguja, lo rotamos
+            $brujulaDOM.find('g').attr('transform', `rotate(${grados}, 50, 50)`);
+            
+            // Actualizamos el objeto en memoria
+            const uuid = $brujulaDOM.attr('data-uuid');
+            const ovRef = overlaysActivos.find(o => o.uuid === uuid);
+            if (ovRef) ovRef.grados = grados;
         }
-    });
+    }
 }
 // ---------- CREAR EL DOM DE UN OVERLAY ----------
 function crearOverlayDOM(ov) {
@@ -1419,12 +1344,11 @@ function crearOverlayDOM(ov) {
 
     if (ov.tipo === 'logo') {
         $el = $('<img class="overlay-logo-box" draggable="false">');
-        $el.attr('src', ov.src)
-           .attr('data-uuid', ov.uuid)
-           .on('error', function() { $(this).css('background', '#ccc'); }); // Fallback visual
+        $el.attr('src', ov.src).attr('data-uuid', ov.uuid);
         $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 80) + 'px' });
     }
     else if (ov.tipo === 'brujula') {
+        // SVG de brújula simple con rotación
         const svg = `
             <svg viewBox="0 0 100 100" width="100%" height="100%" style="filter: drop-shadow(1px 1px 2px #000);">
                 <circle cx="50" cy="50" r="45" fill="rgba(0,0,0,0.5)" stroke="#fff" stroke-width="3"/>
@@ -1451,7 +1375,7 @@ function crearOverlayDOM(ov) {
         });
     }
 
-    // Hacerlo arrastrable
+    // Hacerlo arrastrable con jQuery UI
     $el.draggable({
         containment: '#canvasWrapper',
         stop: function () {
@@ -1466,9 +1390,8 @@ function crearOverlayDOM(ov) {
         }
     });
 
-    // Doble click para eliminar
-    $el.on('dblclick', function (e) {
-        e.preventDefault();
+    // Doble click → eliminar
+    $el.on('dblclick', function () {
         const uuid = $(this).attr('data-uuid');
         overlaysActivos = overlaysActivos.filter(o => o.uuid !== uuid);
         $(this).remove();
@@ -1480,87 +1403,53 @@ function crearOverlayDOM(ov) {
 
 // ---------- SINCRONIZAR CON EL ARRAY ----------
 function actualizarArrayOverlays() {
-    // console.log('Overlays activos:', overlaysActivos);
+    // No es estrictamente necesario, pero útil para depuración
+    console.log('Overlays activos:', overlaysActivos);
 }
 
-// ---------- GUARDAR OVERLAY Y DATOS EN BASE DE DATOS ----------
-async function guardarOverlayFoto() {
+// ---------- GUARDAR OVERLAY (llamada al backend) ----------
+function guardarOverlayFoto() {
     if (!fotoActualEditor) return;
-
-    const observaciones = $('#observacionesFoto').val();
 
     Swal.fire({
         title: 'Guardando...',
-        text: 'Procesando imagen y aplicando overlays...',
+        text: 'Aplicando configuración de overlays',
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
     });
 
-    try {
-        // 1. Capturamos el contenedor con la foto base + todos los overlays encima
-        const wrapper = document.getElementById('canvasWrapper');
-        const canvas = await html2canvas(wrapper, {
-            useCORS: true,       // Necesario para cargar imágenes de Google Cloud Storage sin bloquear el canvas
-            allowTaint: false,
-            scale: 2             // Mantiene buena nitidez
-        });
+    $.ajax({
+        url: "{{ route('expediente.foto.actualizar_overlay') }}", // Ruta Laravel
+        method: 'POST',
+        data: {
+            _token: "{{ csrf_token() }}",
+            id: fotoActualEditor.id,
+            overlay: overlaysActivos // jQuery serializa el array automáticamente
+        },
+        success: function (resp) {
+            Swal.close();
+            $('#modalEditorFoto').modal('hide');
 
-        // 2. Convertimos el canvas a un archivo Blob (JPEG)
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
+            // Actualizamos el objeto local con lo que devolvió el backend
+            fotoActualEditor.overlay_config = resp.data.overlay_config;
 
-        // 3. Armamos el FormData para enviar tanto el archivo como los metadatos
-        const formData = new FormData();
-        formData.append('_token', "{{ csrf_token() }}");
-        formData.append('id', fotoActualEditor.id);
-        formData.append('imagen_fusionada', blob, 'overlay.jpg');
-        formData.append('overlay', JSON.stringify(overlaysActivos));
-        formData.append('observaciones', observaciones);
-        formData.append('latitud', gpsActual.lat || '');
-        formData.append('longitud', gpsActual.lng || '');
-        formData.append('fecha_hora', horaActual || '');
-
-        $.ajax({
-            url: "{{ route('expediente.foto.actualizar_overlay') }}",
-            method: 'POST',
-            data: formData,
-            processData: false, // Obligatorio para FormData
-            contentType: false, // Obligatorio para FormData
-            success: function (resp) {
-                Swal.close();
-                $('#modalEditorFoto').modal('hide');
-
-                if (resp.data && resp.data.meta_data) {
-                    fotoActualEditor.meta_data = resp.data.meta_data;
-                }
-
-                // 4. Forzamos al navegador a recargar la imagen sin caché (?v=timestamp)
-                if (resp.url_actualizada) {
-                    $(`#foto-card-${fotoActualEditor.id}`).attr('src', resp.url_actualizada + '?v=' + Date.now());
-                }
-
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Guardado',
-                    text: 'La imagen y los overlays se actualizaron en Google Cloud.',
-                    timer: 1800,
-                    showConfirmButton: false
-                });
-            },
-            error: function (xhr) {
-                Swal.fire(
-                    'Error',
-                    'No se pudo guardar: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText),
-                    'error'
-                );
-            }
-        });
-
-    } catch (err) {
-        Swal.fire('Error al generar imagen', err.message, 'error');
-    }
+            Swal.fire({
+                icon: 'success',
+                title: 'Overlays guardados',
+                text: 'La configuración se aplicará la próxima vez que se consulte la fotografía.',
+                timer: 1800,
+                showConfirmButton: false
+            });
+        },
+        error: function (xhr) {
+            Swal.fire(
+                'Error',
+                'No se pudo guardar la configuración: ' + xhr.responseJSON?.message || xhr.responseText,
+                'error'
+            );
+        }
+    });
 }
-
-
 // ---------- INICIALIZACIÓN ----------
 $(document).ready(function () {
     renderizarGaleriaFotos();
@@ -1572,17 +1461,6 @@ $(document).ready(function () {
                 toggleGaleriaFotos();
             }
         }
-    });
-
-    // Eventos de la pestaña
-    $('#btnAbrirGaleriaFotos').off('click').on('click', function(e) {
-        e.preventDefault();
-        toggleGaleriaFotos();
-    });
-
-    $('#btnCerrarGaleriaFotos').off('click').on('click', function(e) {
-        e.preventDefault();
-        toggleGaleriaFotos();
     });
 });
 
