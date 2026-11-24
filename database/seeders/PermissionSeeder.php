@@ -70,6 +70,9 @@ class PermissionSeeder extends Seeder
             'editar-proveedore',
             'eliminar-proveedore',
 
+            'crear-mb51',
+            'ver-mb51',
+
             //Venta
             'ver-venta',
             'crear-venta',

@@ -25,7 +25,210 @@
 .photo-container img { max-width: 100px; border: 2px solid #ccc; border-radius: 5px; }
 .btn-remove { position: absolute; top: 0; right: 0; background: red; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; }
 </style>
+<style>
+/* ============================================================
+   PESTAÑA LATERAL TIPO SEPARADOR DE LIBROS
+   ============================================================ */
+#tab-fotos-galeria {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 99998;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
+#tab-fotos-galeria.open {
+    right: 380px; /* ancho del panel */
+}
+
+#tab-fotos-galeria .tab-handle {
+    background: linear-gradient(180deg, #0d6efd, #0a58ca);
+    color: #fff;
+    padding: 18px 8px;
+    border-radius: 8px 0 0 8px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-weight: bold;
+    font-size: 13px;
+    letter-spacing: 1px;
+    box-shadow: -4px 0 12px rgba(0,0,0,0.25);
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+#tab-fotos-galeria .tab-handle .badge {
+    background: #ffc107;
+    color: #000;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    writing-mode: horizontal-tb;
+}
+
+/* Panel desplegable */
+#panel-fotos-galeria {
+    position: fixed;
+    top: 0;
+    right: -380px;
+    width: 380px;
+    max-width: 100vw;
+    height: 100vh;
+    background: #fff;
+    box-shadow: -8px 0 25px rgba(0,0,0,0.2);
+    z-index: 99997;
+    transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#panel-fotos-galeria.open {
+    right: 0;
+}
+
+#panel-fotos-galeria .panel-header {
+    background: #0d6efd;
+    color: #fff;
+    padding: 14px 18px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#panel-fotos-galeria .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: #f5f7fa;
+}
+
+.galeria-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.galeria-item {
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.galeria-item:hover {
+    transform: scale(1.02);
+}
+
+.galeria-item img {
+    width: 100%;
+    height: 110px;
+    object-fit: cover;
+    display: block;
+    background-color: #e9ecef; /* Color de fondo si la imagen no carga */
+}
+
+.galeria-item .galeria-caption {
+    font-size: 10px;
+    padding: 4px 6px;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.galeria-item .btn-edit-overlay {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(13, 110, 253, 0.9);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ============================================================
+   MODAL EDITOR DE OVERLAYS
+   ============================================================ */
+#modalEditorFoto .canvas-wrapper {
+    position: relative;
+    background: #000;
+    max-height: 65vh;
+    overflow: auto;
+    text-align: center;
+}
+
+#canvasEditor {
+    max-width: 100%;
+    display: block;
+    margin: 0 auto;
+    cursor: crosshair;
+}
+
+.overlay-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    background: #f0f2f5;
+    border-bottom: 1px solid #ddd;
+}
+
+.overlay-toolbar button {
+    flex: 1 1 45%;
+}
+
+/* Overlays activos sobre el canvas */
+.overlay-text-box {
+    position: absolute;
+    color: #fff;
+    text-shadow: 1px 1px 3px #000, -1px -1px 3px #000;
+    font-weight: bold;
+    font-size: 14px;
+    user-select: none;
+    padding: 2px 4px;
+    cursor: move;
+    border: 1px dashed transparent;
+}
+
+.overlay-text-box:hover {
+    border-color: #ffc107;
+}
+
+.overlay-logo-box {
+    position: absolute;
+    cursor: move;
+    max-width: 90px;
+    border: 1px dashed transparent;
+}
+
+.overlay-logo-box:hover {
+    border-color: #ffc107;
+}
+
+.overlay-brujula {
+    position: absolute;
+    cursor: move;
+    width: 55px;
+    height: 55px;
+}
+</style>
 <style>
 
     #itemmanoobraamterial {
@@ -411,6 +614,77 @@
 @endpush
 
 @section('content')
+{{-- ============================================================
+     PESTAÑA FLOTANTE TIPO SEPARADOR DE LIBROS
+     ============================================================ --}}
+<div id="tab-fotos-galeria">
+    <div class="tab-handle" onclick="toggleGaleriaFotos()">
+        <span>📷 FOTOS</span>
+        <span class="badge" id="contadorFotosGaleria">{{ count($fotosRegistradas ?? []) }}</span>
+    </div>
+</div>
+
+<div id="panel-fotos-galeria">
+    <div class="panel-header">
+        <span>📸 Fotos de la Orden</span>
+        <button type="button" class="btn-close btn-close-white" onclick="toggleGaleriaFotos()"></button>
+    </div>
+    <div class="panel-body">
+        <div id="galeriaFotosGrid" class="galeria-grid">
+            {{-- Se llena por JS --}}
+        </div>
+        <p id="galeriaVacia" class="text-center text-muted mt-4 d-none">
+            Aún no hay fotos registradas para esta orden.
+        </p>
+    </div>
+</div>
+
+{{-- ============================================================
+     MODAL EDITOR DE OVERLAYS
+     ============================================================ --}}
+<div class="modal fade" id="modalEditorFoto" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">✏️ Editar Fotografía (Logo · GPS · Hora · Brújula)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <!-- Toolbar de overlays -->
+            <div class="overlay-toolbar">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarOverlay('logo')">
+                    🏢 Logo Empresa
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarOverlay('gps')">
+                    📍 Coordenadas GPS
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarOverlay('hora')">
+                    🕒 Hora
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarOverlay('brujula')">
+                    🧭 Brújula
+                </button>
+            </div>
+
+            <div class="modal-body p-0">
+                <div class="canvas-wrapper" id="canvasWrapper">
+                    <img id="canvasEditor" src="" alt="Foto a editar">
+                    {{-- Aquí se inyectan los overlays --}}
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="guardarOverlayFoto()">
+                    💾 Guardar cambios
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
 <div class="container-fluid px-4">
     <h1 class="mt-4 text-center">INVENTARIO DE ORDEN</h1>
     <ol class="breadcrumb mb-4">
@@ -872,6 +1146,314 @@
 
 
 <script>
+    // ============================================================
+// GALERÍA DE FOTOS EXISTENTES + EDITOR DE OVERLAYS
+// ============================================================
+
+// Datos que Laravel inyecta
+const FOTOS_REGISTRADAS = @json($fotosRegistradas ?? []);
+let fotoActualEditor = null;
+let overlaysActivos = [];   // { tipo, x, y, ... }
+
+// ---------- ABRIR / CERRAR PANEL ----------
+function toggleGaleriaFotos() {
+    $('#tab-fotos-galeria').toggleClass('open');
+    $('#panel-fotos-galeria').toggleClass('open');
+}
+
+// ---------- RENDERIZAR GALERÍA ----------
+function renderizarGaleriaFotos() {
+    const $grid = $('#galeriaFotosGrid');
+    $grid.empty();
+
+    if (!FOTOS_REGISTRADAS || FOTOS_REGISTRADAS.length === 0) {
+        $('#galeriaVacia').removeClass('d-none');
+        $('#contadorFotosGaleria').text('0');
+        return;
+    }
+
+    $('#galeriaVacia').addClass('d-none');
+    $('#contadorFotosGaleria').text(FOTOS_REGISTRADAS.length);
+
+    FOTOS_REGISTRADAS.forEach(foto => {
+        // 🌟 CORRECCIÓN DE RUTA AQUÍ:
+        // Si la ruta ya empieza con http, la usamos tal cual. 
+        // Si no, asumimos que está en el storage local de Laravel o en Google Cloud.
+        let url = foto.fotografia;
+        
+        if (!url.startsWith('http')) {
+            // Opción A: Si usas almacenamiento local de Laravel (storage/app/public)
+            // url = "{{ asset('storage') }}/" + url;
+            
+            // Opción B: Si usas Google Cloud Storage (Ajusta 'tu-bucket' por el nombre real de tu bucket)
+            url = "https://storage.googleapis.com/sistema-pv-imagenes-tienda/" + url; 
+        }
+
+        const nombre = (foto.fotografia || '').split('/').pop();
+
+        const $item = $(`
+            <div class="galeria-item" data-id="${foto.id}">
+                <img src="${url}" alt="${nombre}" loading="lazy" onerror="this.src='{{ asset('img/no-image.png') }}'">
+                <button type="button" class="btn-edit-overlay" title="Editar overlays">✏️</button>
+                <div class="galeria-caption">${nombre}</div>
+            </div>
+        `);
+
+        // Eventos de click (igual que antes)
+        $item.find('img').on('click', function () {
+            Swal.fire({ imageUrl: url, imageAlt: nombre, showCloseButton: true, showConfirmButton: false, width: '90%' });
+        });
+
+        $item.find('.btn-edit-overlay').on('click', function (e) {
+            e.stopPropagation();
+            abrirEditorFoto(foto);
+        });
+
+        $grid.append($item);
+    });
+}
+// ---------- ABRIR EDITOR ----------
+function abrirEditorFoto(foto) {
+    fotoActualEditor = foto;
+    overlaysActivos = [];
+
+    // Si ya tenía overlays guardados (desde BD), los restauramos
+    if (foto.overlay_config) {
+        try {
+            const cfg = typeof foto.overlay_config === 'string'
+                ? JSON.parse(foto.overlay_config)
+                : foto.overlay_config;
+            overlaysActivos = Array.isArray(cfg) ? cfg : [];
+        } catch (e) {
+            console.warn('Config de overlay inválida:', e);
+        }
+    }
+
+    // Limpiar overlays previos del DOM
+    $('#canvasWrapper .overlay-text-box, #canvasWrapper .overlay-logo-box, #canvasWrapper .overlay-brujula').remove();
+
+    // Cargar imagen
+    const $img = $('#canvasEditor');
+    $img.attr('src', foto.fotografia);
+
+    $img.off('load').on('load', function () {
+        // Esperar al layout para posicionar
+        setTimeout(() => {
+            overlaysActivos.forEach(ov => crearOverlayDOM(ov));
+        }, 50);
+    });
+
+    // Mostrar modal con Bootstrap 4 (compatible con tu versión)
+    $('#modalEditorFoto').modal('show');
+}
+
+// ---------- CREAR OVERLAY SEGÚN TIPO ----------
+function agregarOverlay(tipo) {
+    let nuevo = null;
+
+    if (tipo === 'logo') {
+        // ... (código del logo se mantiene igual) ...
+    }
+    else if (tipo === 'gps') {
+        // ... (código del gps se mantiene igual) ...
+    }
+    else if (tipo === 'hora') {
+        // ... (código de la hora se mantiene igual) ...
+    }
+    else if (tipo === 'brujula') {
+        // 🌟 AQUÍ COLOCAS LA SOLICITUD DE PERMISO PARA LA BRÚJULA
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            // Para iOS 13+
+            DeviceOrientationEvent.requestPermission()
+                .then(permissionState => {
+                    if (permissionState === 'granted') {
+                        iniciarBrujula();
+                    } else {
+                        Swal.fire('Permiso denegado', 'No se puede mostrar la brújula sin permiso.', 'warning');
+                    }
+                })
+                .catch(console.error);
+        } else {
+            // Para Android y navegadores de escritorio
+            iniciarBrujula();
+        }
+
+        // Creamos el overlay visualmente (inicia en 0 grados)
+        nuevo = {
+            tipo: 'brujula',
+            grados: 0,
+            x: 10, y: 70,
+            w: 55,
+            uuid: 'ov-' + Date.now()
+        };
+        
+        overlaysActivos.push(nuevo);
+        crearOverlayDOM(nuevo);
+        actualizarArrayOverlays();
+        return; // Salimos para que no se duplique la creación
+    }
+
+    if (!nuevo) return;
+    if (!nuevo.uuid) nuevo.uuid = 'ov-' + Date.now() + Math.random();
+
+    overlaysActivos.push(nuevo);
+    crearOverlayDOM(nuevo);
+    actualizarArrayOverlays();
+}
+
+// 🌟 FUNCIÓN PARA ACTUALIZAR LA BRÚJULA EN TIEMPO REAL
+let escuchandoBrujula = false;
+function iniciarBrujula() {
+    if (escuchandoBrujula) return;
+    escuchandoBrujula = true;
+
+    window.addEventListener('deviceorientationabsolute', manejarOrientacion, true);
+    window.addEventListener('deviceorientation', manejarOrientacion, true);
+}
+
+function manejarOrientacion(event) {
+    // Obtenemos el ángulo de la brújula
+    let grados = event.webkitCompassHeading || Math.abs(event.alpha - 360);
+    
+    if (grados !== undefined && grados !== null) {
+        // Buscamos el overlay de tipo brújula en el DOM y lo rotamos
+        const $brujulaDOM = $('.overlay-brujula').first(); // O usa el uuid si hay varias
+        if ($brujulaDOM.length > 0) {
+            // El SVG tiene un <g> con la aguja, lo rotamos
+            $brujulaDOM.find('g').attr('transform', `rotate(${grados}, 50, 50)`);
+            
+            // Actualizamos el objeto en memoria
+            const uuid = $brujulaDOM.attr('data-uuid');
+            const ovRef = overlaysActivos.find(o => o.uuid === uuid);
+            if (ovRef) ovRef.grados = grados;
+        }
+    }
+}
+// ---------- CREAR EL DOM DE UN OVERLAY ----------
+function crearOverlayDOM(ov) {
+    const $wrapper = $('#canvasWrapper');
+    let $el;
+
+    if (ov.tipo === 'logo') {
+        $el = $('<img class="overlay-logo-box" draggable="false">');
+        $el.attr('src', ov.src).attr('data-uuid', ov.uuid);
+        $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 80) + 'px' });
+    }
+    else if (ov.tipo === 'brujula') {
+        // SVG de brújula simple con rotación
+        const svg = `
+            <svg viewBox="0 0 100 100" width="100%" height="100%" style="filter: drop-shadow(1px 1px 2px #000);">
+                <circle cx="50" cy="50" r="45" fill="rgba(0,0,0,0.5)" stroke="#fff" stroke-width="3"/>
+                <text x="50" y="22" text-anchor="middle" fill="#ff3b30" font-size="14" font-weight="bold">N</text>
+                <text x="50" y="90" text-anchor="middle" fill="#fff" font-size="12">S</text>
+                <text x="14" y="55" text-anchor="middle" fill="#fff" font-size="12">W</text>
+                <text x="86" y="55" text-anchor="middle" fill="#fff" font-size="12">E</text>
+                <g transform="rotate(${ov.grados || 0}, 50, 50)">
+                    <polygon points="50,15 56,50 50,45 44,50" fill="#ff3b30"/>
+                    <polygon points="50,85 56,50 50,55 44,50" fill="#fff"/>
+                </g>
+            </svg>`;
+        $el = $('<div class="overlay-brujula">').html(svg);
+        $el.attr('data-uuid', ov.uuid);
+        $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 55) + 'px', height: (ov.w || 55) + 'px' });
+    }
+    else {
+        $el = $('<div class="overlay-text-box">').text(ov.contenido || '');
+        $el.attr('data-uuid', ov.uuid);
+        $el.css({
+            left: ov.x + 'px',
+            top: ov.y + 'px',
+            fontSize: (ov.fontSize || 14) + 'px'
+        });
+    }
+
+    // Hacerlo arrastrable con jQuery UI
+    $el.draggable({
+        containment: '#canvasWrapper',
+        stop: function () {
+            const $this = $(this);
+            const uuid = $this.attr('data-uuid');
+            const ovRef = overlaysActivos.find(o => o.uuid === uuid);
+            if (ovRef) {
+                ovRef.x = parseInt($this.css('left'));
+                ovRef.y = parseInt($this.css('top'));
+                actualizarArrayOverlays();
+            }
+        }
+    });
+
+    // Doble click → eliminar
+    $el.on('dblclick', function () {
+        const uuid = $(this).attr('data-uuid');
+        overlaysActivos = overlaysActivos.filter(o => o.uuid !== uuid);
+        $(this).remove();
+        actualizarArrayOverlays();
+    });
+
+    $wrapper.append($el);
+}
+
+// ---------- SINCRONIZAR CON EL ARRAY ----------
+function actualizarArrayOverlays() {
+    // No es estrictamente necesario, pero útil para depuración
+    console.log('Overlays activos:', overlaysActivos);
+}
+
+// ---------- GUARDAR OVERLAY (llamada al backend) ----------
+function guardarOverlayFoto() {
+    if (!fotoActualEditor) return;
+
+    Swal.fire({
+        title: 'Guardando...',
+        text: 'Aplicando configuración de overlays',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    // Enviamos la config JSON al backend
+    $.ajax({
+        url: "{{ route('expediente.foto.actualizar_overlay') }}",
+        method: 'POST',
+        data: {
+            _token: "{{ csrf_token() }}",
+            id: fotoActualEditor.id,
+            overlay: overlaysActivos
+        },
+        success: function (resp) {
+            Swal.close();
+            $('#modalEditorFoto').modal('hide');
+
+            // Actualizar el objeto local
+            fotoActualEditor.overlay_config = overlaysActivos;
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Overlays guardados',
+                text: 'La configuración se aplicará la próxima vez que se consulte la fotografía.',
+                timer: 1800,
+                showConfirmButton: false
+            });
+        },
+        error: function (xhr) {
+            Swal.fire('Error', 'No se pudo guardar la configuración: ' + xhr.responseText, 'error');
+        }
+    });
+}
+
+// ---------- INICIALIZACIÓN ----------
+$(document).ready(function () {
+    renderizarGaleriaFotos();
+
+    // Cerrar panel al hacer click fuera
+    $(document).on('click', function (e) {
+        if ($('#panel-fotos-galeria').hasClass('open')) {
+            if (!$(e.target).closest('#panel-fotos-galeria, #tab-fotos-galeria').length) {
+                toggleGaleriaFotos();
+            }
+        }
+    });
+});
+
     // 1. Capturamos la orden actual de forma segura desde Laravel Blade
     const ordenActualCache = "{{ $orden->Orden }}";
 
@@ -1618,17 +2200,44 @@ $('#btnGuardarFotoContinuar').click(function() {
         }
         return data;
     })
-    .then(data => {
+        .then(data => {
         // Alerta de éxito integrada
         Swal.fire({
             title: '¡Evidencias Guardadas!',
             text: data.message || 'Fotografías guardadas exitosamente en la nube.',
-            icon: 'success'
+            icon: 'success',
+            timer: 2000,
+            showConfirmButton: false
         });
 
         // 5. LIMPIEZA DE CONTEXTO: Vaciamos el array local para la siguiente tanda de fotos
         photosForItem = [];
         
+        // 🌟 AQUÍ AGREGAS EL AJAX PARA REFRESCAR LA GALERÍA
+        // Suponiendo que creaste la ruta sugerida en el paso anterior
+        $.ajax({
+            url: "{{ route('inventariofotos.orden', $orden->id) }}", 
+            method: 'GET',
+            success: function(fotosNuevas) {
+                // Actualizamos el arreglo global
+                FOTOS_REGISTRADAS.length = 0; // Vaciamos sin perder la referencia
+                FOTOS_REGISTRADAS.push(...fotosNuevas); // Agregamos las nuevas
+                
+                // Volvemos a dibujar la galería
+                renderizarGaleriaFotos();
+                
+                // Abrimos la pestaña para que el técnico vea que se cargaron
+                if (!$('#panel-fotos-galeria').hasClass('open')) {
+                    toggleGaleriaFotos();
+                }
+            },
+            error: function(xhr) {
+                console.warn('No se pudo refrescar la galería de fotos', xhr);
+            }
+        });
+        // 🌟 FIN DEL AJAX
+
+           
         // Obtener el índice del contenedor para refrescar la visualización vacía
         const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0;
         if (typeof mostrarFotos === 'function') {

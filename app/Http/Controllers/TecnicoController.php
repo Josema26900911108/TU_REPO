@@ -2210,12 +2210,12 @@ $materiales = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sk
 }
 
 
-    public function inventariotecnicoorden($tecbucket)
-    {
-        DB::connection()->disableQueryLog();
+public function inventariotecnicoorden($tecbucket)
+{
+    DB::connection()->disableQueryLog();
 
-        try {
-                        if(!Auth::check()){
+    try {
+        if (!Auth::check()) {
             return redirect()->route('login');
         }
 
@@ -2229,15 +2229,47 @@ $materiales = MovimientoMaterial::join('treematerialescategoria as tmc', 'tmc.sk
             })
             ->first();
 
+        $tecnico = Tecnico::where('id', $orden->fkTecnico)->first();
 
-        $tecnico = Tecnico::where('id',$orden->fkTecnico)->first();
+        // 🌟 CARGAR LAS FOTOGRAFÍAS REGISTRADAS EN LA ORDEN
+        $fotosRegistradas = Expedientefotograficotecnico::where('Orden', $orden->Orden)
+            ->orderBy('created_at', 'desc')
+            ->get();
 
+        return view('buckettecnico.edit', compact(
+            'tecbucket',
+            'orden',
+            'tecnico',
+            'fotosRegistradas'   // ← Nueva variable
+        ));
 
-        return view('buckettecnico.edit', compact('tecbucket', 'orden','tecnico'));
-      }  catch (Exception $e) {         
-            return response()->json(['error, es posible que esta orden ya no cuente con registro para modificar' => $e->getMessage()], 400);
-        }
+    } catch (Exception $e) {
+        return response()->json([
+            'error' => 'Es posible que esta orden ya no cuente con registro para modificar',
+            'message' => $e->getMessage()
+        ], 400);
     }
+}
+
+public function actualizarOverlayFoto(Request $request)
+{
+    $request->validate([
+        'id'      => 'required|exists:expedientefotograficotecnico,id',
+        'overlay' => 'required|array',
+    ]);
+
+    // Guardamos la configuración del overlay en una columna JSON
+    // (o en un archivo sidecar si prefieres no tocar la tabla)
+    $foto = Expedientefotograficotecnico::find($request->id);
+    $foto->overlay_config = json_encode($request->overlay);
+    $foto->save();
+
+    return response()->json([
+        'status'  => 'success',
+        'message' => 'Configuración de overlay guardada.',
+        'data'    => $foto,
+    ]);
+}
 
             public function fillEstructura()
     {
@@ -3721,6 +3753,7 @@ public function guardarFotografiaAjax(Request $request)
         ], 500);
     }
 }
+
 
     public function fetchrelacionTecnico(Request $request)
 {

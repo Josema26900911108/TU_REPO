@@ -25,6 +25,7 @@ use App\Http\Controllers\ventaController;
 use App\Http\Controllers\RutaCicloController;
 use App\Jobs\GenerarDespachoCiclicoDiario;
 use App\Http\Controllers\PilotoDespachoController;
+use App\Http\Controllers\Mb51ImportController;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
@@ -56,6 +57,8 @@ use App\Models\Compra;
 use App\Models\Comprobante;
 use App\Models\CuentaContable;
 use App\Models\Cliente;
+use App\Models\Expedientefotograficotecnico;
+use App\Models\expedientetecnico;
 use App\Models\Lotesalarma;
 use App\Models\MovimientoMaterial;
 use App\Models\Persona;
@@ -445,7 +448,7 @@ Route::post('/cuentas/delete', [CuentaContableController::class, 'delete'])->nam
 Route::post('/cuentas/generarNumeroCuenta', [CuentaContableController::class, 'generarNumeroCuenta'])->name('cuentas.generarNumeroCuenta');
 Route::post('/update', [CuentaContableController::class, 'update'])->name('update');
 
-route::get('/etadirect',[etadirectController::class,'index'])->name('etadirect.lista');
+Route::get('/etadirect', [etadirectController::class, 'index'])->name('etadirect.index');
 Route::post('/etadirect/reporte-discrepancias', [etadirectController::class, 'reporteDiscrepancias'])->name('etadirect.reporteDiscrepancias');
 
 Route::get('/etadirect-formatoEta',[etadirectController::class,'descargarFormeta'])->name('etadirect.formeta');
@@ -479,6 +482,22 @@ Route::post('/etadirect/importar',[etadirectController::class,'importarMAMO'])->
 Route::post('/exportar-etadirect', [etadirectController::class, 'exportar'])->name('etadirect.exportar');
 
 Route::get('/mamo/progreso', [etadiRECTController::class, 'consultarProgresoMamo'])->name('mamo.progreso');
+
+
+//MB51 SAP
+
+Route::middleware('auth')->group(function () {
+    Route::get('/mb51/importar',  [Mb51ImportController::class, 'form'])->name('mb51.form');
+    Route::post('/mb51/importar', [Mb51ImportController::class, 'importar'])->name('mb51.importar');
+    Route::get('/mb51/formato',   [Mb51ImportController::class, 'descargarFormato'])->name('mb51.formato'); 
+    Route::get('/mb51/tabla',     [Mb51ImportController::class, 'tabla'])->name('mb51.tabla');
+    Route::get('/mb51/pendientes/formato', [Mb51ImportController::class, 'descargarPendientes'])->name('mb51.descargarPendientes');
+    Route::post('/mb51/pendientes/reporte', [Mb51ImportController::class, 'generarReporteJustificacion'])->name('mb51.reporteJustificacion');
+    Route::get('/mb51/reporte/progreso/{jobId}',[Mb51ImportController::class, 'progresoReporte'])->name('mb51.reporteProgreso');
+    
+    // AGREGA ESTA LÍNEA:
+    Route::get('/mb51/reporte/descargar/{jobId}',[Mb51ImportController::class, 'descargarReporte'])->name('mb51.reporteDescargar');
+});
 
 Route::get('/abrmateriales', [ArbolMaterialesController::class, 'fetch2'])->name('fetchabrmateriales');
 Route::get('/abrmatpadres', [ArbolMaterialesController::class, 'fillParentCategory'])->name('abrpadres');
@@ -609,6 +628,16 @@ Route::post('/tecnico/exist',[TecnicoController::class,'exist'])->name('tecnico.
 Route::get('/tecnico/{user}/edit',[TecnicoController::class,'edit'])->name('tecnico.edit');
 Route::get('buckettecnicoconstruccion/{tecbucket}', [TecnicoController::class,'inventariotecnicoorden'])
     ->name('tecnico.inventario');
+Route::post('/expediente/foto/actualizar-overlay', [TecnicoController::class, 'actualizarOverlayFoto'])
+    ->name('expediente.foto.actualizar_overlay');
+
+    Route::get('/inventario/fotos/{ordenId}', function ($ordenId) {
+    $orden = Expedientetecnico::findOrFail($ordenId);
+    
+    // Retornamos las fotos filtradas por el campo 'Orden'
+    return Expedientefotograficotecnico::where('Orden', $orden->Orden)->get();
+})->name('inventariofotos.orden')->middleware('auth');
+
 // Cambia Route::get por Route::delete
 Route::delete('/eliminartecnico/{id}', [TecnicoController::class, 'destroy'])->name('tecnico.destroy');
 

@@ -277,9 +277,16 @@
                 </a>
                 @endcan
                 @can('ver-eta')
-                <a class="nav-link" href="{{ route('etadirect.lista') }}">
+                <a class="nav-link" href="{{ route('etadirect.index') }}">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-route"></i></div>
                     Eta
+                </a>
+                @endcan
+
+                @can('ver-mb51')
+                <a class="nav-link" href="{{ route('mb51.importar') }}">
+                    <div class="sb-nav-link-icon"><i class="fa-solid fa-clipboard-check"></i></div>
+                    MB51
                 </a>
                 @endcan
 
