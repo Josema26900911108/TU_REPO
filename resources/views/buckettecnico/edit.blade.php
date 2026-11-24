@@ -3401,15 +3401,30 @@ $('#inputCamaraNativa').on('change', async function(e) {
     }
 });
 
-// Ejemplo de cómo enviarlo en tu evento de guardado/subida:
+// Asegurar que datosCapturaActual siempre tenga valores (aunque no hayan pasado por #btnAbrirCamaraNativa)
+const datosSeguros = window.datosCapturaActual || {
+    categoriaVal: $('#categoriafoto').val() || '',
+    categoriaTexto: obtenerTextoSelectpicker('#categoriafoto') || '',
+    tecnologiaVal: $('#itemtecnologia').val() || '',
+    tecnologiaTexto: obtenerTextoSelectpicker('#itemtecnologia') || ''
+};
+
 const formData = new FormData();
 formData.append('_token', "{{ csrf_token() }}");
 formData.append('Orden', "{{ $orden->Orden }}");
 formData.append('fkTienda', "{{ $Tienda->idTienda ?? '' }}");
-formData.append('fkTecnologia', window.datosCapturaActual.tecnologiaVal);
-formData.append('tecnologia_texto', window.datosCapturaActual.tecnologiaTexto);
-formData.append('categoria_texto', window.datosCapturaActual.categoriaTexto);
-formData.append('fotografia', window.fotoProcesadaBlob, window.fotoProcesadaNombre);
+formData.append('fkTecnologia', datosSeguros.tecnologiaVal);
+formData.append('tecnologia_texto', datosSeguros.tecnologiaTexto);
+formData.append('categoria_texto', datosSeguros.categoriaTexto);
+
+// Verificar si existe el Blob procesado o tomar el archivo directo del input
+const archivoFinal = window.fotoProcesadaBlob || $('#inputCamaraNativa')[0].files[0];
+const nombreFinal = window.fotoProcesadaNombre || (archivoFinal ? archivoFinal.name : 'foto.jpg');
+
+if (archivoFinal) {
+    formData.append('fotografia', archivoFinal, nombreFinal);
+}
+
 
 
 // Función auxiliar para cargar imágenes de forma asíncrona
