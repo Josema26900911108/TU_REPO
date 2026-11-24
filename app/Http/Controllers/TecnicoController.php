@@ -2316,6 +2316,23 @@ public function actualizarOverlayFoto(Request $request)
     }
 }
 
+public function obtenerFotoBase64($id)
+{
+    $foto = Expedientefotograficotecnico::findOrFail($id);
+
+    if (!$foto->fotografia || !Storage::disk('gcs')->exists($foto->fotografia)) {
+        return response()->json(['error' => 'Imagen no encontrada en GCS'], 404);
+    }
+
+    $contenido = Storage::disk('gcs')->get($foto->fotografia);
+    $mime = Storage::disk('gcs')->mimeType($foto->fotografia) ?: 'image/jpeg';
+
+    return response()->json([
+        'base64' => 'data:' . $mime . ';base64,' . base64_encode($contenido)
+    ]);
+}
+
+
             public function fillEstructura()
     {
 try {

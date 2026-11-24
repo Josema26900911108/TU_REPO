@@ -639,6 +639,10 @@ Route::post('/expediente/foto/actualizar-overlay', [TecnicoController::class, 'a
     return Expedientefotograficotecnico::where('Orden', $orden->Orden)->get();
 })->name('inventariofotos.orden')->middleware('auth');
 
+Route::get('/expediente/foto-base64/{id}', [TuControlador::class, 'obtenerFotoBase64'])
+    ->name('expediente.foto.base64');
+
+
 // Cambia Route::get por Route::delete
 Route::delete('/eliminartecnico/{id}', [TecnicoController::class, 'destroy'])->name('tecnico.destroy');
 

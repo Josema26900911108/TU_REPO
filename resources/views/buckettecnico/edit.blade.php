@@ -1175,6 +1175,17 @@ function toggleGaleriaFotos() {
     $('#panel-fotos-galeria').toggleClass('open');
 }
 
+// 1. Pedir la imagen en Base64 a nuestro propio servidor Laravel (evita bloqueo CORS)
+const respBase64 = await $.get("{{ url('/expediente/foto-base64') }}/" + fotoActualEditor.id);
+
+const imgBase = await new Promise(function(resolve, reject) {
+    const img = new Image();
+    img.onload = function() { resolve(img); };
+    img.onerror = function() { reject(new Error('No se pudo decodificar la imagen base.')); };
+    img.src = respBase64.base64;
+});
+
+
 // ---------- RENDERIZAR GALERÍA ----------
 function renderizarGaleriaFotos() {
     const $grid = $('#galeriaFotosGrid');
