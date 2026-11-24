@@ -514,10 +514,46 @@ $skusValidosPorTabla['MaterialManoObra'] = DB::table('MaterialManoObra')
                 continue;
             }
 
-            // --- 10. NORMALIZACIÓN SERIE/MISCELÁNEO (IDÉNTICA al original) ---
+            // --- 10. NORMALIZACIÓN SERIE/MISCELÁNEO ---
             $valoresMiscelaneos = ['N/A', '0', '-', "'", '0.00'];
-            $esMiscelaneoCSV    = empty($serie) || in_array($serie, $valoresMiscelaneos);
+            $esMiscelaneoCSV    = empty($serie) || in_array($serie, $valoresMiscelaneos, true);
             $serieLimpia        = $esMiscelaneoCSV ? '' : $serie;
+
+            if (!$esMiscelaneoCSV) {
+                // 1. Detectar corrupción por guardado ANSI en Excel
+                if (strpos($serieLimpia, '?') !== false) {
+                    $filasRechazadas[] = [
+                        'fila'     => $fila,
+                        'sku'      => $sku,
+                        'serie'    => $serieLimpia,
+                        'cantidad' => $cantidad,
+                        'motivo'   => "La serie contiene signos de interrogación ('?'). Guarde el archivo en Excel como 'CSV UTF-8 (delimitado por comas)'."
+                    ];
+                    continue;
+                }
+
+                // 2. Normalizar homóglifos cirílicos (ej. ЗААС -> 3AAC) y pasar a mayúsculas
+                $mapaCirilico = [
+                    'А' => 'A', 'В' => 'B', 'С' => 'C', 'Е' => 'E', 'Н' => 'H',
+                    'К' => 'K', 'М' => 'M', 'О' => 'O', 'Р' => 'P', 'Т' => 'T',
+                    'Х' => 'X', 'З' => '3',
+                ];
+                $serieLimpia = mb_strtoupper(strtr($serieLimpia, $mapaCirilico), 'UTF-8');
+
+                // 3. Validar formato estrictamente alfanumérico (A-Z, 0-9, guiones)
+                if (!preg_match('/^[A-Z0-9\-]+$/', $serieLimpia)) {
+                    $filasRechazadas[] = [
+                        'fila'     => $fila,
+                        'sku'      => $sku,
+                        'serie'    => $serieLimpia,
+                        'cantidad' => $cantidad,
+                        'motivo'   => "La serie contiene caracteres no permitidos. Solo se aceptan letras (A-Z) y números (0-9)."
+                    ];
+                    continue;
+                }
+            } // <--- VERIFICA QUE ESTA LLAVE ESTÉ PRESENTE
+
+            $data['SERIE'] = $serieLimpia;
 
             // --- 11. ESCUDO ANTI-DUPLICADOS EN EL MISMO ARCHIVO ---
             if ($esMiscelaneoCSV) {
@@ -533,6 +569,7 @@ $skusValidosPorTabla['MaterialManoObra'] = DB::table('MaterialManoObra')
                 ];
                 continue;
             }
+
 
             // --- 12. CATÁLOGO MAESTRO ---
             $materialMaestro = DB::table('MaterialManoObra')
