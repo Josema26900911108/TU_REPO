@@ -629,7 +629,8 @@ Route::get('/tecnico/{user}/edit',[TecnicoController::class,'edit'])->name('tecn
 Route::get('buckettecnicoconstruccion/{tecbucket}', [TecnicoController::class,'inventariotecnicoorden'])
     ->name('tecnico.inventario');
 Route::post('/expediente/foto/actualizar-overlay', [TecnicoController::class, 'actualizarOverlayFoto'])
-    ->name('expediente.foto.actualizar_overlay');
+    ->name('expediente.foto.actualizar_overlay')
+    ->middleware('auth');
 
     Route::get('/inventario/fotos/{ordenId}', function ($ordenId) {
     $orden = Expedientetecnico::findOrFail($ordenId);

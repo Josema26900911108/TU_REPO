@@ -1410,21 +1410,20 @@ function guardarOverlayFoto() {
         didOpen: () => Swal.showLoading()
     });
 
-    // Enviamos la config JSON al backend
     $.ajax({
-        url: "{{ route('expediente.foto.actualizar_overlay') }}",
+        url: "{{ route('expediente.foto.actualizar_overlay') }}", // Ruta Laravel
         method: 'POST',
         data: {
             _token: "{{ csrf_token() }}",
             id: fotoActualEditor.id,
-            overlay: overlaysActivos
+            overlay: overlaysActivos // jQuery serializa el array automáticamente
         },
         success: function (resp) {
             Swal.close();
             $('#modalEditorFoto').modal('hide');
 
-            // Actualizar el objeto local
-            fotoActualEditor.overlay_config = overlaysActivos;
+            // Actualizamos el objeto local con lo que devolvió el backend
+            fotoActualEditor.overlay_config = resp.data.overlay_config;
 
             Swal.fire({
                 icon: 'success',
@@ -1435,11 +1434,14 @@ function guardarOverlayFoto() {
             });
         },
         error: function (xhr) {
-            Swal.fire('Error', 'No se pudo guardar la configuración: ' + xhr.responseText, 'error');
+            Swal.fire(
+                'Error',
+                'No se pudo guardar la configuración: ' + xhr.responseJSON?.message || xhr.responseText,
+                'error'
+            );
         }
     });
 }
-
 // ---------- INICIALIZACIÓN ----------
 $(document).ready(function () {
     renderizarGaleriaFotos();

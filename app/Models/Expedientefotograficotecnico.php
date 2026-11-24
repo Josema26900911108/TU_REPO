@@ -17,8 +17,12 @@ class Expedientefotograficotecnico extends Model
 
     public $incrementing = true; // Si es autoincremental
 
+        protected $casts = [
+        'overlay_config' => 'array', 
+    ];
 
-    protected $fillable = ['id','fkTienda','Orden','fotografia','created_at','updated_at', 'fkTecnologia'];
+
+    protected $fillable = ['id','fkTienda','Orden','fotografia','created_at','updated_at', 'fkTecnologia','overlay_config'];
 
     public $timestamps = true;
 
@@ -26,6 +30,8 @@ class Expedientefotograficotecnico extends Model
 {
     return $this->belongsTo(Tienda::class, 'fkTienda','idTienda');
 }
+
+
 
 
 }

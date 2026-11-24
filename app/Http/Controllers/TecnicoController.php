@@ -2258,17 +2258,24 @@ public function actualizarOverlayFoto(Request $request)
         'overlay' => 'required|array',
     ]);
 
-    // Guardamos la configuración del overlay en una columna JSON
-    // (o en un archivo sidecar si prefieres no tocar la tabla)
-    $foto = Expedientefotograficotecnico::find($request->id);
-    $foto->overlay_config = json_encode($request->overlay);
-    $foto->save();
+    try {
+        $foto = Expedientefotograficotecnico::findOrFail($request->id);
 
-    return response()->json([
-        'status'  => 'success',
-        'message' => 'Configuración de overlay guardada.',
-        'data'    => $foto,
-    ]);
+        // El cast 'array' del modelo se encarga de convertir el array a JSON
+        $foto->overlay_config = $request->overlay;
+        $foto->save();
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Configuración de overlay guardada correctamente.',
+            'data'    => $foto,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'No se pudo guardar la configuración: ' . $e->getMessage(),
+        ], 500);
+    }
 }
 
             public function fillEstructura()
