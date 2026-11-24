@@ -19,6 +19,7 @@ class Expedientefotograficotecnico extends Model
 
         protected $casts = [
         'overlay_config' => 'array', 
+        'meta_data' => 'array',
     ];
 
 

@@ -667,19 +667,27 @@
                 </button>
             </div>
 
-            <div class="modal-body p-0">
-                <div class="canvas-wrapper" id="canvasWrapper">
-                    <img id="canvasEditor" src="" alt="Foto a editar">
-                    {{-- Aquí se inyectan los overlays --}}
-                </div>
-            </div>
+<div class="modal-body p-0">
+    <div class="canvas-wrapper" id="canvasWrapper">
+        <img id="canvasEditor" src="" alt="Foto a editar">
+        {{-- Aquí se inyectan los overlays --}}
+    </div>
+</div>
 
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" onclick="guardarOverlayFoto()">
-                    💾 Guardar cambios
-                </button>
-            </div>
+<!-- 🌟 NUEVO: Campo de observaciones -->
+<div class="p-3 bg-light border-top">
+    <label for="observacionesFoto" class="form-label fw-bold text-secondary mb-1">
+        <i class="fas fa-comment-dots"></i> Observaciones de la fotografía:
+    </label>
+    <textarea id="observacionesFoto" class="form-control" rows="2" placeholder="Ej. Se tomó foto del poste con daño..."></textarea>
+</div>
+
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+    <button type="button" class="btn btn-success" onclick="guardarOverlayFoto()">
+        💾 Guardar cambios
+    </button>
+</div>
 
         </div>
     </div>
@@ -1153,6 +1161,9 @@
 // Datos que Laravel inyecta
 const FOTOS_REGISTRADAS = @json($fotosRegistradas ?? []);
 let fotoActualEditor = null;
+let escuchandoBrujula = false;
+let gpsActual = { lat: null, lng: null };
+let horaActual = null;
 let overlaysActivos = [];   // { tipo, x, y, ... }
 
 // ---------- ABRIR / CERRAR PANEL ----------
@@ -1176,17 +1187,11 @@ function renderizarGaleriaFotos() {
     $('#contadorFotosGaleria').text(FOTOS_REGISTRADAS.length);
 
     FOTOS_REGISTRADAS.forEach(foto => {
-        // 🌟 CORRECCIÓN DE RUTA AQUÍ:
-        // Si la ruta ya empieza con http, la usamos tal cual. 
-        // Si no, asumimos que está en el storage local de Laravel o en Google Cloud.
         let url = foto.fotografia;
         
         if (!url.startsWith('http')) {
-            // Opción A: Si usas almacenamiento local de Laravel (storage/app/public)
-            // url = "{{ asset('storage') }}/" + url;
-            
-            // Opción B: Si usas Google Cloud Storage (Ajusta 'tu-bucket' por el nombre real de tu bucket)
-            url = "https://storage.googleapis.com/sistema-pv-imagenes-tienda/" + url; 
+            url = url.replace(/\\/g, '/'); 
+            url = "{{ asset('storage') }}/" + url; 
         }
 
         const nombre = (foto.fotografia || '').split('/').pop();
@@ -1199,51 +1204,72 @@ function renderizarGaleriaFotos() {
             </div>
         `);
 
-        // Eventos de click (igual que antes)
+        // Click en la foto para verla en grande
         $item.find('img').on('click', function () {
             Swal.fire({ imageUrl: url, imageAlt: nombre, showCloseButton: true, showConfirmButton: false, width: '90%' });
         });
 
+        // Click en el lápiz para editar
         $item.find('.btn-edit-overlay').on('click', function (e) {
             e.stopPropagation();
+            e.preventDefault();
             abrirEditorFoto(foto);
         });
 
         $grid.append($item);
     });
 }
+
 // ---------- ABRIR EDITOR ----------
 function abrirEditorFoto(foto) {
     fotoActualEditor = foto;
     overlaysActivos = [];
+    gpsActual = { lat: null, lng: null };
+    horaActual = null;
 
-    // Si ya tenía overlays guardados (desde BD), los restauramos
-    if (foto.overlay_config) {
-        try {
-            const cfg = typeof foto.overlay_config === 'string'
-                ? JSON.parse(foto.overlay_config)
-                : foto.overlay_config;
-            overlaysActivos = Array.isArray(cfg) ? cfg : [];
-        } catch (e) {
-            console.warn('Config de overlay inválida:', e);
-        }
+    // 🌟 Leer los metadatos guardados (observaciones, gps, hora, overlays)
+    let meta = foto.meta_data || {};
+    
+    // Si Laravel devuelve el JSON como string (por si acaso), lo parseamos
+    if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
     }
 
-    // Limpiar overlays previos del DOM
+    // Restaurar observaciones
+    $('#observacionesFoto').val(meta.observaciones || '');
+
+    // Restaurar GPS y Hora
+    if (meta.ubicacion) {
+        gpsActual = { lat: meta.ubicacion.lat, lng: meta.ubicacion.lng };
+    }
+    horaActual = meta.fecha_hora || null;
+
+    // Restaurar overlays visuales
+    if (meta.overlays && Array.isArray(meta.overlays)) {
+        overlaysActivos = meta.overlays;
+    }
+
+    // Limpiar el DOM
     $('#canvasWrapper .overlay-text-box, #canvasWrapper .overlay-logo-box, #canvasWrapper .overlay-brujula').remove();
 
     // Cargar imagen
     const $img = $('#canvasEditor');
-    $img.attr('src', foto.fotografia);
+    
+    let url = foto.fotografia;
+    if (!url.startsWith('http')) {
+        url = url.replace(/\\/g, '/'); 
+        url = "{{ asset('storage') }}/" + url; 
+    }
+    $img.attr('src', url);
 
+    // Re-dibujar los overlays cuando la imagen termine de cargar
     $img.off('load').on('load', function () {
-        // Esperar al layout para posicionar
         setTimeout(() => {
             overlaysActivos.forEach(ov => crearOverlayDOM(ov));
         }, 50);
     });
 
-    // Mostrar modal con Bootstrap 4 (compatible con tu versión)
+    // Mostrar modal
     $('#modalEditorFoto').modal('show');
 }
 
@@ -1252,18 +1278,63 @@ function agregarOverlay(tipo) {
     let nuevo = null;
 
     if (tipo === 'logo') {
-        // ... (código del logo se mantiene igual) ...
+        // Obtenemos la URL del logo dinámico desde Laravel
+        const logoUrl = "{{ isset($tienda) && $tienda->logo ? route('tienda.logo', $tienda->idTienda) : asset('img/logo-empresa.png') }}";
+
+        nuevo = {
+            tipo: 'logo',
+            src: logoUrl,
+            x: 10, y: 10,
+            w: 80,
+            uuid: 'ov-' + Date.now() + Math.random()
+        };
     }
     else if (tipo === 'gps') {
-        // ... (código del gps se mantiene igual) ...
+        nuevo = {
+            tipo: 'texto',
+            contenido: '📍 Obteniendo GPS...',
+            x: 10, y: 20,
+            fontSize: 14,
+            uuid: 'ov-' + Date.now() + Math.random()
+        };
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    gpsActual.lat = pos.coords.latitude;
+                    gpsActual.lng = pos.coords.longitude;
+                    nuevo.contenido = `📍 ${gpsActual.lat.toFixed(6)}, ${gpsActual.lng.toFixed(6)}`;
+                    
+                    // Actualizar DOM
+                    const $el = $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`);
+                    $el.text(nuevo.contenido);
+                    actualizarArrayOverlays();
+                },
+                () => { 
+                    nuevo.contenido = '📍 GPS no disponible'; 
+                    $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`).text('📍 GPS no disponible');
+                },
+                { enableHighAccuracy: true, timeout: 8000 }
+            );
+        }
     }
     else if (tipo === 'hora') {
-        // ... (código de la hora se mantiene igual) ...
+        const ahora = new Date();
+        horaActual = ahora.toLocaleString('es-GT'); // Guardamos la fecha real
+        
+        const fechaHoraStr = `🕒 ${ahora.toLocaleDateString('es-GT')} ${ahora.toLocaleTimeString('es-GT')}`;
+        
+        nuevo = { 
+            tipo: 'texto', 
+            contenido: fechaHoraStr, 
+            x: 10, y: 40, 
+            fontSize: 14, 
+            uuid: 'ov-' + Date.now() + Math.random() 
+        };
     }
     else if (tipo === 'brujula') {
-        // 🌟 AQUÍ COLOCAS LA SOLICITUD DE PERMISO PARA LA BRÚJULA
+        // Solicitar permiso para la brújula
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            // Para iOS 13+
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
                     if (permissionState === 'granted') {
@@ -1274,27 +1345,19 @@ function agregarOverlay(tipo) {
                 })
                 .catch(console.error);
         } else {
-            // Para Android y navegadores de escritorio
             iniciarBrujula();
         }
 
-        // Creamos el overlay visualmente (inicia en 0 grados)
         nuevo = {
             tipo: 'brujula',
             grados: 0,
-            x: 10, y: 70,
+            x: 10, y: 60,
             w: 55,
-            uuid: 'ov-' + Date.now()
+            uuid: 'ov-' + Date.now() + Math.random()
         };
-        
-        overlaysActivos.push(nuevo);
-        crearOverlayDOM(nuevo);
-        actualizarArrayOverlays();
-        return; // Salimos para que no se duplique la creación
     }
 
     if (!nuevo) return;
-    if (!nuevo.uuid) nuevo.uuid = 'ov-' + Date.now() + Math.random();
 
     overlaysActivos.push(nuevo);
     crearOverlayDOM(nuevo);
@@ -1302,7 +1365,7 @@ function agregarOverlay(tipo) {
 }
 
 // 🌟 FUNCIÓN PARA ACTUALIZAR LA BRÚJULA EN TIEMPO REAL
-let escuchandoBrujula = false;
+
 function iniciarBrujula() {
     if (escuchandoBrujula) return;
     escuchandoBrujula = true;
@@ -1312,17 +1375,14 @@ function iniciarBrujula() {
 }
 
 function manejarOrientacion(event) {
-    // Obtenemos el ángulo de la brújula
     let grados = event.webkitCompassHeading || Math.abs(event.alpha - 360);
     
     if (grados !== undefined && grados !== null) {
-        // Buscamos el overlay de tipo brújula en el DOM y lo rotamos
-        const $brujulaDOM = $('.overlay-brujula').first(); // O usa el uuid si hay varias
+        // Seleccionamos la primera brújula para evitar rotar todas a la vez
+        const $brujulaDOM = $('.overlay-brujula').last(); 
         if ($brujulaDOM.length > 0) {
-            // El SVG tiene un <g> con la aguja, lo rotamos
             $brujulaDOM.find('g').attr('transform', `rotate(${grados}, 50, 50)`);
             
-            // Actualizamos el objeto en memoria
             const uuid = $brujulaDOM.attr('data-uuid');
             const ovRef = overlaysActivos.find(o => o.uuid === uuid);
             if (ovRef) ovRef.grados = grados;
@@ -1336,11 +1396,12 @@ function crearOverlayDOM(ov) {
 
     if (ov.tipo === 'logo') {
         $el = $('<img class="overlay-logo-box" draggable="false">');
-        $el.attr('src', ov.src).attr('data-uuid', ov.uuid);
+        $el.attr('src', ov.src)
+           .attr('data-uuid', ov.uuid)
+           .on('error', function() { $(this).css('background', '#ccc'); }); // Fallback visual
         $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 80) + 'px' });
     }
     else if (ov.tipo === 'brujula') {
-        // SVG de brújula simple con rotación
         const svg = `
             <svg viewBox="0 0 100 100" width="100%" height="100%" style="filter: drop-shadow(1px 1px 2px #000);">
                 <circle cx="50" cy="50" r="45" fill="rgba(0,0,0,0.5)" stroke="#fff" stroke-width="3"/>
@@ -1367,7 +1428,7 @@ function crearOverlayDOM(ov) {
         });
     }
 
-    // Hacerlo arrastrable con jQuery UI
+    // Hacerlo arrastrable
     $el.draggable({
         containment: '#canvasWrapper',
         stop: function () {
@@ -1382,8 +1443,9 @@ function crearOverlayDOM(ov) {
         }
     });
 
-    // Doble click → eliminar
-    $el.on('dblclick', function () {
+    // Doble click para eliminar
+    $el.on('dblclick', function (e) {
+        e.preventDefault();
         const uuid = $(this).attr('data-uuid');
         overlaysActivos = overlaysActivos.filter(o => o.uuid !== uuid);
         $(this).remove();
@@ -1395,13 +1457,14 @@ function crearOverlayDOM(ov) {
 
 // ---------- SINCRONIZAR CON EL ARRAY ----------
 function actualizarArrayOverlays() {
-    // No es estrictamente necesario, pero útil para depuración
-    console.log('Overlays activos:', overlaysActivos);
+    // console.log('Overlays activos:', overlaysActivos);
 }
 
-// ---------- GUARDAR OVERLAY (llamada al backend) ----------
+// ---------- GUARDAR OVERLAY Y DATOS EN BASE DE DATOS ----------
 function guardarOverlayFoto() {
     if (!fotoActualEditor) return;
+
+    const observaciones = $('#observacionesFoto').val();
 
     Swal.fire({
         title: 'Guardando...',
@@ -1410,38 +1473,46 @@ function guardarOverlayFoto() {
         didOpen: () => Swal.showLoading()
     });
 
+    // Enviamos la config JSON y los datos de GPS, hora y observaciones
     $.ajax({
-        url: "{{ route('expediente.foto.actualizar_overlay') }}", // Ruta Laravel
+        url: "{{ route('expediente.foto.actualizar_overlay') }}",
         method: 'POST',
         data: {
             _token: "{{ csrf_token() }}",
             id: fotoActualEditor.id,
-            overlay: overlaysActivos // jQuery serializa el array automáticamente
+            overlay: overlaysActivos,
+            observaciones: observaciones,
+            latitud: gpsActual.lat,
+            longitud: gpsActual.lng,
+            fecha_hora: horaActual
         },
         success: function (resp) {
             Swal.close();
             $('#modalEditorFoto').modal('hide');
 
-            // Actualizamos el objeto local con lo que devolvió el backend
-            fotoActualEditor.overlay_config = resp.data.overlay_config;
+            // Actualizar el objeto local
+            if (resp.data && resp.data.meta_data) {
+                fotoActualEditor.meta_data = resp.data.meta_data;
+            }
 
             Swal.fire({
                 icon: 'success',
-                title: 'Overlays guardados',
-                text: 'La configuración se aplicará la próxima vez que se consulte la fotografía.',
+                title: 'Guardado',
+                text: 'La configuración se ha guardado correctamente.',
                 timer: 1800,
                 showConfirmButton: false
             });
         },
         error: function (xhr) {
             Swal.fire(
-                'Error',
-                'No se pudo guardar la configuración: ' + xhr.responseJSON?.message || xhr.responseText,
+                'Error', 
+                'No se pudo guardar la configuración: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText), 
                 'error'
             );
         }
     });
 }
+
 // ---------- INICIALIZACIÓN ----------
 $(document).ready(function () {
     renderizarGaleriaFotos();
@@ -1453,6 +1524,17 @@ $(document).ready(function () {
                 toggleGaleriaFotos();
             }
         }
+    });
+
+    // Eventos de la pestaña
+    $('#btnAbrirGaleriaFotos').off('click').on('click', function(e) {
+        e.preventDefault();
+        toggleGaleriaFotos();
+    });
+
+    $('#btnCerrarGaleriaFotos').off('click').on('click', function(e) {
+        e.preventDefault();
+        toggleGaleriaFotos();
     });
 });
 

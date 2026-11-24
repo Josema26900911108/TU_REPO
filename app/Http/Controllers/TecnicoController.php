@@ -2254,20 +2254,35 @@ public function inventariotecnicoorden($tecbucket)
 public function actualizarOverlayFoto(Request $request)
 {
     $request->validate([
-        'id'      => 'required|exists:expedientefotograficotecnico,id',
-        'overlay' => 'required|array',
+        'id'            => 'required|exists:expedientefotograficotecnico,id',
+        'overlay'       => 'required|array',
+        'observaciones' => 'nullable|string',
+        'latitud'       => 'nullable|string',
+        'longitud'      => 'nullable|string',
+        'fecha_hora'    => 'nullable|string',
     ]);
 
     try {
         $foto = Expedientefotograficotecnico::findOrFail($request->id);
 
-        // El cast 'array' del modelo se encarga de convertir el array a JSON
-        $foto->overlay_config = $request->overlay;
+        // 1. Armamos el arreglo JSON con toda la información
+        $metaData = [
+            'overlays'      => $request->overlay,
+            'observaciones' => $request->observaciones ?? '',
+            'ubicacion'     => [
+                'lat' => $request->latitud,
+                'lng' => $request->longitud,
+            ],
+            'fecha_hora'    => $request->fecha_hora ?? now()->toDateTimeString(),
+        ];
+
+        // 2. Guardamos en la base de datos
+        $foto->meta_data = $metaData;
         $foto->save();
 
         return response()->json([
             'status'  => 'success',
-            'message' => 'Configuración de overlay guardada correctamente.',
+            'message' => 'Datos de la fotografía guardados correctamente.',
             'data'    => $foto,
         ]);
     } catch (\Exception $e) {
