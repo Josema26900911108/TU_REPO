@@ -18,7 +18,8 @@
 <script src="{{ asset('js/html5-qrcode.min.js') }}"></script>
 <!-- Enlace oficial de jsDelivr Versión 5 compatible con jQuery y Celulares -->
 <script src="https://cdn.jsdelivr.net/npm/signature_pad@5.1.3/dist/signature_pad.umd.min.js" crossorigin="anonymous"></script>
-
+<script src="https://cloudflare.com"></script>
+<script src="https://jsdelivr.net"></script>
 <style>
 #preview { display: flex; flex-wrap: wrap; margin-top: 10px; gap: 10px; }
 .photo-container { position: relative; display: inline-block; }
