@@ -1187,17 +1187,11 @@ function renderizarGaleriaFotos() {
     $('#contadorFotosGaleria').text(FOTOS_REGISTRADAS.length);
 
     FOTOS_REGISTRADAS.forEach(foto => {
-        // 🌟 CORRECCIÓN DE RUTA AQUÍ:
-        // Si la ruta ya empieza con http, la usamos tal cual. 
-        // Si no, asumimos que está en el storage local de Laravel o en Google Cloud.
         let url = foto.fotografia;
         
         if (!url.startsWith('http')) {
-            // Opción A: Si usas almacenamiento local de Laravel (storage/app/public)
-            // url = "{{ asset('storage') }}/" + url;
-            
-            // Opción B: Si usas Google Cloud Storage (Ajusta 'tu-bucket' por el nombre real de tu bucket)
-            url = "https://storage.googleapis.com/sistema-pv-imagenes-tienda/" + url; 
+            url = url.replace(/\\/g, '/'); 
+            url = "{{ asset('storage') }}/" + url; 
         }
 
         const nombre = (foto.fotografia || '').split('/').pop();
@@ -1210,19 +1204,22 @@ function renderizarGaleriaFotos() {
             </div>
         `);
 
-        // Eventos de click (igual que antes)
+        // Click en la foto para verla en grande
         $item.find('img').on('click', function () {
             Swal.fire({ imageUrl: url, imageAlt: nombre, showCloseButton: true, showConfirmButton: false, width: '90%' });
         });
 
+        // Click en el lápiz para editar
         $item.find('.btn-edit-overlay').on('click', function (e) {
             e.stopPropagation();
+            e.preventDefault();
             abrirEditorFoto(foto);
         });
 
         $grid.append($item);
     });
 }
+
 // ---------- ABRIR EDITOR ----------
 function abrirEditorFoto(foto) {
     fotoActualEditor = foto;
