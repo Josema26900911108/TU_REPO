@@ -1224,34 +1224,52 @@ function renderizarGaleriaFotos() {
 function abrirEditorFoto(foto) {
     fotoActualEditor = foto;
     overlaysActivos = [];
+    gpsActual = { lat: null, lng: null };
+    horaActual = null;
 
-    // Si ya tenía overlays guardados (desde BD), los restauramos
-    if (foto.overlay_config) {
-        try {
-            const cfg = typeof foto.overlay_config === 'string'
-                ? JSON.parse(foto.overlay_config)
-                : foto.overlay_config;
-            overlaysActivos = Array.isArray(cfg) ? cfg : [];
-        } catch (e) {
-            console.warn('Config de overlay inválida:', e);
-        }
+    // 🌟 Leer los metadatos guardados (observaciones, gps, hora, overlays)
+    let meta = foto.meta_data || {};
+    
+    // Si Laravel devuelve el JSON como string (por si acaso), lo parseamos
+    if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
     }
 
-    // Limpiar overlays previos del DOM
+    // Restaurar observaciones
+    $('#observacionesFoto').val(meta.observaciones || '');
+
+    // Restaurar GPS y Hora
+    if (meta.ubicacion) {
+        gpsActual = { lat: meta.ubicacion.lat, lng: meta.ubicacion.lng };
+    }
+    horaActual = meta.fecha_hora || null;
+
+    // Restaurar overlays visuales
+    if (meta.overlays && Array.isArray(meta.overlays)) {
+        overlaysActivos = meta.overlays;
+    }
+
+    // Limpiar el DOM
     $('#canvasWrapper .overlay-text-box, #canvasWrapper .overlay-logo-box, #canvasWrapper .overlay-brujula').remove();
 
     // Cargar imagen
     const $img = $('#canvasEditor');
-    $img.attr('src', foto.fotografia);
+    
+    let url = foto.fotografia;
+    if (!url.startsWith('http')) {
+        url = url.replace(/\\/g, '/'); 
+        url = "{{ asset('storage') }}/" + url; 
+    }
+    $img.attr('src', url);
 
+    // Re-dibujar los overlays cuando la imagen termine de cargar
     $img.off('load').on('load', function () {
-        // Esperar al layout para posicionar
         setTimeout(() => {
             overlaysActivos.forEach(ov => crearOverlayDOM(ov));
         }, 50);
     });
 
-    // Mostrar modal con Bootstrap 4 (compatible con tu versión)
+    // Mostrar modal
     $('#modalEditorFoto').modal('show');
 }
 
@@ -1260,18 +1278,63 @@ function agregarOverlay(tipo) {
     let nuevo = null;
 
     if (tipo === 'logo') {
-        // ... (código del logo se mantiene igual) ...
+        // Obtenemos la URL del logo dinámico desde Laravel
+        const logoUrl = "{{ isset($tienda) && $tienda->logo ? route('tienda.logo', $tienda->idTienda) : asset('img/logo-empresa.png') }}";
+
+        nuevo = {
+            tipo: 'logo',
+            src: logoUrl,
+            x: 10, y: 10,
+            w: 80,
+            uuid: 'ov-' + Date.now() + Math.random()
+        };
     }
     else if (tipo === 'gps') {
-        // ... (código del gps se mantiene igual) ...
+        nuevo = {
+            tipo: 'texto',
+            contenido: '📍 Obteniendo GPS...',
+            x: 10, y: 20,
+            fontSize: 14,
+            uuid: 'ov-' + Date.now() + Math.random()
+        };
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    gpsActual.lat = pos.coords.latitude;
+                    gpsActual.lng = pos.coords.longitude;
+                    nuevo.contenido = `📍 ${gpsActual.lat.toFixed(6)}, ${gpsActual.lng.toFixed(6)}`;
+                    
+                    // Actualizar DOM
+                    const $el = $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`);
+                    $el.text(nuevo.contenido);
+                    actualizarArrayOverlays();
+                },
+                () => { 
+                    nuevo.contenido = '📍 GPS no disponible'; 
+                    $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`).text('📍 GPS no disponible');
+                },
+                { enableHighAccuracy: true, timeout: 8000 }
+            );
+        }
     }
     else if (tipo === 'hora') {
-        // ... (código de la hora se mantiene igual) ...
+        const ahora = new Date();
+        horaActual = ahora.toLocaleString('es-GT'); // Guardamos la fecha real
+        
+        const fechaHoraStr = `🕒 ${ahora.toLocaleDateString('es-GT')} ${ahora.toLocaleTimeString('es-GT')}`;
+        
+        nuevo = { 
+            tipo: 'texto', 
+            contenido: fechaHoraStr, 
+            x: 10, y: 40, 
+            fontSize: 14, 
+            uuid: 'ov-' + Date.now() + Math.random() 
+        };
     }
     else if (tipo === 'brujula') {
-        // 🌟 AQUÍ COLOCAS LA SOLICITUD DE PERMISO PARA LA BRÚJULA
+        // Solicitar permiso para la brújula
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            // Para iOS 13+
             DeviceOrientationEvent.requestPermission()
                 .then(permissionState => {
                     if (permissionState === 'granted') {
@@ -1282,27 +1345,19 @@ function agregarOverlay(tipo) {
                 })
                 .catch(console.error);
         } else {
-            // Para Android y navegadores de escritorio
             iniciarBrujula();
         }
 
-        // Creamos el overlay visualmente (inicia en 0 grados)
         nuevo = {
             tipo: 'brujula',
             grados: 0,
-            x: 10, y: 70,
+            x: 10, y: 60,
             w: 55,
-            uuid: 'ov-' + Date.now()
+            uuid: 'ov-' + Date.now() + Math.random()
         };
-        
-        overlaysActivos.push(nuevo);
-        crearOverlayDOM(nuevo);
-        actualizarArrayOverlays();
-        return; // Salimos para que no se duplique la creación
     }
 
     if (!nuevo) return;
-    if (!nuevo.uuid) nuevo.uuid = 'ov-' + Date.now() + Math.random();
 
     overlaysActivos.push(nuevo);
     crearOverlayDOM(nuevo);
