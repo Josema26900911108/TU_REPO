@@ -2513,42 +2513,38 @@ $(document).ready(function() {
 $('#btnGuardarFotoContinuar').click(function() {
     var selectItem = $('#itemmanoobraamterial');
     var selectCategoria = $('#categoriafoto');
-    
 
-    // 2. VALIDACIÓN DE ARREGLO DE FOTOS: Verificar si hay imágenes en tu variable real
+    // 1. VALIDACIÓN DE ARREGLO DE FOTOS
     if (typeof photosForItem === 'undefined' || photosForItem.length === 0) {
         alert("No se encontraron fotografías capturadas para guardar en este momento. Use el botón azul primero.");
         return;
     }
 
-    // Bloquear botón flotante de forma visual compacta (Estilo móvil)
+    // Bloquear botón flotante
     var $btn = $(this);
     $btn.prop('disabled', true).css('background-color', '#6c757d').html('⏳');
 
-    // Muestra el cargador SweetAlert nativo de tu app
     Swal.fire({
         title: 'Guardando evidencias...',
-        text: 'Subiendo fotografías exclusivamente a Google Cloud Storage',
+        text: 'Subiendo fotografías a Google Cloud Storage',
         allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); }
+        didOpen: function() { Swal.showLoading(); }
     });
 
-    // 3. CONSTRUCCIÓN DE FORM-DATA EXCLUSIVO PARA ENVIAR EL LOTE DE IMÁGENES
+    // 2. CONSTRUCCIÓN DE FORM-DATA (Incluyendo meta_data[])
     var formData = new FormData();
-    
-    // Variables de control requeridas por tu backend
     formData.append('orden', "{{ $expediente->Orden ?? ($orden->Orden ?? '') }}");
-    formData.append('fkTienda', "{{ $fkTienda ?? '' }}");
+    formData.append('fkTienda', "{{ $Tienda->idTienda ?? ($fkTienda ?? '') }}");
     formData.append('_token', "{{ csrf_token() }}");
 
-    // Recorremos tu arreglo real 'photosForItem' y lo empaquetamos idéntico a tu prepareForm
     photosForItem.forEach(function(photo) {
-        formData.append('photos[]', photo.data);          // Cadena Base64 optimizada
-        formData.append('names[]', photo.name);            // Nombre generado para el ERP
+        formData.append('photos[]', photo.data);
+        formData.append('names[]', photo.name);
         formData.append('iditemsTecnologia[]', photo.fkTecnologia ?? '0');
+        formData.append('meta_data[]', JSON.stringify(photo.meta_data || {}));
     });
 
-    // 4. ENVÍO ASÍNCRONO DIRECTO AL CONTROLADOR
+    // 3. ENVÍO ASÍNCRONO AL CONTROLADOR
     fetch("{{ route('expediente.guardar_foto_ajax') }}", {
         method: 'POST',
         body: formData,
@@ -2556,15 +2552,14 @@ $('#btnGuardarFotoContinuar').click(function() {
             'X-Requested-With': 'XMLHttpRequest'
         }
     })
-    .then(async response => {
+    .then(async function(response) {
         const data = await response.json();
         if (!response.ok) {
             throw new Error(data.message || 'Error al almacenar las fotografías en el servidor.');
         }
         return data;
     })
-        .then(data => {
-        // Alerta de éxito integrada
+    .then(function(data) {
         Swal.fire({
             title: '¡Evidencias Guardadas!',
             text: data.message || 'Fotografías guardadas exitosamente en la nube.',
@@ -2573,50 +2568,35 @@ $('#btnGuardarFotoContinuar').click(function() {
             showConfirmButton: false
         });
 
-        // 5. LIMPIEZA DE CONTEXTO: Vaciamos el array local para la siguiente tanda de fotos
+        // 4. LIMPIAR ARRAY LOCAL
         photosForItem = [];
-        
-        // 🌟 AQUÍ AGREGAS EL AJAX PARA REFRESCAR LA GALERÍA
-        // Suponiendo que creaste la ruta sugerida en el paso anterior
-        $.ajax({
-            url: "{{ route('inventariofotos.orden', $orden->id) }}", 
-            method: 'GET',
-            success: function(fotosNuevas) {
-                // Actualizamos el arreglo global
-                FOTOS_REGISTRADAS.length = 0; // Vaciamos sin perder la referencia
-                FOTOS_REGISTRADAS.push(...fotosNuevas); // Agregamos las nuevas
-                
-                // Volvemos a dibujar la galería
-                renderizarGaleriaFotos();
-                
-                // Abrimos la pestaña para que el técnico vea que se cargaron
-                if (!$('#panel-fotos-galeria').hasClass('open')) {
-                    toggleGaleriaFotos();
-                }
-            },
-            error: function(xhr) {
-                console.warn('No se pudo refrescar la galería de fotos', xhr);
-            }
-        });
-        // 🌟 FIN DEL AJAX
 
-           
-        // Obtener el índice del contenedor para refrescar la visualización vacía
+        // 5. ACTUALIZAR GALERÍA LATERAL DIRECTAMENTE CON data.fotos
+        if (data.fotos && Array.isArray(data.fotos)) {
+            FOTOS_REGISTRADAS = data.fotos;
+            renderizarGaleriaFotos();
+
+            if (!$('#panel-fotos-galeria').hasClass('open')) {
+                toggleGaleriaFotos();
+            }
+        }
+
+        // Limpiar vista previa
         const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0;
         if (typeof mostrarFotos === 'function') {
-            mostrarFotos(indiceActual); // Esto limpiará el contenedor de vistas previas automáticamente
+            mostrarFotos(indiceActual);
         } else {
             $('#preview').html('');
         }
 
-        // Resetear visualmente el selector de categorías
+        // Resetear selector de categorías
         if (selectCategoria.hasClass('selectpicker')) {
             selectCategoria.val('').selectpicker('refresh');
         } else {
             selectCategoria.val('');
         }
     })
-    .catch(error => {
+    .catch(function(error) {
         Swal.fire({
             title: 'Error de Sincronización',
             text: error.message,
@@ -2625,7 +2605,6 @@ $('#btnGuardarFotoContinuar').click(function() {
         });
     })
     .finally(function() {
-        // Devolver el botón flotante a su estado original (Verde circular)
         $btn.prop('disabled', false).css('background-color', '#198754')
             .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span>');
     });

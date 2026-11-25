@@ -3719,89 +3719,98 @@ public function bajaorden(Request $request, $etadirect)
 
 public function guardarFotografiaAjax(Request $request)
 {
-    // 1. Modificar Validación para aceptar Arreglos (Arrays)
+    // 1. Validación aceptando también meta_data opcional
     $request->validate([
         'photos'              => 'required|array',
-        'photos.*'            => 'required|string', // Cada elemento del array debe ser Base64
+        'photos.*'            => 'required|string',
         'names'               => 'required|array',
-        'names.*'             => 'required|string', // Cada nombre generado
+        'names.*'             => 'required|string',
         'iditemsTecnologia'   => 'required|array',
+        'meta_data'           => 'nullable|array', // ← Nuevo campo recibido desde el FormData
         'orden'               => 'required|string',
     ]);
 
     try {
-        // Obtener variables generales de la petición
-        $photosArray      = $request->input('photos', []);
-        $namesArray       = $request->input('names', []);
+        $photosArray       = $request->input('photos', []);
+        $namesArray        = $request->input('names', []);
         $iditemsTecnologia = $request->input('iditemsTecnologia', []);
-        
-        $orden            = $request->input('orden');
-        $fkTienda         = session('user_fkTienda');
-        
+        $metaDataArray     = $request->input('meta_data', []); // ← Capturamos el arreglo de metadatos
+
+        $orden             = $request->input('orden');
+        $fkTienda          = session('user_fkTienda') ?? $request->input('fkTienda');
+
         $fotosGuardadasContador = 0;
 
         // 2. Iterar el lote de imágenes mediante un foreach
         foreach ($photosArray as $i => $photoBase64) {
-            
-            // Validar formato y decodificar el Base64 de forma individual
+
             if (preg_match('/^data:image\/(\w+);base64,/', $photoBase64, $typeMatch)) {
-                $extension = strtolower($typeMatch[1]); 
+                $extension = strtolower($typeMatch[1]);
                 $fileData = base64_decode(substr($photoBase64, strpos($photoBase64, ',') + 1));
 
                 if ($fileData) {
-                    // Extraer los datos correspondientes al índice actual del bucle
                     $photoName = $namesArray[$i] ?? 'EVIDENCIA_FOTO';
                     $idtec     = $iditemsTecnologia[$i] ?? 0;
 
-                    // 3. Sanitizar nombres (Tu lógica limpia exacta)
+                    // Decodificar el JSON de meta_data correspondiente a esta foto
+                    $metaRaw     = $metaDataArray[$i] ?? null;
+                    $metaDecoded = is_string($metaRaw) ? json_decode($metaRaw, true) : $metaRaw;
+
+                    // 3. Sanitizar nombres
                     $nombreFotoLetras = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $photoName);
                     $nombreLimpio = preg_replace('/[^A-Za-z0-9\-]/', '_', $nombreFotoLetras);
                     $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
 
-                    // Generar nombre de archivo único para evitar colisiones en GCS
+                    // Generar nombre único para GCS
                     $fileName = trim($nombreLimpio, '_') . "_" . uniqid() . ".{$extension}";
                     $gcsPath  = "fotos/ordenes/{$orden}/{$fileName}";
 
-                    // 4. Subir de forma independiente a Google Cloud Storage
+                    // 4. Subir a Google Cloud Storage
                     Storage::disk('gcs_images')->put($gcsPath, $fileData, 'public');
                     $urlFotografia = Storage::disk('gcs_images')->url($gcsPath);
 
-                    // 5. Registrar registro único en la Base de Datos
+                    // 5. Registrar en Base de Datos incluyendo meta_data
                     Expedientefotograficotecnico::create([
                         'fkTienda'     => $fkTienda,
                         'Orden'        => $orden,
-                        'fotografia'   => $urlFotografia, 
+                        'fotografia'   => $urlFotografia,
                         'fkTecnologia' => $idtec,
+                        'meta_data'    => $metaDecoded, // ← Se guarda en la columna meta_data
                     ]);
 
-                    // Liberar memoria ram de este archivo inmediatamente en el ciclo
-                    unset($fileData); 
+                    unset($fileData);
                     $fotosGuardadasContador++;
                 }
             }
         }
 
-        // Retornar respuesta de éxito si se procesó al menos una imagen
         if ($fotosGuardadasContador > 0) {
+            // Obtenemos las fotos actualizadas de la orden para refrescar la galería al instante
+            $fotosActualizadas = Expedientefotograficotecnico::where('Orden', $orden)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
             return response()->json([
-                'success' => true, 
-                'message' => "Se almacenaron ({$fotosGuardadasContador}) fotografías con éxito en la nube de forma exclusiva."
+                'success' => true,
+                'message' => "Se almacenaron ({$fotosGuardadasContador}) fotografías con éxito en la nube.",
+                'fotos'   => $fotosActualizadas, // ← Lista fresca lista para renderizar
             ]);
         }
 
         return response()->json([
-            'success' => false, 
+            'success' => false,
             'message' => 'Ninguna imagen pudo ser procesada correctamente o el formato Base64 era inválido.'
         ], 400);
 
     } catch (\Exception $e) {
         return response()->json([
-            'success' => false, 
+            'success' => false,
             'message' => 'Error crítico interno en el servidor.',
             'error'   => $e->getMessage()
         ], 500);
     }
 }
+
 
 
     public function fetchrelacionTecnico(Request $request)
