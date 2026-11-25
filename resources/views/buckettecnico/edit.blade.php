@@ -1183,23 +1183,36 @@ let canvasDibujo = null;
 let ctxDibujo = null;
 
 // Inicializa el canvas transparente dentro de #canvasWrapper
-function inicializarCanvasDibujo(trazosGuardados = []) {
+function inicializarCanvasDibujo(trazosGuardados) {
     const $wrapper = $('#canvasWrapper');
+    if ($wrapper.length === 0) return;
+
+    // Asegurar posicionamiento relativo para que el canvas se superponga exactamente
+    if ($wrapper.css('position') === 'static') {
+        $wrapper.css('position', 'relative');
+    }
+
     $('#canvasDibujoOverlay').remove();
+
+    // Calcular dimensiones reales (con respaldo por si el modal aún está animando)
+    const ancho = $wrapper.width() || $wrapper.find('img').width() || 600;
+    const alto = $wrapper.height() || $wrapper.find('img').height() || 400;
 
     canvasDibujo = document.createElement('canvas');
     canvasDibujo.id = 'canvasDibujoOverlay';
-    canvasDibujo.width = $wrapper.width() || 600;
-    canvasDibujo.height = $wrapper.height() || 400;
+    canvasDibujo.width = ancho;
+    canvasDibujo.height = alto;
+
     $(canvasDibujo).css({
         position: 'absolute',
-        top: 0,
-        left: 0,
+        top: '0px',
+        left: '0px',
         width: '100%',
         height: '100%',
-        zIndex: 15,
-        pointerEvents: 'none', // Inicia desactivado para permitir arrastrar overlays
-        touchAction: 'none'    // Evita scroll en móvil mientras dibujas
+        zIndex: 50, // Por encima de la imagen y de los overlays cuando se activa
+        pointerEvents: modoDibujoActivo ? 'auto' : 'none',
+        touchAction: 'none',
+        cursor: 'crosshair'
     });
 
     $wrapper.append(canvasDibujo);
@@ -1210,86 +1223,9 @@ function inicializarCanvasDibujo(trazosGuardados = []) {
     redibujarTodosLosTrazos();
 }
 
-function toggleModoDibujo() {
-    modoDibujoActivo = !modoDibujoActivo;
-    const $btn = $('#btnModoDibujo');
-
-    if (modoDibujoActivo) {
-        $btn.removeClass('btn-outline-danger').addClass('btn-danger').text('✏️ Dibujar líneas: ON');
-        $(canvasDibujo).css('pointer-events', 'auto');
-    } else {
-        $btn.removeClass('btn-danger').addClass('btn-outline-danger').text('✏️ Dibujar líneas: OFF');
-        $(canvasDibujo).css('pointer-events', 'none');
-    }
-}
-
-function registrarEventosDibujo() {
-    const obtenerPos = (e) => {
-        const rect = canvasDibujo.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return {
-            x: (clientX - rect.left) / rect.width,  // Coordenada normalizada (0 a 1)
-            y: (clientY - rect.top) / rect.height
-        };
-    };
-
-    const iniciar = (e) => {
-        if (!modoDibujoActivo) return;
-        e.preventDefault();
-        dibujando = true;
-        const pt = obtenerPos(e);
-        trazoActual = { color: '#ff3b30', grosor: 3, puntos: [pt] };
-        trazosActivos.push(trazoActual);
-    };
-
-    const mover = (e) => {
-        if (!dibujando || !modoDibujoActivo) return;
-        e.preventDefault();
-        const pt = obtenerPos(e);
-        trazoActual.puntos.push(pt);
-        redibujarTodosLosTrazos();
-    };
-
-    const terminar = () => {
-        dibujando = false;
-        trazoActual = null;
-    };
-
-    // Eventos Mouse y Touch
-    canvasDibujo.addEventListener('mousedown', iniciar);
-    canvasDibujo.addEventListener('mousemove', mover);
-    window.addEventListener('mouseup', terminar);
-
-    canvasDibujo.addEventListener('touchstart', iniciar, { passive: false });
-    canvasDibujo.addEventListener('touchmove', mover, { passive: false });
-    window.addEventListener('touchend', terminar);
-}
-
-function redibujarTodosLosTrazos() {
-    if (!ctxDibujo || !canvasDibujo) return;
-    ctxDibujo.clearRect(0, 0, canvasDibujo.width, canvasDibujo.height);
-
-    trazosActivos.forEach(trazo => {
-        if (!trazo.puntos || trazo.puntos.length < 2) return;
-        ctxDibujo.beginPath();
-        ctxDibujo.strokeStyle = trazo.color || '#ff3b30';
-        ctxDibujo.lineWidth = trazo.grosor || 3;
-        ctxDibujo.lineCap = 'round';
-        ctxDibujo.lineJoin = 'round';
-
-        ctxDibujo.moveTo(trazo.puntos[0].x * canvasDibujo.width, trazo.puntos[0].y * canvasDibujo.height);
-        for (let i = 1; i < trazo.puntos.length; i++) {
-            ctxDibujo.lineTo(trazo.puntos[i].x * canvasDibujo.width, trazo.puntos[i].y * canvasDibujo.height);
-        }
-        ctxDibujo.stroke();
-    });
-}
-
-function deshacerUltimaLinea() {
-    trazosActivos.pop();
-    redibujarTodosLosTrazos();
-}
+$('#modalEditorFoto').on('shown.bs.modal', function() {
+    inicializarCanvasDibujo(trazosActivos);
+});
 
 // ---------- ABRIR / CERRAR PANEL ----------
 function toggleGaleriaFotos() {
@@ -1344,6 +1280,73 @@ function renderizarGaleriaFotos() {
         $grid.append($item);
     });
 }
+
+// Puente táctil para que jQuery UI .draggable() funcione en celulares y tablets
+(function ($) {
+    if (!$.support.touch) {
+        $.support.touch = 'ontouchend' in document;
+    }
+    if (!$.support.touch) return;
+
+    const mouseProto = $.ui.mouse.prototype;
+    const _mouseInit = mouseProto._mouseInit;
+    const _mouseDestroy = mouseProto._mouseDestroy;
+    let touchHandled = false;
+
+    function simulateMouseEvent(event, simulatedType) {
+        if (event.originalEvent.touches.length > 1) return;
+        event.preventDefault();
+        const touch = event.originalEvent.changedTouches[0];
+        const simulatedEvent = document.createEvent('MouseEvents');
+        simulatedEvent.initMouseEvent(
+            simulatedType, true, true, window, 1,
+            touch.screenX, touch.screenY, touch.clientX, touch.clientY,
+            false, false, false, false, 0, null
+        );
+        event.target.dispatchEvent(simulatedEvent);
+    }
+
+    mouseProto._touchStart = function (event) {
+        if (touchHandled || !this._mouseCapture(event.originalEvent.changedTouches[0])) return;
+        touchHandled = true;
+        this._touchMoved = false;
+        simulateMouseEvent(event, 'mouseover');
+        simulateMouseEvent(event, 'mousemove');
+        simulateMouseEvent(event, 'mousedown');
+    };
+
+    mouseProto._touchMove = function (event) {
+        if (!touchHandled) return;
+        this._touchMoved = true;
+        simulateMouseEvent(event, 'mousemove');
+    };
+
+    mouseProto._touchEnd = function (event) {
+        if (!touchHandled) return;
+        simulateMouseEvent(event, 'mouseup');
+        simulateMouseEvent(event, 'mouseout');
+        if (!this._touchMoved) simulateMouseEvent(event, 'click');
+        touchHandled = false;
+    };
+
+    mouseProto._mouseInit = function () {
+        this.element.on({
+            touchstart: $.proxy(this, '_touchStart'),
+            touchmove: $.proxy(this, '_touchMove'),
+            touchend: $.proxy(this, '_touchEnd')
+        });
+        _mouseInit.call(this);
+    };
+
+    mouseProto._mouseDestroy = function () {
+        this.element.off({
+            touchstart: $.proxy(this, '_touchStart'),
+            touchmove: $.proxy(this, '_touchMove'),
+            touchend: $.proxy(this, '_touchEnd')
+        });
+        _mouseDestroy.call(this);
+    };
+})(jQuery);
 
 // ---------- ABRIR EDITOR ----------
 function abrirEditorFoto(foto) {
