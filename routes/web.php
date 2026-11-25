@@ -639,7 +639,16 @@ Route::post('/expediente/foto/actualizar-overlay', [TecnicoController::class, 'a
     return Expedientefotograficotecnico::where('Orden', $orden->Orden)->get();
 })->name('inventariofotos.orden')->middleware('auth');
 
-Route::get('/expediente/foto-base64/{id}', [TuControlador::class, 'obtenerFotoBase64'])
+Route::get('/expediente/fotos-orden/{orden}', function ($orden) {
+    $fotos = \App\Models\Expedientefotograficotecnico::where('Orden', $orden)
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+    return response()->json($fotos);
+})->name('expediente.fotos.listar');
+
+
+Route::get('/expediente/foto-base64/{id}', [TecnicoController::class, 'obtenerFotoBase64'])
     ->name('expediente.foto.base64');
 
 

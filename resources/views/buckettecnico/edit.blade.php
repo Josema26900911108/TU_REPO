@@ -1474,6 +1474,25 @@ function renderizarGaleriaFotos() {
 }
 
 function recargarGaleriaFotos() {
+    $.ajax({
+        url: "{{ route('expediente.fotos.listar', ['orden' => $orden->Orden]) }}",
+        method: 'GET',
+        cache: false,
+        success: function(nuevasFotos) {
+            if (Array.isArray(nuevasFotos)) {
+                FOTOS_REGISTRADAS = nuevasFotos;
+                renderizarGaleriaFotos();
+                console.log('✅ Galería lateral actualizada:', FOTOS_REGISTRADAS.length, 'fotos.');
+            }
+        },
+        error: function(xhr) {
+            console.error('❌ Error al recargar galería:', xhr.responseText);
+        }
+    });
+}
+
+
+function recargarGaleriaFotos() {
     $.get("{{ url('/expediente/fotos-orden') }}/{{ $orden->Orden }}", function(nuevasFotos) {
         if (Array.isArray(nuevasFotos)) {
             FOTOS_REGISTRADAS = nuevasFotos;

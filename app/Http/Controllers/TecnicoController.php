@@ -2319,6 +2319,7 @@ public function obtenerFotoBase64($id)
 }
 
 
+
             public function fillEstructura()
     {
 try {
