@@ -665,6 +665,13 @@
                 <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarOverlay('brujula')">
                     🧭 Brújula
                 </button>
+                <button type="button" class="btn btn-outline-danger btn-sm" id="btnModoDibujo" onclick="toggleModoDibujo()">
+                    ✏️ Dibujar líneas: OFF
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="deshacerUltimaLinea()">
+                    ↩️ Deshacer trazo
+                </button>
+
             </div>
 
 <div class="modal-body p-0">
@@ -1168,6 +1175,121 @@ let gpsActual = { lat: null, lng: null };
 let horaActual = null;
 let overlaysActivos = [];   // { tipo, x, y, ... }
  window.LOGO_TIENDA = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
+let modoDibujoActivo = false;
+let dibujando = false;
+let trazosActivos = []; // Aquí se guardan todas las líneas para enviarlas a meta_data
+let trazoActual = null;
+let canvasDibujo = null;
+let ctxDibujo = null;
+
+// Inicializa el canvas transparente dentro de #canvasWrapper
+function inicializarCanvasDibujo(trazosGuardados = []) {
+    const $wrapper = $('#canvasWrapper');
+    $('#canvasDibujoOverlay').remove();
+
+    canvasDibujo = document.createElement('canvas');
+    canvasDibujo.id = 'canvasDibujoOverlay';
+    canvasDibujo.width = $wrapper.width() || 600;
+    canvasDibujo.height = $wrapper.height() || 400;
+    $(canvasDibujo).css({
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 15,
+        pointerEvents: 'none', // Inicia desactivado para permitir arrastrar overlays
+        touchAction: 'none'    // Evita scroll en móvil mientras dibujas
+    });
+
+    $wrapper.append(canvasDibujo);
+    ctxDibujo = canvasDibujo.getContext('2d');
+    trazosActivos = Array.isArray(trazosGuardados) ? trazosGuardados : [];
+
+    registrarEventosDibujo();
+    redibujarTodosLosTrazos();
+}
+
+function toggleModoDibujo() {
+    modoDibujoActivo = !modoDibujoActivo;
+    const $btn = $('#btnModoDibujo');
+
+    if (modoDibujoActivo) {
+        $btn.removeClass('btn-outline-danger').addClass('btn-danger').text('✏️ Dibujar líneas: ON');
+        $(canvasDibujo).css('pointer-events', 'auto');
+    } else {
+        $btn.removeClass('btn-danger').addClass('btn-outline-danger').text('✏️ Dibujar líneas: OFF');
+        $(canvasDibujo).css('pointer-events', 'none');
+    }
+}
+
+function registrarEventosDibujo() {
+    const obtenerPos = (e) => {
+        const rect = canvasDibujo.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: (clientX - rect.left) / rect.width,  // Coordenada normalizada (0 a 1)
+            y: (clientY - rect.top) / rect.height
+        };
+    };
+
+    const iniciar = (e) => {
+        if (!modoDibujoActivo) return;
+        e.preventDefault();
+        dibujando = true;
+        const pt = obtenerPos(e);
+        trazoActual = { color: '#ff3b30', grosor: 3, puntos: [pt] };
+        trazosActivos.push(trazoActual);
+    };
+
+    const mover = (e) => {
+        if (!dibujando || !modoDibujoActivo) return;
+        e.preventDefault();
+        const pt = obtenerPos(e);
+        trazoActual.puntos.push(pt);
+        redibujarTodosLosTrazos();
+    };
+
+    const terminar = () => {
+        dibujando = false;
+        trazoActual = null;
+    };
+
+    // Eventos Mouse y Touch
+    canvasDibujo.addEventListener('mousedown', iniciar);
+    canvasDibujo.addEventListener('mousemove', mover);
+    window.addEventListener('mouseup', terminar);
+
+    canvasDibujo.addEventListener('touchstart', iniciar, { passive: false });
+    canvasDibujo.addEventListener('touchmove', mover, { passive: false });
+    window.addEventListener('touchend', terminar);
+}
+
+function redibujarTodosLosTrazos() {
+    if (!ctxDibujo || !canvasDibujo) return;
+    ctxDibujo.clearRect(0, 0, canvasDibujo.width, canvasDibujo.height);
+
+    trazosActivos.forEach(trazo => {
+        if (!trazo.puntos || trazo.puntos.length < 2) return;
+        ctxDibujo.beginPath();
+        ctxDibujo.strokeStyle = trazo.color || '#ff3b30';
+        ctxDibujo.lineWidth = trazo.grosor || 3;
+        ctxDibujo.lineCap = 'round';
+        ctxDibujo.lineJoin = 'round';
+
+        ctxDibujo.moveTo(trazo.puntos[0].x * canvasDibujo.width, trazo.puntos[0].y * canvasDibujo.height);
+        for (let i = 1; i < trazo.puntos.length; i++) {
+            ctxDibujo.lineTo(trazo.puntos[i].x * canvasDibujo.width, trazo.puntos[i].y * canvasDibujo.height);
+        }
+        ctxDibujo.stroke();
+    });
+}
+
+function deshacerUltimaLinea() {
+    trazosActivos.pop();
+    redibujarTodosLosTrazos();
+}
 
 // ---------- ABRIR / CERRAR PANEL ----------
 function toggleGaleriaFotos() {
@@ -1490,7 +1612,7 @@ function guardarOverlayFoto() {
 
     Swal.fire({
         title: 'Guardando...',
-        text: 'Guardando configuración y metadatos',
+        text: 'Guardando overlays, trazos y metadatos',
         allowOutsideClick: false,
         didOpen: function() { Swal.showLoading(); }
     });
@@ -1502,6 +1624,7 @@ function guardarOverlayFoto() {
             _token: "{{ csrf_token() }}",
             id: fotoActualEditor.id,
             overlay: overlaysActivos,
+            lineas: trazosActivos, // ← Enviamos las líneas trazadas
             observaciones: observaciones,
             latitud: gpsActual.lat || '',
             longitud: gpsActual.lng || '',
@@ -1511,28 +1634,69 @@ function guardarOverlayFoto() {
             Swal.close();
             $('#modalEditorFoto').modal('hide');
 
-            // Actualizamos el meta_data en el objeto local para que si vuelves a abrir el modal ya salgan los cambios
             if (resp.data && resp.data.meta_data) {
                 fotoActualEditor.meta_data = resp.data.meta_data;
             }
 
+            // Actualizar la galería flotante y el contador
+            recargarGaleriaFotos();
+
             Swal.fire({
                 icon: 'success',
                 title: 'Guardado',
-                text: 'Los metadatos y overlays se guardaron correctamente.',
-                timer: 1800,
+                text: 'Los cambios se guardaron correctamente.',
+                timer: 1600,
                 showConfirmButton: false
             });
         },
         error: function (xhr) {
             Swal.fire(
                 'Error',
-                'No se pudo guardar la configuración: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText),
+                'No se pudo guardar: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText),
                 'error'
             );
         }
     });
 }
+
+
+function recargarGaleriaFotos() {
+    $.get("{{ url('/expediente/fotos-orden') }}/{{ $orden->Orden }}", function(fotos) {
+        const $grid = $('#galeriaFotosGrid');
+        const $vacia = $('#galeriaVacia');
+        const $contador = $('#contadorFotosGaleria');
+
+        $contador.text(fotos.length);
+        $grid.empty();
+
+        if (!fotos || fotos.length === 0) {
+            $vacia.removeClass('d-none');
+            return;
+        }
+
+        $vacia.addClass('d-none');
+
+        fotos.forEach(function(foto) {
+            const tieneEdicion = foto.meta_data && (
+                (foto.meta_data.overlays && foto.meta_data.overlays.length > 0) ||
+                (foto.meta_data.lineas && foto.meta_data.lineas.length > 0)
+            );
+            const badgeEditado = tieneEdicion ? '<span class="badge bg-info position-absolute top-0 end-0 m-1">Editada</span>' : '';
+
+            // Ajusta 'foto.url_publica' según cómo construyas la URL de tu bucket GCS
+            const urlImg = foto.url_publica + '?v=' + Date.now();
+
+            const card = `
+                <div class="galeria-item position-relative" onclick='abrirEditorFoto(${JSON.stringify(foto)})'>
+                    ${badgeEditado}
+                    <img src="${urlImg}" alt="Foto orden" loading="lazy">
+                </div>
+            `;
+            $grid.append(card);
+        });
+    });
+}
+
 
 
 // ---------- INICIALIZACIÓN ----------

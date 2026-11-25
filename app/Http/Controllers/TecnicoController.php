@@ -2275,6 +2275,7 @@ public function actualizarOverlayFoto(Request $request)
 
         $metaData = [
             'overlays'      => $request->overlay ?? [],
+            'lineas'        => $request->lineas ?? [], // ← Se guarda en el JSON
             'observaciones' => $request->observaciones ?? '',
             'ubicacion'     => [
                 'lat' => $request->latitud,
@@ -2282,6 +2283,7 @@ public function actualizarOverlayFoto(Request $request)
             ],
             'fecha_hora'    => $request->fecha_hora ?? now()->toDateTimeString(),
         ];
+
 
         $foto->meta_data = $metaData;
         $foto->save();
