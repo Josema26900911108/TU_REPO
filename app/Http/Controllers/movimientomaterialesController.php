@@ -553,7 +553,7 @@ $skusValidosPorTabla['MaterialManoObra'] = DB::table('MaterialManoObra')
                 }
             } // <--- VERIFICA QUE ESTA LLAVE ESTÉ PRESENTE
 
-            $data['SERIE'] = $serieLimpia;
+            $data['serie'] = $serieLimpia;
 
             // --- 11. ESCUDO ANTI-DUPLICADOS EN EL MISMO ARCHIVO ---
             if ($esMiscelaneoCSV) {
