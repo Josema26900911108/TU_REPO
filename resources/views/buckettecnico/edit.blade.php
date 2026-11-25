@@ -1386,7 +1386,7 @@ function renderizarGaleriaFotos() {
     });
 }
 
-// Puente táctil para que jQuery UI .draggable() funcione en celulares y tablets
+// Puente táctil mejorado: soporta arrastrar (.draggable) Y doble toque para eliminar en móviles
 (function ($) {
     if (!$.support.touch) {
         $.support.touch = 'ontouchend' in document;
@@ -1397,10 +1397,12 @@ function renderizarGaleriaFotos() {
     const _mouseInit = mouseProto._mouseInit;
     const _mouseDestroy = mouseProto._mouseDestroy;
     let touchHandled = false;
+    let ultimoToqueTap = 0;
+    let ultimoElementoTap = null;
 
     function simulateMouseEvent(event, simulatedType) {
         if (event.originalEvent.touches.length > 1) return;
-        event.preventDefault();
+        if (event.cancelable) event.preventDefault();
         const touch = event.originalEvent.changedTouches[0];
         const simulatedEvent = document.createEvent('MouseEvents');
         simulatedEvent.initMouseEvent(
@@ -1430,7 +1432,31 @@ function renderizarGaleriaFotos() {
         if (!touchHandled) return;
         simulateMouseEvent(event, 'mouseup');
         simulateMouseEvent(event, 'mouseout');
-        if (!this._touchMoved) simulateMouseEvent(event, 'click');
+
+        // Si el dedo NO se movió (fue un toque limpio, no un arrastre)
+        if (!this._touchMoved) {
+            simulateMouseEvent(event, 'click');
+
+            const ahora = Date.now();
+            const elementoActual = this.element[0];
+
+            // Si tocó dos veces el MISMO overlay en menos de 350ms -> disparar dblclick
+            if (ultimoElementoTap === elementoActual && (ahora - ultimoToqueTap) < 350) {
+                ultimoToqueTap = 0;
+                ultimoElementoTap = null;
+                touchHandled = false;
+                $(elementoActual).trigger('dblclick');
+                return;
+            }
+
+            ultimoToqueTap = ahora;
+            ultimoElementoTap = elementoActual;
+        } else {
+            // Si hubo arrastre, reiniciamos el contador de doble toque
+            ultimoToqueTap = 0;
+            ultimoElementoTap = null;
+        }
+
         touchHandled = false;
     };
 
@@ -1452,6 +1478,7 @@ function renderizarGaleriaFotos() {
         _mouseDestroy.call(this);
     };
 })(jQuery);
+
 
 // ---------- ABRIR EDITOR ----------
 function abrirEditorFoto(foto) {
@@ -1505,6 +1532,45 @@ function abrirEditorFoto(foto) {
     // Mostrar modal
     $('#modalEditorFoto').modal('show');
 }
+    // Función única para eliminar el elemento
+    const eliminarEsteOverlay = function () {
+        const uuid = $el.attr('data-uuid');
+        overlaysActivos = overlaysActivos.filter(o => o.uuid !== uuid);
+        $el.remove();
+        actualizarArrayOverlays();
+    };
+
+    // 1. Doble clic en PC
+    $el.on('dblclick', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        eliminarEsteOverlay();
+    });
+
+    // 2. Doble toque rápido en Móvil (menos de 300ms sin arrastrar)
+    let ultimoToque = 0;
+    let seArrastro = false;
+
+    $el.on('touchstart', function () {
+        seArrastro = false;
+    });
+
+    $el.on('touchmove', function () {
+        seArrastro = true;
+    });
+
+    $el.on('touchend', function (e) {
+        if (seArrastro) return; // Si lo estaba moviendo, no eliminar
+        const ahora = Date.now();
+        if (ahora - ultimoToque < 300 && ahora - ultimoToque > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            eliminarEsteOverlay();
+        }
+        ultimoToque = ahora;
+    });
+
+    $wrapper.append($el);
 
 // ---------- CREAR OVERLAY SEGÚN TIPO ----------
 function agregarOverlay(tipo) {
