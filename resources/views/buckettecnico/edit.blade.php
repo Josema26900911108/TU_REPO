@@ -3280,126 +3280,168 @@ $("#itemmanoobra").off('change').on('change', function () {
 }
 });
 
-$('#inputCamaraNativa').on('change', async function(e) {
+$('#inputCamaraNativa').off('change').on('change', async function(e) {
     const file = e.target.files[0];
     if (!file) return;
 
     Swal.fire({
-        title: 'Procesando fotografía...',
-        text: 'Estampando logo, datos técnicos y ubicación',
+        title: 'Optimizando fotografía...',
+        text: 'Estampando logo, datos técnicos y ubicación para el ERP',
         allowOutsideClick: false,
         didOpen: function() { Swal.showLoading(); }
     });
 
+    const urlTemporalBlob = URL.createObjectURL(file);
+
     try {
         // 1. Cargar foto capturada
-        const objectUrl = URL.createObjectURL(file);
-        const imgFoto = await cargarImagenAsync(objectUrl);
+        const img = await cargarImagenAsync(urlTemporalBlob);
 
-        // 2. Preparar Canvas (máx 1600px de ancho para optimizar subida y memoria)
-        const maxAncho = 1600;
-        const escala = imgFoto.width > maxAncho ? (maxAncho / imgFoto.width) : 1;
+        // 2. Redimensionar a 1200px para no saturar LocalStorage
+        const MAX_WIDTH = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+            height = Math.round(height * (MAX_WIDTH / width));
+            width = MAX_WIDTH;
+        }
+
         const canvas = document.createElement('canvas');
-        canvas.width = Math.round(imgFoto.width * escala);
-        canvas.height = Math.round(imgFoto.height * escala);
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
 
-        // Dibujar foto original
-        ctx.drawImage(imgFoto, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(objectUrl);
+        // Dibujar foto base
+        ctx.drawImage(img, 0, 0, width, height);
 
         // 3. Dibujar Logo de la Tienda (esquina superior izquierda)
         const logoSrc = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
         try {
             const imgLogo = await cargarImagenAsync(logoSrc);
-            const logoAncho = Math.round(canvas.width * 0.16);
+            const logoAncho = Math.round(width * 0.16);
             const logoAlto = Math.round((imgLogo.height / imgLogo.width) * logoAncho);
-            ctx.drawImage(imgLogo, 24, 24, logoAncho, logoAlto);
+            ctx.drawImage(imgLogo, 20, 20, logoAncho, logoAlto);
         } catch (errLogo) {
-            console.warn('No se pudo cargar el logo en el canvas:', errLogo);
+            console.warn('No se pudo cargar el logo:', errLogo);
         }
 
-        // 4. Construir textos de metadatos
+        // 4. Obtener textos reales sin placeholders ("-- Seleccione...")
+        const datos = window.datosCapturaActual || {};
+        const textoCategoria = datos.categoriaTexto || obtenerTextoSelectpicker('#categoriafoto');
+        const textoTecnologia = datos.tecnologiaTexto || obtenerTextoSelectpicker('#itemtecnologia');
+        const textoItem = obtenerTextoSelectpicker('#itemmanoobraamterial');
+
         const ahora = new Date();
         const fechaHora = ahora.toLocaleDateString('es-GT') + ' ' + ahora.toLocaleTimeString('es-GT');
-        const datos = window.datosCapturaActual || {
-            categoriaTexto: obtenerTextoSelectpicker('#categoriafoto'),
-            tecnologiaTexto: obtenerTextoSelectpicker('#itemtecnologia')
-        };
-
         const gpsTexto = (datos.lat && datos.lng)
             ? 'GPS: ' + datos.lat.toFixed(6) + ', ' + datos.lng.toFixed(6)
             : 'GPS: No disponible';
-
         const brujulaTexto = (datos.grados !== null && datos.grados !== undefined)
             ? ' | Rumbo: ' + datos.grados + '°'
             : '';
 
         const lineas = [
-            'CATEGORÍA: ' + datos.categoriaTexto,
-            'TECNOLOGÍA: ' + datos.tecnologiaTexto,
+            'CATEGORÍA: ' + textoCategoria,
+            'TECNOLOGÍA: ' + textoTecnologia,
             'FECHA/HORA: ' + fechaHora,
             gpsTexto + brujulaTexto
         ];
+        if (textoItem && !textoItem.includes('Seleccione')) {
+            lineas.splice(2, 0, 'ÍTEM: ' + textoItem);
+        }
 
-        // 5. Dibujar caja de texto semitransparente (esquina inferior izquierda)
-        const fontSize = Math.max(18, Math.round(canvas.width * 0.022));
+        // 5. Dibujar caja de texto semitransparente (abajo a la izquierda)
+        const fontSize = Math.max(15, Math.round(width * 0.022));
         ctx.font = 'bold ' + fontSize + 'px Arial, sans-serif';
         const lineHeight = Math.round(fontSize * 1.38);
-        const padding = 18;
+        const padding = 14;
 
-        // Calcular ancho dinámico de la caja según la línea más larga
         let maxTextWidth = 0;
         lineas.forEach(function(l) {
             const w = ctx.measureText(l).width;
             if (w > maxTextWidth) maxTextWidth = w;
         });
 
-        const boxWidth = Math.min(canvas.width - 48, maxTextWidth + (padding * 2));
+        const boxWidth = Math.min(width - 40, maxTextWidth + (padding * 2));
         const boxHeight = (lineas.length * lineHeight) + (padding * 2);
-        const boxX = 24;
-        const boxY = canvas.height - boxHeight - 24;
+        const boxX = 20;
+        const boxY = height - boxHeight - 20;
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
         ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
-        // Escribir líneas en blanco
         ctx.fillStyle = '#FFFFFF';
         lineas.forEach(function(linea, idx) {
             const yPos = boxY + padding + ((idx + 1) * lineHeight) - Math.round(fontSize * 0.25);
             ctx.fillText(linea, boxX + padding, yPos);
         });
 
-        // 6. Exportar resultado a Base64 y Blob
-        const imagenFinalBase64 = canvas.toDataURL('image/jpeg', 0.88);
-        window.fotoProcesadaBlob = await new Promise(function(resolve) {
-            canvas.toBlob(resolve, 'image/jpeg', 0.88);
+        // 6. Exportar imagen comprimida (Calidad 0.70)
+        const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.70);
+
+        // 7. Armar nombre limpio para el ERP
+        const descripcionParaNombre = (textoItem && !textoItem.includes('Seleccione')) ? textoItem : textoTecnologia;
+        const descripcionLimpia = descripcionParaNombre
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        const categoriafoto = $('#categoriafoto').val();
+        const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_'.$tecnico->descripcion }}_" + categoriafoto + '_' + descripcionLimpia;
+        const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0;
+        const idTecnologiaUnificado = $('#itemtecnologia').val();
+
+        // 8. AQUÍ SE CONSTRUYE LA META_DATA PARA GUARDARLA JUNTO CON LA FOTO
+        const metaDataCaptura = {
+            overlays: [],
+            observaciones: '',
+            ubicacion: {
+                lat: datos.lat || null,
+                lng: datos.lng || null
+            },
+            fecha_hora: fechaHora,
+            categoria: textoCategoria,
+            tecnologia: textoTecnologia,
+            rumbo_brujula: datos.grados ?? null
+        };
+
+        // 9. Guardar en el arreglo global del ERP (photosForItem)
+        photosForItem.push({
+            index: indiceActual,
+            name: nombreFotoGenerado,
+            data: dataUrlComprimida,
+            fkTecnologia: idTecnologiaUnificado,
+            meta_data: metaDataCaptura // ← Se enviará al presionar "Actualizar / Sincronizar"
         });
 
-        // 7. Generar nombre de archivo limpio (sin "Seleccione un item obligatorio")
-        const limpiarSlug = function(str) {
-            return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]/g, '_');
-        };
-        const nombreArchivoSugerido = limpiarSlug(datos.categoriaTexto) + '_' + limpiarSlug(datos.tecnologiaTexto) + '_' + Date.now() + '.jpg';
-        window.fotoProcesadaNombre = nombreArchivoSugerido;
+        mostrarFotos(indiceActual);
 
-        // 8. Mostrar vista previa en #preview
-        if ($('#preview').length > 0) {
-            $('#preview').html(
-                '<div class="text-center mt-2">' +
-                    '<img src="' + imagenFinalBase64 + '" class="img-fluid rounded shadow border" style="max-height: 320px;">' +
-                    '<small class="d-block text-muted mt-1">' + nombreArchivoSugerido + '</small>' +
-                '</div>'
-            );
+        URL.revokeObjectURL(urlTemporalBlob);
+        Swal.close();
+        document.getElementById('inputCamaraNativa').value = "";
+
+        // 10. Alerta de sesión
+        if (!sessionStorage.getItem('advertencia_foto_mostrada')) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Fotografía guardada en caché',
+                html: 'La imagen se ha optimizado y guardado en la memoria temporal del teléfono. <br><br>' +
+                      '⚠️ <strong>Atención:</strong> Para evitar que el dispositivo borre las fotos por inactividad o sature su espacio interno, ' +
+                      'recuerda presionar el botón <strong>"Actualizar / Sincronizar"</strong> lo antes posible para subir las evidencias al servidor web.',
+                confirmButtonText: 'Entendido',
+                allowOutsideClick: false
+            });
+            sessionStorage.setItem('advertencia_foto_mostrada', 'true');
         }
 
-        Swal.close();
-
     } catch (error) {
+        URL.revokeObjectURL(urlTemporalBlob);
+        Swal.close();
         console.error('Error procesando captura:', error);
         Swal.fire('Error', 'No se pudo procesar la fotografía: ' + error.message, 'error');
     }
 });
+
 
 // Evento 2: Escucha cuando el técnico toma la foto a pantalla completa y la acepta
 document.getElementById('inputCamaraNativa').addEventListener('change', function(e) {
