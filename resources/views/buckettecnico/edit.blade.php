@@ -1177,12 +1177,11 @@ let overlaysActivos = [];   // { tipo, x, y, ... }
  window.LOGO_TIENDA = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
 let modoDibujoActivo = false;
 let dibujando = false;
-let trazosActivos = []; // Aquí se guardan todas las líneas para enviarlas a meta_data
+let trazosActivos = [];
 let trazoActual = null;
 let canvasDibujo = null;
 let ctxDibujo = null;
 
-// Inicializa el canvas transparente dentro de #canvasWrapper
 function inicializarCanvasDibujo(trazosGuardados) {
     const $wrapper = $('#canvasWrapper');
     if ($wrapper.length === 0) return;
@@ -1223,9 +1222,115 @@ function inicializarCanvasDibujo(trazosGuardados) {
     redibujarTodosLosTrazos();
 }
 
+function toggleModoDibujo() {
+    // Si aún no existe el canvas por algún motivo, lo creamos al momento de activar
+    if (!canvasDibujo || !document.getElementById('canvasDibujoOverlay')) {
+        inicializarCanvasDibujo(trazosActivos);
+    }
+
+    // Reajustar tamaño interno del canvas al tamaño visible actual del wrapper
+    const rect = canvasDibujo.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0 && (canvasDibujo.width !== Math.round(rect.width))) {
+        canvasDibujo.width = Math.round(rect.width);
+        canvasDibujo.height = Math.round(rect.height);
+        redibujarTodosLosTrazos();
+    }
+
+    modoDibujoActivo = !modoDibujoActivo;
+    const $btn = $('#btnModoDibujo');
+
+    if (modoDibujoActivo) {
+        $btn.removeClass('btn-outline-danger').addClass('btn-danger').text('✏️ Dibujar líneas: ON');
+        $(canvasDibujo).css('pointer-events', 'auto');
+    } else {
+        $btn.removeClass('btn-danger').addClass('btn-outline-danger').text('✏️ Dibujar líneas: OFF');
+        $(canvasDibujo).css('pointer-events', 'none');
+    }
+}
+
+function registrarEventosDibujo() {
+    const obtenerPos = function(e) {
+        const rect = canvasDibujo.getBoundingClientRect();
+        const toque = (e.touches && e.touches.length > 0) ? e.touches[0] : e;
+        return {
+            x: (toque.clientX - rect.left) / rect.width,
+            y: (toque.clientY - rect.top) / rect.height
+        };
+    };
+
+    const iniciar = function(e) {
+        if (!modoDibujoActivo) return;
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+
+        dibujando = true;
+        const pt = obtenerPos(e);
+        trazoActual = { color: '#ff3b30', grosor: 3, puntos: [pt] };
+        trazosActivos.push(trazoActual);
+        redibujarTodosLosTrazos();
+    };
+
+    const mover = function(e) {
+        if (!dibujando || !modoDibujoActivo || !trazoActual) return;
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+
+        const pt = obtenerPos(e);
+        trazoActual.puntos.push(pt);
+        redibujarTodosLosTrazos();
+    };
+
+    const terminar = function() {
+        dibujando = false;
+        trazoActual = null;
+    };
+
+    // Mouse (PC)
+    canvasDibujo.addEventListener('mousedown', iniciar);
+    canvasDibujo.addEventListener('mousemove', mover);
+    window.addEventListener('mouseup', terminar);
+
+    // Touch (Móvil)
+    canvasDibujo.addEventListener('touchstart', iniciar, { passive: false });
+    canvasDibujo.addEventListener('touchmove', mover, { passive: false });
+    window.addEventListener('touchend', terminar);
+}
+
+function redibujarTodosLosTrazos() {
+    if (!ctxDibujo || !canvasDibujo) return;
+    ctxDibujo.clearRect(0, 0, canvasDibujo.width, canvasDibujo.height);
+
+    for (let t = 0; t < trazosActivos.length; t++) {
+        const trazo = trazosActivos[t];
+        if (!trazo.puntos || trazo.puntos.length === 0) continue;
+
+        ctxDibujo.beginPath();
+        ctxDibujo.strokeStyle = trazo.color || '#ff3b30';
+        ctxDibujo.lineWidth = trazo.grosor || 3;
+        ctxDibujo.lineCap = 'round';
+        ctxDibujo.lineJoin = 'round';
+
+        const p0 = trazo.puntos[0];
+        ctxDibujo.moveTo(p0.x * canvasDibujo.width, p0.y * canvasDibujo.height);
+
+        for (let i = 1; i < trazo.puntos.length; i++) {
+            const p = trazo.puntos[i];
+            ctxDibujo.lineTo(p.x * canvasDibujo.width, p.y * canvasDibujo.height);
+        }
+        ctxDibujo.stroke();
+    }
+}
+
+function deshacerUltimaLinea() {
+    trazosActivos.pop();
+    redibujarTodosLosTrazos();
+}
+
+// Reajustar tamaño del canvas automáticamente cuando el modal termina de abrirse
 $('#modalEditorFoto').on('shown.bs.modal', function() {
     inicializarCanvasDibujo(trazosActivos);
 });
+
 
 // ---------- ABRIR / CERRAR PANEL ----------
 function toggleGaleriaFotos() {
