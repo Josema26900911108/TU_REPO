@@ -1167,14 +1167,17 @@
 // GALERÍA DE FOTOS EXISTENTES + EDITOR DE OVERLAYS
 // ============================================================
 
-// Datos que Laravel inyecta
-const FOTOS_REGISTRADAS = @json($fotosRegistradas ?? []);
+// =========================================================================
+// 1. VARIABLES GLOBALES
+// =========================================================================
+let FOTOS_REGISTRADAS = @json($fotosRegistradas ?? []);
 let fotoActualEditor = null;
 let escuchandoBrujula = false;
 let gpsActual = { lat: null, lng: null };
 let horaActual = null;
-let overlaysActivos = [];   // { tipo, x, y, ... }
- window.LOGO_TIENDA = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
+let overlaysActivos = [];
+window.LOGO_TIENDA = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
+
 let modoDibujoActivo = false;
 let dibujando = false;
 let trazosActivos = [];
@@ -1182,18 +1185,109 @@ let trazoActual = null;
 let canvasDibujo = null;
 let ctxDibujo = null;
 
+// =========================================================================
+// 2. PUENTE TÁCTIL PARA JQUERY UI (.draggable + doble toque en móvil)
+// =========================================================================
+(function ($) {
+    if (typeof $.ui === 'undefined' || !$.ui.mouse) return;
+    if (!$.support.touch) {
+        $.support.touch = 'ontouchend' in document;
+    }
+    if (!$.support.touch) return;
+
+    const mouseProto = $.ui.mouse.prototype;
+    const _mouseInit = mouseProto._mouseInit;
+    const _mouseDestroy = mouseProto._mouseDestroy;
+    let touchHandled = false;
+    let ultimoToqueTap = 0;
+    let ultimoElementoTap = null;
+
+    function simulateMouseEvent(event, simulatedType) {
+        if (event.originalEvent.touches.length > 1) return;
+        if (event.cancelable) event.preventDefault();
+        const touch = event.originalEvent.changedTouches[0];
+        const simulatedEvent = document.createEvent('MouseEvents');
+        simulatedEvent.initMouseEvent(
+            simulatedType, true, true, window, 1,
+            touch.screenX, touch.screenY, touch.clientX, touch.clientY,
+            false, false, false, false, 0, null
+        );
+        event.target.dispatchEvent(simulatedEvent);
+    }
+
+    mouseProto._touchStart = function (event) {
+        if (touchHandled || !this._mouseCapture(event.originalEvent.changedTouches[0])) return;
+        touchHandled = true;
+        this._touchMoved = false;
+        simulateMouseEvent(event, 'mouseover');
+        simulateMouseEvent(event, 'mousemove');
+        simulateMouseEvent(event, 'mousedown');
+    };
+
+    mouseProto._touchMove = function (event) {
+        if (!touchHandled) return;
+        this._touchMoved = true;
+        simulateMouseEvent(event, 'mousemove');
+    };
+
+    mouseProto._touchEnd = function (event) {
+        if (!touchHandled) return;
+        simulateMouseEvent(event, 'mouseup');
+        simulateMouseEvent(event, 'mouseout');
+
+        if (!this._touchMoved) {
+            simulateMouseEvent(event, 'click');
+            const ahora = Date.now();
+            const elementoActual = this.element[0];
+
+            if (ultimoElementoTap === elementoActual && (ahora - ultimoToqueTap) < 350) {
+                ultimoToqueTap = 0;
+                ultimoElementoTap = null;
+                touchHandled = false;
+                $(elementoActual).trigger('dblclick');
+                return;
+            }
+            ultimoToqueTap = ahora;
+            ultimoElementoTap = elementoActual;
+        } else {
+            ultimoToqueTap = 0;
+            ultimoElementoTap = null;
+        }
+        touchHandled = false;
+    };
+
+    mouseProto._mouseInit = function () {
+        this.element.on({
+            touchstart: $.proxy(this, '_touchStart'),
+            touchmove: $.proxy(this, '_touchMove'),
+            touchend: $.proxy(this, '_touchEnd')
+        });
+        _mouseInit.call(this);
+    };
+
+    mouseProto._mouseDestroy = function () {
+        this.element.off({
+            touchstart: $.proxy(this, '_touchStart'),
+            touchmove: $.proxy(this, '_touchMove'),
+            touchend: $.proxy(this, '_touchEnd')
+        });
+        _mouseDestroy.call(this);
+    };
+})(jQuery);
+
+// =========================================================================
+// 3. CANVAS DE DIBUJO LIBRE (LÍNEAS SOBRE LA FOTO)
+// =========================================================================
 function inicializarCanvasDibujo(trazosGuardados) {
     const $wrapper = $('#canvasWrapper');
     if ($wrapper.length === 0) return;
 
-    // Asegurar posicionamiento relativo para que el canvas se superponga exactamente
     if ($wrapper.css('position') === 'static') {
         $wrapper.css('position', 'relative');
     }
 
     $('#canvasDibujoOverlay').remove();
 
-    // Calcular dimensiones reales (con respaldo por si el modal aún está animando)
     const ancho = $wrapper.width() || $wrapper.find('img').width() || 600;
     const alto = $wrapper.height() || $wrapper.find('img').height() || 400;
 
@@ -1208,7 +1302,7 @@ function inicializarCanvasDibujo(trazosGuardados) {
         left: '0px',
         width: '100%',
         height: '100%',
-        zIndex: 50, // Por encima de la imagen y de los overlays cuando se activa
+        zIndex: 50,
         pointerEvents: modoDibujoActivo ? 'auto' : 'none',
         touchAction: 'none',
         cursor: 'crosshair'
@@ -1223,12 +1317,10 @@ function inicializarCanvasDibujo(trazosGuardados) {
 }
 
 function toggleModoDibujo() {
-    // Si aún no existe el canvas por algún motivo, lo creamos al momento de activar
     if (!canvasDibujo || !document.getElementById('canvasDibujoOverlay')) {
         inicializarCanvasDibujo(trazosActivos);
     }
 
-    // Reajustar tamaño interno del canvas al tamaño visible actual del wrapper
     const rect = canvasDibujo.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0 && (canvasDibujo.width !== Math.round(rect.width))) {
         canvasDibujo.width = Math.round(rect.width);
@@ -1285,12 +1377,10 @@ function registrarEventosDibujo() {
         trazoActual = null;
     };
 
-    // Mouse (PC)
     canvasDibujo.addEventListener('mousedown', iniciar);
     canvasDibujo.addEventListener('mousemove', mover);
     window.addEventListener('mouseup', terminar);
 
-    // Touch (Móvil)
     canvasDibujo.addEventListener('touchstart', iniciar, { passive: false });
     canvasDibujo.addEventListener('touchmove', mover, { passive: false });
     window.addEventListener('touchend', terminar);
@@ -1326,19 +1416,17 @@ function deshacerUltimaLinea() {
     redibujarTodosLosTrazos();
 }
 
-// Reajustar tamaño del canvas automáticamente cuando el modal termina de abrirse
 $('#modalEditorFoto').on('shown.bs.modal', function() {
     inicializarCanvasDibujo(trazosActivos);
 });
-
-
-// ---------- ABRIR / CERRAR PANEL ----------
+// =========================================================================
+// 4. GALERÍA LATERAL DE FOTOS
+// =========================================================================
 function toggleGaleriaFotos() {
     $('#tab-fotos-galeria').toggleClass('open');
     $('#panel-fotos-galeria').toggleClass('open');
 }
 
-// ---------- RENDERIZAR GALERÍA ----------
 function renderizarGaleriaFotos() {
     const $grid = $('#galeriaFotosGrid');
     $grid.empty();
@@ -1352,30 +1440,29 @@ function renderizarGaleriaFotos() {
     $('#galeriaVacia').addClass('d-none');
     $('#contadorFotosGaleria').text(FOTOS_REGISTRADAS.length);
 
-    FOTOS_REGISTRADAS.forEach(foto => {
-        let url = foto.fotografia;
-        
+    FOTOS_REGISTRADAS.forEach(function(foto) {
+        let url = foto.fotografia || '';
         if (!url.startsWith('http')) {
-            url = url.replace(/\\/g, '/'); 
-            url = "{{ asset('storage') }}/" + url; 
+            url = url.replace(/\\/g, '/');
+            url = "{{ asset('storage') }}/" + url;
         }
 
         const nombre = (foto.fotografia || '').split('/').pop();
+        const imgFallback = "{{ asset('img/no-image.png') }}";
 
-        const $item = $(`
-            <div class="galeria-item" data-id="${foto.id}">
-                <img src="${url}" alt="${nombre}" loading="lazy" onerror="this.src='{{ asset('img/no-image.png') }}'">
-                <button type="button" class="btn-edit-overlay" title="Editar overlays">✏️</button>
-                <div class="galeria-caption">${nombre}</div>
-            </div>
-        `);
+        const $item = $(
+            '<div class="galeria-item" data-id="' + foto.id + '">' +
+                '<img src="' + url + '" alt="' + nombre + '" loading="lazy" onerror="this.src=\'' + imgFallback + '\'">' +
+                '<button type="button" class="btn-edit-overlay" title="Editar overlays">✏️</button>' +
+                '<div class="galeria-caption">' + nombre + '</div>' +
+            '</div>'
+        );
 
-        // Click en la foto para verla en grande
+
         $item.find('img').on('click', function () {
             Swal.fire({ imageUrl: url, imageAlt: nombre, showCloseButton: true, showConfirmButton: false, width: '90%' });
         });
 
-        // Click en el lápiz para editar
         $item.find('.btn-edit-overlay').on('click', function (e) {
             e.stopPropagation();
             e.preventDefault();
@@ -1386,233 +1473,103 @@ function renderizarGaleriaFotos() {
     });
 }
 
-// Puente táctil mejorado: soporta arrastrar (.draggable) Y doble toque para eliminar en móviles
-(function ($) {
-    if (!$.support.touch) {
-        $.support.touch = 'ontouchend' in document;
-    }
-    if (!$.support.touch) return;
-
-    const mouseProto = $.ui.mouse.prototype;
-    const _mouseInit = mouseProto._mouseInit;
-    const _mouseDestroy = mouseProto._mouseDestroy;
-    let touchHandled = false;
-    let ultimoToqueTap = 0;
-    let ultimoElementoTap = null;
-
-    function simulateMouseEvent(event, simulatedType) {
-        if (event.originalEvent.touches.length > 1) return;
-        if (event.cancelable) event.preventDefault();
-        const touch = event.originalEvent.changedTouches[0];
-        const simulatedEvent = document.createEvent('MouseEvents');
-        simulatedEvent.initMouseEvent(
-            simulatedType, true, true, window, 1,
-            touch.screenX, touch.screenY, touch.clientX, touch.clientY,
-            false, false, false, false, 0, null
-        );
-        event.target.dispatchEvent(simulatedEvent);
-    }
-
-    mouseProto._touchStart = function (event) {
-        if (touchHandled || !this._mouseCapture(event.originalEvent.changedTouches[0])) return;
-        touchHandled = true;
-        this._touchMoved = false;
-        simulateMouseEvent(event, 'mouseover');
-        simulateMouseEvent(event, 'mousemove');
-        simulateMouseEvent(event, 'mousedown');
-    };
-
-    mouseProto._touchMove = function (event) {
-        if (!touchHandled) return;
-        this._touchMoved = true;
-        simulateMouseEvent(event, 'mousemove');
-    };
-
-    mouseProto._touchEnd = function (event) {
-        if (!touchHandled) return;
-        simulateMouseEvent(event, 'mouseup');
-        simulateMouseEvent(event, 'mouseout');
-
-        // Si el dedo NO se movió (fue un toque limpio, no un arrastre)
-        if (!this._touchMoved) {
-            simulateMouseEvent(event, 'click');
-
-            const ahora = Date.now();
-            const elementoActual = this.element[0];
-
-            // Si tocó dos veces el MISMO overlay en menos de 350ms -> disparar dblclick
-            if (ultimoElementoTap === elementoActual && (ahora - ultimoToqueTap) < 350) {
-                ultimoToqueTap = 0;
-                ultimoElementoTap = null;
-                touchHandled = false;
-                $(elementoActual).trigger('dblclick');
-                return;
-            }
-
-            ultimoToqueTap = ahora;
-            ultimoElementoTap = elementoActual;
-        } else {
-            // Si hubo arrastre, reiniciamos el contador de doble toque
-            ultimoToqueTap = 0;
-            ultimoElementoTap = null;
+function recargarGaleriaFotos() {
+    $.get("{{ url('/expediente/fotos-orden') }}/{{ $orden->Orden }}", function(nuevasFotos) {
+        if (Array.isArray(nuevasFotos)) {
+            FOTOS_REGISTRADAS = nuevasFotos;
+            renderizarGaleriaFotos();
         }
+    });
+}
 
-        touchHandled = false;
-    };
-
-    mouseProto._mouseInit = function () {
-        this.element.on({
-            touchstart: $.proxy(this, '_touchStart'),
-            touchmove: $.proxy(this, '_touchMove'),
-            touchend: $.proxy(this, '_touchEnd')
-        });
-        _mouseInit.call(this);
-    };
-
-    mouseProto._mouseDestroy = function () {
-        this.element.off({
-            touchstart: $.proxy(this, '_touchStart'),
-            touchmove: $.proxy(this, '_touchMove'),
-            touchend: $.proxy(this, '_touchEnd')
-        });
-        _mouseDestroy.call(this);
-    };
-})(jQuery);
-
-
-// ---------- ABRIR EDITOR ----------
+// =========================================================================
+// 5. EDITOR DE OVERLAYS Y LÍNEAS
+// =========================================================================
 function abrirEditorFoto(foto) {
     fotoActualEditor = foto;
     overlaysActivos = [];
+    trazosActivos = [];
+    modoDibujoActivo = false;
+    $('#btnModoDibujo').removeClass('btn-danger').addClass('btn-outline-danger').text('✏️ Dibujar líneas: OFF');
+
     gpsActual = { lat: null, lng: null };
     horaActual = null;
 
-    // 🌟 Leer los metadatos guardados (observaciones, gps, hora, overlays)
     let meta = foto.meta_data || {};
-    
-    // Si Laravel devuelve el JSON como string (por si acaso), lo parseamos
     if (typeof meta === 'string') {
         try { meta = JSON.parse(meta); } catch(e) { meta = {}; }
     }
 
-    // Restaurar observaciones
     $('#observacionesFoto').val(meta.observaciones || '');
 
-    // Restaurar GPS y Hora
     if (meta.ubicacion) {
         gpsActual = { lat: meta.ubicacion.lat, lng: meta.ubicacion.lng };
     }
     horaActual = meta.fecha_hora || null;
 
-    // Restaurar overlays visuales
     if (meta.overlays && Array.isArray(meta.overlays)) {
         overlaysActivos = meta.overlays;
     }
+    if (meta.lineas && Array.isArray(meta.lineas)) {
+        trazosActivos = meta.lineas;
+    }
 
-    // Limpiar el DOM
-    $('#canvasWrapper .overlay-text-box, #canvasWrapper .overlay-logo-box, #canvasWrapper .overlay-brujula').remove();
+    $('#canvasWrapper .overlay-text-box, #canvasWrapper .overlay-logo-box, #canvasWrapper .overlay-brujula, #canvasDibujoOverlay').remove();
 
-    // Cargar imagen
     const $img = $('#canvasEditor');
-    
-    let url = foto.fotografia;
+    let url = foto.fotografia || '';
     if (!url.startsWith('http')) {
-        url = url.replace(/\\/g, '/'); 
-        url = "{{ asset('storage') }}/" + url; 
+        url = url.replace(/\\/g, '/');
+        url = "{{ asset('storage') }}/" + url;
     }
     $img.attr('src', url);
 
-    // Re-dibujar los overlays cuando la imagen termine de cargar
     $img.off('load').on('load', function () {
-        setTimeout(() => {
-            overlaysActivos.forEach(ov => crearOverlayDOM(ov));
-        }, 50);
+        setTimeout(function() {
+            overlaysActivos.forEach(function(ov) { crearOverlayDOM(ov); });
+            inicializarCanvasDibujo(trazosActivos);
+        }, 80);
     });
 
-    // Mostrar modal
     $('#modalEditorFoto').modal('show');
 }
-    // Función única para eliminar el elemento
-    const eliminarEsteOverlay = function () {
-        const uuid = $el.attr('data-uuid');
-        overlaysActivos = overlaysActivos.filter(o => o.uuid !== uuid);
-        $el.remove();
-        actualizarArrayOverlays();
-    };
 
-    // 1. Doble clic en PC
-    $el.on('dblclick', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        eliminarEsteOverlay();
-    });
-
-    // 2. Doble toque rápido en Móvil (menos de 300ms sin arrastrar)
-    let ultimoToque = 0;
-    let seArrastro = false;
-
-    $el.on('touchstart', function () {
-        seArrastro = false;
-    });
-
-    $el.on('touchmove', function () {
-        seArrastro = true;
-    });
-
-    $el.on('touchend', function (e) {
-        if (seArrastro) return; // Si lo estaba moviendo, no eliminar
-        const ahora = Date.now();
-        if (ahora - ultimoToque < 300 && ahora - ultimoToque > 0) {
-            e.preventDefault();
-            e.stopPropagation();
-            eliminarEsteOverlay();
-        }
-        ultimoToque = ahora;
-    });
-
-    $wrapper.append($el);
-
-// ---------- CREAR OVERLAY SEGÚN TIPO ----------
 function agregarOverlay(tipo) {
     let nuevo = null;
-
-if (tipo === 'logo') {
-    // Usamos $Tienda (con T mayúscula) y el formato base64 igual que en tus otras vistas
-    const logoUrl = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
-
-    nuevo = {
-        tipo: 'logo',
-        src: logoUrl,
-        x: 10, y: 10,
-        w: 80,
-        uuid: 'ov-' + Date.now() + Math.random()
+    const generarUUID = function() {
+        return 'ov-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 7);
     };
-}
 
+    if (tipo === 'logo') {
+        nuevo = {
+            tipo: 'logo',
+            src: window.LOGO_TIENDA,
+            x: 10, y: 10,
+            w: 80,
+            uuid: generarUUID()
+        };
+    }
     else if (tipo === 'gps') {
         nuevo = {
             tipo: 'texto',
             contenido: '📍 Obteniendo GPS...',
             x: 10, y: 20,
             fontSize: 14,
-            uuid: 'ov-' + Date.now() + Math.random()
+            uuid: generarUUID()
         };
 
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
-                pos => {
+                function(pos) {
                     gpsActual.lat = pos.coords.latitude;
                     gpsActual.lng = pos.coords.longitude;
-                    nuevo.contenido = `📍 ${gpsActual.lat.toFixed(6)}, ${gpsActual.lng.toFixed(6)}`;
-                    
-                    // Actualizar DOM
-                    const $el = $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`);
-                    $el.text(nuevo.contenido);
+                    nuevo.contenido = '📍 ' + gpsActual.lat.toFixed(6) + ', ' + gpsActual.lng.toFixed(6);
+                    $('#canvasWrapper .overlay-text-box[data-uuid="' + nuevo.uuid + '"]').text(nuevo.contenido);
                     actualizarArrayOverlays();
                 },
-                () => { 
-                    nuevo.contenido = '📍 GPS no disponible'; 
-                    $(`#canvasWrapper .overlay-text-box[data-uuid="${nuevo.uuid}"]`).text('📍 GPS no disponible');
+                function() {
+                    nuevo.contenido = '📍 GPS no disponible';
+                    $('#canvasWrapper .overlay-text-box[data-uuid="' + nuevo.uuid + '"]').text('📍 GPS no disponible');
                 },
                 { enableHighAccuracy: true, timeout: 8000 }
             );
@@ -1620,23 +1577,21 @@ if (tipo === 'logo') {
     }
     else if (tipo === 'hora') {
         const ahora = new Date();
-        horaActual = ahora.toLocaleString('es-GT'); // Guardamos la fecha real
-        
-        const fechaHoraStr = `🕒 ${ahora.toLocaleDateString('es-GT')} ${ahora.toLocaleTimeString('es-GT')}`;
-        
-        nuevo = { 
-            tipo: 'texto', 
-            contenido: fechaHoraStr, 
-            x: 10, y: 40, 
-            fontSize: 14, 
-            uuid: 'ov-' + Date.now() + Math.random() 
+        horaActual = ahora.toLocaleString('es-GT');
+        const fechaHoraStr = '🕒 ' + ahora.toLocaleDateString('es-GT') + ' ' + ahora.toLocaleTimeString('es-GT');
+
+        nuevo = {
+            tipo: 'texto',
+            contenido: fechaHoraStr,
+            x: 10, y: 40,
+            fontSize: 14,
+            uuid: generarUUID()
         };
     }
     else if (tipo === 'brujula') {
-        // Solicitar permiso para la brújula
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
-                .then(permissionState => {
+                .then(function(permissionState) {
                     if (permissionState === 'granted') {
                         iniciarBrujula();
                     } else {
@@ -1653,7 +1608,7 @@ if (tipo === 'logo') {
             grados: 0,
             x: 10, y: 60,
             w: 55,
-            uuid: 'ov-' + Date.now() + Math.random()
+            uuid: generarUUID()
         };
     }
 
@@ -1664,77 +1619,66 @@ if (tipo === 'logo') {
     actualizarArrayOverlays();
 }
 
-// 🌟 FUNCIÓN PARA ACTUALIZAR LA BRÚJULA EN TIEMPO REAL
-
 function iniciarBrujula() {
     if (escuchandoBrujula) return;
     escuchandoBrujula = true;
 
-    // Priorizar orientación absoluta (Android/Chrome) sobre la relativa (iOS/Safari)
     if ('ondeviceorientationabsolute' in window) {
         window.addEventListener('deviceorientationabsolute', manejarOrientacion, true);
     } else if ('ondeviceorientation' in window) {
         window.addEventListener('deviceorientation', manejarOrientacion, true);
-    } else {
-        console.warn('Este dispositivo no soporta sensores de orientación.');
     }
 }
 
 function manejarOrientacion(event) {
     let grados = null;
-
-    // 1. iOS (Safari) entrega el rumbo magnético directo
     if (event.webkitCompassHeading !== undefined) {
         grados = event.webkitCompassHeading;
-    } 
-    // 2. Android (Chrome) entrega 'alpha' invertido (0 a 360 en sentido antihorario)
-    else if (event.alpha !== null) {
+    } else if (event.alpha !== null) {
         grados = 360 - event.alpha;
     }
 
     if (grados === null) return;
 
-    // Compensar si el usuario gira la pantalla a modo horizontal (landscape)
     const orientacionPantalla = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
     grados = (grados + orientacionPantalla) % 360;
 
-    // Actualizar el estado en tu arreglo overlaysActivos y rotar el SVG
-    overlaysActivos.forEach(ov => {
+    overlaysActivos.forEach(function(ov) {
         if (ov.tipo === 'brujula') {
             ov.grados = Math.round(grados);
-            $(`#canvasWrapper .overlay-brujula[data-uuid="${ov.uuid}"] svg g`)
-                .attr('transform', `rotate(${ov.grados}, 50, 50)`);
+            $('#canvasWrapper .overlay-brujula[data-uuid="' + ov.uuid + '"] svg g')
+                .attr('transform', 'rotate(' + ov.grados + ', 50, 50)');
         }
     });
 }
-// ---------- CREAR EL DOM DE UN OVERLAY ----------
+
 function crearOverlayDOM(ov) {
     const $wrapper = $('#canvasWrapper');
     let $el;
 
     if (ov.tipo === 'logo') {
         $el = $('<img class="overlay-logo-box" draggable="false">');
-        $el.attr('src', ov.src)
+        $el.attr('src', ov.src || window.LOGO_TIENDA)
            .attr('data-uuid', ov.uuid)
-           .on('error', function() { $(this).css('background', '#ccc'); }); // Fallback visual
-        $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 80) + 'px' });
+           .on('error', function() { $(this).css('background', '#ccc'); });
+        $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 80) + 'px', zIndex: 20 });
     }
     else if (ov.tipo === 'brujula') {
-        const svg = `
-            <svg viewBox="0 0 100 100" width="100%" height="100%" style="filter: drop-shadow(1px 1px 2px #000);">
-                <circle cx="50" cy="50" r="45" fill="rgba(0,0,0,0.5)" stroke="#fff" stroke-width="3"/>
-                <text x="50" y="22" text-anchor="middle" fill="#ff3b30" font-size="14" font-weight="bold">N</text>
-                <text x="50" y="90" text-anchor="middle" fill="#fff" font-size="12">S</text>
-                <text x="14" y="55" text-anchor="middle" fill="#fff" font-size="12">W</text>
-                <text x="86" y="55" text-anchor="middle" fill="#fff" font-size="12">E</text>
-                <g transform="rotate(${ov.grados || 0}, 50, 50)">
-                    <polygon points="50,15 56,50 50,45 44,50" fill="#ff3b30"/>
-                    <polygon points="50,85 56,50 50,55 44,50" fill="#fff"/>
-                </g>
-            </svg>`;
+        const svg =
+            '<svg viewBox="0 0 100 100" width="100%" height="100%" style="filter: drop-shadow(1px 1px 2px #000);">' +
+                '<circle cx="50" cy="50" r="45" fill="rgba(0,0,0,0.5)" stroke="#fff" stroke-width="3"/>' +
+                '<text x="50" y="22" text-anchor="middle" fill="#ff3b30" font-size="14" font-weight="bold">N</text>' +
+                '<text x="50" y="90" text-anchor="middle" fill="#fff" font-size="12">S</text>' +
+                '<text x="14" y="55" text-anchor="middle" fill="#fff" font-size="12">W</text>' +
+                '<text x="86" y="55" text-anchor="middle" fill="#fff" font-size="12">E</text>' +
+                '<g transform="rotate(' + (ov.grados || 0) + ', 50, 50)">' +
+                    '<polygon points="50,15 56,50 50,45 44,50" fill="#ff3b30"/>' +
+                    '<polygon points="50,85 56,50 50,55 44,50" fill="#fff"/>' +
+                '</g>' +
+            '</svg>';
         $el = $('<div class="overlay-brujula">').html(svg);
         $el.attr('data-uuid', ov.uuid);
-        $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 55) + 'px', height: (ov.w || 55) + 'px' });
+        $el.css({ left: ov.x + 'px', top: ov.y + 'px', width: (ov.w || 55) + 'px', height: (ov.w || 55) + 'px', zIndex: 20 });
     }
     else {
         $el = $('<div class="overlay-text-box">').text(ov.contenido || '');
@@ -1742,17 +1686,17 @@ function crearOverlayDOM(ov) {
         $el.css({
             left: ov.x + 'px',
             top: ov.y + 'px',
-            fontSize: (ov.fontSize || 14) + 'px'
+            fontSize: (ov.fontSize || 14) + 'px',
+            zIndex: 20
         });
     }
 
-    // Hacerlo arrastrable
     $el.draggable({
         containment: '#canvasWrapper',
         stop: function () {
             const $this = $(this);
             const uuid = $this.attr('data-uuid');
-            const ovRef = overlaysActivos.find(o => o.uuid === uuid);
+            const ovRef = overlaysActivos.find(function(o) { return o.uuid === uuid; });
             if (ovRef) {
                 ovRef.x = parseInt($this.css('left'));
                 ovRef.y = parseInt($this.css('top'));
@@ -1761,11 +1705,11 @@ function crearOverlayDOM(ov) {
         }
     });
 
-    // Doble click para eliminar
     $el.on('dblclick', function (e) {
         e.preventDefault();
+        e.stopPropagation();
         const uuid = $(this).attr('data-uuid');
-        overlaysActivos = overlaysActivos.filter(o => o.uuid !== uuid);
+        overlaysActivos = overlaysActivos.filter(function(o) { return o.uuid !== uuid; });
         $(this).remove();
         actualizarArrayOverlays();
     });
@@ -1773,12 +1717,13 @@ function crearOverlayDOM(ov) {
     $wrapper.append($el);
 }
 
-// ---------- SINCRONIZAR CON EL ARRAY ----------
 function actualizarArrayOverlays() {
-    // console.log('Overlays activos:', overlaysActivos);
+    // Reservado para sincronizaciones futuras
 }
 
-// ---------- GUARDAR OVERLAY Y DATOS EN BASE DE DATOS ----------
+// =========================================================================
+// 6. GUARDAR METADATOS, OVERLAYS Y LÍNEAS EN LARAVEL
+// =========================================================================
 function guardarOverlayFoto() {
     if (!fotoActualEditor) return;
 
@@ -1798,7 +1743,7 @@ function guardarOverlayFoto() {
             _token: "{{ csrf_token() }}",
             id: fotoActualEditor.id,
             overlay: overlaysActivos,
-            lineas: trazosActivos, // ← Enviamos las líneas trazadas
+            lineas: trazosActivos,
             observaciones: observaciones,
             latitud: gpsActual.lat || '',
             longitud: gpsActual.lng || '',
@@ -1812,90 +1757,45 @@ function guardarOverlayFoto() {
                 fotoActualEditor.meta_data = resp.data.meta_data;
             }
 
-            // Actualizar la galería flotante y el contador
             recargarGaleriaFotos();
 
             Swal.fire({
                 icon: 'success',
                 title: 'Guardado',
                 text: 'Los cambios se guardaron correctamente.',
-                timer: 1600,
-                showConfirmButton: false
-            });
-        },
-        error: function (xhr) {
-            Swal.fire(
-                'Error',
-                'No se pudo guardar: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText),
-                'error'
-            );
-        }
-    });
+timer: 1600,
+showConfirmButton: false
+});
+},
+error: function (xhr) {
+Swal.fire(
+'Error',
+'No se pudo guardar: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.responseText),
+'error'
+);
 }
-
-
-function recargarGaleriaFotos() {
-    $.get("{{ url('/expediente/fotos-orden') }}/{{ $orden->Orden }}", function(fotos) {
-        const $grid = $('#galeriaFotosGrid');
-        const $vacia = $('#galeriaVacia');
-        const $contador = $('#contadorFotosGaleria');
-
-        $contador.text(fotos.length);
-        $grid.empty();
-
-        if (!fotos || fotos.length === 0) {
-            $vacia.removeClass('d-none');
-            return;
-        }
-
-        $vacia.addClass('d-none');
-
-        fotos.forEach(function(foto) {
-            const tieneEdicion = foto.meta_data && (
-                (foto.meta_data.overlays && foto.meta_data.overlays.length > 0) ||
-                (foto.meta_data.lineas && foto.meta_data.lineas.length > 0)
-            );
-            const badgeEditado = tieneEdicion ? '<span class="badge bg-info position-absolute top-0 end-0 m-1">Editada</span>' : '';
-
-            // Ajusta 'foto.url_publica' según cómo construyas la URL de tu bucket GCS
-            const urlImg = foto.url_publica + '?v=' + Date.now();
-
-            const card = `
-                <div class="galeria-item position-relative" onclick='abrirEditorFoto(${JSON.stringify(foto)})'>
-                    ${badgeEditado}
-                    <img src="${urlImg}" alt="Foto orden" loading="lazy">
-                </div>
-            `;
-            $grid.append(card);
-        });
-    });
+});
 }
-
-
-
-// ---------- INICIALIZACIÓN ----------
+// =========================================================================
+// 7. INICIALIZACIÓN AL CARGAR LA PÁGINA
+// =========================================================================
 $(document).ready(function () {
-    renderizarGaleriaFotos();
-
-    // Cerrar panel al hacer click fuera
-    $(document).on('click', function (e) {
-        if ($('#panel-fotos-galeria').hasClass('open')) {
-            if (!$(e.target).closest('#panel-fotos-galeria, #tab-fotos-galeria').length) {
-                toggleGaleriaFotos();
-            }
-        }
-    });
-
-    // Eventos de la pestaña
-    $('#btnAbrirGaleriaFotos').off('click').on('click', function(e) {
-        e.preventDefault();
-        toggleGaleriaFotos();
-    });
-
-    $('#btnCerrarGaleriaFotos').off('click').on('click', function(e) {
-        e.preventDefault();
-        toggleGaleriaFotos();
-    });
+renderizarGaleriaFotos();
+$(document).on('click', function (e) {
+if ($('#panel-fotos-galeria').hasClass('open')) {
+if (!$(e.target).closest('#panel-fotos-galeria, #tab-fotos-galeria').length) {
+toggleGaleriaFotos();
+}
+}
+});
+$('#btnAbrirGaleriaFotos').off('click').on('click', function(e) {
+e.preventDefault();
+toggleGaleriaFotos();
+});
+$('#btnCerrarGaleriaFotos').off('click').on('click', function(e) {
+e.preventDefault();
+toggleGaleriaFotos();
+});
 });
 
     // 1. Capturamos la orden actual de forma segura desde Laravel Blade
