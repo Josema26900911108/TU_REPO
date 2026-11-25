@@ -1184,6 +1184,47 @@ let trazosActivos = [];
 let trazoActual = null;
 let canvasDibujo = null;
 let ctxDibujo = null;
+    let fueArrastrado = false;
+
+    $el.draggable({
+        containment: '#canvasWrapper',
+        start: function () {
+            fueArrastrado = true;
+        },
+        stop: function () {
+            const $this = $(this);
+            const uuid = $this.attr('data-uuid');
+            const ovRef = overlaysActivos.find(function(o) { return o.uuid === uuid; });
+            if (ovRef) {
+                ovRef.x = parseInt($this.css('left'));
+                ovRef.y = parseInt($this.css('top'));
+                actualizarArrayOverlays();
+            }
+            setTimeout(function() { fueArrastrado = false; }, 150);
+        }
+    });
+
+    // Si es un overlay de GPS, abrir Google Maps con un clic limpio (sin arrastrar)
+    if (ov.tipo === 'texto' && (ov.contenido || '').includes('📍')) {
+        $el.css('cursor', 'pointer').attr('title', 'Clic para abrir en Google Maps (doble clic para eliminar)');
+
+        $el.on('click', function (e) {
+            if (fueArrastrado) return;
+            e.stopPropagation();
+
+            // Extraer latitud y longitud del texto del overlay o de gpsActual
+            const texto = $(this).text();
+            const match = texto.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+
+            const lat = match ? match[1] : gpsActual.lat;
+            const lng = match ? match[2] : gpsActual.lng;
+
+            if (lat && lng) {
+                const mapsUrl = 'https://google.com' + lat + ',' + lng;
+                window.open(mapsUrl, '_blank');
+            }
+        });
+    }
 
 // =========================================================================
 // 2. PUENTE TÁCTIL PARA JQUERY UI (.draggable + doble toque en móvil)
@@ -1703,11 +1744,22 @@ function crearOverlayDOM(ov) {
         $el = $('<div class="overlay-text-box">').text(ov.contenido || '');
         $el.attr('data-uuid', ov.uuid);
         $el.css({
+            position: 'absolute',
             left: ov.x + 'px',
             top: ov.y + 'px',
             fontSize: (ov.fontSize || 14) + 'px',
+            width: 'fit-content',
+            maxWidth: '90%',
+            display: 'inline-block',
+            whiteSpace: 'nowrap',
+            padding: '4px 8px',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            color: '#fff',
+            borderRadius: '4px',
+            cursor: 'move',
             zIndex: 20
         });
+
     }
 
     $el.draggable({
