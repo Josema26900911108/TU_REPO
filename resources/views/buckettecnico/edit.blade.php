@@ -1898,6 +1898,9 @@ $('#btnLimpiarSincronizar').click(function(e) {
     });
 });
 
+
+
+
 function actualizarSoloTablaMateriales() {
     let id = "{{ $id3 ?? 0 }}"; 
     
@@ -1991,22 +1994,75 @@ $('#btnCapture').click(function() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL("image/png");
-    const timestamp = Date.now();
-    const photoName = `foto_${timestamp}.png`;
-    const categoriafoto = $('#categoriafoto').val();
-    const itemname = $('#itemmanoobraamterial').find(':selected').text().trim();
+
+    // JPEG 0.75 pesa mucho menos que PNG en memoria
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+    const categoriafoto = $('#categoriafoto').val() || '';
+
+    let itemname = obtenerTextoSelectpicker('#itemmanoobraamterial');
+    if (!itemname || itemname.includes('Seleccione')) {
+        itemname = obtenerTextoSelectpicker('#itemtecnologia') || 'EVIDENCIA';
+    }
+    const itemLimpio = itemname.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]/g, '_');
 
     const idTecnologiaUnificado = $('#itemtecnologia').val();
 
+    photosForItem.push({
+        name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}" + categoriafoto + "_" + itemLimpio,
+        data: dataUrl,
+        fkTecnologia: idTecnologiaUnificado,
+        meta_data: {
+            overlays: [],
+            observaciones: '',
+            fecha_hora: new Date().toLocaleString('es-GT')
+        }
+    });
 
-
-    photosForItem.push({ name: "{{ $orden->Orden.'_'.$tecnico->codigo.'_' }}"+categoriafoto+"_"+itemname, data: dataUrl, fkTecnologia: idTecnologiaUnificado });
+    if (typeof actualizarEstadoBotonGuardar === 'function') {
+        actualizarEstadoBotonGuardar();
+    }
     mostrarFotos();
 
     $('#btnOk').show();
     $('#btnRetry').show();
 });
+
+// Mostrar fotos
+function mostrarFotos() {
+    const preview = document.getElementById('preview');
+    if (!preview) return;
+    preview.innerHTML = '';
+
+    photosForItem.forEach((photo, index) => {
+        const div = document.createElement('div');
+        div.classList.add('photo-container');
+
+        const img = document.createElement('img');
+        img.src = photo.data;
+        img.alt = photo.name;
+
+        const btnRemove = document.createElement('button');
+        btnRemove.type = 'button';
+        btnRemove.innerText = '✖';
+        btnRemove.classList.add('btn-remove');
+        btnRemove.onclick = () => {
+            photosForItem.splice(index, 1);
+            if (typeof actualizarEstadoBotonGuardar === 'function') {
+                actualizarEstadoBotonGuardar();
+            }
+            mostrarFotos();
+            if (photosForItem.length === 0) {
+                $('#btnOk').hide();
+                $('#btnRetry').hide();
+            }
+        };
+
+        div.appendChild(img);
+        div.appendChild(btnRemove);
+        preview.appendChild(div);
+    });
+}
+
 
 // Mostrar fotos
 function mostrarFotos() {
@@ -2550,6 +2606,22 @@ $(document).ready(function() {
         $dropdown.append($searchbox);
     });
 
+// Función para actualizar el estado visual del botón verde según haya fotos listas
+function actualizarEstadoBotonGuardar() {
+    const $btn = $('#btnGuardarFotoContinuar');
+    const total = (typeof photosForItem !== 'undefined') ? photosForItem.length : 0;
+
+    if (total > 0) {
+        $btn.prop('disabled', false)
+            .css('background-color', '#198754')
+            .html('<span class="icono-camara">📸</span><span class="icono-disquete">💾</span> <span class="badge bg-light text-dark">' + total + '</span>');
+    } else {
+        $btn.prop('disabled', true)
+            .css('background-color', '#6c757d');
+    }
+}
+
+
 $('#btnGuardarFotoContinuar').click(function() {
     var selectItem = $('#itemmanoobraamterial');
     var selectCategoria = $('#categoriafoto');
@@ -2610,6 +2682,7 @@ $('#btnGuardarFotoContinuar').click(function() {
 
         // 4. LIMPIAR ARRAY LOCAL
         photosForItem = [];
+        actualizarEstadoBotonGuardar();
 
         // 5. ACTUALIZAR GALERÍA LATERAL DIRECTAMENTE CON data.fotos
         if (data.fotos && Array.isArray(data.fotos)) {
@@ -2953,6 +3026,7 @@ function agregarItem(datosScanner = null) {
 
                     // Preparar pantalla para el siguiente escaneo ultra rápido
                     photosForItem = [];
+                    actualizarEstadoBotonGuardar();
                     $('#preview').html('');
                     cont++;
 
@@ -3083,6 +3157,7 @@ function procederAAgregarFila(idItem, nameProducto, cantidad, nameserie, sku) {
 
     // Limpiar fotos y cámara para siguiente ítem (Tu código original)
     photosForItem = [];
+    actualizarEstadoBotonGuardar();
     $('#preview').html('');
     $('#video').show();
     $('#btnCapture').show();
@@ -3531,6 +3606,17 @@ $("#itemmanoobra").off('change').on('change', function () {
 }
 });
 
+// Detector automático de teléfono de gama baja
+function esTelefonoGamaBaja() {
+    const esMovil = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (!esMovil) return false;
+    const ramGB = navigator.deviceMemory || 4;
+    const nucleos = navigator.hardwareConcurrency || 4;
+    return (ramGB <= 4 || nucleos <= 4);
+}
+
+const MODO_AHORRO_RAM = esTelefonoGamaBaja();
+
 $('#inputCamaraNativa').off('change').on('change', async function(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -3542,17 +3628,26 @@ $('#inputCamaraNativa').off('change').on('change', async function(e) {
         didOpen: function() { Swal.showLoading(); }
     });
 
-    const urlTemporalBlob = URL.createObjectURL(file);
+    const MAX_WIDTH = MODO_AHORRO_RAM ? 960 : 1200;
+    const CALIDAD_JPEG = MODO_AHORRO_RAM ? 0.62 : 0.72;
+    let img = null;
+    let urlTemporalBlob = null;
 
     try {
-        // 1. Cargar foto capturada
-        const img = await cargarImagenAsync(urlTemporalBlob);
+        // 1. Cargar foto (si es gama baja, reduce directo desde disco sin llenar la RAM)
+        if (MODO_AHORRO_RAM && 'createImageBitmap' in window) {
+            img = await createImageBitmap(file, {
+                resizeWidth: MAX_WIDTH,
+                resizeQuality: 'medium'
+            });
+        } else {
+            urlTemporalBlob = URL.createObjectURL(file);
+            img = await cargarImagenAsync(urlTemporalBlob);
+        }
 
-        // 2. Redimensionar a 1200px para no saturar LocalStorage
-        const MAX_WIDTH = 1200;
+        // 2. Calcular dimensiones proporcionales
         let width = img.width;
         let height = img.height;
-
         if (width > MAX_WIDTH) {
             height = Math.round(height * (MAX_WIDTH / width));
             width = MAX_WIDTH;
@@ -3565,6 +3660,10 @@ $('#inputCamaraNativa').off('change').on('change', async function(e) {
 
         // Dibujar foto base
         ctx.drawImage(img, 0, 0, width, height);
+
+        // Liberar bitmap/blob original cuanto antes
+        if (typeof img.close === 'function') img.close();
+        if (urlTemporalBlob) URL.revokeObjectURL(urlTemporalBlob);
 
         // 3. Dibujar Logo de la Tienda (esquina superior izquierda)
         const logoSrc = "{{ isset($Tienda) && $Tienda->logo ? 'data:image/png;base64,' . $Tienda->logo : asset('img/logo-empresa.png') }}";
@@ -3628,8 +3727,15 @@ $('#inputCamaraNativa').off('change').on('change', async function(e) {
             ctx.fillText(linea, boxX + padding, yPos);
         });
 
-        // 6. Exportar imagen comprimida (Calidad 0.70)
-        const dataUrlComprimida = canvas.toDataURL('image/jpeg', 0.70);
+        // 6. Exportar imagen comprimida (DESPUÉS de haber dibujado logo y textos)
+        const dataUrlComprimida = canvas.toDataURL('image/jpeg', CALIDAD_JPEG);
+
+        // Si es gama baja, destruir el canvas de inmediato para liberar memoria GPU
+        if (MODO_AHORRO_RAM) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = 0;
+            canvas.height = 0;
+        }
 
         // 7. Armar nombre limpio para el ERP
         const descripcionParaNombre = (textoItem && !textoItem.includes('Seleccione')) ? textoItem : textoTecnologia;
@@ -3639,10 +3745,9 @@ $('#inputCamaraNativa').off('change').on('change', async function(e) {
 
         const categoriafoto = $('#categoriafoto').val();
         const nombreFotoGenerado = "{{ $orden->Orden.'_'.$tecnico->codigo.'_'.$tecnico->descripcion }}_" + categoriafoto + '_' + descripcionLimpia;
-        const indiceActual = $('#modal-o-contenedor-actual').data('index') || 0;
         const idTecnologiaUnificado = $('#itemtecnologia').val();
 
-        // 8. AQUÍ SE CONSTRUYE LA META_DATA PARA GUARDARLA JUNTO CON LA FOTO
+        // 8. Construir meta_data
         const metaDataCaptura = {
             overlays: [],
             observaciones: '',
@@ -3658,20 +3763,27 @@ $('#inputCamaraNativa').off('change').on('change', async function(e) {
 
         // 9. Guardar en el arreglo global del ERP (photosForItem)
         photosForItem.push({
-            index: indiceActual,
             name: nombreFotoGenerado,
             data: dataUrlComprimida,
             fkTecnologia: idTecnologiaUnificado,
-            meta_data: metaDataCaptura // ← Se enviará al presionar "Actualizar / Sincronizar"
+            meta_data: metaDataCaptura
         });
 
-        mostrarFotos(indiceActual);
+        if (typeof actualizarEstadoBotonGuardar === 'function') {
+            actualizarEstadoBotonGuardar();
+        }
+        mostrarFotos();
 
-        URL.revokeObjectURL(urlTemporalBlob);
         Swal.close();
         document.getElementById('inputCamaraNativa').value = "";
 
-        // 10. Alerta de sesión
+        // 10. Si es teléfono de gama baja y hay internet, guardar de inmediato para no saturar RAM
+        if (MODO_AHORRO_RAM && navigator.onLine) {
+            $('#btnGuardarFotoContinuar').trigger('click');
+            return;
+        }
+
+        // 11. Alerta de sesión (solo si no se auto-subió)
         if (!sessionStorage.getItem('advertencia_foto_mostrada')) {
             Swal.fire({
                 icon: 'info',
@@ -3686,7 +3798,7 @@ $('#inputCamaraNativa').off('change').on('change', async function(e) {
         }
 
     } catch (error) {
-        URL.revokeObjectURL(urlTemporalBlob);
+        if (urlTemporalBlob) URL.revokeObjectURL(urlTemporalBlob);
         Swal.close();
         console.error('Error procesando captura:', error);
         Swal.fire('Error', 'No se pudo procesar la fotografía: ' + error.message, 'error');
