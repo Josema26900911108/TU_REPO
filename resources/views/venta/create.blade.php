@@ -1163,7 +1163,7 @@ function agregarProductoScanner(sku, cantidadAñadir) {
 
                     // Lo insertamos como una fila nueva desde cero
                     producto.push(idProducto);
-                    nombre.push(nameProducto.split(' - ').trim());
+                    nombre.push(nameProducto.split(' - ')[0].trim());
                     Cantidad.push(cantidadAñadir);
                     precioventa.push(precioVentaBase);
                     Descuento.push(0);
@@ -1185,27 +1185,31 @@ function agregarProductoScanner(sku, cantidadAñadir) {
 
 function recalcularYRedibujarVenta() {
     var tableBody = $('#tabla_detalle_tbody');
-    tableBody.empty(); // Limpiar contenedor físico de la vista
+    tableBody.empty();
+    // Limpiar contenedor físico de la vista
 
     sumas = 0;
     total = 0;
     cantidadarticulos = 0;
-    cont = 0; 
+    cont = 0;
 
     let pausarPorConfirmacion = false;
 
     $.each(producto, function(index, idProd) {
-        if (!idProd || idProd === "" || pausarPorConfirmacion) return; 
+        if (!idProd || idProd === "" || pausarPorConfirmacion)
+            return;
 
+        let idProdStr = String(idProd).trim();
         let cantAcumulada = parseInt(Cantidad[index], 10);
         let precioBase = parseFloat(precioventa[index]);
         let nameProd = nombre[index];
 
         let optionItem = $("#producto_id option").filter(function() {
             let optVal = $(this).val() ? $(this).val().toString().trim() : "";
-            return optVal === idProd || optVal.startsWith(idProd + "-");
+            return optVal === idProdStr || optVal.startsWith(idProdStr + "-");
         });
         let reglasColeccion = optionItem.data('reglas') || [];
+
 
         // 1. Obtener el mapa dinámico de propuestas del motor
         let analisis = evaluarReglasPrecio(reglasColeccion, cantAcumulada, precioBase);
@@ -1326,119 +1330,79 @@ function recalcularYRedibujarVenta() {
 
 
 function agregarProductoScannerCam(sku) {
-    let dataProducto = "";
-    let idProducto = 0;
-    let nameProducto = "";
+    if (!sku) return;
 
-    var comprobanteId = sku;
-    if (comprobanteId) {
-        $.ajax({
-            url: '/compras/detallesSCAN/' + comprobanteId + '',
-            type: 'GET',
-            success: function(response) {
-                if (!response || response.length === 0) {
-                    console.warn("No se encontró producto.");
-                    return;
-                }
+    var comprobante = document.getElementById('comprobante_id').value;
+    if (comprobante === "") {
+        alert("Por favor, seleccione un comprobante.");
+        return false;
+    }
 
-                var detalle = response[0];
-                let idProductos = detalle.producto_id;
-                let seleccionable = idProductos + "-" + detalle.existencia + "-" + detalle.precio_venta;
-                dataProducto = seleccionable;
-                idProducto = detalle.producto_id;
-                nameProducto = detalle.producto_nombre;
+    $.ajax({
+        url: '/compras/detallesSCAN/' + sku,
+        type: 'GET',
+        success: function(response) {
+            // Soporta tanto fetchAll() [array] como fetch() {objeto}
+            let detalle = Array.isArray(response) ? response[0] : response;
 
-                $("#producto_id option").each(function () {
-                    let v = $(this).val();
-                    if (v.startsWith(seleccionable)) {
-                        $("#producto_id").val(v).change();
-                        $('#producto_id').selectpicker('refresh');
-                        return false; 
-                    }
-                });
+            if (!detalle || !detalle.producto_id) {
+                console.warn("No se encontró producto.");
+                return;
+            }
 
-                $('#precio_venta').val(detalle.precio_venta);
-                $('#stock').val(detalle.existencia);
+            let idProducto = String(detalle.producto_id); // Forzar a String para evitar fallos con ===
+            let nameProducto = detalle.producto_nombre;
+            let precioVenta = parseFloat(detalle.precio_venta);
+            let stock = parseInt(detalle.existencia, 10);
+            let cantidadEscaneada = parseInt($('#cantidad').val(), 10) || 1;
 
-                let cantidad = parseInt($('#cantidad').val()) || 1; 
-                let precioVenta = parseFloat(detalle.precio_venta);
-                let stock = parseInt(detalle.existencia);
-                var comprobante = document.getElementById('comprobante_id').value;
+            if (cantidadEscaneada <= 0) {
+                showModal('Cantidad incorrecta');
+                return;
+            }
 
-                if (comprobante === "") {
-                    alert("Por favor, seleccione un comprobante.");
+            // Seleccionar en el selectpicker para que existan los data-reglas
+            let seleccionable = idProducto + "-" + detalle.existencia + "-" + detalle.precio_venta;
+            $("#producto_id option").each(function () {
+                let v = $(this).val() ? $(this).val().toString() : "";
+                if (v.startsWith(idProducto + "-")) {
+                    $("#producto_id").val(v).change();
+                    $('#producto_id').selectpicker('refresh');
                     return false;
                 }
+            });
 
-                if (idProducto != '' && cantidad > 0) {
-                    if (cantidad <= stock) {
-                        
-                        // Extraer reglas dinámicas desde la opción activa del selectpicker
-                        let reglasColeccion = $('#producto_id').find('option:selected').data('reglas') || [];
-                        let reglaEfectiva = evaluarReglasPrecio(reglasColeccion, cantidad, precioVenta);
+            // Verificar si el producto YA está en el carrito para acumular cantidad
+            let indiceExistente = producto.findIndex(id => String(id) === idProducto);
 
-                        // Asignación directa limpia sin duplicar variables con let
-                        let descuento = reglaEfectiva.descuentoTotal;
-                        let precioVentaFinal = reglaEfectiva.precioFinal;
-
-                        if (reglaEfectiva.mensaje !== "") {
-                            showModal(reglaEfectiva.mensaje, 'success'); 
-                        }
-
-                        subtotal[cont] = round(cantidad * precioVentaFinal - descuento);
-                        if (subtotal[cont] < 0) subtotal[cont] = 0;
-
-                        sumas += cantidad;
-                        total += subtotal[cont];
-                        sumadocdb = round(total);
-
-                        subiva[cont] = CalcularFormula(formula, subtotal[cont]);
-                        resultadoiva = CalcularFormula(formula, total);
-                        IVA = resultadoiva;
-
-                        let fila = '<tr id="fila' + cont + '">' +
-                            '<th>' + (cont + 1) + '</th>' +
-                            '<td><input type="hidden" name="arrayidproducto[]" value="' + idProducto + '">' + nameProducto + '</td>' +
-                            '<td><input type="hidden" name="arraycantidad[]" value="' + cantidad + '">' + cantidad + '</td>' +
-                            '<td><input type="hidden" name="arrayprecioventa[]" value="' + precioVentaFinal + '">' + precioVentaFinal + '</td>' +
-                            '<td><input type="hidden" name="arraysubiva[]" value="' + subiva[cont] + '">' + subiva[cont] + '</td>' +
-                            '<td><input type="hidden" name="arraydescuento[]" value="' + descuento + '">' + descuento + '</td>' +
-                            '<td>' + subtotal[cont] + '</td>' +
-                            '<td><button class="btn btn-danger" type="button" onClick="eliminarProducto(' + cont + ')"><i class="fa-solid fa-trash"></i></button></td>' +
-                            '</tr>';
-
-                        $('#tabla_detalle_tbody').append(fila);
-                        limpiarCampos();
-                        disableButtons();
-
-                        resultadoiva = resultadoiva.toFixed(2);
-
-                        producto[cont] = idProducto;
-                        Cantidad[cont] = cantidad;
-                        precioventa[cont] = parseFloat(precioVentaFinal);
-                        nombre[cont] = nameProducto;
-                        cantidadarticulos += cantidad;
-                        Descuento[cont] = descuento;
-                        cont++;
-                        
-                        sumarArreglos(formulas, monto);
-
-                        $('#sumas').html(sumas);
-                        $('#IVA').html(IVA);
-                        $('#total').html(total);
-                        $('#subiva').val(subiva);
-                        $('#impuesto').val(IVA);
-                        $('#inputTotal').val(total);
-                    } else {
-                        showModal('Cantidad incorrecta');
-                    }
+            if (indiceExistente !== -1) {
+                let nuevaCantidad = parseInt(Cantidad[indiceExistente], 10) + cantidadEscaneada;
+                if (nuevaCantidad > stock) {
+                    showModal('Supera el stock disponible (' + stock + ')');
+                    return;
                 }
-            },
-            error: function(xhr, status, error) {
-                console.error("Error al cargar los detalles:", error);
+                Cantidad[indiceExistente] = nuevaCantidad;
+            } else {
+                if (cantidadEscaneada > stock) {
+                    showModal('Cantidad incorrecta, stock disponible: ' + stock);
+                    return;
+                }
+                // Agregar como nuevo elemento en los arreglos globales
+                let nuevoIndice = producto.length;
+                producto[nuevoIndice] = idProducto;
+                Cantidad[nuevoIndice] = cantidadEscaneada;
+                precioventa[nuevoIndice] = precioVenta; // Guardar precio BASE (sin descuentos)
+                nombre[nuevoIndice] = nameProducto;
             }
-        });
-    }
+
+            limpiarCampos();
+            // Delegar el cálculo de reglas, promociones y dibujo de tabla a tu función principal
+            recalcularYRedibujarVenta();
+        },
+        error: function(xhr, status, error) {
+            console.error("Error al cargar los detalles:", error);
+        }
+    });
 }
 
 

@@ -1499,44 +1499,54 @@ public function mostrarDetallesCompraScanner($SKU)
     return response()->json($producto);
 }
 
-
-            public function mostrarDetallesScanner($SKU)
-    {
-                        if(!Auth::check()){
-            return redirect()->route('login');
-        }
-
-        $fkTienda = session('user_fkTienda');
-                $pdo = DB::getPdo();
-        $stmt = $pdo->prepare("
-    SELECT
-        p.nombre AS producto_nombre,
-        cp.cantidad,
-        cp.precio_venta,
-        p.codigo AS producto_codigo,
-        p.stock as existencia,
-        p.descripcion,
-        p.fecha_vencimiento,
-        p.img_path as imagen_producto,
-        p.id as producto_id
-    FROM
-        compras as c
-    INNER JOIN
-        compra_producto as cp ON c.id = cp.compra_id
-    INNER JOIN
-        productos as p ON cp.producto_id = p.id
-    WHERE
-        p.codigo = :id and c.fkTienda = $fkTienda AND c.estado = 2
-");
-
-$stmt->execute(['id' => $SKU]);
-
-
-        $producto = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-
-return response()->json($producto);
+public function mostrarDetallesScanner($SKU)
+{
+    if (!Auth::check()) {
+        return redirect()->route('login');
     }
+
+    $fkTienda = session('user_fkTienda');
+    $pdo = DB::getPdo();
+
+    // 1. Ordenamos por c.id DESC para traer el precio de la compra más reciente
+    // 2. Agregamos LIMIT 1 para evitar registros duplicados
+    // 3. Parametrizamos :fkTienda por seguridad (evita inyección SQL)
+    $stmt = $pdo->prepare("
+        SELECT
+            p.nombre AS producto_nombre,
+            cp.cantidad,
+            cp.precio_venta,
+            p.codigo AS producto_codigo,
+            p.stock AS existencia,
+            p.descripcion,
+            p.fecha_vencimiento,
+            p.img_path AS imagen_producto,
+            p.id AS producto_id
+        FROM
+            compras AS c
+        INNER JOIN
+            compra_producto AS cp ON c.id = cp.compra_id
+        INNER JOIN
+            productos AS p ON cp.producto_id = p.id
+        WHERE
+            p.codigo = :id 
+            AND c.fkTienda = :fkTienda 
+            AND c.estado = 2
+        ORDER BY 
+            c.id DESC
+        LIMIT 1
+    ");
+
+    $stmt->execute([
+        'id' => $SKU,
+        'fkTienda' => $fkTienda
+    ]);
+
+    // Usamos fetch() en lugar de fetchAll() para devolver un solo objeto JSON y no un arreglo de arreglos
+    $producto = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+    return response()->json($producto);
+}
 
 
 
