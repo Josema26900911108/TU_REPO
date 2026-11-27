@@ -2949,28 +2949,29 @@ function agregarItem(datosScanner = null) {
                 didOpen: () => { Swal.showLoading(); }
             });
 
-            let allItemsSinFotos = allItems.map(item => {
+   let allItemsSinFotos = allItems.map(item => {
                 return {
                     index: item.index,
                     idTecnologia: item.fkTecnologiaarbol || idTecnologia,
                     idItem: item.id,
                     nameProducto: item.Descripcion,
-                    cantidad: item.cantidad,
-                    nameserie: item.serie,
-                    sku: item.sku,
-                    CENTRO: item.CENTRO
+                    cantidad: parseFloat(item.cantidad) || 0,
+                    nameserie: item.serie || 'S/N',
+                    sku: (item.sku || '').toString().trim(),
+                    CENTRO: item.CENTRO || 'GENERAL'
                 };
             });
 
-            // Sincronización de nombres de llaves idéntica a llenaritems()
+            let cantidadNumerica = parseFloat(cantidad) || 1;
+
             let nuevoItemVirtual = {
                 index: cont, 
-                id: idItem,                 // Mapeado a 'id'
-                Descripcion: nameProducto,  // Mapeado a 'Descripcion'
-                cantidad: parseFloat(cantidad),
-                serie: nameserie,           // Mapeado a 'serie'
+                id: idItem,
+                Descripcion: nameProducto,
+                cantidad: cantidadNumerica,
+                serie: nameserie,
                 sku: sku.trim(),
-                fkTecnologiaarbol: idTecnologia, // Mapeado a 'fkTecnologiaarbol'
+                fkTecnologiaarbol: idTecnologia,
                 CENTRO: CENTRO,
                 photos: [] 
             };
@@ -2985,7 +2986,7 @@ function agregarItem(datosScanner = null) {
                     Orden: ordenActual,
                     Tipo_Orden: tipoOrden,
                     SKU_Nuevo: sku.trim(),
-                    Cantidad_Nueva: cantidad,
+                    Cantidad_Nueva: cantidadNumerica,
                     Items_Memoria: listaSimulada,
                     ItemVirtual: nuevoItemVirtual
                 },
@@ -3070,13 +3071,16 @@ setInterval(function() {
 
 function validarRelacionMateriales() {
     // Extraemos solo SKU y Cantidad de tu array allItems (el que mostraste en la imagen)
+    if (!Array.isArray(allItems) || allItems.length === 0) return;
+
+    // Aseguramos que cada cantidad sea un número válido (nunca null o vacío)
     let materialesParaValidar = allItems.map(item => {
         return {
-            sku: item.sku,
-            cantidad: item.cantidad
+            sku: item.sku || '',
+            cantidad: parseFloat(item.cantidad) || 0
         };
     });
-
+    
     $.ajax({
         url: "{{ route('tecnico.validar.materiales') }}", // Nueva ruta para lógica pura de materiales
         method: "POST",
